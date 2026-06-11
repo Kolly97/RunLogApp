@@ -50,6 +50,12 @@
   
   - [ ] Beim eintragen der Einheit, die man gemacht hat, soll man für schwelle oder intervalle die einzelnen Belastungen auswählen (so ähnlich wie bei Einheit zusammenstellung bei Strava oder Coros) und dann kann man sagen, wie lang, weit, pace, durchschnitt HR und max HR es bei den jeweiligen belastungen war. also bei 4x8 min kann ich das für jede 8 min belastung sagen. unten rechnet es dann den durchschnitt über alle Belastungen in der Einheit aus. So kann ich dann auch die verschiedenen Werte für LT1, LT2, kurze V02 max intervalle und lange V02 max intervalle tracken
   
+  - [ ] In Zusammenfassung auch schreiben wie viel km/zeit man mit Laufen, Rad fahren (indoor und outdoor zusammen), Kraft/mobility (nur zeit)
+  
+  - [ ] Ich fahre auch jede woche noch Rad beim hin und her fahren. das sind aber keine Einheiten. allerdings will ich die auch irgendwie noch trocken. vllt bei teacken noch allgemeine Aktivität machen und da kann ich die Kilometer Fahrrad fahren eintragen
+  
+  - [ ] ich möchte auch die kcal tracken, die ich pro Einheit verbrenne
+  
   - [ ] 
   
   
