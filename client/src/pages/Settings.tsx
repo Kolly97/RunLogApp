@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ZoneSet, type SeasonWeek } from "../lib/api.ts";
-import { PHASES, todayIso, num } from "../lib/util.ts";
+import { todayIso, num, phaseLabel } from "../lib/util.ts";
+import { useOptions } from "../lib/options.ts";
 
 export default function Settings() {
   const [zonesets, setZonesets] = useState<ZoneSet[]>([]);
@@ -83,11 +84,15 @@ export default function Settings() {
 // ---- Saison-Zeile ------------------------------------------------------
 function WeekRow({ w, onChange }: { w: SeasonWeek; onChange: () => void }) {
   const [e, setE] = useState(w);
+  const { phases } = useOptions();
   const save = (patch: Partial<SeasonWeek>) => { const n = { ...e, ...patch }; setE(n); api.saveWeek(w.week_no, n).then(onChange); };
+  // Alt-Phasenwerte bestehender Wochen bleiben wählbar, auch wenn nicht in der neuen Liste.
+  const phaseVals = phases.map((p) => p.value);
+  const phaseOpts = !e.phase || phaseVals.includes(e.phase) ? phaseVals : [e.phase, ...phaseVals];
   return (
     <tr>
       <td>{w.week_no}</td>
-      <td><select value={e.phase} onChange={(x) => save({ phase: x.target.value })} style={{ minWidth: 130 }}>{PHASES.map((p) => <option key={p}>{p}</option>)}</select></td>
+      <td><select value={e.phase} onChange={(x) => save({ phase: x.target.value })} style={{ minWidth: 130 }}>{phaseOpts.map((p) => <option key={p} value={p}>{phaseLabel(p)}</option>)}</select></td>
       <td><input type="date" value={e.start_date} onChange={(x) => save({ start_date: x.target.value })} /></td>
       <td><input type="date" value={e.end_date} onChange={(x) => save({ end_date: x.target.value })} /></td>
       <td style={{ width: 80 }}><input type="number" value={e.target_km ?? ""} onChange={(x) => save({ target_km: num(x.target.value) })} /></td>
@@ -105,6 +110,8 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
     const hr = e.hr_zones.map((zn, j) => (j === i ? { ...zn, [field]: v ?? 0 } : zn));
     saveZ({ ...e, hr_zones: hr });
   };
+  const setPace = (i: number, v: number | null) => { const arr = [...(e.pace_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, pace_zones: arr }); };
+  const setSpeed = (i: number, v: number | null) => { const arr = [...(e.speed_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, speed_zones: arr }); };
   return (
     <div className="card tight" style={{ background: "#fafbfd" }}>
       <div className="row mb">
@@ -115,6 +122,7 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
         <label className="field" style={{ margin: 0, flex: 1 }}><span>Quelle/Notiz</span><input value={e.note ?? ""} onChange={(x) => saveZ({ ...e, note: x.target.value })} /></label>
         {canDelete && <button className="sm ghost danger" onClick={() => api.deleteZoneset(z.id).then(onChange)}>Set löschen</button>}
       </div>
+      <div className="tiny muted" style={{ marginBottom: 2 }}>HF-Zonen (min / max bpm)</div>
       <div className="row" style={{ gap: 6 }}>
         {e.hr_zones.map((zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
@@ -123,6 +131,22 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
               <input type="number" style={{ padding: "4px", textAlign: "center" }} value={zn.min} onChange={(x) => setHr(i, "min", num(x.target.value))} />
               <input type="number" style={{ padding: "4px", textAlign: "center" }} value={zn.max} onChange={(x) => setHr(i, "max", num(x.target.value))} />
             </div>
+          </div>
+        ))}
+      </div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Pace-Zonen Lauf (s/km, Obergrenze je Zone — aus Diagnostik)</div>
+      <div className="row" style={{ gap: 6 }}>
+        {e.hr_zones.map((zn, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center" }}>
+            <input type="number" placeholder="s/km" style={{ padding: "4px", textAlign: "center" }} value={e.pace_zones?.[i] ?? ""} onChange={(x) => setPace(i, num(x.target.value))} />
+          </div>
+        ))}
+      </div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Speed-Zonen Rad (km/h, Obergrenze je Zone — optional)</div>
+      <div className="row" style={{ gap: 6 }}>
+        {e.hr_zones.map((zn, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center" }}>
+            <input type="number" step="0.1" placeholder="km/h" style={{ padding: "4px", textAlign: "center" }} value={e.speed_zones?.[i] ?? ""} onChange={(x) => setSpeed(i, num(x.target.value))} />
           </div>
         ))}
       </div>

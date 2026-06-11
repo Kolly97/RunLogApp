@@ -1,38 +1,21 @@
 export const DAY_NAMES = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
-export const SPORTS = [
-  { value: "Run", label: "Lauf" },
-  { value: "BikeRoad", label: "Rennrad" },
-  { value: "BikeIndoor", label: "Rolle" },
-  { value: "Other", label: "Sonstiges" },
-];
+// Auswahllisten + Label-/Farb-Helfer kommen aus options.ts (server-konfigurierbar,
+// mit Live-Cache). Alt-Importe von SPORTS/SESSION_TYPES bleiben über die Defaults gültig;
+// für dynamische Listen in Komponenten useOptions() verwenden.
+export {
+  DEFAULT_SPORTS as SPORTS,
+  DEFAULT_SESSION_TYPES as SESSION_TYPES,
+  typeColor,
+  typeLabel,
+  sportLabel,
+  phaseLabel,
+  phaseColor,
+} from "./options.ts";
+import { DEFAULT_PHASES } from "./options.ts";
 
-export const SESSION_TYPES: { value: string; label: string; color: string }[] = [
-  { value: "Easy", label: "Easy / GA1", color: "#3b82f6" },
-  { value: "Long", label: "Longrun", color: "#6366f1" },
-  { value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308" },
-  { value: "VO2", label: "VO2 / Intervalle", color: "#f97316" },
-  { value: "Hill", label: "Berg", color: "#a855f7" },
-  { value: "Race", label: "Wettkampf", color: "#ef4444" },
-  { value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
-  { value: "Physio", label: "KG / Physio", color: "#64748b" },
-  { value: "Rest", label: "Ruhetag", color: "#9ca3af" },
-];
-
-export const PHASES = [
-  "Grundlage", "Belastung", "Belastung 1/2", "Belastung 2/2", "Entlastung",
-  "Race Week", "Race", "Gesund werden",
-];
-
-export function typeColor(type: string): string {
-  return SESSION_TYPES.find((t) => t.value === type)?.color ?? "#9ca3af";
-}
-export function typeLabel(type: string): string {
-  return SESSION_TYPES.find((t) => t.value === type)?.label ?? type;
-}
-export function sportLabel(sport: string): string {
-  return SPORTS.find((s) => s.value === sport)?.label ?? sport;
-}
+/** Alt-kompatibel: Phasen-Werte als String-Liste. Für Live-Listen useOptions().phases nutzen. */
+export const PHASES: string[] = DEFAULT_PHASES.map((p) => p.value);
 
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -72,4 +55,43 @@ export function num(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);
   return isNaN(n) ? null : n;
+}
+
+// ---- Einheiten: Lauf = Pace (min/km), Rad/Commute = Geschwindigkeit (km/h) — ToDo 18/19 ----
+
+export function isBikeSport(sport?: string | null): boolean {
+  return !!sport && (sport.startsWith("Bike") || sport === "General");
+}
+
+/** Geschwindigkeit in km/h (für Rad/Rolle/Commute). */
+export function speedKmh(distanceM?: number | null, movingS?: number | null): string {
+  if (!distanceM || !movingS) return "–";
+  const kmh = distanceM / 1000 / (movingS / 3600);
+  return isFinite(kmh) ? `${kmh.toFixed(1)} km/h` : "–";
+}
+
+/** Pace (min/km) für Lauf, sonst km/h — je nach Sportart. */
+export function paceOrSpeed(sport: string, distanceM?: number | null, movingS?: number | null): string {
+  if (isBikeSport(sport)) return speedKmh(distanceM, movingS);
+  if (!distanceM || !movingS) return "–";
+  return `${paceStr(movingS / (distanceM / 1000))} /km`;
+}
+
+// ---- Kalenderwochen (ToDo 9) ----
+
+/** ISO-8601-Kalenderwoche aus YYYY-MM-DD. */
+export function isoWeek(iso: string): number {
+  const d = new Date(iso + "T00:00:00Z");
+  const day = (d.getUTCDay() + 6) % 7; // Mo=0 … So=6
+  d.setUTCDate(d.getUTCDate() - day + 3); // nächster Donnerstag
+  const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const firstDay = (firstThu.getUTCDay() + 6) % 7;
+  firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+  return 1 + Math.round((d.getTime() - firstThu.getTime()) / (7 * 86400000));
+}
+
+/** Anzeige-Label „KW9" aus dem Wochen-Start; Fallback auf „Woche N". */
+export function weekLabel(w: { start_date?: string; week_no?: number } | null | undefined): string {
+  if (w?.start_date) return `KW${isoWeek(w.start_date)}`;
+  return `Woche ${w?.week_no ?? ""}`.trim();
 }

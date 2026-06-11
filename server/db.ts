@@ -135,7 +135,84 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date);
   `);
 
+  migrate();
   seedDefaults();
+}
+
+// ---- additive migrations (Bestandsdaten bleiben erhalten) --------------
+// NIE Tabellen neu anlegen/droppen — nur Spalten ergänzen, falls sie fehlen.
+
+function hasColumn(table: string, col: string): boolean {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return cols.some((c) => c.name === col);
+}
+
+function addColumn(table: string, col: string, decl: string): void {
+  if (!hasColumn(table, col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`);
+}
+
+function migrate(): void {
+  // ToDo 23: kcal je Aktivität · ToDo 1/20: strukturierte Efforts · ToDo 4: reale min je Zone
+  addColumn("activities", "kcal", "REAL");
+  addColumn("activities", "efforts", "TEXT");
+  addColumn("activities", "zone_min", "TEXT");
+  // ToDo 1/20: geplante Efforts (structured bleibt für Kompatibilität bestehen)
+  addColumn("planned_sessions", "efforts", "TEXT");
+  // ToDo 6: Speed-Zonen (km/h) fürs Rad neben den Pace-Zonen (Lauf)
+  addColumn("zone_sets", "speed_zones", "TEXT");
+  // ToDo 14: Sleep Performance bei den Tagesfaktoren
+  addColumn("daily_log", "sleep_performance", "REAL");
+
+  // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS options (
+      id     INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind   TEXT NOT NULL,
+      value  TEXT NOT NULL,
+      label  TEXT NOT NULL,
+      color  TEXT,
+      sort   INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_options_kind_value ON options(kind, value);
+  `);
+  seedOptions();
+}
+
+// Default-Auswahllisten (einmalig geseedet; danach in der App editierbar).
+const DEFAULT_OPTIONS: { kind: string; value: string; label: string; color: string | null }[] = [
+  // Phasen — die 6 neuen (ToDo 13). Bestehende Wochen behalten ihre Alt-Werte.
+  { kind: "phase", value: "Base", label: "Base", color: "#64748b" },
+  { kind: "phase", value: "Belastung", label: "Belastung", color: "#3b82f6" },
+  { kind: "phase", value: "Entlastung", label: "Entlastung", color: "#22c55e" },
+  { kind: "phase", value: "Race Week", label: "Race Week", color: "#eab308" },
+  { kind: "phase", value: "Krank", label: "Krank", color: "#ef4444" },
+  { kind: "phase", value: "Race Specific", label: "Race Specific", color: "#a855f7" },
+  // Sportarten (umfasst alle in Bestandsdaten genutzten + Allgemein/Commute, ToDo 22)
+  { kind: "sport", value: "Run", label: "Lauf", color: "#3b82f6" },
+  { kind: "sport", value: "BikeRoad", label: "Rennrad", color: "#06b6d4" },
+  { kind: "sport", value: "BikeIndoor", label: "Rolle", color: "#0ea5e9" },
+  { kind: "sport", value: "Strength", label: "Kraft", color: "#14b8a6" },
+  { kind: "sport", value: "Physio", label: "KG / Physio", color: "#64748b" },
+  { kind: "sport", value: "General", label: "Allgemein / Commute", color: "#94a3b8" },
+  { kind: "sport", value: "Other", label: "Sonstiges", color: "#9ca3af" },
+  // Einheitstypen (mit Farben wie im Frontend)
+  { kind: "sessionType", value: "Easy", label: "Easy / GA1", color: "#3b82f6" },
+  { kind: "sessionType", value: "Long", label: "Longrun", color: "#6366f1" },
+  { kind: "sessionType", value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308" },
+  { kind: "sessionType", value: "VO2", label: "VO2 / Intervalle", color: "#f97316" },
+  { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7" },
+  { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444" },
+  { kind: "sessionType", value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
+  { kind: "sessionType", value: "Physio", label: "KG / Physio", color: "#64748b" },
+  { kind: "sessionType", value: "Rest", label: "Ruhetag", color: "#9ca3af" },
+];
+
+function seedOptions(): void {
+  const n = db.prepare("SELECT COUNT(*) n FROM options").get() as { n: number };
+  if (n.n > 0) return;
+  const ins = db.prepare("INSERT INTO options(kind, value, label, color, sort, active) VALUES(?,?,?,?,?,1)");
+  DEFAULT_OPTIONS.forEach((o, i) => ins.run(o.kind, o.value, o.label, o.color, i));
 }
 
 // ---- settings helpers --------------------------------------------------

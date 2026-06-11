@@ -1,19 +1,26 @@
 // Schlanke API-Schicht.
+import type { Option } from "./options.ts";
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
-export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
+export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
 export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; goal_race: string; notes: string; }
 export interface ZoneAlloc { byKm?: Record<number, number>; byMin?: Record<number, number>; }
+/** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20. */
+export interface Effort {
+  reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null;
+  avg_hr?: number | null; max_hr?: number | null; zone?: number | null; label?: string;
+}
 export interface PlannedSession {
   id?: number; date: string; week_no?: number | null; sport: string; type: string;
   planned_km?: number | null; planned_min?: number | null; zone_alloc?: ZoneAlloc | null;
-  description?: string; structured?: unknown; planned_tss?: number | null; sort_order?: number;
+  description?: string; structured?: unknown; efforts?: Effort[] | null; planned_tss?: number | null; sort_order?: number;
 }
 export interface Activity {
   id?: number; strava_id?: string | null; date: string; sport: string; source: string; name?: string;
   distance_m?: number | null; moving_s?: number | null; elapsed_s?: number | null; avg_hr?: number | null;
   max_hr?: number | null; avg_power?: number | null; elevation?: number | null; avg_cadence?: number | null;
-  training_load?: number | null; tss?: number | null; zones?: Record<number, number> | null;
+  training_load?: number | null; tss?: number | null; kcal?: number | null;
+  zones?: Record<number, number> | null; zone_min?: Record<number, number> | null; efforts?: Effort[] | null;
   overrides?: string[]; matched_session_id?: number | null; notes?: string;
 }
 export interface DailyLog { date: string; [k: string]: unknown; }
@@ -23,8 +30,22 @@ export interface WeekTotals {
   km: number; bike_km: number; min: number; tss: number; sessions: number; runSessions: number;
   hardSessions: number; longestKm: number; zoneMin: Record<number, number>;
   intensity: { easy: number; mod: number; hard: number };
+  // ToDo 21 — Kategorie-Summen (Agent A füllt, Agent C zeigt): Lauf / Rad(indoor+outdoor) / Kraft+Mobility(nur Zeit)
+  byCategory?: { run: { km: number; min: number }; bike: { km: number; min: number }; strength: { min: number } };
 }
 export interface AnalyzeResult { totals: WeekTotals; flags: Flag[]; zones: HrZone[]; week: SeasonWeek | null; projectedCtlRamp: number | null; projectedTsb: number | null; }
+
+// ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
+export interface IntervalEffortStat {
+  date: string;
+  sessionType: string;
+  category: "LT1" | "LT2" | "VO2short" | "VO2long" | "other";
+  avg_pace_s?: number | null;   // Lauf: s/km
+  avg_speed_kmh?: number | null; // Rad
+  avg_hr?: number | null;
+  reps?: number;
+  label?: string;
+}
 
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -73,5 +94,15 @@ export const api = {
 
   pmc: (from: string, to: string) => j<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number }>(`/api/pmc?from=${from}&to=${to}`),
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),
+  intervalsTrend: (q: { from?: string; to?: string }) => {
+    const p = new URLSearchParams(q as Record<string, string>).toString();
+    return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
+  },
   seed: () => j<{ weeks: number; sessions: number }>("/api/seed", { method: "POST" }),
+
+  // konfigurierbare Auswahllisten (ToDo 13/24)
+  options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),
+  addOption: (b: Partial<Option>) => j<{ id: number }>("/api/options", { method: "POST", body: JSON.stringify(b) }),
+  updateOption: (id: number, b: Partial<Option>) => j(`/api/options/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteOption: (id: number) => j(`/api/options/${id}`, { method: "DELETE" }),
 };

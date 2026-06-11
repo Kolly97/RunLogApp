@@ -1,5 +1,5 @@
 import type { SeasonWeek } from "../lib/api.ts";
-import { fmtDate } from "../lib/util.ts";
+import { fmtDate, weekLabel, phaseLabel } from "../lib/util.ts";
 
 export default function WeekSelector({
   season, weekNo, setWeekNo,
@@ -10,7 +10,7 @@ export default function WeekSelector({
     <select value={weekNo ?? ""} onChange={(e) => setWeekNo(Number(e.target.value))} style={{ width: "auto", minWidth: 280 }}>
       {season.map((w) => (
         <option key={w.week_no} value={w.week_no}>
-          Woche {w.week_no} · {w.phase} · {fmtDate(w.start_date)}–{fmtDate(w.end_date)}{w.target_km ? ` · ${w.target_km} km` : ""}
+          {weekLabel(w)} · {phaseLabel(w.phase)} · {fmtDate(w.start_date)}–{fmtDate(w.end_date)}{w.target_km ? ` · ${w.target_km} km` : ""}
         </option>
       ))}
     </select>

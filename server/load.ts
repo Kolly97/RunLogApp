@@ -9,7 +9,50 @@ export interface HrZone {
 }
 
 // Default-Pace je Zone (s/km) zur Umrechnung km<->min, falls keine Pace-Zonen gesetzt.
-const DEFAULT_ZONE_PACE = [330, 285, 255, 230, 210, 195];
+// Konvention pace_zones: Index z-1 = Obergrenze (schnellste Pace, s/km) der Zone z, absteigend.
+export const DEFAULT_ZONE_PACE = [330, 285, 255, 230, 210, 195];
+
+// Default-Speed je Zone (km/h, Obergrenze je Zone, aufsteigend) fürs Rad, falls keine speed_zones gesetzt.
+export const DEFAULT_ZONE_SPEED = [22, 27, 31, 35, 39, 99];
+
+/** Lauf-Zone aus Pace (s/km). paceZones = Obergrenzen je Zone (s/km, absteigend wie DEFAULT_ZONE_PACE). */
+export function zoneFromPace(paceSecPerKm: number, paceZones?: number[]): number {
+  if (!paceSecPerKm || paceSecPerKm <= 0) return 0;
+  const bounds = paceZones?.length ? paceZones : DEFAULT_ZONE_PACE;
+  for (let z = bounds.length; z >= 1; z--) if (paceSecPerKm <= bounds[z - 1]) return z;
+  return 1;
+}
+
+/** Rad-Zone aus Geschwindigkeit (km/h). speedZones = Obergrenzen je Zone (km/h, aufsteigend). */
+export function zoneFromSpeed(kmh: number, speedZones?: number[]): number {
+  if (!kmh || kmh <= 0) return 0;
+  const bounds = speedZones?.length ? speedZones : DEFAULT_ZONE_SPEED;
+  for (let z = 1; z <= bounds.length; z++) if (kmh <= bounds[z - 1]) return z;
+  return bounds.length;
+}
+
+// Intensitätsfaktor nach Einheitstyp fürs Rad. Die Lauf-HF-Zonen-Schätzung überschätzt
+// Rad-Last massiv (HF/Last auf dem Rad deutlich niedriger) — daher IF-basiert.
+const BIKE_IF: Record<string, number> = {
+  Easy: 0.62,
+  Long: 0.65,
+  Threshold: 0.85,
+  Hill: 0.85,
+  VO2: 0.95,
+  Race: 0.95,
+};
+
+/**
+ * Geschätzter Rad-TSS ohne Powermeter: TSS = Stunden * IF^2 * 100 (IF nach Typ).
+ * 90 min easy ergeben so ~58 TSS statt 150+ über die Lauf-HF-Schätzung.
+ * ftp wird nur gebraucht, wenn künftig ein Power-Ziel hinterlegt ist (powerTss bevorzugen).
+ */
+export function bikeTssEstimate(min: number, type: string, ftp?: number): number {
+  if (!min || min <= 0) return 0;
+  void ftp; // bewusst ungenutzt: bei vorhandener avg_power stattdessen powerTss(min*60, power, ftp)
+  const ifr = BIKE_IF[type] ?? 0.6;
+  return round1((min / 60) * ifr * ifr * 100);
+}
 
 /** COROS Training Load aus Strava-Beschreibung parsen ("241 Training Load"). */
 export function parseCorosLoad(description?: string | null): number | null {

@@ -37,6 +37,7 @@ interface ZoneSetRow {
   valid_from: string;
   hr_zones: string;
   pace_zones: string;
+  speed_zones: string;
   lthr: number;
   ftp: number;
   threshold_pace: number;
@@ -47,7 +48,7 @@ interface ZoneSetRow {
 function effectiveZoneSet(date: string) {
   const rows = db.prepare("SELECT * FROM zone_sets ORDER BY valid_from").all() as unknown as ZoneSetRow[];
   if (!rows.length) {
-    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], pace_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
+    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], pace_zones: [] as number[], speed_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
   }
   let pick = rows[0];
   for (const r of rows) if (r.valid_from <= date) pick = r;
@@ -55,6 +56,7 @@ function effectiveZoneSet(date: string) {
     id: pick.id,
     hr_zones: parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]),
     pace_zones: parseJson<number[]>(pick.pace_zones, []),
+    speed_zones: parseJson<number[]>(pick.speed_zones, []),
     lthr: pick.lthr ?? 172,
     ftp: pick.ftp ?? 265,
     threshold_pace: pick.threshold_pace ?? 230,
@@ -111,7 +113,7 @@ app.put("/api/settings", (req, res) => {
 
 app.get("/api/zonesets", (_req, res) => {
   const rows = db.prepare("SELECT * FROM zone_sets ORDER BY valid_from DESC").all() as unknown as ZoneSetRow[];
-  res.json(rows.map((r) => ({ ...r, hr_zones: parseJson(r.hr_zones, []), pace_zones: parseJson(r.pace_zones, []) })));
+  res.json(rows.map((r) => ({ ...r, hr_zones: parseJson(r.hr_zones, []), pace_zones: parseJson(r.pace_zones, []), speed_zones: parseJson(r.speed_zones, []) })));
 });
 
 app.get("/api/zoneset", (req, res) => {
@@ -122,13 +124,14 @@ app.post("/api/zonesets", (req, res) => {
   const b = req.body || {};
   const r = db
     .prepare(
-      `INSERT INTO zone_sets(valid_from, hr_zones, pace_zones, lthr, ftp, threshold_pace, source, note, created_at)
-       VALUES(?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO zone_sets(valid_from, hr_zones, pace_zones, speed_zones, lthr, ftp, threshold_pace, source, note, created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       b.valid_from || todayIso(),
       JSON.stringify(b.hr_zones || DEFAULT_HR_ZONES),
       JSON.stringify(b.pace_zones || []),
+      JSON.stringify(b.speed_zones || []),
       b.lthr ?? 172,
       b.ftp ?? 265,
       b.threshold_pace ?? 230,
@@ -142,11 +145,12 @@ app.post("/api/zonesets", (req, res) => {
 app.put("/api/zonesets/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE zone_sets SET valid_from=?, hr_zones=?, pace_zones=?, lthr=?, ftp=?, threshold_pace=?, source=?, note=? WHERE id=?`,
+    `UPDATE zone_sets SET valid_from=?, hr_zones=?, pace_zones=?, speed_zones=?, lthr=?, ftp=?, threshold_pace=?, source=?, note=? WHERE id=?`,
   ).run(
     b.valid_from,
     JSON.stringify(b.hr_zones || []),
     JSON.stringify(b.pace_zones || []),
+    JSON.stringify(b.speed_zones || []),
     b.lthr,
     b.ftp,
     b.threshold_pace,
@@ -159,6 +163,37 @@ app.put("/api/zonesets/:id", (req, res) => {
 
 app.delete("/api/zonesets/:id", (req, res) => {
   db.prepare("DELETE FROM zone_sets WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---- options (konfigurierbare Auswahllisten: phase/sport/sessionType/...) ----
+
+app.get("/api/options", (req, res) => {
+  const kind = req.query.kind ? String(req.query.kind) : null;
+  const rows = kind
+    ? db.prepare("SELECT * FROM options WHERE kind=? ORDER BY sort, id").all(kind)
+    : db.prepare("SELECT * FROM options ORDER BY kind, sort, id").all();
+  res.json(rows);
+});
+
+app.post("/api/options", (req, res) => {
+  const b = req.body || {};
+  const r = db
+    .prepare("INSERT INTO options(kind, value, label, color, sort, active) VALUES(?,?,?,?,?,?)")
+    .run(b.kind, b.value, b.label || b.value, b.color ?? null, b.sort ?? 0, b.active ?? 1);
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+app.put("/api/options/:id", (req, res) => {
+  const b = req.body || {};
+  db.prepare("UPDATE options SET label=?, color=?, sort=?, active=? WHERE id=?").run(
+    b.label, b.color ?? null, b.sort ?? 0, b.active ?? 1, req.params.id,
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/options/:id", (req, res) => {
+  db.prepare("DELETE FROM options WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
 

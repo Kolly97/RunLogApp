@@ -479,7 +479,7 @@ export function importScans(): { activities: number; days: number; weeks: number
           `INSERT INTO activities(strava_id, date, sport, source, name, distance_m, moving_s, avg_hr, tss, training_load, zones, overrides, notes)
            VALUES(NULL,?,?,?,?,?,?,?,?,?,NULL,?,?)`,
         ).run(
-          date, day.sport, "manual", day.session || "", day.km != null ? day.km * 1000 : null,
+          date, day.sport!, "manual", day.session || "", day.km != null ? day.km * 1000 : null,
           movingS, day.hf ?? null, tss, null, JSON.stringify([]), fullNotes,
         );
         nAct++;
@@ -496,7 +496,7 @@ export function importScans(): { activities: number; days: number; weeks: number
         const ph = keys.map(() => "?").join(",");
         const upd = keys.map((k) => `${k}=excluded.${k}`).join(",");
         db.prepare(`INSERT INTO daily_log(date,${keys.join(",")}) VALUES(?,${ph}) ON CONFLICT(date) DO UPDATE SET ${upd}`)
-          .run(date, ...keys.map((k) => cols[k]));
+          .run(date, ...keys.map((k) => cols[k] as any));
         nDay++;
       }
     

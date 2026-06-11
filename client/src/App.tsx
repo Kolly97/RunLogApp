@@ -4,6 +4,7 @@ import WeekPlan from "./pages/WeekPlan.tsx";
 import WeekTrack from "./pages/WeekTrack.tsx";
 import WeekReport from "./pages/WeekReport.tsx";
 import Settings from "./pages/Settings.tsx";
+import OptionsConfig from "./pages/OptionsConfig.tsx";
 
 const NAV = [
   { to: "/", ico: "▣", label: "Dashboard", end: true },
@@ -11,6 +12,7 @@ const NAV = [
   { to: "/track", ico: "✓", label: "Tracking" },
   { to: "/report", ico: "🖨", label: "Wochenbericht" },
   { to: "/settings", ico: "⚙", label: "Einstellungen" },
+  { to: "/options", ico: "🏷", label: "Auswahllisten" },
 ];
 
 export default function App() {
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/track" element={<WeekTrack />} />
           <Route path="/report" element={<WeekReport />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/options" element={<OptionsConfig />} />
         </Routes>
       </main>
     </div>
