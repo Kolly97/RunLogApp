@@ -269,6 +269,162 @@ const WEEKS: WeekScan[] = [
       { d: 6, session: "70 min Rolle + 50 min Core (RE 13-14 km)", sport: "BikeIndoor", km: 26, hf: 133, durMin: 70, rpe: 3, sleepH: 6.63, sleepPct: 84, hrv: 91, strain: 5.2, recov: 87, legs: "easy", zoneOk: true, notes: "Viel Rad. Rolle deutlich besser, konnte wieder okay Watt treten (NP 173 W). Puls leicht hoch aber okay." },
     ],
   },
+
+  // -------------------- Woche 9 (KW18) Wiedereinstieg 27.4-3.5, 25 km --------------------
+  {
+    no: 9, phase: "Gesund werden", start: "2026-04-27", end: "2026-05-03", target: 25,
+    runKm: 53, runH: 10, bikeKm: 53, bikeH: 2.23, runEquiv: 69, tload: 455, trainingHours: 12.83,
+    checks: { mileage: false, threshold2x: false, longrun: true, plyo: true },
+    whoop: { recov: 71, strain: 11.6, stress: 4, motivation: 2, sleepH: 6.83, sleepPct: 81, sCons: 73, hrv: 88, rhr: 48 },
+    refl: {
+      good: "Konnte immerhin etwas laufen und habe nicht übertrieben.",
+      hard: "Schlaf immer noch 5/7x unter 7h. Puls steigt immer noch krass an, Laufen fühlt sich allgemein nicht gut an.",
+      change: "Gleichmäßiger schlafen (23:30, min. 7:30h). Früher mit Arbeiten anfangen (spätestens 9 Uhr). Dienstag leichte schnellere Einheit versuchen.",
+    },
+    planned: [
+      { d: 0, sport: "BikeIndoor", type: "Easy", desc: "45 min Rad + 15 min Mobility" },
+      { d: 1, sport: "Run", type: "Easy", km: 7, desc: "7 km E" },
+      { d: 2, sport: "BikeIndoor", type: "Easy", desc: "60 min Rad + 20 min Core" },
+      { d: 3, sport: "Run", type: "Easy", km: 8, desc: "8 km E + easy Steigerungen" },
+      { d: 4, sport: "Strength", type: "Strength", desc: "Mobilität + Beine Exakt + Pam" },
+      { d: 5, sport: "Run", type: "Easy", km: 10, desc: "10 km E" },
+      { d: 6, sport: "BikeIndoor", type: "Easy", desc: "90 min Rad" },
+    ],
+    days: [
+      { d: 0, session: "45 min Rad + 15 min Mobility (RE 8 km)", sport: "BikeIndoor", km: 22, hf: 120, durMin: 45, rpe: 2, sleepH: 6.92, sleepPct: 81, hrv: 89, strain: 9.5, recov: 81, legs: "ok", zoneOk: true, notes: "Fühle mich langsam wieder normal. Po/Bein-Muskelkater vom Krafttraining. Puls Tick erhöht. (NP 165 W)" },
+      { d: 1, session: "9 km E", sport: "Run", km: 9, hf: 144, paceAvg: "4:50", rpe: 6, sleepH: 6.52, sleepPct: 83, hrv: 90, strain: 12.1, recov: 76, legs: "ok", zoneOk: true, notes: "Sehr anstrengend angefühlt. Puls recht gering, aber danach sehr platt." },
+      { d: 2, session: "Kein Sport (Report bis 8:30)", sport: "Rest", sleepH: 7.1, sleepPct: 85, hrv: 99, strain: 5.5, recov: 87, legs: "ok", notes: "Platt, viel Report geschrieben, lang gearbeitet. Kein Sport." },
+      { d: 3, session: "Kein Sport (spät auf, nach Frankreich)", sport: "Rest", sleepH: 6.58, sleepPct: 77, hrv: 91, strain: 8.6, recov: 76, legs: "ok", notes: "Spät aufgestanden, Report mit Sabrina besprochen, dann nach Frankreich." },
+      { d: 4, session: "Wanderung Frankreich (11,2 km)", sport: "Other", km: 11.2, hf: 89, durMin: 256, rpe: 2, sleepH: 7.32, sleepPct: 78, hrv: 78, strain: 4.7, recov: 47, legs: "ok", zoneOk: true, notes: "Wanderung mit Eltern + Pascal + Isabel, 11,2 km, 404 hm, 89 Ø HR. Abends 5 Gläser Likör." },
+      { d: 5, session: "16 km Trailrun (+7 km Hike)", sport: "Run", km: 16, hf: 156, paceAvg: "5:52", rpe: 6, sleepH: 6.88, sleepPct: 80, hrv: 92, strain: 10.9, recov: 81, legs: "ok", notes: "Vormittags 7 km Hike (263 hm, 2:30h, 80 Ø HR), nachmittags 16 km Trailrun (544 hm, 1:30h). GAP 5:00." },
+      { d: 6, session: "10 km locker (Rückfahrt Frankreich)", sport: "Run", km: 10, hf: 152, paceAvg: "4:41", rpe: 4, sleepPct: 80, hrv: 79, strain: 12.9, recov: 52, legs: "hard", zoneOk: true, notes: "Sehr schwerfällig angefühlt, Puls extrem hoch gegangen.", bad: ["Sleep(h) (Wert '0:29' unklar)"] },
+    ],
+  },
+
+  // -------------------- Woche 10 (KW19) Careful return 4.5-10.5, 50 km --------------------
+  {
+    no: 10, phase: "Gesund werden", start: "2026-05-04", end: "2026-05-10", target: 50,
+    runKm: 45.6, runH: 3.52, bikeKm: 122, bikeH: 5.38, runEquiv: 81, tload: 697, trainingHours: 10.83,
+    checks: { mileage: true, threshold2x: false, longrun: true, plyo: false },
+    whoop: { recov: 78, strain: 13.7, stress: 4, motivation: 3, sleepH: 6.97, sleepPct: 82, sCons: 83, hrv: 95, rhr: 49 },
+    refl: {
+      good: "Wieder mehr Wochenkilometer geschafft, Pace/HR-Verhältnis wird besser. Puls aber noch ~10 Schläge erhöht. HRV sehr hoch, 1-2x gut geschlafen. Erste Tracksession.",
+      hard: "Laufen fühlt sich noch sehr hart an. Geschwindigkeitsgefühl passt oft nicht zu Anstrengung/HR. Muss mich zurückhalten, dass HR unter 150 bleibt.",
+      change: "1) Slow Runs bei 145 HR einpendeln. 2) Mehr schlafen. 3) Erste Threshold-Einheit.",
+    },
+    bad: ["Run-equivalent-Zeile (81 / 67,3 km) im Scan doppelt/unklar"],
+    planned: [
+      { d: 0, sport: "BikeIndoor", type: "Easy", desc: "60 min Rad + Core" },
+      { d: 1, sport: "Run", type: "Threshold", km: 12, desc: "4x1200 sub-T (200m TP)" },
+      { d: 2, sport: "BikeIndoor", type: "Easy", desc: "75 min Rad + 20 min Mobility" },
+      { d: 3, sport: "Run", type: "Easy", km: 8, desc: "8 km E + easy Steigerungen" },
+      { d: 4, sport: "Strength", type: "Strength", desc: "1x Mobilität + Core" },
+      { d: 5, sport: "Run", type: "Easy", km: 10, desc: "10 km E" },
+      { d: 6, sport: "Run", type: "Long", km: 14, desc: "14 km E oder 90 min Rad + 6 km E" },
+    ],
+    days: [
+      { d: 0, session: "60 min Rad + Core (RE 8,2 km)", sport: "BikeIndoor", km: 25, hf: 125, durMin: 60, rpe: 2, sleepH: 7.45, sleepPct: 84, hrv: 91, strain: 9.4, recov: 78, restingHr: 49, legs: "easy", zoneOk: true, notes: "Beine etwas platt, Antrieb fehlt v.a. vormittags. Puls okay für Watt. (NP 169 W)" },
+      { d: 1, session: "4x1200 sub-T (200m TP)", sport: "Run", km: 11.4, hf: 153, paceAvg: "4:46", pace: "3:30", rpe: 7, sleepH: 7.13, sleepPct: 88, hrv: 96, strain: 15.8, recov: 89, restingHr: 48, legs: "ok", zoneOk: true, notes: "Erstes Track-Workout nach Krankheit. Muskulär okay, Puls sehr hoch (max 187). Recovery schwierig." },
+      { d: 2, session: "75 min Rad + 20 min Mobility", sport: "BikeIndoor", durMin: 75, hf: 135, rpe: 4, sleepH: 6.83, sleepPct: 84, hrv: 100, strain: 13.2, recov: 85, restingHr: 50, legs: "ok", zoneOk: true, notes: "Rolle gut. Puls ~10 Schläge bei gleichem Watt erhöht vs. vor Krankheit. (~178 W)" },
+      { d: 3, session: "8 km E + Steigerungen", sport: "Run", km: 7.2, hf: 154, paceAvg: "4:26", rpe: 4, sleepH: 6.37, sleepPct: 84, hrv: 82, strain: 13.8, recov: 50, restingHr: 52, legs: "ok", zoneOk: true, notes: "Schwer langsam zu laufen. 4:30 muskulär easy, Puls aber nicht — musste für Zone 2 anpassen." },
+      { d: 4, session: "1x Mobilität + Core (40 min)", sport: "Strength", rpe: null, sleepH: 6.02, sleepPct: 76, hrv: 95, strain: 7.8, recov: 68, restingHr: 53, legs: "ok", notes: "Hoher Ruhepuls 53 (abends 2 Aperol). Nur Mobility/Core 40 min." },
+      { d: 5, session: "10 km E", sport: "Run", km: 10, hf: 152, paceAvg: "4:29", rpe: 3, sleepH: 8.42, sleepPct: 84, hrv: 107, strain: 16.1, recov: 95, restingHr: 46, legs: "ok", zoneOk: true, notes: "2. Hälfte härter. Tempo recht hoch, Puls ging hoch. 60 m Höhenmeter am Anfang." },
+      { d: 6, session: "Longrun 17 km", sport: "Run", km: 17, hf: 153, paceAvg: "4:36", rpe: 5, sleepH: 6.52, sleepPct: 80, hrv: 99, strain: 15.3, recov: 82, restingHr: 47, legs: "hard", zoneOk: true, notes: "Erster Longrun nach langer Zeit. Erste 6 km kacke, danach besser. Stress mit 3 reckless Radfahrern. (max HR 180)" },
+    ],
+  },
+
+  // -------------------- Woche 11 (KW20) First normal week 11.5-17.5, 50 km --------------------
+  {
+    no: 11, phase: "Belastung", start: "2026-05-11", end: "2026-05-17", target: 50,
+    runKm: 61, runH: 4.72, bikeKm: 103, bikeH: 4.07, runEquiv: 83, tload: 717, trainingHours: 8.83,
+    checks: { mileage: true, threshold2x: false, longrun: true, plyo: true },
+    whoop: { recov: 63, strain: 13.5, sleepH: 7.07, sleepPct: 83, sCons: 83, hrv: 89, rhr: 48 },
+    refl: {
+      good: "Erstes Mal wieder 60 Laufkilometer :). Schwellen-Programm wieder gut (wenn auch etwas zu viel). Tag danach Ruhe. Longrun die ersten 17 km gut vom Puls her.",
+      hard: "Die 4 km Belastung am Ende des DL war hart. Zu oft zu wenig geschlafen. Tages-Disziplin muss ich stark verbessern.",
+      change: "1. Mehr schlafen. 2. Morgens Spaziergang, dann sofort Bibo @8:30. 3. Abends vor dem Schlafen Spaziergang. 4. 1h vor Schlafen kein Bildschirm.",
+    },
+    planned: [
+      { d: 0, sport: "BikeIndoor", type: "Easy", desc: "45 min Rad + Mobility/Core" },
+      { d: 1, sport: "Run", type: "Threshold", km: 15, desc: "T2: 6x1600 P90-120'' max 175 HR" },
+      { d: 2, sport: "Rest", type: "Rest", desc: "Ruhetag" },
+      { d: 3, sport: "Run", type: "Easy", km: 12.5, desc: "12,5 km E" },
+      { d: 4, sport: "Run", type: "Easy", km: 12, desc: "12 km E" },
+      { d: 5, sport: "BikeRoad", type: "Easy", desc: "75 min easy Rennrad" },
+      { d: 6, sport: "Run", type: "Long", km: 21.5, desc: "21,5 km Longrun" },
+    ],
+    days: [
+      { d: 0, session: "45 min Rad + Mobility/Core (RE 8,5 km)", sport: "BikeIndoor", km: 24.2, hf: 124, durMin: 46, rpe: 2, sleepH: 7.5, sleepPct: 82, hrv: 82, strain: 9.1, recov: 55, restingHr: 47, legs: "ok", zoneOk: true, notes: "Easy ride, FTP 250 → 270 W gemacht. Puls erstmals wieder passend geblieben. (~182 W)" },
+      { d: 1, session: "T2: 6x1600 P90-120'' max 175 HR", sport: "Run", km: 15, hf: 158, paceAvg: "3:55", pace: "3:35", rpe: 7, sleepH: 6.3, sleepPct: 81, hrv: 89, strain: 16.8, recov: 64, restingHr: 47, legs: "ok", zoneOk: true, notes: "Erstes richtiges Training. Gut angefühlt, Puls stabil, Pace okay. Sehr happy. Rechte Wade gezwickt." },
+      { d: 2, session: "Ruhetag", sport: "Rest", sleepH: 7.02, sleepPct: 83, hrv: 98, strain: 6.2, recov: 79, restingHr: 48, legs: "ok", notes: "Brauchte einen Ruhetag. Morgen wird wieder angegriffen." },
+      { d: 3, session: "12,5 km E", sport: "Run", km: 12.5, hf: 145, paceAvg: "4:51", rpe: 2, sleepH: 6.6, sleepPct: 84, hrv: 101, strain: 14.6, recov: 85, restingHr: 45, legs: "ok", zoneOk: true, notes: "Erste 5,5 km schneller (150 Ø HR), dann 5 easy mit Verena, dann 3 km schneller." },
+      { d: 4, session: "12 km E", sport: "Run", km: 12, hf: 148, paceAvg: "4:33", rpe: 3, sleepH: 6.55, sleepPct: 81, hrv: 87, strain: 15.4, recov: 54, restingHr: 48, legs: "ok", zoneOk: true, notes: "Wollte Schwelle, aber Halskratzen → gelassen. Besser als gestern. Etwas linke Leiste am Anfang." },
+      { d: 5, session: "75 min easy Rennrad (High-Torque, RE 13,4 km)", sport: "BikeRoad", km: 39, hf: 134, durMin: 75, rpe: 4, sleepH: 7.07, sleepPct: 84, hrv: 89, strain: 12.6, recov: 59, restingHr: 49, legs: "ok", zoneOk: true, notes: "High-Torque-Einheit 5x3' (150-250 W) + 5x4,5' @210 W (55 rpm), nach Nicks Empfehlung." },
+      { d: 6, session: "21,5 km Longrun", sport: "Run", km: 21.5, hf: 146, paceAvg: "4:40", pace: "4:12", rpe: 5, sleepH: 8.42, sleepPct: 86, hrv: 79, strain: 17.9, recov: 48, restingHr: 50, legs: "ok", zoneOk: true, notes: "Deutlich besser als Vorwoche. Erste 8 km Puls ~140, danach leicht hoch." },
+    ],
+  },
+
+  // -------------------- Woche 12 (KW21) Belastung 1/3: 18.5-24.5, 70 km --------------------
+  {
+    no: 12, phase: "Belastung 1/2", start: "2026-05-18", end: "2026-05-24", target: 70,
+    runKm: 37, runH: 3.5, bikeKm: 118, bikeH: 5.28, runEquiv: 56, tload: 794, trainingHours: 9.5,
+    checks: { mileage: false, threshold2x: true, longrun: false, plyo: true },
+    whoop: { recov: 73, strain: 13.8, stress: 6, motivation: 6, hrv: 89, rhr: 47 },
+    refl: {
+      good: "Wieder mal in Spikes. 1000m-Pace ging okay mit 2:41 auf 1000.",
+      hard: "KM nicht zusammen bekommen. Oberschenkel rechts nach Dienstag hart.",
+      change: "Mehr Kilometer trotz Pacen.",
+    },
+    planned: [
+      { d: 0, sport: "BikeIndoor", type: "Easy", desc: "45 min Rad + Mobility/Core" },
+      { d: 1, sport: "Run", type: "VO2", km: 8, desc: "2x(600-400-300-200) long AL" },
+      { d: 2, sport: "Run", type: "Easy", km: 8, desc: "8 km E + Core" },
+      { d: 3, sport: "Run", type: "Threshold", km: 10, desc: "T1: 5x6' P90''" },
+      { d: 4, sport: "Run", type: "Easy", km: 10, desc: "10 km E" },
+      { d: 5, sport: "Run", type: "Easy", km: 5, desc: "4 km E + 3x200m (1500m Pace)" },
+      { d: 6, sport: "Run", type: "Race", km: 5, desc: "Heidelberg Race pace" },
+    ],
+    days: [
+      { d: 0, session: "45 min Rad + Mobility/Core (RE 10,6 km)", sport: "BikeIndoor", km: 32.4, hf: 126, durMin: 60, rpe: 2, sleepH: 7.15, sleepPct: 86, hrv: 85, strain: 10.3, recov: 61, restingHr: 47, legs: "ok", zoneOk: true, notes: "Zu spät trainiert. Puls & Watt okay. Core/Mobility verlegt auf Mittwoch. (NP 176 W)" },
+      { d: 1, session: "2x(600-400-300-200) long AL", sport: "Run", km: 8.2, rpe: 6, sleepH: 6.5, sleepPct: 83, hrv: 88, strain: 13.8, recov: 67, restingHr: 46, legs: "ok", zoneOk: true, notes: "1. Serie Vaporfly, 2. Spikes. 400 in 64/63s, 200 in 30,2-31,8. Tempo geht voll, Distanz wird schwer.", bad: ["HF / Ø Pace (leer)"] },
+      { d: 2, session: "Ruhe (Oberschenkel gezerrt)", sport: "Rest", sleepH: 5.98, sleepPct: 79, hrv: 84, strain: 10.5, recov: 81, restingHr: 49, legs: "ok", notes: "Oberschenkel rechts gezerrt → Ruhe. Zu spät heim, keine Lust im Dunkeln." },
+      { d: 3, session: "T1: 5x6' P90''", sport: "Run", km: 10, hf: 154, paceAvg: "4:44", rpe: 6, sleepH: 5.98, sleepPct: 79, hrv: 84, strain: 14.8, recov: 61, restingHr: 48, legs: "ok", notes: "Kacke angefühlt. Puls ab km 6 extrem hoch (160 bpm bei ~5:00/km). Keine Ahnung was los ist." },
+      { d: 4, session: "Viel Rad (statt 10 km E)", sport: "BikeRoad", durMin: 90, rpe: null, sleepH: 7.65, sleepPct: 84, strain: 10.4, recov: 86, legs: "ok", notes: "Kein Lauftraining, nur viel Rad zwischen Dossenheim und Rohrbach." },
+      { d: 5, session: "3 km Wu + 3x200m (1500m Pace)", sport: "Run", km: 5, rpe: 4, sleepH: 6.52, sleepPct: 80, hrv: 94, strain: 11.5, recov: 85, restingHr: 47, legs: "ok", zoneOk: true, notes: "200er mit Spikes, war gut. Spät gemacht da sau heiß.", bad: ["HF / Ø Pace (leer)"] },
+      { d: 6, session: "Heidelberg Race pace", sport: "Run", km: 4.8, rpe: 8, sleepH: 7.57, sleepPct: 85, hrv: 98, strain: 18.4, recov: 92, restingHr: 44, legs: "ok", zoneOk: true, notes: "1000m-Pace (2:40), 5000m-Pace (4,8 km). Sehr anstrengend, sehr heiß. Bei 5000-Pace Puls krass hoch.", bad: ["HF / Ø Pace (leer)"] },
+    ],
+  },
+
+  // -------------------- Woche 13 (KW22) Belastung 2/3: 25.5-31.5, 70 km --------------------
+  {
+    no: 13, phase: "Belastung 2/2", start: "2026-05-25", end: "2026-05-31", target: 70,
+    runKm: 71.4, runH: 8.08, bikeKm: 35, bikeH: 1.67, runEquiv: 74, tload: 806, trainingHours: 9,
+    checks: { mileage: true, threshold2x: false, longrun: true, plyo: true },
+    whoop: { recov: 67, strain: 14.6, stress: 5, motivation: 8, sleepPct: 83, hrv: 89, rhr: 46 },
+    refl: {
+      good: "Pacen war sehr gut, schön gleichmäßig. Kilometer mit langem DL am Sonntag noch zusammenbekommen. DL mit Gruppe ❤.",
+      hard: "Viel zu schlechter Schlaf — teils Temperatur, teils Uni, teils komme ich nicht ins Bett.",
+      change: "1. Besser schlafen. 2. Mehr Schwelle und durchgeplantes Training.",
+    },
+    planned: [
+      { d: 0, sport: "Rest", type: "Rest", desc: "Rest" },
+      { d: 1, sport: "Run", type: "VO2", km: 13, desc: "3x(3x600) P90'' SP6'" },
+      { d: 2, sport: "Run", type: "Easy", km: 9, desc: "9 km" },
+      { d: 3, sport: "Run", type: "Easy", km: 10, desc: "10 km" },
+      { d: 4, sport: "Run", type: "Easy", km: 11, desc: "11 km" },
+      { d: 5, sport: "Run", type: "Race", km: 3, desc: "Karlsruhe Race pace" },
+      { d: 6, sport: "Run", type: "Long", km: 25, desc: "25 km Longrun" },
+    ],
+    days: [
+      { d: 0, session: "Rest", sport: "Rest", sleepH: 7.98, sleepPct: 85, hrv: 82, strain: 1.4, recov: 95, restingHr: 47, legs: "ok", notes: "Beine vom Pacen und Tag in der Sonne zerstört. Restday." },
+      { d: 1, session: "3x(3x600) P90'' SP6'", sport: "Run", km: 13, hf: 153, paceAvg: "5:40", pace: "3:11", rpe: 7, sleepH: 5.42, sleepPct: 74, hrv: 90, strain: 17.2, recov: 58, restingHr: 46, legs: "ok", zoneOk: true, notes: "Extrem heiß, schlecht geschlafen. Ab dem 2. waren die 600er zu schnell (~1:51). 200 mit 29 sec." },
+      { d: 2, session: "9 km (Wald, 190 hm)", sport: "Run", km: 9, hf: 146, paceAvg: "4:45", rpe: 4, sleepH: 6.08, sleepPct: 74, hrv: 88, strain: 13.6, recov: 54, restingHr: 49, legs: "ok", zoneOk: true, notes: "Sehr heiß. DL mit Chris/Flo/Isabel im Wald." },
+      { d: 3, session: "10 km", sport: "Run", km: 10, hf: 147, paceAvg: "4:37", rpe: 3, sleepH: 6.43, sleepPct: 80, hrv: 88, strain: 13.5, recov: 77, restingHr: 48, legs: "ok", zoneOk: true, notes: "Immer noch heiß, spät gelaufen. Ganz gut, letzte Hälfte Puls etwas hoch." },
+      { d: 4, session: "11 km", sport: "Run", km: 11, hf: 149, paceAvg: "4:36", rpe: 4, sleepH: 6.33, sleepPct: 80, hrv: 96, strain: 15.7, recov: 75, restingHr: 46, legs: "ok", zoneOk: true, notes: "Länger als gedacht abends mit Chris und Flo. Puls sehr hoch. Beine gut für Karlsruhe." },
+      { d: 5, session: "Karlsruhe Race pace", sport: "Run", km: 3, hf: 185, paceAvg: "2:39", rpe: 9, sleepH: 7.27, sleepPct: 83, hrv: 89, strain: 16.9, recov: 58, restingHr: 47, legs: "ok", zoneOk: true, notes: "Sehr gut, mit Bi + Carls. Tempo gut gesteuert. 1000m in 2:58 (Ø HR 185). 400 ~01,3, 800 2:05,5." },
+      { d: 6, session: "25 km Longrun", sport: "Run", km: 25, hf: 154, paceAvg: "4:47", rpe: 7, sleepH: 8.02, sleepPct: 83, hrv: 88, recov: 71, restingHr: 44, legs: "ok", zoneOk: true, notes: "Lang und viele Höhenmeter. Berg hoch sehr anstrengend, Beine schwer vom Pacen. Ab km 18 allein, letzte 4 sehr hart. (GAP 4:26, max HR 180)" },
+    ],
+  },
 ];
 
 // ====================================================================
@@ -290,11 +446,11 @@ export function importScans(): { activities: number; days: number; weeks: number
     ).run(w.no, `Woche ${w.no}`, w.phase, w.start, w.end, w.target ?? null, "", "");
 
     const zs = effectiveZoneSet(w.start);
-
+    
     // idempotent: alte manuelle Einträge dieser Woche weg
     db.prepare("DELETE FROM activities WHERE source='manual' AND date BETWEEN ? AND ?").run(w.start, w.end);
     db.prepare("DELETE FROM daily_log WHERE date BETWEEN ? AND ?").run(w.start, w.end);
-
+    
     // geplante Einheiten (nur falls mitgeliefert, z.B. Wochen 9-13)
     if (w.planned) {
       db.prepare("DELETE FROM planned_sessions WHERE week_no=?").run(w.no);
@@ -306,7 +462,7 @@ export function importScans(): { activities: number; days: number; weeks: number
         ).run(date, w.no, p.sport || "Run", p.type, p.km ?? null, p.min ?? null, null, p.desc, 0, 0);
       }
     }
-
+    
     for (const day of w.days) {
       const date = addDays(w.start, day.d);
       const isWorkout = day.sport && day.sport !== "Rest";
@@ -323,7 +479,7 @@ export function importScans(): { activities: number; days: number; weeks: number
         );
         nAct++;
       }
-
+    
       // daily_log
       const cols: Record<string, unknown> = {
         weight: day.weight, hrv: day.hrv, recovery: day.recov, strain: day.strain,
@@ -338,10 +494,10 @@ export function importScans(): { activities: number; days: number; weeks: number
           .run(date, ...keys.map((k) => cols[k]));
         nDay++;
       }
-
+    
       for (const b of day.bad || []) unreadable.push(`Woche ${w.no} ${DAY_DE[day.d]} (${date}): ${b}`);
     }
-
+    
     // Wochen-Log
     db.prepare(
       `INSERT INTO week_log(week_no, run_km, run_h, bike_km, bike_h, run_equiv, week_tss, checks, whoop, refl_good, refl_hard, refl_change, refl_extra)

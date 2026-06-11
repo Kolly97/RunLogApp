@@ -34,7 +34,10 @@ const SEASON: WeekSeed[] = [
     "8 km E + Strides", "6x400 P2' (76-72 sec)", "60 min Rolle E", "6 km E + Lauf ABC + Strides",
     "45 min Rolle E", "4 km Shake Out + Strides", "10 k Suprema Race (Mannheim)" ] },
   { no: 8, phase: "Gesund werden", start: "2026-04-20", end: "2026-04-26", target: 24, days: [
-    "45 min Rolle", "", "", "", "", "", "" ] },
+    "45 min Rolle", "", "6 km Easy", "", "8 km Easy", "", "70 min Rolle + 50 min core Training" ] },  
+
+{ no: 9, phase: "Gesund werden", start: "2026-04-27", end: "2026-05-03", target: 25, days: [
+    "45 min Rolle + 15 min mobility", "9 km Easy", "", "", " 11.2 km Wanderung mit Eltern", "7 km Wanderung + 16 km Trail run", "10 km Easy" ] },
 ];
 
 function parseSport(t: string): string {
