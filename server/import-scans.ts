@@ -437,13 +437,15 @@ export function importScans(): { activities: number; days: number; weeks: number
   const DAY_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
   for (const w of WEEKS) {
-    // Saison-Woche anlegen/aktualisieren
+    // Saison-Woche anlegen/aktualisieren (Wochen-Level !!!-Markierung in notes)
+    const weekBad = w.bad && w.bad.length ? `!!! Unsicher: ${w.bad.join("; ")}` : "";
     db.prepare(
       `INSERT INTO season_weeks(week_no, label, phase, start_date, end_date, target_km, goal_race, notes)
        VALUES(?,?,?,?,?,?,?,?)
        ON CONFLICT(week_no) DO UPDATE SET phase=excluded.phase, start_date=excluded.start_date,
-         end_date=excluded.end_date, target_km=COALESCE(excluded.target_km, season_weeks.target_km)`,
-    ).run(w.no, `Woche ${w.no}`, w.phase, w.start, w.end, w.target ?? null, "", "");
+         end_date=excluded.end_date, target_km=COALESCE(excluded.target_km, season_weeks.target_km),
+         notes=excluded.notes`,
+    ).run(w.no, `Woche ${w.no}`, w.phase, w.start, w.end, w.target ?? null, "", weekBad);
 
     const zs = effectiveZoneSet(w.start);
     
@@ -465,6 +467,9 @@ export function importScans(): { activities: number; days: number; weeks: number
     
     for (const day of w.days) {
       const date = addDays(w.start, day.d);
+      // Tag-Level !!!-Markierung an die Notizen anhängen
+      const dayBad = day.bad && day.bad.length ? ` !!! Unsicher: ${day.bad.join("; ")}` : "";
+      const fullNotes = (day.notes || "") + dayBad;
       const isWorkout = day.sport && day.sport !== "Rest";
       if (isWorkout) {
         const pSec = paceSec(day.paceAvg);
@@ -475,7 +480,7 @@ export function importScans(): { activities: number; days: number; weeks: number
            VALUES(NULL,?,?,?,?,?,?,?,?,?,NULL,?,?)`,
         ).run(
           date, day.sport, "manual", day.session || "", day.km != null ? day.km * 1000 : null,
-          movingS, day.hf ?? null, tss, null, JSON.stringify([]), day.notes || "",
+          movingS, day.hf ?? null, tss, null, JSON.stringify([]), fullNotes,
         );
         nAct++;
       }
@@ -484,7 +489,7 @@ export function importScans(): { activities: number; days: number; weeks: number
       const cols: Record<string, unknown> = {
         weight: day.weight, hrv: day.hrv, recovery: day.recov, strain: day.strain,
         resting_hr: day.restingHr, sleep_h: day.sleepH, sleep_efficiency: day.sleepPct,
-        legs: day.legs, pain: day.pain, rpe: day.rpe, notes: day.notes,
+        legs: day.legs, pain: day.pain, rpe: day.rpe, notes: fullNotes || null,
       };
       const keys = Object.keys(cols).filter((k) => cols[k] != null && cols[k] !== "");
       if (keys.length) {

@@ -56,7 +56,13 @@
   
   - [ ] ich möchte auch die kcal tracken, die ich pro Einheit verbrenne
   
-  - [ ] 
+  - [ ] Bei vielen Sachen, die ich auswählen kann, habe ich nur eine Bestimmte Möglichkeit wie Wochen Phase, oder Einheitstyp. Um neue Auswahlmöglichkeiten hinzu zufügen müsste ich immer in den Code gehen. Das will ich aber nicht, weil ich auch dann nicht weiß ob alles kompatibel bleibt. dafür möchte ich eine extra seite in der App haben, wo ich bei solchen sachen Auswahlmöglcihkeiten Hinzufügen oder entfernen kann.
+  
+  - [ ] Ich hätte gerne, dass du bei Kalender Woche 0 anfängst und alle Trainingseinheiten aus strava rein Importierst. entweder entnehme aus dem Namen und beschriebung die EInheit oder ich muss diese dann halt noch manuell richtig einstellen. Somit habe ich ein Performance managment chart immerhin des ganzen jahres
+  
+  - [ ] Bei dem Datum der Wochen fehlen die Jahreszahlen. Das wäre praktisch, da ich die App mehr als ein Jahr verwenden will
+  
+  - [ ] Eine Trainingsphase mit dem Name "Trainingslager", "Urlaub" wäre praktisch
   
   
 
