@@ -4,13 +4,17 @@
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",
+  "author": "Kolja Hildenbrand",
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite",
     "build": "vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
-    "seed": "tsx server/import-docx.ts"
+    "seed": "tsx server/import-docx.ts",
+    "db:template": "tsx server/reset-db.ts training.empty.db",
+    "db:reset": "tsx server/reset-db.ts training.db"
   },
   "dependencies": {
     "express": "^4.21.2"

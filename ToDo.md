@@ -4,8 +4,6 @@
 
 ## 06-12-2026
 
-- [ ] Update README und HANDOFF.md
-
 - [ ] Ich kann immer noch keine Accounts anlegen. Ich will Accounts anlegen können, so dass ich von meinem PC nicht nur mein Training eingeben kann sondern auch zum Beispiel auf Isabels Account kann um da Training einzugeben.
 - [ ] Baue Strava-OAuth + Sync -> zines + TL/TSS + Matching ein
 - [x] Ich hätte gerne, dass du bei Kalender Woche 0 anfängst und alle Trainingseinheiten aus strava rein Importierst. entweder entnehme aus dem Namen und beschriebung die EInheit oder ich muss diese dann halt noch manuell richtig einstellen. Somit habe ich ein Performance managment chart immerhin des ganzen jahres
@@ -29,6 +27,7 @@
 - [ ] Bei Saison Progression vor KW 1 ein dickerer strich für den beginn des neuen Jahres![image-20260612131211098](/Users/kollybook/Library/Application Support/typora-user-images/image-20260612131211098.png)
 - [ ] Anstatt 3 wochen hätte ich gerne das Jahr bisher. Also seit KW 0 des derzeitigen Jahres
 - [ ] Das mit Easy passt nicht so gut zur Bewertung. es sind ja schon recht viele harte Einheiten. Mache ads lieber an den geplanten TSS fest. Easy vllt wenn TSS <= 80 % des TSS durchschnitt der letzten 4 Wochen ist. Moderat wenn TSS >80 but <105% des durchschnitt TSS der letzten 4 wochen. Hard wenn TSS >= 105 % des des durchschnitt TSS der letzten 4 wochen ist. Zudem will ich die Easy, moderat, hart aufschlüsselung mit farbschema rechts neben der dougnut grafik haben und die zusätzliche beschriftung kann weg (das was gerade der mitte in schwarzer schrift steht).![image-20260612140835751](/Users/kollybook/Library/Application Support/typora-user-images/image-20260612140835751.png)
+- [ ] Update README und HANDOFF.md
 
 ---
 

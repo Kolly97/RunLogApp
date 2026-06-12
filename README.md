@@ -54,8 +54,28 @@ gehören dem Profil „Kolja".
 - `client/` — Vite + React + TypeScript, Charts mit Recharts. `pages/`, `charts/`, `components/`, `lib/`.
 - Migrationen sind strikt **additiv** (`ALTER TABLE ADD COLUMN` + v2-Tabellen mit Kopie) — Bestandsdaten werden nie angetastet.
 
+## App weitergeben / Datenbank zurücksetzen
+Deine Trainingsdaten liegen ausschließlich in `training.db`. Diese Datei ist per `.gitignore`
+von der Versionskontrolle ausgenommen, damit sie beim Teilen nicht mitgeht.
+
+- **Leere Vorlage erzeugen** (zum Mitgeben): `npm run db:template` → schreibt `training.empty.db`
+  (nur Schema + Default-Zonen/Auswahllisten, **keine** persönlichen Daten). Deine eigene `training.db` bleibt unberührt.
+- **Eigene Daten zurücksetzen** (neu anfangen): `npm run db:reset` — sichert deine aktuelle `training.db`
+  automatisch als `training.db.backup-…` und legt eine frische an.
+
+**Beim Weitergeben:** entweder den Ordner **ohne `training.db`** teilen (die App legt beim ersten Start
+automatisch eine leere an) oder `training.empty.db` als `training.db` mitkopieren. `node_modules/` und
+`dist/` müssen nicht mit — sie entstehen via `npm install` / `npm run build`.
+
+> Hinweis: Frühere Git-Commits enthalten noch deine alte `training.db`. Wenn du das **Git-Repo** öffentlich
+> teilst, gib es ohne den `.git`-Ordner weiter (z. B. als ZIP) oder lege ein frisches Repo an — sonst steckt
+> deine Datenhistorie in den alten Commits.
+
 ## Änderungshistorie
 Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.3.0**.
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.
+
+## Lizenz
+[MIT](LICENSE) © 2026 Kolja Hildenbrand. Erstellt mit Claude (Fable 5).

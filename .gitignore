@@ -1,0 +1,18 @@
+# Abhängigkeiten & Build
+node_modules/
+dist/
+
+# Persönliche Datenbank NICHT mitgeben (deine Trainingsdaten!)
+training.db
+training.db-wal
+training.db-shm
+*.backup-*
+*.old
+
+# WAL-/SHM-Sidecars der Vorlage (die Vorlage training.empty.db selbst WIRD geteilt)
+training.empty.db-wal
+training.empty.db-shm
+
+# macOS / Editoren
+.DS_Store
+*.log
