@@ -160,6 +160,10 @@ function migrate(): void {
   addColumn("planned_sessions", "efforts", "TEXT");
   // ToDo 6: Speed-Zonen (km/h) fürs Rad neben den Pace-Zonen (Lauf)
   addColumn("zone_sets", "speed_zones", "TEXT");
+  // Feedback 12.6.: Rad-Zonen in WATT statt km/h (speed_zones bleibt als Legacy bestehen)
+  addColumn("zone_sets", "power_zones", "TEXT");
+  // Feedback 12.6.: einheitlich km je Zone auch beim Tracking (zone_min bleibt als Legacy lesbar)
+  addColumn("activities", "zone_km", "TEXT");
   // ToDo 14: Sleep Performance bei den Tagesfaktoren
   addColumn("daily_log", "sleep_performance", "REAL");
 
@@ -177,6 +181,40 @@ function migrate(): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_options_kind_value ON options(kind, value);
   `);
   seedOptions();
+
+  // ToDo #9 (12.6.): leichte Profile/Accounts (ohne Passwort). Bestandsdaten = Profil 1 „Kolja".
+  db.exec(`CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
+  if ((db.prepare("SELECT COUNT(*) n FROM profiles").get() as { n: number }).n === 0) {
+    db.prepare("INSERT INTO profiles(id, name) VALUES(1, 'Kolja')").run();
+  }
+  // SQLite füllt bei ADD COLUMN ... DEFAULT 1 auch Bestandszeilen mit 1 → Altdaten gehören Kolja.
+  addColumn("activities", "profile_id", "INTEGER NOT NULL DEFAULT 1");
+  addColumn("planned_sessions", "profile_id", "INTEGER NOT NULL DEFAULT 1");
+  addColumn("zone_sets", "profile_id", "INTEGER NOT NULL DEFAULT 1");
+  // Tabellen mit week_no/date als PK brauchen einen zusammengesetzten Schlüssel mit profile_id →
+  // verlustfreie v2-Kopien; die Originale bleiben unangetastet als Backup liegen.
+  ensureV2("daily_log", "daily_log_v2", "date, profile_id");
+  ensureV2("season_weeks", "season_weeks_v2", "profile_id, week_no");
+  ensureV2("week_log", "week_log_v2", "profile_id, week_no");
+}
+
+// v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig
+// (nur wenn v2 noch leer ist) als Profil 1 hineinkopiert. Spalten dynamisch aus PRAGMA → kein Drift.
+function ensureV2(src: string, dst: string, pk: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${src})`).all() as { name: string; type: string }[];
+  const defs = cols.map((c) => `${c.name} ${c.type || "TEXT"}`).join(", ");
+  db.exec(`CREATE TABLE IF NOT EXISTS ${dst} (${defs}, profile_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (${pk}))`);
+  const have = (db.prepare(`SELECT COUNT(*) n FROM ${dst}`).get() as { n: number }).n;
+  const src_n = (db.prepare(`SELECT COUNT(*) n FROM ${src}`).get() as { n: number }).n;
+  if (have === 0 && src_n > 0) {
+    const names = cols.map((c) => c.name).join(",");
+    db.exec(`INSERT INTO ${dst}(${names}, profile_id) SELECT ${names}, 1 FROM ${src}`);
+  }
+}
+
+/** Aktives Profil (settings-Key `active_profile`, Default 1 = Kolja). */
+export function activeProfile(): number {
+  return getSetting("active_profile", 1);
 }
 
 // Default-Auswahllisten (einmalig geseedet; danach in der App editierbar).
@@ -213,6 +251,37 @@ function seedOptions(): void {
   if (n.n > 0) return;
   const ins = db.prepare("INSERT INTO options(kind, value, label, color, sort, active) VALUES(?,?,?,?,?,1)");
   DEFAULT_OPTIONS.forEach((o, i) => ins.run(o.kind, o.value, o.label, o.color, i));
+}
+
+// ---- Wochen-Renummerierung ----------------------------------------------
+// Wochen automatisch nach Datum einsortieren: week_no lückenlos 0..N-1 entlang start_date
+// (erste eingetragene Woche = 0), PRO PROFIL. Remappt planned_sessions.week_no + week_log_v2.week_no mit.
+// Zwischen-Offset vermeidet PK-Kollisionen; verwaiste Referenzen (gelöschte Wochen) bleiben unberührt.
+export function renumberWeeks(): void {
+  const profiles = db.prepare("SELECT id FROM profiles").all() as { id: number }[];
+  for (const p of profiles) {
+    const weeks = db
+      .prepare("SELECT week_no FROM season_weeks_v2 WHERE profile_id=? ORDER BY start_date, week_no")
+      .all(p.id) as { week_no: number }[];
+    const map = weeks.map((w, i) => [w.week_no, i] as [number, number]);
+    if (map.every(([o, n]) => o === n)) continue;
+    const OFF = 100000;
+    db.exec("BEGIN");
+    try {
+      for (const t of ["season_weeks_v2", "planned_sessions", "week_log_v2"]) {
+        const shift = db.prepare(`UPDATE ${t} SET week_no = ? WHERE week_no = ? AND profile_id = ?`);
+        for (const [o] of map) shift.run(o + OFF, o, p.id);
+      }
+      for (const t of ["season_weeks_v2", "planned_sessions", "week_log_v2"]) {
+        const set = db.prepare(`UPDATE ${t} SET week_no = ? WHERE week_no = ? AND profile_id = ?`);
+        for (const [o, n] of map) set.run(n, o + OFF, p.id);
+      }
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+  }
 }
 
 // ---- settings helpers --------------------------------------------------

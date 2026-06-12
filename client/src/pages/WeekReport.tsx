@@ -1,10 +1,22 @@
+// Wochenbericht — Druck-Layout auf 2 Seiten (ToDo „Auswertung zeigt 2x ziemlich dasselbe"):
+// Seite 1: Kopf · Kategorie-Summen · Einheiten geplant/real (mit Aktivitäts-Notizen) ·
+//          Kern-Visualisierung (Zonen, Intensität, PMC ±6 Wochen, Saison-Progression) · Wellness-Ø · Wochen-Checks.
+// Seite 2: vollständige Tagesfaktoren-Tabelle · Wellness-Verläufe · Reflexion.
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult } from "../lib/api.ts";
+import {
+  api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort,
+} from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { DAY_NAMES, daysOfWeek, fmtDate, typeLabel, typeColor, sportLabel, paceStr } from "../lib/util.ts";
+import {
+  DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
+  fmtDur, weekLabel, phaseLabel, addDays,
+} from "../lib/util.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
+import Pmc from "../charts/Pmc.tsx";
+import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
+import WellnessTrends from "../charts/WellnessTrends.tsx";
 
 const CHECKS: [string, string][] = [
   ["mileage", "Mileage erreicht"], ["threshold2x", "2× Schwelle"], ["longrun", "Longrun"],
@@ -18,6 +30,50 @@ const REFLECT: [string, string][] = [
   ["lessons", "Lessons → Anpassung Folgewoche"],
 ];
 
+// Tagesfaktoren für Seite 2 — alles, was eingetragen werden kann, ist hier auffindbar.
+type MetricDef = { key: string; label: string; text?: boolean };
+const DAY_METRICS: MetricDef[] = [
+  { key: "hrv", label: "HRV (ms)" },
+  { key: "resting_hr", label: "Ruhepuls (bpm)" },
+  { key: "recovery", label: "Recovery (%)" },
+  { key: "strain", label: "Strain" },
+  { key: "sleep_h", label: "Schlaf (h)" },
+  { key: "bedtime", label: "Bettzeit", text: true },
+  { key: "wake_time", label: "Aufwachzeit", text: true },
+  { key: "sleep_performance", label: "Sleep-Performance (%)" },
+  { key: "sleep_efficiency", label: "Schlaf-Effizienz (%)" },
+  { key: "sleep_consistency", label: "Schlaf-Konsistenz (%)" },
+  { key: "rem_h", label: "REM (h)" },
+  { key: "deep_h", label: "Tiefschlaf (h)" },
+  { key: "resp_rate", label: "Atemfrequenz" },
+  { key: "spo2", label: "SpO₂ (%)" },
+  { key: "weight", label: "Gewicht (kg)" },
+  { key: "rpe", label: "RPE" },
+  { key: "legs", label: "Beine", text: true },
+  { key: "soreness", label: "Muskelkater" },
+  { key: "pain", label: "Schmerz" },
+  { key: "pain_location", label: "Schmerz-Ort", text: true },
+  { key: "energy", label: "Energie" },
+  { key: "mood", label: "Stimmung" },
+  { key: "stress", label: "Stress" },
+  { key: "motivation", label: "Motivation" },
+  { key: "alcohol", label: "Alkohol" },
+  { key: "caffeine", label: "Koffein" },
+  { key: "hydration", label: "Hydration" },
+  { key: "fueling", label: "Fueling" },
+  { key: "travel", label: "Reise" },
+  { key: "sick", label: "Krank" },
+  { key: "notes", label: "Notizen", text: true },
+];
+
+const WELLNESS_KEYS: [string, string][] = [
+  ["recovery", "Recovery %"], ["strain", "Strain Ø"], ["hrv", "HRV"], ["resting_hr", "Ruhepuls"],
+  ["sleep_h", "Schlaf h"], ["sleep_performance", "Sleep-Perf. %"], ["weight", "Gewicht"],
+  ["energy", "Energie"], ["stress", "Stress"], ["motivation", "Motivation"],
+];
+
+type Cat = { run: { km: number; min: number }; bike: { km: number; min: number }; strength: { min: number } };
+
 export default function WeekReport() {
   const { season, week, weekNo, setWeekNo, loading } = useSeason();
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
@@ -25,6 +81,8 @@ export default function WeekReport() {
   const [daily, setDaily] = useState<DailyLog[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [wlog, setWlog] = useState<any>({});
+  const [pmcWin, setPmcWin] = useState<PmcPoint[]>([]);
+  const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([]);
 
   async function reload() {
     if (!week) return;
@@ -37,7 +95,25 @@ export default function WeekReport() {
     ]);
     setSessions(s); setActs(a); setDaily(d); setAnalyze(an); setWlog(w || {});
   }
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [week?.week_no]);
+  useEffect(() => {
+    reload();
+    // PMC-Ausschnitt ±6 Wochen um die Berichtswoche
+    if (week) {
+      api.pmc(addDays(week.start_date, -42), addDays(week.end_date, 42))
+        .then((r) => setPmcWin(r.pmc)).catch(() => setPmcWin([]));
+    }
+    // eslint-disable-next-line
+  }, [week?.week_no]);
+
+  // Saison-Progression (ganze Saison, Berichtswoche hervorgehoben)
+  useEffect(() => {
+    if (!season.length) return;
+    const from = season[0].start_date;
+    const to = season[season.length - 1].end_date;
+    Promise.all([api.sessions({}), api.activities({ from, to })])
+      .then(([s, a]) => setSeasonRows(buildSeasonRows(season, s, a)))
+      .catch(() => setSeasonRows([]));
+  }, [season]);
 
   if (loading) return <p className="muted">Lädt…</p>;
   if (!week) return <div className="empty">Keine Woche.</div>;
@@ -45,19 +121,34 @@ export default function WeekReport() {
   const days = daysOfWeek(week.start_date);
   const runActs = acts.filter((a) => a.sport === "Run");
   const actualKm = round1(runActs.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
-  const actualBikeKm = round1(acts.filter((a) => a.sport.startsWith("Bike")).reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
   const actualTss = round1(acts.reduce((s, a) => s + (a.tss || 0), 0));
 
-  // reale Zeit-in-Zone (Sekunden) aus Aktivitäten
-  const realZoneMin: Record<number, number> = {};
-  (analyze?.zones || []).forEach((z) => (realZoneMin[z.z] = 0));
-  for (const a of acts) if (a.zones) for (const k of Object.keys(a.zones)) realZoneMin[+k] = (realZoneMin[+k] || 0) + (a.zones[+k] || 0) / 60;
-  const hasRealZones = Object.values(realZoneMin).some((x) => x > 0);
+  // ---- reale Zeit-in-Zone: bevorzugt vom Server (paralleler Agent), sonst clientseitig ----
+  const anyAnalyze = analyze as any;
+  const serverRealZone: Record<number, number> | undefined =
+    anyAnalyze?.totals?.realZoneMin ?? anyAnalyze?.realZoneMin;
+  const clientRealZone: Record<number, number> = {};
+  (analyze?.zones || []).forEach((z) => (clientRealZone[z.z] = 0));
+  for (const a of acts) {
+    if (a.zone_min) for (const k of Object.keys(a.zone_min)) clientRealZone[+k] = (clientRealZone[+k] || 0) + (a.zone_min[+k] || 0);
+    else if (a.zones) for (const k of Object.keys(a.zones)) clientRealZone[+k] = (clientRealZone[+k] || 0) + (a.zones[+k] || 0) / 60;
+  }
+  const realZoneMin = serverRealZone && Object.values(serverRealZone).some((x) => (x || 0) > 0) ? serverRealZone : clientRealZone;
+  const hasRealZones = Object.values(realZoneMin).some((x) => (x || 0) > 0);
+  const realIntensity = intensityOf(realZoneMin);
+
+  // ---- Kategorie-Summen (ToDo 21): Server bevorzugt, sonst clientseitig aggregiert ----
+  const plannedCat: Cat = analyze?.totals?.byCategory ?? catsFromPlan(sessions);
+  const serverRealCat: Cat | undefined = anyAnalyze?.totals?.realByCategory ?? anyAnalyze?.realByCategory;
+  const realCat: Cat = serverRealCat ?? catsFromActs(acts);
 
   const wellness = avgWellness(daily);
   const saveW = (patch: Record<string, unknown>) => { const n = { ...wlog, ...patch }; setWlog(n); api.saveWeeklog(week.week_no, n); };
   const saveCheck = (k: string, val: boolean) => saveW({ checks: { ...(wlog.checks || {}), [k]: val } });
   const saveRefl = (k: string, val: string) => saveW({ refl_extra: { ...(wlog.refl_extra || {}), [k]: val } });
+
+  const byDate = new Map(daily.map((d) => [d.date, d]));
+  const visibleMetrics = DAY_METRICS.filter((m) => days.some((d) => hasVal(byDate.get(d)?.[m.key])));
 
   return (
     <div>
@@ -69,88 +160,180 @@ export default function WeekReport() {
         </div>
       </div>
 
-      <div className="report card">
-        {/* Kopf */}
-        <div className="spread report-head">
-          <div>
-            <h2 style={{ margin: 0 }}>Woche {week.week_no} — {week.phase}</h2>
-            <div className="muted tiny">{fmtDate(week.start_date)}–{fmtDate(week.end_date)} · Ziel {week.target_km ?? "–"} km{week.goal_race ? ` · ${week.goal_race}` : ""}</div>
+      <div className="report">
+        {/* ============ SEITE 1 ============ */}
+        <section className="card report-page">
+          {/* Kopf */}
+          <div className="spread report-head">
+            <div>
+              <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
+              <div className="muted tiny">
+                {fmtDateY(week.start_date)} – {fmtDateY(week.end_date)} · Ziel {week.target_km ?? "–"} km
+                {week.goal_race ? ` · ${week.goal_race}` : ""}{week.notes ? ` · ${week.notes}` : ""}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 18 }}>
+              <Mini label="Lauf" v={`${actualKm} km`} sub={`Ziel ${week.target_km ?? "–"}`} />
+              <Mini label="TSS" v={`${Math.round(actualTss)}`} />
+              <Mini label="Form (TSB)" v={`${analyze?.projectedTsb ?? "–"}`} />
+            </div>
           </div>
-          <div className="row" style={{ gap: 18 }}>
-            <Mini label="Lauf" v={`${actualKm} km`} sub={`Ziel ${week.target_km ?? "–"}`} />
-            <Mini label="Rad" v={`${actualBikeKm} km`} />
-            <Mini label="TSS" v={`${Math.round(actualTss)}`} />
-            <Mini label="Form (TSB)" v={`${analyze?.projectedTsb ?? "–"}`} />
+
+          {/* Kategorie-Summen: Lauf / Rad gesamt / Kraft & Mobility */}
+          <div className="cat-row mt">
+            <CatBox label="Lauf" main={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
+              sub={`geplant ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`} />
+            <CatBox label="Rad gesamt (indoor + outdoor + Commute)" main={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
+              sub={`geplant ${round1(plannedCat.bike.km)} km · ${hours(plannedCat.bike.min)}`} />
+            <CatBox label="Kraft / Mobility" main={hours(realCat.strength.min)}
+              sub={`geplant ${hours(plannedCat.strength.min)}`} />
           </div>
-        </div>
 
-        {/* Tagestabelle geplant vs real */}
-        <table className="mt">
-          <thead><tr><th>Tag</th><th>Geplant</th><th>Real</th><th>km</th><th>Ø HF</th><th>Pace</th><th>TSS</th><th>RPE/Beine</th></tr></thead>
-          <tbody>
-            {days.map((d, i) => {
-              const plan = sessions.filter((s) => s.date === d);
-              const real = acts.filter((a) => a.date === d);
-              const dl = daily.find((x) => x.date === d);
-              return (
-                <tr key={d}>
-                  <td className="nowrap"><strong>{DAY_NAMES[i]}</strong> <span className="muted tiny">{fmtDate(d)}</span></td>
-                  <td>{plan.map((p) => <div key={p.id}><span style={{ color: typeColor(p.type) }}>●</span> {p.description || typeLabel(p.type)}</div>)}</td>
-                  <td>{real.map((a) => <div key={a.id}>{a.name || sportLabel(a.sport)}</div>)}</td>
-                  <td>{round1(real.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0)) || ""}</td>
-                  <td>{avg(real.map((a) => a.avg_hr).filter(Boolean) as number[])}</td>
-                  <td>{real[0]?.distance_m && real[0]?.moving_s ? paceStr(real[0].moving_s / (real[0].distance_m / 1000)) : ""}</td>
-                  <td>{round1(real.reduce((s, a) => s + (a.tss || 0), 0)) || ""}</td>
-                  <td className="tiny">{(dl?.rpe as number) ?? ""}{dl?.legs ? ` · ${dl.legs}` : ""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
+          <h3 className="mt">Einheiten</h3>
+          <table className="units">
+            <thead><tr><th>Tag</th><th>Geplant</th><th>Real</th><th>km</th><th>Zeit</th><th>TSS</th><th>kcal</th><th>RPE/Beine</th></tr></thead>
+            <tbody>
+              {days.map((d, i) => {
+                const plan = sessions.filter((s) => s.date === d);
+                const real = acts.filter((a) => a.date === d);
+                const dl = byDate.get(d);
+                const noted = real.filter((a) => (a.notes && a.notes.trim()) || (a.efforts && a.efforts.length));
+                return [
+                  <tr key={d} className={noted.length ? "has-note" : ""}>
+                    <td className="nowrap"><strong>{DAY_NAMES[i]}</strong> <span className="muted tiny">{fmtDate(d)}</span></td>
+                    <td>{plan.map((p) => (
+                      <div key={p.id}>
+                        <span style={{ color: typeColor(p.type) }}>●</span> {p.description || typeLabel(p.type)}
+                        <span className="muted tiny">{p.planned_km ? ` · ${p.planned_km} km` : p.planned_min ? ` · ${p.planned_min} min` : ""}</span>
+                      </div>
+                    ))}</td>
+                    <td>{real.map((a) => (
+                      <div key={a.id}>
+                        {a.name || sportLabel(a.sport)}
+                        <span className="muted tiny">
+                          {a.distance_m ? ` · ${round1(a.distance_m / 1000)} km` : ""}
+                          {a.distance_m && a.moving_s ? ` · ${paceOrSpeed(a.sport, a.distance_m, a.moving_s)}` : ""}
+                          {a.avg_hr ? ` · Ø${Math.round(a.avg_hr)}` : ""}
+                        </span>
+                      </div>
+                    ))}</td>
+                    <td>{round1(real.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0)) || ""}</td>
+                    <td>{fmtIf(real.reduce((s, a) => s + (a.moving_s || 0), 0))}</td>
+                    <td>{round1(real.reduce((s, a) => s + (a.tss || 0), 0)) || ""}</td>
+                    <td>{Math.round(real.reduce((s, a) => s + (a.kcal || 0), 0)) || ""}</td>
+                    <td className="tiny">{(dl?.rpe as number) ?? ""}{dl?.legs ? ` · ${dl.legs}` : ""}</td>
+                  </tr>,
+                  ...noted.map((a) => (
+                    <tr key={`${a.id}-note`} className="note-row">
+                      <td></td>
+                      <td colSpan={7}>
+                        {/* Einheiten-Name nur nennen, wenn mehrere Einheiten am Tag (sonst redundant) */}
+                        {real.length > 1 && <span className="note-name">{a.name || sportLabel(a.sport)}: </span>}
+                        {a.notes && a.notes.trim() ? a.notes.trim() : ""}
+                        {a.efforts?.length ? <span className="note-efforts">{a.notes?.trim() ? " — " : ""}{a.efforts.map(fmtEffort).join(" | ")}</span> : ""}
+                      </td>
+                    </tr>
+                  )),
+                ];
+              })}
+            </tbody>
+          </table>
 
-        {/* Visualisierung */}
-        <div className="grid cols-2 mt" style={{ alignItems: "start" }}>
-          <div>
-            <h3>Zonenverteilung geplant vs. real</h3>
-            {analyze && <ZoneDistribution zones={analyze.zones} height={110} rows={[
-              { name: "Geplant", minutes: analyze.totals.zoneMin },
-              ...(hasRealZones ? [{ name: "Real", minutes: realZoneMin }] : []),
-            ]} />}
-            {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit HF-Streams (Strava) vorliegen.</p>}
+          {/* Kern-Visualisierung */}
+          <div className="chart-grid mt">
+            <div className="chart-card">
+              <h3>Zonenverteilung geplant vs. real</h3>
+              {analyze && <ZoneDistribution zones={analyze.zones} height={110} rows={[
+                { name: "Geplant", minutes: analyze.totals.zoneMin },
+                ...(hasRealZones ? [{ name: "Real", minutes: realZoneMin }] : []),
+              ]} />}
+              {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
+            </div>
+            <div className="chart-card">
+              <h3>Intensität</h3>
+              <div className="row" style={{ alignItems: "flex-start", gap: 6, flexWrap: "nowrap" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tiny muted center">Geplant</div>
+                  {analyze && <IntensityDonut intensity={analyze.totals.intensity} height={105} />}
+                </div>
+                {hasRealZones && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="tiny muted center">Real</div>
+                    <IntensityDonut intensity={realIntensity} height={105} />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="chart-card">
+              <h3>PMC — ±6 Wochen um {weekLabel(week)}</h3>
+              <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }} />
+            </div>
+            <div className="chart-card">
+              <h3>Saison-Progression (geplant / real km)</h3>
+              <SeasonProgress rows={seasonRows} height={185} highlightLabel={weekLabel(week)} />
+            </div>
           </div>
-          <div>
-            <h3>Intensität (geplant)</h3>
-            {analyze && <IntensityDonut intensity={analyze.totals.intensity} height={130} />}
+
+          {/* Whoop / Wellness Summary */}
+          <h3 className="mt">Whoop / Wellness (Ø Woche)</h3>
+          <div className="row tiny" style={{ gap: 16, flexWrap: "wrap" }}>
+            {WELLNESS_KEYS.map(([k, label]) => <Mini key={k} label={label} v={wellness[k] ?? ""} />)}
           </div>
-        </div>
 
-        {/* Whoop / Wellness Summary */}
-        <h3 className="mt">Whoop / Wellness (Ø Woche)</h3>
-        <div className="row tiny" style={{ gap: 16, flexWrap: "wrap" }}>
-          <Mini label="Recovery %" v={wellness.recovery} /><Mini label="Strain Ø" v={wellness.strain} />
-          <Mini label="HRV" v={wellness.hrv} /><Mini label="Ruhepuls" v={wellness.resting_hr} />
-          <Mini label="Schlaf h" v={wellness.sleep_h} /><Mini label="Gewicht" v={wellness.weight} />
-          <Mini label="Energie" v={wellness.energy} /><Mini label="Stress" v={wellness.stress} /><Mini label="Motivation" v={wellness.motivation} />
-        </div>
+          {/* Wochen-Check */}
+          <h3 className="mt">Wochen-Check</h3>
+          <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+            {CHECKS.map(([k, label]) => (
+              <label key={k} className="row tiny" style={{ gap: 5, width: "auto" }}>
+                <input type="checkbox" style={{ width: "auto" }} checked={!!wlog.checks?.[k]} onChange={(e) => saveCheck(k, e.target.checked)} /> {label}
+              </label>
+            ))}
+          </div>
+        </section>
 
-        {/* Wochen-Check */}
-        <h3 className="mt">Wochen-Check</h3>
-        <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-          {CHECKS.map(([k, label]) => (
-            <label key={k} className="row tiny" style={{ gap: 5, width: "auto" }}>
-              <input type="checkbox" style={{ width: "auto" }} checked={!!wlog.checks?.[k]} onChange={(e) => saveCheck(k, e.target.checked)} /> {label}
-            </label>
-          ))}
-        </div>
+        {/* ============ SEITE 2 ============ */}
+        <section className="card report-page page-break">
+          <div className="report-head">
+            <h2 style={{ margin: 0 }}>Tagesfaktoren — {weekLabel(week)}</h2>
+            <div className="muted tiny">{fmtDateY(week.start_date)} – {fmtDateY(week.end_date)}</div>
+          </div>
 
-        {/* Reflexion */}
-        <h3 className="mt">Reflexion</h3>
-        <div className="grid cols-2">
-          <Refl label="Was lief gut?" v={wlog.refl_good} on={(x) => saveW({ refl_good: x })} />
-          <Refl label="Was war schwierig?" v={wlog.refl_hard} on={(x) => saveW({ refl_hard: x })} />
-          <Refl label="Was ändere ich nächste Woche?" v={wlog.refl_change} on={(x) => saveW({ refl_change: x })} />
-          {REFLECT.map(([k, label]) => <Refl key={k} label={label} v={wlog.refl_extra?.[k]} on={(x) => saveRefl(k, x)} />)}
-        </div>
+          <table className="daily-table mt">
+            <thead>
+              <tr>
+                <th>Faktor</th>
+                {days.map((d, i) => <th key={d}>{DAY_NAMES[i]} <span className="muted">{fmtDate(d)}</span></th>)}
+                <th>Ø</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleMetrics.map((m) => {
+                const vals = days.map((d) => byDate.get(d)?.[m.key]);
+                const nums = vals.filter((v): v is number => typeof v === "number" && isFinite(v));
+                return (
+                  <tr key={m.key}>
+                    <td className="nowrap"><strong>{m.label}</strong></td>
+                    {vals.map((v, i) => <td key={days[i]}>{fmtVal(v)}</td>)}
+                    <td className="muted">{!m.text && nums.length ? round1(nums.reduce((a, b) => a + b, 0) / nums.length) : ""}</td>
+                  </tr>
+                );
+              })}
+              {!visibleMetrics.length && <tr><td colSpan={9} className="muted center">Keine Tagesfaktoren eingetragen.</td></tr>}
+            </tbody>
+          </table>
+
+          <h3 className="mt">Wellness-Verläufe (HRV · Ruhepuls · Recovery · Strain · Schlaf · Bettzeit)</h3>
+          <WellnessTrends daily={daily} days={days} />
+
+          <h3 className="mt">Reflexion</h3>
+          <div className="grid cols-2">
+            <Refl label="Was lief gut?" v={wlog.refl_good} on={(x) => saveW({ refl_good: x })} />
+            <Refl label="Was war schwierig?" v={wlog.refl_hard} on={(x) => saveW({ refl_hard: x })} />
+            <Refl label="Was ändere ich nächste Woche?" v={wlog.refl_change} on={(x) => saveW({ refl_change: x })} />
+            {REFLECT.map(([k, label]) => <Refl key={k} label={label} v={wlog.refl_extra?.[k]} on={(x) => saveRefl(k, x)} />)}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -159,17 +342,86 @@ export default function WeekReport() {
 function Mini({ label, v, sub }: { label: string; v: string | number; sub?: string }) {
   return <div className="stat"><div className="label">{label}</div><div className="value" style={{ fontSize: 18 }}>{v === "" || v == null ? "–" : v}</div>{sub && <div className="sub">{sub}</div>}</div>;
 }
+function CatBox({ label, main, sub }: { label: string; main: string; sub?: string }) {
+  return (
+    <div className="cat-box">
+      <div className="label">{label}</div>
+      <div className="main">{main}</div>
+      {sub && <div className="sub muted tiny">{sub}</div>}
+    </div>
+  );
+}
 function Refl({ label, v, on }: { label: string; v?: string; on: (x: string) => void }) {
   return <label className="field"><span>{label}</span><textarea rows={2} defaultValue={v ?? ""} onBlur={(e) => on(e.target.value)} /></label>;
 }
 
+// ---- Helfer ----
 function round1(n: number) { return Math.round(n * 10) / 10; }
-function avg(arr: number[]): number | "" { return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : ""; }
+function hours(min: number): string { return min > 0 ? fmtDur(min * 60) : "–"; }
+function fmtIf(sec: number): string { return sec > 0 ? fmtDur(sec) : ""; }
+function hasVal(v: unknown): boolean { return v != null && v !== "" && !(typeof v === "number" && isNaN(v)); }
+function fmtVal(v: unknown): string {
+  if (!hasVal(v)) return "";
+  if (typeof v === "number") return String(round1(v));
+  return String(v);
+}
+
+function intensityOf(zm: Record<number, number>): { easy: number; mod: number; hard: number } {
+  const tot = Object.values(zm).reduce((a, b) => a + (b || 0), 0) || 1;
+  return {
+    easy: (((zm[1] || 0) + (zm[2] || 0)) / tot) * 100,
+    mod: ((zm[3] || 0) / tot) * 100,
+    hard: (((zm[4] || 0) + (zm[5] || 0) + (zm[6] || 0)) / tot) * 100,
+  };
+}
+
+function isBikeCat(sport?: string | null): boolean {
+  return !!sport && (sport.startsWith("Bike") || sport === "General");
+}
+function catsFromActs(acts: Activity[]): Cat {
+  const out: Cat = { run: { km: 0, min: 0 }, bike: { km: 0, min: 0 }, strength: { min: 0 } };
+  for (const a of acts) {
+    const km = (a.distance_m || 0) / 1000;
+    const min = (a.moving_s || a.elapsed_s || 0) / 60;
+    if (a.sport === "Run") { out.run.km += km; out.run.min += min; }
+    else if (isBikeCat(a.sport)) { out.bike.km += km; out.bike.min += min; }
+    else if (a.sport === "Strength" || a.sport === "Physio") out.strength.min += min;
+  }
+  return out;
+}
+function catsFromPlan(sessions: PlannedSession[]): Cat {
+  const out: Cat = { run: { km: 0, min: 0 }, bike: { km: 0, min: 0 }, strength: { min: 0 } };
+  for (const s of sessions) {
+    const km = s.planned_km || 0;
+    const min = s.planned_min || 0;
+    if (s.sport === "Run") { out.run.km += km; out.run.min += min; }
+    else if (isBikeCat(s.sport)) { out.bike.km += km; out.bike.min += min; }
+    else if (s.sport === "Strength" || s.sport === "Physio") out.strength.min += min;
+  }
+  return out;
+}
+
+/** Kompakte Darstellung einer Belastung: „4× 8:00 min @ 3:45/km · Ø172/max181". */
+function fmtEffort(e: Effort): string {
+  let core = "";
+  if (e.sec) core = clock(e.sec);
+  else if (e.dist_m) core = e.dist_m >= 1000 ? `${round1(e.dist_m / 1000)} km` : `${e.dist_m} m`;
+  let s = (e.reps && e.reps > 1 ? `${e.reps}× ` : "") + core;
+  if (e.pace_s) s += ` @ ${paceStr(e.pace_s)}/km`;
+  if (e.avg_hr) s += ` · Ø${Math.round(e.avg_hr)}`;
+  if (e.max_hr) s += `/max${Math.round(e.max_hr)}`;
+  if (e.label) s = `${e.label}: ${s}`;
+  return s.trim();
+}
+function clock(sec: number): string {
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return s ? `${m}:${String(s).padStart(2, "0")} min` : `${m} min`;
+}
+
 function avgWellness(daily: DailyLog[]): Record<string, number | ""> {
-  const keys = ["recovery", "strain", "hrv", "resting_hr", "sleep_h", "weight", "energy", "stress", "motivation"];
   const out: Record<string, number | ""> = {};
-  for (const k of keys) {
-    const vals = daily.map((d) => d[k] as number).filter((x) => x != null && !isNaN(x));
+  for (const [k] of WELLNESS_KEYS) {
+    const vals = daily.map((d) => d[k] as number).filter((x) => x != null && typeof x === "number" && !isNaN(x));
     out[k] = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : "";
   }
   return out;

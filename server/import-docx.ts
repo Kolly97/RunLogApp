@@ -1,6 +1,7 @@
 // Seed: bestehender Saisonplan (Trainingsplan_KW_10-17.docx, Wochen 0-8) als erste Saison.
 // Die Tages-Einheiten sind als Klartext eingebettet; Typ/Sport/km werden heuristisch geparst.
-import { db, initSchema } from "./db.ts";
+// Schreibt ins AKTIVE Profil (v2-Tabellen).
+import { db, initSchema, activeProfile } from "./db.ts";
 import { plannedSessionTss } from "./analysis.ts";
 import { effectiveZoneSetForSeed } from "./zones.ts";
 
@@ -87,16 +88,17 @@ export function seedSeason(): { weeks: number; sessions: number } {
   initSchema();
   let sessions = 0;
   const zs = effectiveZoneSetForSeed();
+  const profile = activeProfile();
   for (const w of SEASON) {
     db.prepare(
-      `INSERT INTO season_weeks(week_no, label, phase, start_date, end_date, target_km, goal_race, notes)
-       VALUES(?,?,?,?,?,?,?,?)
-       ON CONFLICT(week_no) DO UPDATE SET label=excluded.label, phase=excluded.phase,
+      `INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes)
+       VALUES(?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(profile_id, week_no) DO UPDATE SET label=excluded.label, phase=excluded.phase,
          start_date=excluded.start_date, end_date=excluded.end_date, target_km=excluded.target_km, goal_race=excluded.goal_race`,
-    ).run(w.no, `Woche ${w.no}`, w.phase, w.start, w.end, w.target, w.goal || "", "");
+    ).run(profile, w.no, `Woche ${w.no}`, w.phase, w.start, w.end, w.target, w.goal || "", "");
 
     // alte geplante Einheiten dieser Woche entfernen (idempotent)
-    db.prepare("DELETE FROM planned_sessions WHERE week_no=?").run(w.no);
+    db.prepare("DELETE FROM planned_sessions WHERE week_no=? AND profile_id=?").run(w.no, profile);
     w.days.forEach((text, i) => {
       if (!text.trim()) return;
       const date = addDays(w.start, i);
@@ -106,9 +108,9 @@ export function seedSeason(): { weeks: number; sessions: number } {
       const min = parseMin(text);
       const tss = plannedSessionTss({ date, sport, type, planned_km: km, planned_min: min, zone_alloc: null }, zs.hr_zones, zs.lthr, zs.pace_zones);
       db.prepare(
-        `INSERT INTO planned_sessions(date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, planned_tss, sort_order)
-         VALUES(?,?,?,?,?,?,?,?,?,?)`,
-      ).run(date, w.no, sport, type, km, min, null, text, tss, 0);
+        `INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, planned_tss, sort_order)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(profile, date, w.no, sport, type, km, min, null, text, tss, 0);
       sessions++;
     });
   }

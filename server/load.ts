@@ -34,24 +34,42 @@ export function zoneFromSpeed(kmh: number, speedZones?: number[]): number {
 // Intensitätsfaktor nach Einheitstyp fürs Rad. Die Lauf-HF-Zonen-Schätzung überschätzt
 // Rad-Last massiv (HF/Last auf dem Rad deutlich niedriger) — daher IF-basiert.
 const BIKE_IF: Record<string, number> = {
-  Easy: 0.62,
-  Long: 0.65,
-  Threshold: 0.85,
-  Hill: 0.85,
-  VO2: 0.95,
-  Race: 0.95,
+  Easy: 0.6,
+  Long: 0.6,
+  Threshold: 0.83,
+  Hill: 0.78,
+  VO2: 0.88,
+  Race: 0.92,
+  Strength: 0,
+  Physio: 0,
+  Rest: 0,
 };
 
 /**
  * Geschätzter Rad-TSS ohne Powermeter: TSS = Stunden * IF^2 * 100 (IF nach Typ).
- * 90 min easy ergeben so ~58 TSS statt 150+ über die Lauf-HF-Schätzung.
+ * 60 min easy ergeben so 36 TSS statt 100+ über die Lauf-HF-Schätzung.
  * ftp wird nur gebraucht, wenn künftig ein Power-Ziel hinterlegt ist (powerTss bevorzugen).
  */
 export function bikeTssEstimate(min: number, type: string, ftp?: number): number {
   if (!min || min <= 0) return 0;
   void ftp; // bewusst ungenutzt: bei vorhandener avg_power stattdessen powerTss(min*60, power, ftp)
   const ifr = BIKE_IF[type] ?? 0.6;
+  if (ifr <= 0) return 0;
   return round1((min / 60) * ifr * ifr * 100);
+}
+
+/**
+ * Watt-Mittel einer Power-Zone. powerZones = Watt-Obergrenzen je Zone 1–6 (aufsteigend).
+ * Zone z: Mitte zwischen Obergrenze der Vorzone und eigener Obergrenze (Z1 ab 0 W).
+ * Offene Top-Zone (Obergrenze unrealistisch hoch): knapp über der Untergrenze ansetzen.
+ */
+export function powerZoneMidWatts(z: number, powerZones: number[]): number | null {
+  if (!powerZones?.length || z < 1 || z > powerZones.length) return null;
+  const lower = z > 1 ? powerZones[z - 2] : 0;
+  const upper = powerZones[z - 1];
+  if (!upper || upper <= 0) return null;
+  if (z === powerZones.length && upper > lower * 1.5 && lower > 0) return round1(lower * 1.1);
+  return round1((lower + upper) / 2);
 }
 
 /** COROS Training Load aus Strava-Beschreibung parsen ("241 Training Load"). */

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RunLog — Anleitung</title>
+  <style>
+    :root {
+      --bg: #f4f6f8; --card: #fff; --ink: #1a2230; --muted: #6b7888;
+      --line: #e3e8ef; --accent: #2b6cb0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 14px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; }
+    header h1 { font-size: 26px; margin: 0 0 4px; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--muted); margin: 0 0 24px; }
+    section {
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      padding: 18px 22px; margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(20,30,50,.06);
+    }
+    h2 { font-size: 17px; margin: 0 0 10px; }
+    h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 4px; }
+    dt { font-weight: 650; margin-top: 10px; }
+    dd { margin: 2px 0 0 0; color: #3a475a; }
+    ol li, ul li { margin-bottom: 6px; }
+    code { background: #eef2f7; border-radius: 5px; padding: 1px 5px; font-size: 12.5px; }
+    .pill { display: inline-block; background: #eef2f7; color: #3a475a; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; margin-right: 4px; }
+    footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Run<span>Log</span> — Anleitung</h1>
+      <p>Lokale Trainings-App: Wochen planen, Einheiten tracken, Auswertung im TrainingPeaks-Stil.</p>
+    </header>
+
+    <section>
+      <h2>Die Seiten im Überblick</h2>
+      <dl>
+        <dt>▣ Dashboard</dt>
+        <dd>Aktuelle Form auf einen Blick: Fitness (CTL), Fatigue (ATL), Form (TSB) und CTL-Ramp, dazu das
+          Performance Management Chart, die Saison-Progression (geplant vs. real km), Analyse-Hinweise zur
+          aktuellen Woche und der Intervall-Trend. Der Zeitraum-Wähler (Saison / 1M / 6M / 1J / Eigene) gilt
+          für die großen Charts.</dd>
+        <dt>✎ Wochenplanung</dt>
+        <dd>Einheiten pro Tag anlegen: Sportart, Typ, km/Minuten, Zonen-Verteilung und strukturierte
+          Belastungen (Intervall-Builder, z.&nbsp;B. 4×8&nbsp;min). Die App rechnet geplanten TSS und zeigt live
+          Analyse-Flags (z.&nbsp;B. zu hohe Rampe, fehlender Longrun).</dd>
+        <dt>✓ Tracking</dt>
+        <dd>Nach dem Training: reale Einheiten eintragen (Distanz, Zeit, Ø-HF, kcal, km je Zone, Belastungen
+          mit Pace/HF je Wiederholung, Notizen) plus Tagesfaktoren (HRV, Ruhepuls, Recovery, Strain, Schlaf,
+          Bettzeit, Gewicht, RPE, …). Für Alltagsfahrten gibt es die Commute-/Allgemein-Schnellerfassung.</dd>
+        <dt>🖨 Wochenbericht</dt>
+        <dd>Druckfertiger 2-Seiten-Bericht: Seite 1 mit Kategorie-Summen (Laufen / Rad / Kraft), Einheiten
+          geplant vs. real inkl. Notizen, Zonen- und Intensitäts-Diagrammen, PMC, Saison-Progression,
+          Wellness-Durchschnitt und Wochen-Checks; Seite 2 mit der vollständigen Tagesfaktoren-Tabelle,
+          Wellness-Verläufen und der Reflexion. Über „Drucken / PDF" als PDF sichern.</dd>
+        <dt>📈 Langzeit</dt>
+        <dd>Entwicklung über Monate: Wellness-Verläufe (HRV, Ruhepuls, Recovery, Strain, Schlaf, Bettzeit,
+          Sleep-Performance, Gewicht), Zonen-Effizienz der Easy-Läufe (Ø-Pace vs. Ø-HF und Effizienz-Faktor)
+          und der Intervall-Trend nach Kategorie (LT1 / LT2 / VO2). Zeitraum frei wählbar, Standard 6 Monate.</dd>
+        <dt>⚙ Einstellungen</dt>
+        <dd>Saisonplan verwalten (Wochen anlegen, Phase/Ziel-km/Rennen), Zonen-Sets pflegen: HF-Zonen,
+          Pace-Zonen (Lauf) und Power-Zonen (Rad) — jeweils mit Gültigkeitsdatum, damit alte Wochen mit den
+          damals gültigen Zonen ausgewertet werden.</dd>
+        <dt>🏷 Auswahllisten</dt>
+        <dd>Eigene Auswahlmöglichkeiten ohne Code-Änderung: Trainingsphasen, Sportarten und Einheitstypen
+          hinzufügen, umbenennen, umfärben oder deaktivieren.</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Typischer Wochen-Workflow</h2>
+      <ol>
+        <li><strong>Planen</strong> — In der <span class="pill">Wochenplanung</span> die Einheiten der Woche anlegen
+          (inkl. Intervall-Struktur). Auf die Analyse-Flags achten: sie warnen live vor zu viel Last,
+          fehlender Entlastung oder fehlendem Longrun.</li>
+        <li><strong>Trainieren &amp; tracken</strong> — Nach jeder Einheit im <span class="pill">Tracking</span> die
+          realen Werte eintragen; morgens die Tagesfaktoren (Whoop-Werte, Gewicht, Befinden) ergänzen.
+          Notizen zur Einheit landen automatisch im Wochenbericht.</li>
+        <li><strong>Kontrollieren</strong> — Zwischendurch im <span class="pill">Dashboard</span> Form (TSB) und
+          CTL-Ramp im Blick behalten.</li>
+        <li><strong>Auswerten</strong> — Am Wochenende den <span class="pill">Wochenbericht</span> öffnen,
+          Wochen-Checks abhaken, Reflexion ausfüllen und über „Drucken / PDF" archivieren.</li>
+        <li><strong>Langfristig</strong> — Regelmäßig auf <span class="pill">Langzeit</span> prüfen, ob sich Puls,
+          Pace und Wellness-Werte in die richtige Richtung entwickeln.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Zonen-Sets &amp; Optionen</h2>
+      <ul>
+        <li><strong>Zonen-Sets</strong> stammen idealerweise aus der Leistungsdiagnostik: HF-Zonen (bpm),
+          Pace-Zonen (mm:ss pro km, Lauf) und Power-Zonen (Watt, Rad). Jedes Set hat ein
+          „gültig ab"-Datum — neue Diagnostik einfach als neues Set anlegen, alte Auswertungen bleiben korrekt.</li>
+        <li><strong>Einheiten-Logik:</strong> Laufen wird in min/km angezeigt, Rad (indoor/outdoor) und
+          Commute in km/h.</li>
+        <li><strong>Zeit/Strecke in Zonen:</strong> beim Tracking km je Zone eintragen — daraus entstehen die
+          Zonenverteilung und die Intensitäts-Donuts (easy / moderat / hart) im Bericht.</li>
+        <li><strong>Auswahllisten:</strong> Neue Phasen (z.&nbsp;B. „Trainingslager"), Sportarten oder
+          Einheitstypen über die Seite „Auswahllisten" ergänzen — kompatibel, ohne in den Code zu gehen.</li>
+        <li><strong>Daten:</strong> Alles liegt lokal in <code>training.db</code> (SQLite) — regelmäßig sichern.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · RunLog v0.2.0 · Stand 12.06.2026 ·
+      <a href="/">zurück zur App</a>
+    </footer>
+  </div>
+</body>
+</html>

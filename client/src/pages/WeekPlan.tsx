@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type PlannedSession, type AnalyzeResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
-  DAY_NAMES, SESSION_TYPES, SPORTS, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
+  DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel,
 } from "../lib/util.ts";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";

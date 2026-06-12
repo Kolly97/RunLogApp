@@ -1,30 +1,50 @@
 import { useEffect, useState } from "react";
-import { api, type PmcPoint, type Activity, type PlannedSession, type SeasonWeek, type AnalyzeResult } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { addDays, todayIso, fmtDate } from "../lib/util.ts";
+import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
 import Pmc from "../charts/Pmc.tsx";
-import SeasonProgress, { type SeasonRow } from "../charts/SeasonProgress.tsx";
+import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
+import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
+import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 
 export default function Dashboard() {
   const { season, week } = useSeason();
+  const [range, setRange] = useState<DateRange | null>(null);
   const [pmc, setPmc] = useState<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number } | null>(null);
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
+  const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
 
+  const seasonRange: DateRange | null = season.length
+    ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, addDays(todayIso(), 21)) }
+    : null;
+
+  // PMC + Intervall-Trend folgen dem gewählten Zeitraum.
   useEffect(() => {
-    const from = season.length ? season[0].start_date : addDays(todayIso(), -42);
-    const to = season.length ? maxDate(season[season.length - 1].end_date, addDays(todayIso(), 21)) : addDays(todayIso(), 21);
-    api.pmc(from, to).then(setPmc);
-    Promise.all([api.sessions({}), api.activities({ from, to })]).then(([sessions, acts]) => {
-      setRows(buildSeasonRows(season, sessions, acts));
-    });
+    if (!range) return;
+    api.pmc(range.from, range.to).then(setPmc).catch(() => setPmc(null));
+    // Endpoint entsteht parallel — bei 404/Fehler Chart ausblenden.
+    api.intervalsTrend({ from: range.from, to: range.to }).then(setTrend).catch(() => setTrend(null));
+  }, [range?.from, range?.to]);
+
+  // Saison-Zeilen einmal über die ganze Saison bauen; Anzeige wird per Zeitraum gefiltert.
+  useEffect(() => {
+    if (!season.length) return;
+    const from = season[0].start_date;
+    const to = season[season.length - 1].end_date;
+    Promise.all([api.sessions({}), api.activities({ from, to })])
+      .then(([sessions, acts]) => setRows(buildSeasonRows(season, sessions, acts)))
+      .catch(() => setRows([]));
   }, [season]);
 
   useEffect(() => {
-    if (week) api.analyzeWeek(week.week_no).then(setAnalyze);
+    if (week) api.analyzeWeek(week.week_no).then(setAnalyze).catch(() => setAnalyze(null));
   }, [week?.week_no]);
 
   const last = pmc?.pmc.filter((p) => p.date <= todayIso()).at(-1);
+  const visibleRows = range
+    ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
+    : rows;
 
   return (
     <div>
@@ -40,6 +60,12 @@ export default function Dashboard() {
         <StatCard label="CTL-Ramp" value={pmc?.ctlRamp7 ?? 0} sub="pro Woche (7d)" />
       </div>
 
+      {/* Zeitraum gilt für die großen Übersichts-Charts (PMC, Saison-Progression, Intervall-Trend) */}
+      <div className="row" style={{ justifyContent: "flex-end", margin: "14px 0 10px" }}>
+        <span className="tiny muted">Zeitraum</span>
+        <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="3w" />
+      </div>
+
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
         <Pmc data={pmc?.pmc ?? []} />
@@ -48,7 +74,7 @@ export default function Dashboard() {
       <div className="grid cols-2" style={{ alignItems: "start" }}>
         <div className="card">
           <h2>Saison-Progression</h2>
-          <SeasonProgress rows={rows} />
+          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} />
         </div>
         <div className="card">
           <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
@@ -57,7 +83,7 @@ export default function Dashboard() {
             <>
               <div className="row mb">
                 <span className="pill phase">{week.phase}</span>
-                <span className="muted tiny">Woche {week.week_no} · {analyze.totals.km} / {week.target_km ?? "–"} km · {Math.round(analyze.totals.tss)} TSS</span>
+                <span className="muted tiny">{weekLabel(week)} · {analyze.totals.km} / {week.target_km ?? "–"} km · {Math.round(analyze.totals.tss)} TSS</span>
               </div>
               {!analyze.flags.length && <p className="tiny muted">Keine Hinweise.</p>}
               {analyze.flags.slice(0, 6).map((f, i) => (
@@ -67,6 +93,16 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {hasRunTrend(trend) && (
+        <div className="card">
+          <div className="spread">
+            <h2>Intervall-Trend</h2>
+            <span className="tiny muted">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 (schneller = oben)</span>
+          </div>
+          <IntervalTrend data={trend ?? []} />
+        </div>
+      )}
     </div>
   );
 }
@@ -91,30 +127,3 @@ function formHint(tsb?: number): string {
 }
 
 function maxDate(a: string, b: string) { return a > b ? a : b; }
-
-function weekOf(season: SeasonWeek[], date: string): number | null {
-  const w = season.find((x) => x.start_date <= date && date <= x.end_date);
-  return w ? w.week_no : null;
-}
-
-function buildSeasonRows(season: SeasonWeek[], sessions: PlannedSession[], acts: Activity[]): SeasonRow[] {
-  const plannedByWeek = new Map<number, number>();
-  for (const s of sessions) {
-    if (s.sport !== "Run" || s.week_no == null) continue;
-    plannedByWeek.set(s.week_no, (plannedByWeek.get(s.week_no) || 0) + (s.planned_km || 0));
-  }
-  const actualByWeek = new Map<number, number>();
-  for (const a of acts) {
-    if (a.sport !== "Run") continue;
-    const wk = weekOf(season, a.date);
-    if (wk == null) continue;
-    actualByWeek.set(wk, (actualByWeek.get(wk) || 0) + (a.distance_m || 0) / 1000);
-  }
-  return season.map((w) => ({
-    label: `W${w.week_no}`,
-    phase: w.phase,
-    target: w.target_km,
-    planned: Math.round((plannedByWeek.get(w.week_no) || 0) * 10) / 10,
-    actual: Math.round((actualByWeek.get(w.week_no) || 0) * 10) / 10,
-  }));
-}

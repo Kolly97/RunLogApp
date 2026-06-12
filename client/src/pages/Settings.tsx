@@ -33,11 +33,15 @@ export default function Settings() {
       <div className="card">
         <div className="spread"><h2>Saisonplan</h2>
           <div className="row">
-            <button onClick={seed}>Bestehenden Plan importieren</button>
+            <button onClick={seed}>Beispiel-Saison importieren (Word-Plan KW9–17)</button>
+            {season.length > 0 && <button onClick={() => addWeekBefore(season)}>+ Woche davor</button>}
             <button className="primary" onClick={() => addWeek(season, setSeason)}>+ Woche</button>
           </div>
         </div>
-        {!season.length && <p className="muted">Noch keine Wochen. „Bestehenden Plan importieren" lädt deine Saison (Wochen 0–8) aus dem alten Trainingsplan.</p>}
+        <p className="tiny muted" style={{ marginTop: 2 }}>
+          „Beispiel-Saison importieren" lädt den fest eingebauten Seed aus <code>Trainingsplan_KW_10-17.docx</code> (Wochen 0–8) — kein allgemeiner Datei-Import.
+        </p>
+        {!season.length && <p className="muted">Noch keine Wochen. „Beispiel-Saison importieren" lädt die Saison (Wochen 0–8) aus dem alten Word-Trainingsplan.</p>}
         {season.length > 0 && (
           <table>
             <thead><tr><th>#</th><th>Phase</th><th>Start</th><th>Ende</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
@@ -72,11 +76,87 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Strava (Platzhalter) */}
-      <div className="card">
+      {/* Strava (OAuth + Sync, ToDo #10/#11) */}
+      <StravaCard settings={settings} season={season} />
+    </div>
+  );
+}
+
+// ---- Strava-Karte --------------------------------------------------------
+function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] }) {
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean; athlete: string | null } | null>(null);
+  const [cid, setCid] = useState<string>(settings.strava_client_id || "");
+  const [secret, setSecret] = useState<string>(settings.strava_client_secret || "");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  const loadStatus = () => fetch("/api/strava/status").then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
+  useEffect(() => { loadStatus(); }, []);
+
+  async function saveCreds() {
+    await api.saveSettings({ strava_client_id: cid.trim(), strava_client_secret: secret.trim() });
+    loadStatus();
+  }
+
+  async function sync(after: string, label: string) {
+    setBusy(true);
+    setResult(`${label} läuft…`);
+    try {
+      const r = await fetch("/api/strava/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ after }) });
+      const j = await r.json();
+      setResult(r.ok
+        ? `✓ ${label}: ${j.imported} importiert, ${j.skipped} schon vorhanden, ${j.enriched} mit Details angereichert.`
+        : `Fehler: ${j.error || r.status}`);
+    } catch (e) {
+      setResult(`Fehler: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const seasonStart = season[0]?.start_date || `${new Date().getFullYear()}-01-01`;
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+
+  return (
+    <div className="card">
+      <div className="spread">
         <h2>Strava-Verbindung</h2>
-        <p className="muted tiny">Auto-Sync der Aktivitäten + HR-Streams folgt im nächsten Ausbau-Schritt (OAuth mit eigener Strava-App). Bis dahin Einheiten unter „Tracking" manuell eintragen.</p>
+        {status?.connected && <span className="pill phase">verbunden{status.athlete ? ` als ${status.athlete}` : ""}</span>}
       </div>
+      <p className="tiny muted">
+        Einmalig: auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">strava.com/settings/api</a> eine
+        (kostenlose) API-App anlegen — „Autorisierungs-Callback-Domain": <code>localhost</code> — und Client-ID + Client-Secret hier eintragen.
+        Der Import holt Aktivitäts-Daten (km, Zeit, Ø-HF, Watt) und liest die COROS-Training-Load aus der Beschreibung (TSS = TL × Faktor);
+        Zeit-in-Zone bleibt manuell. Vorhandene/manuell bearbeitete Einheiten werden nie überschrieben.
+      </p>
+      <div className="row mb">
+        <label className="field" style={{ margin: 0, width: 160 }}><span>Client-ID</span>
+          <input value={cid} onChange={(e) => setCid(e.target.value)} onBlur={saveCreds} placeholder="z.B. 123456" /></label>
+        <label className="field" style={{ margin: 0, flex: 1 }}><span>Client-Secret</span>
+          <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} onBlur={saveCreds} placeholder="••••••••" /></label>
+      </div>
+      <div className="row">
+        {!status?.connected && (
+          <button className="primary" disabled={!status?.configured && !(cid && secret)}
+            onClick={() => { saveCreds().then(() => { window.location.href = "/api/strava/login"; }); }}>
+            Mit Strava verbinden
+          </button>
+        )}
+        {status?.connected && (
+          <>
+            <button className="primary" disabled={busy} onClick={() => sync(seasonStart, "Sync seit Saisonstart")}>⟳ Sync seit Saisonstart</button>
+            <button disabled={busy} onClick={() => sync(yearStart, "Jahres-Import")}>📅 Ganzes Jahr importieren</button>
+            <button className="ghost" disabled={busy} onClick={() => { window.location.href = "/api/strava/login"; }}>neu verbinden</button>
+          </>
+        )}
+      </div>
+      {result && <p className="tiny" style={{ marginTop: 8 }}>{result}</p>}
+      {status?.connected && (
+        <p className="tiny muted" style={{ marginTop: 6 }}>
+          Tipp: Jahres-Import ggf. 2–3× im Abstand von 15 min ausführen — die Detail-Anreicherung (COROS-TL/kcal)
+          arbeitet wegen des Strava-Rate-Limits in Häppchen von 50 Aktivitäten.
+        </p>
+      )}
     </div>
   );
 }
@@ -103,6 +183,27 @@ function WeekRow({ w, onChange }: { w: SeasonWeek; onChange: () => void }) {
 }
 
 // ---- Zonen-Set ---------------------------------------------------------
+
+/** s/km → "m:ss" für Anzeige (#74). Leer bei 0/null. */
+function paceMmSs(sec?: number | null): string {
+  if (sec == null || !isFinite(sec) || sec <= 0) return "";
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+/** Tolerante Pace-Eingabe (#74): „4:45" → 285, „285" → 285 (Sekunden/km). Leer/ungültig → null. */
+function parsePaceInput(t: string): number | null {
+  const s = t.trim().replace(",", ".");
+  if (!s) return null;
+  if (s.includes(":")) {
+    const [m, ss] = s.split(":");
+    const mi = Number(m), se = Number(ss);
+    if (!isFinite(mi) || !isFinite(se)) return null;
+    return Math.round(mi * 60 + se);
+  }
+  const n = Number(s);
+  return isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
 function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () => void; canDelete: boolean }) {
   const [e, setE] = useState(z);
   const saveZ = (next: ZoneSet) => { setE(next); api.updateZoneset(z.id, next).then(onChange); };
@@ -111,14 +212,18 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
     saveZ({ ...e, hr_zones: hr });
   };
   const setPace = (i: number, v: number | null) => { const arr = [...(e.pace_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, pace_zones: arr }); };
-  const setSpeed = (i: number, v: number | null) => { const arr = [...(e.speed_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, speed_zones: arr }); };
+  // #73: Watt-Obergrenzen je Zone (ersetzt km/h-Eingabe; speed_zones bleibt im Objekt unangetastet)
+  const setPower = (i: number, v: number | null) => { const arr = [...(e.power_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, power_zones: arr }); };
   return (
     <div className="card tight" style={{ background: "#fafbfd" }}>
       <div className="row mb">
         <label className="field" style={{ margin: 0 }}><span>Gültig ab</span><input type="date" value={e.valid_from} onChange={(x) => saveZ({ ...e, valid_from: x.target.value })} /></label>
         <label className="field" style={{ margin: 0, width: 80 }}><span>LTHR</span><input type="number" value={e.lthr} onChange={(x) => saveZ({ ...e, lthr: Number(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0, width: 80 }}><span>FTP</span><input type="number" value={e.ftp} onChange={(x) => saveZ({ ...e, ftp: Number(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0, width: 110 }}><span>Schwellen-Pace (s/km)</span><input type="number" value={e.threshold_pace} onChange={(x) => saveZ({ ...e, threshold_pace: Number(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0, width: 130 }}><span>Schwellen-Pace (mm:ss /km)</span>
+          <input key={`tp-${e.threshold_pace}`} placeholder="4:45" defaultValue={paceMmSs(e.threshold_pace)}
+            onBlur={(x) => { const v = parsePaceInput(x.target.value); if (v != null && v !== e.threshold_pace) saveZ({ ...e, threshold_pace: v }); }} />
+        </label>
         <label className="field" style={{ margin: 0, flex: 1 }}><span>Quelle/Notiz</span><input value={e.note ?? ""} onChange={(x) => saveZ({ ...e, note: x.target.value })} /></label>
         {canDelete && <button className="sm ghost danger" onClick={() => api.deleteZoneset(z.id).then(onChange)}>Set löschen</button>}
       </div>
@@ -134,19 +239,21 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
           </div>
         ))}
       </div>
-      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Pace-Zonen Lauf (s/km, Obergrenze je Zone — aus Diagnostik)</div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Pace-Zonen Lauf (mm:ss /km, Obergrenze je Zone — aus Diagnostik)</div>
       <div className="row" style={{ gap: 6 }}>
-        {e.hr_zones.map((zn, i) => (
+        {e.hr_zones.map((_zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
-            <input type="number" placeholder="s/km" style={{ padding: "4px", textAlign: "center" }} value={e.pace_zones?.[i] ?? ""} onChange={(x) => setPace(i, num(x.target.value))} />
+            <input key={`pz${i}-${e.pace_zones?.[i] ?? ""}`} placeholder="4:45" style={{ padding: "4px", textAlign: "center" }}
+              defaultValue={paceMmSs(e.pace_zones?.[i])}
+              onBlur={(x) => { const v = parsePaceInput(x.target.value); if ((v ?? 0) !== (e.pace_zones?.[i] ?? 0)) setPace(i, v); }} />
           </div>
         ))}
       </div>
-      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Speed-Zonen Rad (km/h, Obergrenze je Zone — optional)</div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Power-Zonen Rad (Watt, Obergrenze je Zone — optional)</div>
       <div className="row" style={{ gap: 6 }}>
-        {e.hr_zones.map((zn, i) => (
+        {e.hr_zones.map((_zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
-            <input type="number" step="0.1" placeholder="km/h" style={{ padding: "4px", textAlign: "center" }} value={e.speed_zones?.[i] ?? ""} onChange={(x) => setSpeed(i, num(x.target.value))} />
+            <input type="number" placeholder="Watt" style={{ padding: "4px", textAlign: "center" }} value={e.power_zones?.[i] ?? ""} onChange={(x) => setPower(i, num(x.target.value))} />
           </div>
         ))}
       </div>
@@ -169,10 +276,21 @@ function save1(key: string, val: number, setSettings: (fn: any) => void) {
 }
 async function addWeek(season: SeasonWeek[], _set: (s: SeasonWeek[]) => void) {
   const next = season.length ? Math.max(...season.map((w) => w.week_no)) + 1 : 1;
-  const start = season.length ? addOneWeek(season[season.length - 1].end_date) : todayIso();
+  const start = season.length ? addOneWeek(maxIso(season.map((w) => w.end_date))) : todayIso();
   await api.saveWeek(next, { phase: "Belastung", start_date: start, end_date: addDaysStr(start, 6), target_km: 70, goal_race: "", label: `Woche ${next}` });
   location.reload();
 }
+/** #71: Woche VOR der bisher frühesten anlegen — week_no darf negativ werden.
+ *  Sortierung der Listen kommt vom Server (ORDER BY start_date), hier nichts umsortieren. */
+async function addWeekBefore(season: SeasonWeek[]) {
+  if (!season.length) return;
+  const prev = Math.min(...season.map((w) => w.week_no)) - 1;
+  const start = addDaysStr(minIso(season.map((w) => w.start_date)), -7);
+  await api.saveWeek(prev, { phase: "Base", start_date: start, end_date: addDaysStr(start, 6), target_km: null, goal_race: "", label: `Woche ${prev}` });
+  location.reload();
+}
+function minIso(dates: string[]) { return dates.reduce((a, b) => (b < a ? b : a)); }
+function maxIso(dates: string[]) { return dates.reduce((a, b) => (b > a ? b : a)); }
 function addOneWeek(iso: string) { return addDaysStr(iso, 1); }
 function addDaysStr(iso: string, n: number) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 async function newZoneset(zonesets: ZoneSet[], reload: () => void) {

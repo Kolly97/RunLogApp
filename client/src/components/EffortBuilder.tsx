@@ -1,13 +1,26 @@
 // Effort-/Intervall-Builder (ToDo 1/20) — Strava/Coros-artiger Editor für strukturierte
 // Belastungen (Threshold/VO2/Race). Wird in der Planung (SessionModal) und in der
 // Ist-Aktivitäts-Eingabe (WeekTrack) verwendet. Speichert als Effort[].
+import type { CSSProperties } from "react";
 import type { Effort, HrZone } from "../lib/api.ts";
 import { isBikeSport, num, paceStr, speedKmh } from "../lib/util.ts";
 
 /** Session-Typen, für die der Builder angeboten wird. */
 export const EFFORT_TYPES = ["Threshold", "VO2", "Race"];
 
-const ZONE_COLORS = ["#9aa7b4", "#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444"];
+export const ZONE_COLORS = ["#9aa7b4", "#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444"];
+
+/** Anzeige-Bereich einer Zone: HF-Spanne + (falls vorhanden) Pace-Obergrenze.
+ *  Konvention pace_zones: Index z-1 = schnellste erlaubte Pace (s/km) der Zone z. */
+export function zoneRange(z: number, zones?: HrZone[] | null, paceZones?: number[] | null): {
+  hr: string | null; pace: string | null; title: string;
+} {
+  const zn = zones?.find((x) => x.z === z);
+  const hr = zn ? `${zn.min}–${zn.max >= 990 ? "max" : zn.max} bpm` : null;
+  const p = paceZones?.[z - 1];
+  const pace = p && p > 0 ? `bis ${paceStr(p)}/km` : null;
+  return { hr, pace, title: [`Z${z}`, hr, pace && `· ${pace}`].filter(Boolean).join(" ") };
+}
 
 /** Sekunden → "m:ss" (leer bei null/0). */
 export function mmss(sec?: number | null): string {
@@ -64,16 +77,16 @@ export function effortStats(rows: Effort[]): { totalSec: number; totalM: number;
   return { totalSec, totalM, avgHr: hrW ? Math.round(hrSum / hrW) : null };
 }
 
-const COLS = "44px 64px 70px 76px 56px 56px 1fr 26px";
-const cell: React.CSSProperties = { padding: "4px 5px", textAlign: "center", width: "100%" };
+const COLS = "40px 58px 64px 68px 48px 48px 82px minmax(56px,1fr) 24px";
+const cell: CSSProperties = { padding: "4px 5px", textAlign: "center", width: "100%" };
 
-export default function EffortBuilder({ efforts, onChange, sport, zones }: {
-  efforts: Effort[] | null | undefined;
+export default function EffortBuilder({ value, onChange, sport, zones }: {
+  value: Effort[] | null | undefined;
   onChange: (efforts: Effort[] | null) => void;
   sport: string;
   zones?: HrZone[] | null;
 }) {
-  const rows = efforts ?? [];
+  const rows = value ?? [];
   const bike = isBikeSport(sport);
 
   const update = (i: number, patch: Partial<Effort>) => {
@@ -107,6 +120,7 @@ export default function EffortBuilder({ efforts, onChange, sport, zones }: {
           <div className="tiny muted center">Ø HF</div>
           <div className="tiny muted center">Max HF</div>
           <div className="tiny muted center">Zone</div>
+          <div className="tiny muted center">Label</div>
           <div />
 
           {rows.map((r, i) => {
@@ -172,6 +186,8 @@ function Row({ r, i, bike, zones, derivedPace, update, remove }: {
           );
         })}
       </select>
+      <input style={{ ...cell, textAlign: "left" }} placeholder="z.B. LT2" value={r.label ?? ""}
+        onChange={(e) => update(i, { label: e.target.value || undefined })} />
       <button type="button" className="sm ghost danger" style={{ padding: "2px 6px" }} onClick={() => remove(i)}>✕</button>
     </>
   );

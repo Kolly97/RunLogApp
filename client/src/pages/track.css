@@ -1,0 +1,51 @@
+/* Tracking-Seite (WeekTrack) — Formular-Layout (ToDo 22: Felder entzerren).
+   Wird nur von WeekTrack.tsx importiert; globale Styles bleiben in styles.css. */
+
+/* ---- Tagesformular (DailyForm): gruppierte Abschnitte ---- */
+.df { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 6px; }
+.df-section { margin-bottom: 10px; }
+.df-section:last-child { margin-bottom: 0; }
+.df-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); margin-bottom: 4px;
+}
+.df-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px 12px;
+  align-items: end;
+}
+.df-field .df-label {
+  font-size: 11px; color: var(--muted); margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.df-field input, .df-field select { width: 100%; padding: 5px 7px; }
+.df-field.wide { grid-column: 1 / -1; }
+.df-field.check { display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; }
+.df-field.check input { width: auto; margin: 0; }
+.df-foot { margin-top: 6px; }
+
+/* ---- Zeit je Zone (Aktivitätsformular) ---- */
+.zone-min-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(64px, 1fr));
+  gap: 6px;
+}
+.zone-min-grid .z-label { font-size: 11px; font-weight: 700; text-align: center; }
+.zone-min-grid input { width: 100%; padding: 5px 4px; text-align: center; }
+.zone-hint {
+  font-size: 10px; line-height: 1.25; color: var(--muted);
+  text-align: center; white-space: nowrap; margin-top: 2px;
+}
+
+/* km/min-Umschalter für die Zonen-Eingabe (#77) */
+.zone-unit-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.zone-unit-toggle button {
+  border: 0; border-radius: 0; background: transparent; color: var(--muted);
+  font-size: 11px; padding: 2px 8px; cursor: pointer; line-height: 1.4;
+}
+.zone-unit-toggle button.on { background: var(--accent, #2563eb); color: #fff; }
+
+/* ---- Quick-Add Commute/Allgemein ---- */
+.quick-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0 8px; }
+.quick-row input { width: 72px; padding: 4px 6px; text-align: center; }

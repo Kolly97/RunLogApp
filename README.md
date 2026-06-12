@@ -10,7 +10,6 @@ druckfertiger Wochenbericht. Läuft komplett offline auf deinem Rechner, keine C
 ## Loslegen
 ```bash
 npm install          # einmalig
-npm run seed         # bestehenden Saisonplan (Wochen 0–8) in die DB laden (optional)
 npm run dev          # Entwicklungs-Modus → http://localhost:5173
 ```
 Für den Alltag (ohne Auto-Reload, ein Prozess):
@@ -19,23 +18,41 @@ npm run build && npm start   # → http://localhost:3000
 ```
 
 Die Daten liegen in `training.db` (SQLite) im Projektordner — einfach zu sichern und liegt mit im iCloud-Ordner.
+In der App führt der Footer-Link **„Anleitung"** zu einer Schritt-für-Schritt-Übersicht (`/usage.html`).
 
 ## Seiten
-- **Dashboard** — Performance Management Chart (Fitness/Fatigue/Form), Saison-Progression, Form-Status, Check der aktuellen Woche.
-- **Wochenplanung** — Einheiten je Tag eintragen (Sport, Typ, km/min, **km je Zone**, Beschreibung). Rechts ein Live-Panel: geplante km vs. Phasenziel, geplante Zonenverteilung & Intensität, geplanter TSS, projizierte Form, und die regelbasierten Hinweise „passt die Woche?".
-- **Tracking** — pro Tag Wellness-Werte (Gewicht, Ruhepuls, HRV, Schlaf inkl. Bettgeh-/Aufwachzeit, Recovery, Strain, Beine, RPE, Schmerz, …) und Aktivitäten manuell eintragen/bearbeiten.
-- **Wochenbericht** — geplant-vs-real Tagestabelle, Zonen-/Intensitäts-Charts, Whoop-/Wellness-Schnitt, Wochen-Check, erweiterte Reflexion → **Drucken/PDF** (eigenes Druck-Layout).
-- **Einstellungen** — Saisonplan-Editor, HF-Zonen-Sets mit Gültig-ab-Datum (neue Leistungsdiagnostik = neues Set), Schwellen (Volumen/Ramp/Polarisierung), Faktoren.
+- **Dashboard** — Performance Management Chart (Fitness/Fatigue/Form, Default: letzte 2 Wochen + kommende, Zeitraum umschaltbar), Saison-Progression, Form-Status, Check der aktuellen Woche, Intervall-Trend.
+- **Wochenplanung** — Einheiten je Tag (Sport, Typ, km/min, **km je Zone**, Intervall-Builder, Beschreibung). Live-Panel: geplante km vs. Phasenziel, Zonenverteilung & Intensität, geplanter TSS, projizierte Form + regelbasierte Hinweise.
+- **Tracking** — pro Tag Wellness (Gewicht, Ruhepuls, HRV, Schlaf inkl. Bett-/Aufwachzeit & Sleep-Performance, Recovery, Strain, Beine, RPE, Schmerz, …) und Aktivitäten (inkl. Intervall-Belastungen, km je Zone, kcal, Commute-Schnellerfassung).
+- **Wochenbericht** — geplant-vs-real Tagestabelle mit Notizen unter jeder Einheit, Kategorie-Summen (Lauf/Rad/Kraft), Zonen-/Intensitäts-Charts, PMC-Ausschnitt, Wellness-Schnitt, Wochen-Check, Reflexion → **Drucken/PDF** (2-seitiges Druck-Layout).
+- **Langzeit** — PMC + Saison-km über frei wählbaren Zeitraum, Wellness-Verläufe (HRV, Ruhepuls, Recovery, Strain, Schlaf, Bettzeit, Sleep-Performance, Gewicht), Zonen-Effizienz der Easy-Läufe, Intervall-Trend (LT1/LT2/VO2) → ebenfalls druckbar.
+- **Einstellungen** — Saisonplan-Editor (Wochen werden automatisch nach Datum sortiert und ab 0 durchnummeriert), Zonen-Sets mit Gültig-ab-Datum (HF, Pace mm:ss, Power in Watt), Analyse-Schwellen, **Strava-Verbindung**.
+- **Auswahllisten** — Phasen, Sportarten und Einheitstypen ohne Code-Änderung hinzufügen/umbenennen/umfärben.
+
+## Profile (mehrere Personen, ein PC)
+Oben in der Sidebar sitzt der Profil-Wechsler („+ Neues Profil…" z. B. für Isabel). Jedes Profil hat
+eigene Saison, Einheiten, Tracking-Daten und Zonen-Sets — ohne Passwort, alles lokal. Bestandsdaten
+gehören dem Profil „Kolja".
+
+## Strava-Anbindung (optional)
+1. Einmalig auf [strava.com/settings/api](https://www.strava.com/settings/api) eine kostenlose API-App anlegen
+   („Autorisierungs-Callback-Domain": `localhost`).
+2. Client-ID + Client-Secret in **Einstellungen → Strava-Verbindung** eintragen → „Mit Strava verbinden".
+3. „Sync seit Saisonstart" oder „Ganzes Jahr importieren" (→ PMC fürs ganze Jahr). Der Import holt km/Zeit/Ø-HF/Watt,
+   liest die COROS-Training-Load aus der Beschreibung (TSS = TL × Faktor) und überschreibt **nie** vorhandene oder
+   manuell bearbeitete Einheiten. Wegen des Strava-Rate-Limits reichert der Sync Details in Häppchen à 50 an —
+   bei großen Importen einfach nach 15 min erneut ausführen.
 
 ## Auswertungs-Modell (an TrainingPeaks angelehnt)
-- **TSS** je Einheit: aus Zonen-Allokation bzw. Typ+Dauer geschätzt (hrTSS); reale Einheiten nutzen COROS Training Load (kalibrierbar) bzw. rTSS/Power-TSS.
+- **TSS** je Einheit: aus Zonen-Allokation bzw. Typ+Dauer geschätzt (hrTSS, Rad über Watt/FTP); reale Einheiten nutzen COROS Training Load (kalibrierbar) bzw. rTSS/Power-TSS.
 - **CTL (Fitness)** = 42-Tage-EWMA, **ATL (Fatigue)** = 7-Tage-EWMA, **TSB (Form)** = CTL − ATL.
 - Geplante Einheiten werden in der PMC-Kurve nach vorne projiziert → du siehst vorab, wie die geplante Woche Fitness/Fatigue/Form bewegt.
 - Prüf-Engine: Volumen vs. Phasenziel, Ramp-Rate, CTL-Ramp, Form/Taper, Polarisierung (80/20), Quality-Spacing, Longrun-Anteil, Recovery-Readiness, Phasen-Stimmigkeit. Alle Schwellen editierbar.
 
 ## Architektur
-- `server/` — Express + `node:sqlite`. `db.ts` (Schema), `load.ts` (TSS/PMC), `analysis.ts` (Prüf-Engine), `zones.ts` (Zonen-Sets), `import-docx.ts` (Seed), `index.ts` (API + statisches Hosting).
+- `server/` — Express + `node:sqlite`. `db.ts` (Schema/Migrationen/Profile), `load.ts` (TSS/PMC), `analysis.ts` (Prüf-Engine), `zones.ts` (Zonen-Sets), `strava.ts` (OAuth/Sync), `import-docx.ts` (Seed), `index.ts` (API + statisches Hosting).
 - `client/` — Vite + React + TypeScript, Charts mit Recharts. `pages/`, `charts/`, `components/`, `lib/`.
+- Migrationen sind strikt **additiv** (`ALTER TABLE ADD COLUMN` + v2-Tabellen mit Kopie) — Bestandsdaten werden nie angetastet.
 
-## Noch offen (nächster Ausbauschritt)
-- **Strava-Auto-Sync** (OAuth + HR-Streams → reale Zeit-in-Zone + COROS-Load-Parsing). Bis dahin reale Einheiten unter „Tracking" manuell eintragen.
+## Ideen für später (siehe ToDo.md „In Zukunft")
+v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.

@@ -37,6 +37,12 @@ export function fmtDate(iso: string): string {
   return `${d.getUTCDate()}.${d.getUTCMonth() + 1}.`;
 }
 
+/** Datum mit Jahr („1.6.2026") — für Wochen-Anzeigen, da die App mehrjährig genutzt wird. */
+export function fmtDateY(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  return `${d.getUTCDate()}.${d.getUTCMonth() + 1}.${d.getUTCFullYear()}`;
+}
+
 export function paceStr(secPerKm?: number | null): string {
   if (!secPerKm || !isFinite(secPerKm)) return "–";
   const m = Math.floor(secPerKm / 60);

@@ -1,8 +1,10 @@
 // Schlanke API-Schicht.
 import type { Option } from "./options.ts";
 
+export interface Profile { id: number; name: string; }
+
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
-export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
+export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
 export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; goal_race: string; notes: string; }
 export interface ZoneAlloc { byKm?: Record<number, number>; byMin?: Record<number, number>; }
 /** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20. */
@@ -20,7 +22,8 @@ export interface Activity {
   distance_m?: number | null; moving_s?: number | null; elapsed_s?: number | null; avg_hr?: number | null;
   max_hr?: number | null; avg_power?: number | null; elevation?: number | null; avg_cadence?: number | null;
   training_load?: number | null; tss?: number | null; kcal?: number | null;
-  zones?: Record<number, number> | null; zone_min?: Record<number, number> | null; efforts?: Effort[] | null;
+  zones?: Record<number, number> | null; zone_min?: Record<number, number> | null;
+  zone_km?: Record<number, number> | null; efforts?: Effort[] | null;
   overrides?: string[]; matched_session_id?: number | null; notes?: string;
 }
 export interface DailyLog { date: string; [k: string]: unknown; }
@@ -99,6 +102,12 @@ export const api = {
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
   },
   seed: () => j<{ weeks: number; sessions: number }>("/api/seed", { method: "POST" }),
+
+  // Profile (leichter Account-Wechsel, ToDo #9)
+  profiles: () => j<{ profiles: Profile[]; active: number }>("/api/profiles"),
+  addProfile: (name: string) => j<{ id: number }>("/api/profiles", { method: "POST", body: JSON.stringify({ name }) }),
+  setActiveProfile: (id: number) => j("/api/profile/active", { method: "PUT", body: JSON.stringify({ id }) }),
+  deleteProfile: (id: number) => j(`/api/profiles/${id}`, { method: "DELETE" }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

@@ -42,6 +42,14 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 .nav .ico { width: 18px; text-align: center; opacity: 0.9; }
 .main { flex: 1; padding: 24px 30px; max-width: 1180px; }
 
+/* Profil-Wechsler in der Sidebar (leichte Accounts, ToDo #9) */
+.profile-switch { display: flex; align-items: center; gap: 7px; padding: 0 6px 14px; }
+.profile-switch .ico { opacity: 0.85; }
+.profile-switch select {
+  flex: 1; width: 100%; background: #1c2740; color: #e3eaf4; border: 1px solid #2b3a59;
+  border-radius: 8px; padding: 6px 8px; font-size: 13px;
+}
+
 /* Cards */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 18px; }
 .card.tight { padding: 12px 14px; }
@@ -124,8 +132,65 @@ tr:last-child td { border-bottom: none; }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 20px; }
 
-.report-head { border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+.report-head { border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 14px; }
+.report-head .row { flex-wrap: nowrap; }
 textarea { resize: vertical; min-height: 38px; }
+
+/* Segment-Buttons (RangeSelector) */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
+.seg button { border: none; border-radius: 0; padding: 5px 11px; font-size: 12px; background: #fff; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.active { background: var(--accent); color: #fff; }
+
+/* Kategorie-Summen im Wochenbericht (Lauf / Rad / Kraft) */
+.cat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.cat-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #f9fbfd; min-width: 0; }
+.cat-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.cat-box .main { font-size: 16px; font-weight: 700; margin-top: 2px; white-space: nowrap; }
+
+/* Einheiten-Tabelle: Notiz-Zeile direkt unter der Einheit — lesbar abgesetzt */
+table.units td { vertical-align: top; }
+table.units tr.has-note > td { border-bottom: none; padding-bottom: 2px; }
+table.units tr.note-row > td {
+  font-style: italic; font-size: 12px; color: #4b5563; line-height: 1.45;
+  padding-top: 1px; padding-bottom: 9px; padding-left: 14px;
+  border-left: 2px solid var(--line);
+}
+table.units tr.note-row > td:first-child { border-left: none; padding-left: 0; }
+table.units .note-name { font-style: normal; font-weight: 600; color: var(--muted); }
+table.units .note-efforts { color: var(--muted); }
+
+/* Chart-Karten: Diagramme visuell voneinander trennen */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.chart-card {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: #fff; box-shadow: var(--shadow); min-width: 0;
+}
+.chart-card.tight { padding: 8px 10px; }
+.chart-card h3 { font-size: 12px; margin-bottom: 6px; }
+
+/* Wellness-Verläufe (kleine Multiples) */
+.wellness-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+/* Donut: Zahl + Einschätzung klein & zentriert IN der Mitte (Website-Stil) */
+.donut-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; pointer-events: none; text-align: center;
+}
+.donut-value { font-size: 17px; font-weight: 700; line-height: 1.05; }
+.donut-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
+.donut-legend { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.donut-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+
+/* Tagesfaktoren-Tabelle (Berichts-Seite 2) */
+.daily-table th, .daily-table td { padding: 5px 7px; font-size: 12px; }
+.daily-table td:not(:first-child), .daily-table th:not(:first-child) { text-align: center; }
+
+/* Footer / Impressum */
+.footer {
+  margin-top: 28px; padding: 12px 4px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 12px; text-align: center;
+}
 
 /* Print */
 @media print {
@@ -141,5 +206,22 @@ textarea { resize: vertical; min-height: 38px; }
   .grid.cols-2 { grid-template-columns: 1fr 1fr; }
   textarea { border: none; min-height: 30px; }
   @page { margin: 12mm; size: A4; }
+
+  /* Wochenbericht: 2 Seiten, kompakte Chart-Karten */
+  .page-break { break-before: page; page-break-before: always; }
+  .report-page { break-inside: auto; padding: 0; }
+  .report-head { margin-bottom: 10px; }
+  .cat-row { gap: 8px; }
+  .cat-box { background: #fff; border-color: #ccc; }
+  .cat-box .main { font-size: 13px; }
+  .chart-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .chart-card { break-inside: avoid; border-color: #ccc; box-shadow: none; }
+  .wellness-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  table.units tr.note-row > td { color: #333; font-size: 10px; }
+  .donut-value { font-size: 14px; }
+  .footer { display: none; }
+
+  /* Langzeit-Seite druckbar: Titel + Zeitraum bleiben sichtbar */
+  h1.lt-title { display: block; font-size: 16px; margin: 0 0 2px; }
 }
 
