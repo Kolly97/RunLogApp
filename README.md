@@ -54,5 +54,8 @@ gehören dem Profil „Kolja".
 - `client/` — Vite + React + TypeScript, Charts mit Recharts. `pages/`, `charts/`, `components/`, `lib/`.
 - Migrationen sind strikt **additiv** (`ALTER TABLE ADD COLUMN` + v2-Tabellen mit Kopie) — Bestandsdaten werden nie angetastet.
 
+## Änderungshistorie
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.3.0**.
+
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.

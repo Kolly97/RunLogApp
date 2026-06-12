@@ -1,8 +1,8 @@
 # HANDOFF — RunLogApp
 
 > Zweck: Sessionübergreifender Stand, damit ohne erneutes Einlesen weitergearbeitet werden kann.
-> Aufgaben-Quelle: `ToDo.md` (Nutzer hakt ab/löscht Erledigtes). Plan-Datei:
-> `~/.claude/plans/users-kollybook-library-mobile-document-gentle-bird.md`
+> Aufgaben-Quelle: `ToDo.md` (Nutzer hakt ab/löscht Erledigtes). Versionshistorie: `CHANGELOG.md`.
+> Plan-Datei: `~/.claude/plans/users-kollybook-library-mobile-document-gentle-bird.md`
 
 ## Projekt-Basics
 - Pfad: `~/Library/Mobile Documents/com~apple~CloudDocs/Kolja_Hildenbrand/Privates/Sport/RunLogApp/`
