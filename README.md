@@ -67,10 +67,6 @@ von der Versionskontrolle ausgenommen, damit sie beim Teilen nicht mitgeht.
 automatisch eine leere an) oder `training.empty.db` als `training.db` mitkopieren. `node_modules/` und
 `dist/` müssen nicht mit — sie entstehen via `npm install` / `npm run build`.
 
-> Hinweis: Frühere Git-Commits enthalten noch deine alte `training.db`. Wenn du das **Git-Repo** öffentlich
-> teilst, gib es ohne den `.git`-Ordner weiter (z. B. als ZIP) oder lege ein frisches Repo an — sonst steckt
-> deine Datenhistorie in den alten Commits.
-
 ## Änderungshistorie
 Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.3.0**.
 
