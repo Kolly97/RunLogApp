@@ -72,7 +72,7 @@ leere DB an) oder `training.empty.db` als `data/training.db` mitkopieren. `node_
 nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.9.0**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.10.0**.
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.

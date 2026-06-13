@@ -98,10 +98,10 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
     setBusy(true);
     setResult("rTSS-Neuberechnung läuft…");
     try {
-      const r = await fetch("/api/recompute-run-tss", { method: "POST" });
+      const r = await fetch("/api/recompute-tss", { method: "POST" });
       const j = await r.json();
       setResult(r.ok
-        ? `✓ rTSS neu berechnet: ${j.activities} Aktivitäten, ${j.sessions} geplante Einheiten. Backup angelegt.`
+        ? `✓ TSS neu berechnet: ${j.activities} Aktivitäten (Lauf + Rad), ${j.sessions} geplante Einheiten. Backup angelegt.`
         : `Fehler: ${j.error || r.status}`);
     } catch (e) {
       setResult(`Fehler: ${e}`);
@@ -148,8 +148,8 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
       </div>
       <div className="row" style={{ marginTop: 8 }}>
         <button className="ghost" disabled={busy} onClick={recompute}
-          title="Lauf-TSS aller Aktivitäten + geplanten Läufe nach TrainingPeaks-rTSS (NGP/Ø-Pace) neu berechnen — mit DB-Backup">
-          🧮 Lauf-TSS (rTSS) neu berechnen
+          title="TSS aller Lauf- (rTSS/NGP) und Rad-/Commute-Aktivitäten (Power-TSS/NP) + geplanten Einheiten nach TrainingPeaks neu berechnen — mit DB-Backup">
+          🧮 TSS neu berechnen (Lauf + Rad)
         </button>
       </div>
       {result && <p className="tiny" style={{ marginTop: 8 }}>{result}</p>}

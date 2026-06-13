@@ -192,6 +192,8 @@ function migrate(): void {
   // Höhe) schon geholt wurden → Basis für rTSS, min/Zone, km/Zone. Wird je Lauf einmalig (budgetiert) befüllt.
   addColumn("activities", "ngp", "REAL");
   addColumn("activities", "streams_fetched", "INTEGER DEFAULT 0");
+  // ToDo v0.10.0: Normalized Power (W) aus dem Rad-Power-Stream → Power-TSS nach TrainingPeaks.
+  addColumn("activities", "np", "REAL");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`

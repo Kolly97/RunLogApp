@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Versionshistorie im Detail: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`.
-> Stand: **v0.9.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.10.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -75,14 +75,15 @@
 - `planned_sessions` (profile_id, `zone_alloc` JSON {byKm/byMin}, `efforts` JSON, `structured`, `planned_tss`),
   `activities` (profile_id, `kcal`, `zones`/`zone_min`/`zone_km` JSON, `efforts` JSON, `tss`, `training_load`, `strava_id`,
   `desc_fetched` = Strava-Beschreibung schon abgerufen → schützt Notizen vor Re-Sync; `ngp` = grade-adjusted
-  normalisierte Pace (s/km) aus Streams; `streams_fetched` = HF/Pace/Höhe-Streams schon geholt),
+  normalisierte Pace (s/km, Lauf) aus Streams; `np` = Normalized Power (W, Rad) aus Streams;
+  `streams_fetched` = HF/Pace/Watt/Höhe-Streams schon geholt),
   `zone_sets` (profile_id, hr_zones/pace_zones/speed_zones/power_zones JSON, lthr/ftp/threshold_pace, valid_from),
   `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,max_hr}],
   `avg_hr`, `max_hr`, `elevation_m`, `source` = manual|season; Auto-Import aus Saisonplan `goal_race` via Ledger `season_races_imported_<pid>`),
   `options` (kind: phase|sport|sessionType, value/label/color/sort/active, `intensity` = easy|moderate|hard nur bei sessionType
   → Grundlage für den TSS-Donut „nach Typ"), `settings` (key→JSON value).
 
-## 4. Aktueller Funktionsstand (v0.9.0)
+## 4. Aktueller Funktionsstand (v0.10.0)
 
 Planung mit km-je-Zone + Live-Prüf-Engine · Tracking (Wellness + Aktivitäten + Intervall-Builder + Notizen) ·
 **PMC** (CTL/ATL/TSB, Prognose gestrichelt, Wochen-TSS-Summe, große Tagesbalken, Phasen-Farbband, Race-Marker
@@ -123,12 +124,21 @@ Streams (`computeNgp`/`gradeFactor` Minetti+30s in `load.ts`; Abruf je Lauf im `
 `zone_min`/`zone_km`/`ngp`/`streams_fetched`, nur leere Felder). Recompute: `POST /api/recompute-run-tss`
 (Backup via `VACUUM INTO`) + Button in Settings. Skala ↕ ggü. COROS — CTL-Zahlen verschieben sich (gewollt).
 
+**v0.10.0-Schliff:** Rad-/Commute-TSS = Power-TSS nach TrainingPeaks (`computeNp` aus dem watts-Stream, sonst
+Ø-Power; ohne Leistung `bikeTssEstimate`). `activityTssToStore` deckt jetzt Lauf **und** Rad ab (Overrides
+respektiert). Stream-Anreicherung in `strava.ts` holt für Läufe (NGP) **und** Rad (NP) → `ngp`/`np`,
+`streams_fetched`. COROS setzt `tss` nicht mehr (nur informativ). Recompute → `POST /api/recompute-tss`
+(Lauf+Rad), Backup-Name mit Zeitstempel. Wochenbericht: Wochentags-Chart (`WeekdayBars`, 1/3) neben der
+Saison-Progression (2/3). ZoneDistribution füllt die Kachel (feste Balkendicke) + Z1–Z6-Legende. Höhenmeter +
+GAP (nur Lauf, =`ngp`) bei den Einheiten in Tracking + Bericht. Krank-Markierung der Zonen-Effizienz gefixt
+(leere Wochen-Punkte in `LongTerm.tsx`).
+
 ## 5. Offen / nächste Schritte
 
-- **Strava-Streams/rTSS nachziehen:** NGP + min/Zone + km/Zone werden je Lauf erst beim Sync (budgetiert,
-  ~bis 90 Req/Sync) geholt → für den Altbestand mehrere Syncs nötig. Danach „**Lauf-TSS (rTSS) neu berechnen**"
-  (Settings, mit Backup) drücken, damit die rTSS die genauere NGP nutzt. Recompute ist auf das **aktive Profil**
-  gescoped (anderes Profil: umschalten + erneut).
+- **Strava-Streams nachziehen:** NGP (Lauf) + NP (Rad) + min/Zone + km/Zone werden je Einheit erst beim Sync
+  (budgetiert, ~bis 90 Req/Sync) geholt → für den Altbestand mehrere Syncs nötig. Danach „**TSS neu berechnen
+  (Lauf + Rad)**" (Settings, mit Backup) drücken, damit rTSS/Power-TSS die genaueren NGP/NP nutzen. Recompute ist
+  auf das **aktive Profil** gescoped (anderes Profil: umschalten + erneut).
 - **Strava nutzen:** Bei neuem Sync ggf. mehrfach (Rate-Limit). Notizen seit v0.6.0 geschützt (`desc_fetched`),
   Streams seit v0.9.0 (`streams_fetched`); manuelle zone_min/zone_km werden nicht überschrieben.
 - **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts (Zeit/Strecke/Pace/Ø+Max-HF je Wiederholung) für harte

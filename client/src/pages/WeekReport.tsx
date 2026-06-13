@@ -17,6 +17,7 @@ import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
+import WeekdayBars from "../charts/WeekdayBars.tsx";
 import WellnessTrends from "../charts/WellnessTrends.tsx";
 
 const CHECKS: [string, string][] = [
@@ -86,6 +87,7 @@ export default function WeekReport() {
   const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
+  const [bikeFactor, setBikeFactor] = useState(0.25); // Rad-km → Lauf-km (Wochentags-Chart, ToDo Z.9)
   const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
 
   async function reload() {
@@ -98,6 +100,7 @@ export default function WeekReport() {
       api.weeklog(week.week_no),
     ]);
     setSessions(s); setActs(a); setDaily(d); setAnalyze(an); setWlog(w || {});
+    api.settings().then((cfg) => setBikeFactor(cfg?.run_equiv_bike_factor ?? 0.25)).catch(() => {});
   }
   useEffect(() => {
     reload();
@@ -223,7 +226,9 @@ export default function WeekReport() {
                         {a.name || sportLabel(a.sport)}
                         <span className="muted tiny">
                           {a.distance_m ? ` · ${round1(a.distance_m / 1000)} km` : ""}
+                          {a.sport === "Run" && a.ngp ? ` · GAP ${paceStr(a.ngp)}` : ""}
                           {a.distance_m && a.moving_s ? ` · ${paceOrSpeed(a.sport, a.distance_m, a.moving_s)}` : ""}
+                          {a.elevation ? ` · ${Math.round(a.elevation)} hm` : ""}
                           {a.avg_hr ? ` · Ø${Math.round(a.avg_hr)}` : ""}
                         </span>
                       </div>
@@ -286,7 +291,7 @@ export default function WeekReport() {
               <h3 style={{ textAlign: "center" }}>
                 Zonenverteilung geplant vs. real
               </h3>
-              {analyze && <ZoneDistribution zones={analyze.zones} height={92} rows={[
+              {analyze && <ZoneDistribution zones={analyze.zones} rows={[
                 { name: "Geplant", values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
                 ...(hasRealZones ? [{ name: "Real", values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
               ]} />}
@@ -325,10 +330,17 @@ export default function WeekReport() {
             <Pmc data={pmcWin} height={210} highlight={{ from: week.start_date, to: week.end_date }}
               races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
           </div>
-          <div className="chart-card mt">
-            <h3>Saison-Progression (geplant / real km)</h3>
-            <SeasonProgress rows={seasonRows} height={210} highlightLabel={weekLabel(week)}
-              races={racesByWeek} sickLabels={sickLabels} showYears={false} />
+          {/* Wochentags-Chart (1/3) neben der Saison-Progression (2/3) — ToDo Z.9 */}
+          <div className="chart-grid mt" style={{ gridTemplateColumns: "1fr 2fr" }}>
+            <div className="chart-card">
+              <h3>km &amp; rTSS je Wochentag</h3>
+              <WeekdayBars days={days} acts={acts} bikeFactor={bikeFactor} height={210} />
+            </div>
+            <div className="chart-card">
+              <h3>Saison-Progression (geplant / real km)</h3>
+              <SeasonProgress rows={seasonRows} height={210} highlightLabel={weekLabel(week)}
+                races={racesByWeek} sickLabels={sickLabels} showYears={false} />
+            </div>
           </div>
 
           {/* Whoop / Wellness Summary */}

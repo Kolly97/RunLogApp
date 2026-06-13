@@ -182,6 +182,25 @@ export function computeNgp(velocity: number[], grade: number[], time: number[]):
   return ngpSpeed > 0 ? round1(1000 / ngpSpeed) : 0; // s/km
 }
 
+/**
+ * Normalized Power (W) aus dem Watt-Stream: 30s gleitendes Mittel der Leistung, dann (Ø(roll⁴))^¼.
+ * Nullen (Ausrollen) zählen mit — wie bei TrainingPeaks/NP. time kumulativ in s.
+ */
+export function computeNp(watts: number[], time: number[]): number {
+  const n = Math.min(watts.length, time.length);
+  if (n < 2) return 0;
+  const roll = new Array<number>(n);
+  let lo = 0, sum = 0, cnt = 0;
+  for (let i = 0; i < n; i++) {
+    sum += watts[i] ?? 0; cnt++;
+    while (lo < i && (time[i] ?? i) - (time[lo] ?? lo) > 30) { sum -= watts[lo] ?? 0; cnt--; lo++; }
+    roll[i] = cnt > 0 ? sum / cnt : 0;
+  }
+  let p4 = 0;
+  for (let i = 0; i < n; i++) p4 += roll[i] ** 4;
+  return round1(Math.pow(p4 / n, 0.25));
+}
+
 /** Aus HF-/Zeit-/Distanz-Streams Sekunden UND Meter je HF-Zone (für zone_min/zone_km beim Import). */
 export function streamZoneSplit(
   hr: number[], time: number[], distance: number[] | undefined, zones: HrZone[],

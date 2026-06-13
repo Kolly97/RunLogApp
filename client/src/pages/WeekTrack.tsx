@@ -4,7 +4,7 @@ import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet } 
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
-  paceOrSpeed, isBikeSport, speedKmh,
+  paceOrSpeed, isBikeSport, speedKmh, paceStr,
 } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
@@ -210,7 +210,9 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
         <span style={{ flex: 1 }}>{a.name || sportLabel(a.sport)}</span>
         <span className="tiny muted nowrap">
           {a.distance_m ? (a.distance_m / 1000).toFixed(1) + " km" : ""}
+          {a.sport === "Run" && a.ngp ? ` · GAP ${paceStr(a.ngp)}/km` : ""}
           {tempo && ` · ${tempo}`}
+          {a.elevation ? ` · ${Math.round(a.elevation)} hm` : ""}
           {a.avg_hr ? ` · ${Math.round(a.avg_hr)} bpm` : ""}
           {a.kcal ? ` · ${Math.round(a.kcal)} kcal` : ""}
           {a.tss ? ` · ${Math.round(a.tss)} TSS` : ""}

@@ -149,7 +149,17 @@ export default function LongTerm() {
     })
     .filter((x): x is { x1: string; x2: string } => x != null);
   const eff = easyRunWeeks(acts);
-  // Krank-Hinterlegung für die Zonen-Effizienz-Charts (ToDo Z.8): Range auf vorhandene Wochen-Punkte mappen.
+  // Krank-Wochen ohne Easy-Lauf haben keinen Punkt → die Wochen-Montage als leere Punkte ergänzen, damit die
+  // Krank-Schraffur überhaupt eine X-Kategorie zum Ankern hat (Bugfix Z.7).
+  const effDateSet = new Set(eff.map((e) => e.date));
+  for (const s of sickByDate) {
+    for (let d = mondayOf(s.from); d <= s.to; d = addDays(d, 7)) {
+      const inView = !range || (d >= mondayOf(range.from) && d <= range.to);
+      if (inView && !effDateSet.has(d)) { effDateSet.add(d); eff.push({ date: d, pace: null, hr: null, ef: null }); }
+    }
+  }
+  eff.sort((a, b) => a.date.localeCompare(b.date));
+  // Krank-Hinterlegung für die Zonen-Effizienz-Charts: Range auf die (nun vollständigen) Wochen-Punkte mappen.
   const effDates = eff.map((e) => e.date);
   const effSickSegments = sickByDate
     .map((s) => {

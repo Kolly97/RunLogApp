@@ -8,6 +8,8 @@ import {
   computePmc,
   ctlRamp,
   runTss,
+  powerTss,
+  bikeTssEstimate,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
@@ -392,11 +394,19 @@ function computeSessionTss(b: any): number {
 // Server-autoritative Lauf-TSS: rTSS (NGP falls vorhanden, sonst Ø-Pace), COROS-unabhängig (ToDo v0.9.0).
 // Ausnahme: Nutzer hat tss explizit überschrieben (overrides enthält 'tss'). Bike/sonstige: Client-Wert.
 function activityTssToStore(b: any): number | null {
-  const overridden = Array.isArray(b.overrides) && b.overrides.includes("tss");
-  if (b.sport === "Run" && !overridden && b.distance_m && b.moving_s) {
-    const zs = effectiveZoneSet(b.date || todayIso());
+  if (Array.isArray(b.overrides) && b.overrides.includes("tss")) return b.tss ?? null;
+  const zs = effectiveZoneSet(b.date || todayIso());
+  // Lauf → rTSS (NGP→Ø-Pace).
+  if (b.sport === "Run" && b.distance_m && b.moving_s) {
     const t = runTss(b.distance_m, b.moving_s, zs.threshold_pace, b.ngp ?? null);
     if (t > 0) return t;
+  }
+  // Rad/Rolle/Commute → Power-TSS (NP, sonst Ø-Power); ohne Leistung Dauer×IF-Schätzung (ToDo Z.10).
+  if ((b.sport?.startsWith("Bike") || b.sport === "General") && b.moving_s) {
+    const power = b.np ?? b.avg_power ?? null;
+    if (power && zs.ftp) { const t = powerTss(b.moving_s, power, zs.ftp); if (t > 0) return t; }
+    const est = bikeTssEstimate(b.moving_s / 60, b.type || "Easy");
+    if (est > 0) return est;
   }
   return b.tss ?? null;
 }
@@ -621,25 +631,29 @@ app.get("/api/pmc", (req, res) => {
   res.json({ pmc, ctlRamp7: ctlRamp(upToToday, 7), ctlRamp28: ctlRamp(upToToday, 28) });
 });
 
-// ToDo v0.9.0: alle Lauf-TSS rückwirkend auf rTSS umrechnen (Aktivitäten via NGP/Ø-Pace, geplante per Zone).
-// Vorher konsistenter DB-Snapshot (VACUUM INTO). Mit jedem Strava-Sync (mehr NGP-Daten) erneut auslösbar.
-app.post("/api/recompute-run-tss", (_req, res) => {
+// ToDo v0.9.0/v0.10.0: alle Lauf- UND Rad-/Commute-TSS rückwirkend neu rechnen (Aktivitäten via
+// activityTssToStore = rTSS/NGP bzw. Power-TSS/NP, Overrides respektiert; geplante per Zone).
+// Vorher konsistenter DB-Snapshot (VACUUM INTO). Nach Syncs (mehr NGP/NP-Daten) erneut auslösbar.
+app.post("/api/recompute-tss", (_req, res) => {
   try {
     const profile = pid();
-    const bak = `${DB_PATH}.${todayIso()}-recompute.bak`;
+    const bak = `${DB_PATH}.${new Date().toISOString().replace(/[:.]/g, "-")}-recompute.bak`;
     db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
 
     const acts = db.prepare(
-      "SELECT id, date, distance_m, moving_s, ngp FROM activities WHERE profile_id=? AND sport='Run' AND distance_m IS NOT NULL AND moving_s IS NOT NULL",
-    ).all(profile) as { id: number; date: string; distance_m: number; moving_s: number; ngp: number | null }[];
+      "SELECT id, date, sport, distance_m, moving_s, avg_power, ngp, np, tss, overrides FROM activities " +
+        "WHERE profile_id=? AND (sport='Run' OR sport LIKE 'Bike%' OR sport='General') AND moving_s IS NOT NULL",
+    ).all(profile) as any[];
     const updA = db.prepare("UPDATE activities SET tss=? WHERE id=?");
     let activities = 0;
     for (const a of acts) {
-      const t = runTss(a.distance_m, a.moving_s, effectiveZoneSet(a.date).threshold_pace, a.ngp ?? null);
-      if (t > 0) { updA.run(t, a.id); activities++; }
+      const t = activityTssToStore({ ...a, overrides: parseJson(a.overrides, []) });
+      if (t != null) { updA.run(t, a.id); activities++; }
     }
 
-    const sess = db.prepare("SELECT * FROM planned_sessions WHERE profile_id=? AND sport='Run'").all(profile) as any[];
+    const sess = db.prepare(
+      "SELECT * FROM planned_sessions WHERE profile_id=? AND (sport='Run' OR sport LIKE 'Bike%' OR sport='General')",
+    ).all(profile) as any[];
     const updS = db.prepare("UPDATE planned_sessions SET planned_tss=? WHERE id=?");
     let sessions = 0;
     for (const s of sess) {

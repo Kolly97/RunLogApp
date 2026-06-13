@@ -28,6 +28,7 @@ export interface Activity {
   distance_m?: number | null; moving_s?: number | null; elapsed_s?: number | null; avg_hr?: number | null;
   max_hr?: number | null; avg_power?: number | null; elevation?: number | null; avg_cadence?: number | null;
   training_load?: number | null; tss?: number | null; kcal?: number | null;
+  ngp?: number | null; np?: number | null; // grade-adjusted Pace (s/km, Lauf) / Normalized Power (W, Rad)
   zones?: Record<number, number> | null; zone_min?: Record<number, number> | null;
   zone_km?: Record<number, number> | null; efforts?: Effort[] | null;
   overrides?: string[]; matched_session_id?: number | null; notes?: string;

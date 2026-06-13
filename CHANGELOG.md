@@ -4,6 +4,26 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.10.0] – 2026-06-13 — Rad-TSS (NP), Bericht-Charts & Anzeige-Feinschliff
+
+### Hinzugefügt
+- **Rad-/Rollen-/Commute-TSS nach TrainingPeaks**: `(s·NP·IF)/(FTP·3600)·100` mit **Normalized Power** aus dem
+  Strava-Power-Stream (30s-normalisiert). Ohne Powermeter: Dauer×IF-Schätzung nach Typ. COROS-Load nur noch
+  informativ. „TSS neu berechnen"-Button deckt jetzt **Lauf + Rad** ab (mit Backup).
+- **Wochentags-Chart im Wochenbericht** (links, 1/3) neben der Saison-Progression (2/3): pro Tag km
+  (Lauf + Rad×0.25) und rTSS.
+- **Höhenmeter + grade-adjusted Pace (GAP)** bei den Einheiten — in Tracking und Wochenbericht (GAP nur Lauf,
+  links neben der Ø-Pace; Höhenmeter Lauf + Rad).
+- **Zonenverteilung**: Balken füllen die Kachelhöhe + Farb-Legende (Z1–Z6).
+
+### Behoben
+- **Krank-Markierung in der Zonen-Effizienz** erscheint jetzt auch für trainingsfreie Krank-Wochen
+  (vorher fehlte mangels Datenpunkt der Anker).
+
+### Hinweis
+- NP/min-Zone/km-Zone fürs Rad kommen wie bei den Läufen erst beim Strava-Sync herein (budgetiert, ggf. mehrere
+  Syncs) → danach „TSS neu berechnen" drücken. Bis dahin Ø-Power-Näherung bzw. Schätzung.
+
 ## [0.9.0] – 2026-06-13 — PMC nach TrainingPeaks & running-TSS (rTSS/NGP)
 
 ### Behoben / Geändert (PMC)

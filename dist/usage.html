@@ -371,9 +371,13 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
           <h3>hrTSS — aus der Herzfrequenz (Fallback)</h3>
           <div class="formula">hrTSS = Σ_Zonen (<b>sec_z</b> / 3600) · (HF_Zonenmitte / LTHR)² · 100</div>
 
-          <h3>Rad-TSS</h3>
-          <div class="formula">Power-TSS = (<b>s</b> / 3600) · (NP / FTP)² · 100   (mit Powermeter)</div>
-          <p>Ohne Powermeter schätzt RunLog über einen typ-abhängigen Intensitätsfaktor (IF² · Stunden · 100).</p>
+          <h3>Rad-/Rollen-/Commute-TSS (Power-TSS)</h3>
+          <div class="formula">Power-TSS = (<b>s</b> · NP · IF) / (FTP · 3600) · 100  &nbsp;&nbsp;mit&nbsp; IF = NP / FTP
+<br>          = (<b>s</b> / 3600) · (NP / FTP)² · 100</div>
+          <p><b>NP</b> = Normalized Power (W) — aus dem Strava-Watt-Stream, 30-Sekunden-normalisiert (wie die Lauf-NGP,
+            ohne Steigung). <b>FTP</b> = Functional Threshold Power. Ohne Powermeter schätzt RunLog über einen
+            typ-abhängigen Intensitätsfaktor (Stunden · IF² · 100). COROS-Load fließt nicht mehr in die TSS ein
+            (nur informativ).</p>
         </section>
 
         <section class="card">
@@ -433,7 +437,7 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
         </section>
 
         <footer>
-          RunLog v0.9.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+          RunLog v0.10.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
         </footer>
       </div>
     </main>

@@ -7,7 +7,7 @@
 // Credentials (Client-ID/Secret der eigenen Strava-API-App) liegen in settings; Tokens ebenso.
 import type { Request, Response } from "express";
 import { db, getSetting, setSetting, activeProfile } from "./db.ts";
-import { parseCorosLoad, runTss, computeNgp, streamZoneSplit } from "./load.ts";
+import { parseCorosLoad, runTss, computeNgp, computeNp, streamZoneSplit, powerTss, bikeTssEstimate } from "./load.ts";
 import { effectiveZoneSet } from "./zones.ts";
 
 const API = "https://www.strava.com/api/v3";
@@ -121,7 +121,6 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
     const after = String(req.body?.after || new Date().getFullYear() + "-01-01");
     const afterEpoch = Math.floor(new Date(after + "T00:00:00Z").getTime() / 1000);
     const profile = activeProfile();
-    const corosFactor = getSetting<number>("coros_to_tss", 0.6);
 
     const exists = db.prepare("SELECT id FROM activities WHERE strava_id=?");
     const matchPlan = db.prepare(
@@ -152,6 +151,8 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
         let tss: number | null = null;
         if (movingS) {
           if (sport === "Run" && a.distance) tss = runTss(a.distance, movingS, zsA.threshold_pace);
+          else if (sport.startsWith("Bike") || sport === "General")
+            tss = a.average_watts && zsA.ftp ? powerTss(movingS, a.average_watts, zsA.ftp) : bikeTssEstimate(movingS / 60, "Easy");
           else if (a.average_heartrate) tss = tssFromAvgHr(movingS, a.average_heartrate, zsA.lthr);
           else tss = fallbackTss(sport, movingS);
         }
@@ -175,26 +176,26 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
     // Pro Aktivität bis zu 2 ratenlimitierte Abrufe → Request-Budget statt fixem Aktivitäts-Limit.
     const candidates = db
       .prepare(
-        `SELECT id, strava_id, sport, date, distance_m, moving_s, desc_fetched, streams_fetched FROM activities
+        `SELECT id, strava_id, sport, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched FROM activities
          WHERE source='strava' AND profile_id=? AND date >= ?
-           AND (desc_fetched=0 OR (sport='Run' AND streams_fetched=0))
+           AND (desc_fetched=0 OR ((sport='Run' OR sport LIKE 'Bike%') AND streams_fetched=0))
          ORDER BY date DESC LIMIT ?`,
       )
       .all(profile, after, DETAIL_BUDGET_PER_SYNC) as
-      { id: number; strava_id: string; sport: string; date: string; distance_m: number | null; moving_s: number | null; desc_fetched: number; streams_fetched: number }[];
+      { id: number; strava_id: string; sport: string; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number }[];
 
-    // Detail: COROS-TL/kcal immer; Beschreibung nur in leere Notizen; tss NICHT für Läufe (rTSS bleibt).
+    // Detail: COROS-TL (nur informativ) + kcal; Beschreibung nur in leere Notizen. tss wird NICHT mehr aus
+    // COROS gesetzt — Lauf nutzt rTSS, Rad Power-TSS/Schätzung (ToDo v0.9.0/v0.10.0, geräteunabhängig).
     const updDesc = db.prepare(
       "UPDATE activities SET training_load=?, kcal=COALESCE(?, kcal), " +
-        "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, " +
-        "tss=CASE WHEN sport='Run' THEN tss ELSE COALESCE(?, tss) END, desc_fetched=1 WHERE id=?",
+        "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, desc_fetched=1 WHERE id=?",
     );
-    // Streams: zone_min/zone_km nur in leere Felder (manuelle Werte bleiben); ngp + rTSS setzen.
+    // Streams: zone_min/zone_km nur in leere Felder (manuelle Werte bleiben); ngp/np + TSS setzen.
     const updStream = db.prepare(
       "UPDATE activities SET " +
         "zone_min=CASE WHEN (zone_min IS NULL OR zone_min='' OR zone_min='null') THEN ? ELSE zone_min END, " +
         "zone_km=CASE WHEN (zone_km IS NULL OR zone_km='' OR zone_km='null') THEN ? ELSE zone_km END, " +
-        "ngp=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
+        "ngp=?, np=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
     );
 
     let enriched = 0, reqs = 0;
@@ -205,22 +206,19 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
           if (reqs >= MAX_REQ) break;
           const d = (await api(`/activities/${c.strava_id}`)) as any; reqs++;
           const tl = parseCorosLoad(d.description);
-          const tssFromTl = tl != null ? Math.round(tl * corosFactor * 10) / 10 : null;
-          updDesc.run(tl, d.calories ?? null, (d.description || "").slice(0, 500), tssFromTl, c.id);
+          updDesc.run(tl, d.calories ?? null, (d.description || "").slice(0, 500), c.id);
           enriched++;
         }
-        if (c.sport === "Run" && !c.streams_fetched) {
+        const isRun = c.sport === "Run", isBike = c.sport.startsWith("Bike");
+        if (!c.streams_fetched && (isRun || isBike)) {
           if (reqs >= MAX_REQ) break;
-          const s = (await api(
-            `/activities/${c.strava_id}/streams?keys=time,heartrate,velocity_smooth,grade_smooth,distance&key_by_type=true`,
-          )) as any; reqs++;
+          const keys = isRun ? "time,heartrate,velocity_smooth,grade_smooth,distance" : "time,heartrate,watts";
+          const s = (await api(`/activities/${c.strava_id}/streams?keys=${keys}&key_by_type=true`)) as any; reqs++;
           const zsA = effectiveZoneSet(c.date);
           const time: number[] = s?.time?.data ?? [];
           const hr: number[] = s?.heartrate?.data ?? [];
-          const vel: number[] = s?.velocity_smooth?.data ?? [];
-          const grade: number[] = s?.grade_smooth?.data ?? [];
           const dist: number[] = s?.distance?.data ?? [];
-          const ngp = vel.length && grade.length && time.length ? computeNgp(vel, grade, time) : null;
+          // min/Zone (+ km/Zone bei Lauf) aus dem HF-Stream gegen die eigenen Zonen.
           let zoneMinJson: string | null = null, zoneKmJson: string | null = null;
           if (hr.length && time.length) {
             const sp = streamZoneSplit(hr, time, dist, zsA.hr_zones);
@@ -232,8 +230,19 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
             zoneMinJson = Object.keys(zMin).length ? JSON.stringify(zMin) : null;
             zoneKmJson = Object.keys(zKm).length ? JSON.stringify(zKm) : null;
           }
-          const tss = runTss(c.distance_m ?? 0, c.moving_s ?? 0, zsA.threshold_pace, ngp);
-          updStream.run(zoneMinJson, zoneKmJson, ngp, tss || null, c.id);
+          let ngp: number | null = null, np: number | null = null, tss: number | null = null;
+          if (isRun) {
+            const vel: number[] = s?.velocity_smooth?.data ?? [];
+            const grade: number[] = s?.grade_smooth?.data ?? [];
+            ngp = vel.length && grade.length && time.length ? computeNgp(vel, grade, time) : null;
+            tss = runTss(c.distance_m ?? 0, c.moving_s ?? 0, zsA.threshold_pace, ngp);
+          } else {
+            const watts: number[] = s?.watts?.data ?? [];
+            np = watts.length && time.length ? computeNp(watts, time) : null;
+            const power = np ?? c.avg_power ?? null;
+            tss = power && zsA.ftp ? powerTss(c.moving_s ?? 0, power, zsA.ftp) : bikeTssEstimate((c.moving_s ?? 0) / 60, "Easy");
+          }
+          updStream.run(zoneMinJson, zoneKmJson, ngp, np, tss || null, c.id);
           enriched++;
         }
       } catch {

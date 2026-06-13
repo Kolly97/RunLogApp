@@ -24,7 +24,7 @@ export default function IntensityDonut({
       <div style={{ position: "relative", height }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="value" innerRadius="62%" outerRadius="88%" paddingAngle={2} startAngle={90} endAngle={-270}>
+            <Pie data={data} dataKey="value" innerRadius="65%" outerRadius="88%" paddingAngle={2} startAngle={90} endAngle={-270}>
               {data.map((d) => <Cell key={d.key} fill={INT_COLORS[d.key as keyof typeof INT_COLORS]} />)}
             </Pie>
             <Tooltip formatter={(v: number, n: string) => [`${Math.round(v)}%`, n]} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
@@ -35,7 +35,7 @@ export default function IntensityDonut({
             <div className="donut-sublabel">{centerText}</div>
           ) : (
             <>
-              <div className="donut-value">{Math.round((center ?? { value: intensity.hard }).value)}%</div>
+              <div className="donut-value">{Math.round((center ?? { value: intensity.hard }).value)}</div>
               <div className="donut-label">{(center ?? { sub: "hart" }).sub}</div>
             </>
           )}
