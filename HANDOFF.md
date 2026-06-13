@@ -18,7 +18,23 @@
   Fable 5 nur wenn nötig; Leichtes (Einlesen, Doku, einzelne Bugs) → günstigeres Modell. Bei Problemen
   nicht festbeißen → zurückstellen und Kolja fragen.
 
-## ✅ Stand v0.3.0 (12.6.2026) — alles erledigt & verifiziert (tsc + build grün, Daten intakt)
+## ✅ Stand v0.4.0 (13.6.2026) — Visualisierungs- & Account-Runde (tsc + build grün, Daten intakt)
+
+- **Server:** `analysis.ts` → `tssIntensityShares`/`zoneKmIntensityOf`/`weekRatingLevel`/`classifyTss`;
+  `index.ts` analyze-Route liefert `tssIntensity`/`zoneKmIntensity`/`weekRating` + Referenz-Helfer
+  `avgSessionTss`/`avgWeeklyTss`; Schwellen `easy_pct`/`hard_pct`/`intensity_window_weeks` (THRESHOLD_DEFAULTS,
+  gemischt → gilt auch für Altbestand); neue Route `PUT /api/profiles/:id` (umbenennen).
+- **Charts:** `Pmc.tsx` neu (eigene TSS-Achse, gestrichelte Prognose ab heute, Wochen-TSS-Sägezahn,
+  klickbare Legende, Props `races`/`sickRanges`); `SeasonProgress.tsx` (+ Jahresgrenze, Props
+  `races`/`sickLabels`); `IntensityDonut.tsx` (Mitte konfigurierbar); NEU `IntensityCard.tsx`,
+  `lib/markers.ts` (Race/Krank-Marker aus Saison+Sessions).
+- **Seiten:** NEU `pages/SeasonPlan.tsx` (+ Nav `/season`); Saisonplan aus `Settings.tsx` ausgelagert,
+  dort jetzt `ProfilesCard` (umbenennen/löschen, Code **4397**) + Intensitäts-Schwellen-Felder.
+  Dashboard/LongTerm/WeekReport übergeben Marker an die Charts; WeekReport-PMC/Season ab 1.1.;
+  LongTerm-Summen-Kacheln; WeekTrack editierbares Einheit-Notizfeld.
+- Version 0.4.0 (package.json + Footer 13.06.2026), README/CHANGELOG aktualisiert.
+
+## ✅ Stand v0.3.0 (12.6.2026) — Profile, Strava & Feinschliff (tsc + build grün, Daten intakt)
 
 **Historie:** Scan-Import (14 Wochen handschriftlich, `!!!`-Marker für Unleserliches) · Welle 0 Fundament
 (options-Tabelle + Config-Seite `/options`, kcal/efforts/zone_min/zone_km/speed_zones/power_zones/

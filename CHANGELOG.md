@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.4.0] – 2026-06-13 — Visualisierung & Accounts
+
+### Hinzugefügt
+- **PMC deutlich überarbeitet:** TSS-Balken auf eigener Achse → die Fitness-Kurve nutzt die volle Höhe;
+  Prognose-Linien (Fitness/Fatigue/Form) rechts von „heute" **gestrichelt**; zusätzliche Linie
+  **kumulierter Wochen-TSS** (Sägezahn); **klickbare Legende** (Serien an/aus, ausgeblendet = transparent).
+- **Wettkämpfe** als goldener Strich + Beschriftung und **Krank-Wochen** rot hinterlegt — in PMC und Saison-Progression.
+- **Saison-Progression:** dicker Strich + Jahreszahl am Jahreswechsel.
+- **Intensität neu (TSS-basiert):** Donut = TSS-Anteile (Mitte = % hart), rechts km-Anteile je Zonen-Gruppe,
+  darunter eine **Wochen-Bewertung** (Wochen-TSS vs. Ø der letzten Wochen). Schwellen + Referenz-Fenster in den Einstellungen konfigurierbar.
+- **Langzeit-Seite:** Summen-Kacheln (Lauf / Rad / Kraft) für den gewählten Zeitraum.
+- **Editierbare Einheit-Notizen** im Tracking (Strava-Beschreibung wird vorbefüllt, frei änderbar).
+- **Saisonplan als eigene Seite** (eigener Menüpunkt) — entrümpelt die Einstellungen.
+- **Profile umbenennen & löschen** in den Einstellungen, abgesichert mit Bestätigungscode.
+
+### Geändert
+- Wochenbericht: PMC & Saison-Progression bauen sich **ab 1.1. des Jahres** auf (PMC mit 2 Wochen Prognose).
+- Achsen-Ticks durchgehend über Mindestabstand (saubere Beschriftung bei langen Zeiträumen).
+
 ## [0.3.0] – 2026-06-12 — Profile, Strava & Feinschliff
 
 ### Hinzugefügt
@@ -61,6 +80,7 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 - Zonen-Sets mit Gültig-ab-Datum (neue Leistungsdiagnostik = neues Set).
 - Seed-Import des bestehenden `.docx`-Saisonplans; Import der 14 handschriftlich ausgefüllten Wochen-Scans.
 
+[0.4.0]: #040--2026-06-13--visualisierung--accounts
 [0.3.0]: #030--2026-06-12--profile-strava--feinschliff
 [0.2.0]: #020--2026-06-12--auswertung-eingabe--konfigurierbarkeit
 [0.1.0]: #010--2026-06-11--erste-version-mvp

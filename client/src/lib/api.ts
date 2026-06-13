@@ -36,7 +36,17 @@ export interface WeekTotals {
   // ToDo 21 — Kategorie-Summen (Agent A füllt, Agent C zeigt): Lauf / Rad(indoor+outdoor) / Kraft+Mobility(nur Zeit)
   byCategory?: { run: { km: number; min: number }; bike: { km: number; min: number }; strength: { min: number } };
 }
-export interface AnalyzeResult { totals: WeekTotals; flags: Flag[]; zones: HrZone[]; week: SeasonWeek | null; projectedCtlRamp: number | null; projectedTsb: number | null; }
+export interface IntensityShare { easy: number; mod: number; hard: number; }
+export interface WeekRating { level: "easy" | "moderate" | "hard"; weekTss: number; avg4: number; }
+export interface AnalyzeResult {
+  totals: WeekTotals; flags: Flag[]; zones: HrZone[]; week: SeasonWeek | null;
+  projectedCtlRamp: number | null; projectedTsb: number | null;
+  // ToDo #7/#13 — TSS-basierte Intensität (optional, defensiv konsumieren)
+  tssIntensity?: IntensityShare; zoneKmIntensity?: IntensityShare; weekRating?: WeekRating | null;
+  // reale Verteilung/Kategorien (vom Server geliefert)
+  realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
+  realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
+}
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
 export interface IntervalEffortStat {
@@ -106,6 +116,7 @@ export const api = {
   // Profile (leichter Account-Wechsel, ToDo #9)
   profiles: () => j<{ profiles: Profile[]; active: number }>("/api/profiles"),
   addProfile: (name: string) => j<{ id: number }>("/api/profiles", { method: "POST", body: JSON.stringify({ name }) }),
+  renameProfile: (id: number, name: string) => j(`/api/profiles/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   setActiveProfile: (id: number) => j("/api/profile/active", { method: "PUT", body: JSON.stringify({ id }) }),
   deleteProfile: (id: number) => j(`/api/profiles/${id}`, { method: "DELETE" }),
 

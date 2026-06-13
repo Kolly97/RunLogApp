@@ -26,7 +26,8 @@ In der App führt der Footer-Link **„Anleitung"** zu einer Schritt-für-Schrit
 - **Tracking** — pro Tag Wellness (Gewicht, Ruhepuls, HRV, Schlaf inkl. Bett-/Aufwachzeit & Sleep-Performance, Recovery, Strain, Beine, RPE, Schmerz, …) und Aktivitäten (inkl. Intervall-Belastungen, km je Zone, kcal, Commute-Schnellerfassung).
 - **Wochenbericht** — geplant-vs-real Tagestabelle mit Notizen unter jeder Einheit, Kategorie-Summen (Lauf/Rad/Kraft), Zonen-/Intensitäts-Charts, PMC-Ausschnitt, Wellness-Schnitt, Wochen-Check, Reflexion → **Drucken/PDF** (2-seitiges Druck-Layout).
 - **Langzeit** — PMC + Saison-km über frei wählbaren Zeitraum, Wellness-Verläufe (HRV, Ruhepuls, Recovery, Strain, Schlaf, Bettzeit, Sleep-Performance, Gewicht), Zonen-Effizienz der Easy-Läufe, Intervall-Trend (LT1/LT2/VO2) → ebenfalls druckbar.
-- **Einstellungen** — Saisonplan-Editor (Wochen werden automatisch nach Datum sortiert und ab 0 durchnummeriert), Zonen-Sets mit Gültig-ab-Datum (HF, Pace mm:ss, Power in Watt), Analyse-Schwellen, **Strava-Verbindung**.
+- **Saisonplan** (eigene Seite) — Wochen anlegen/bearbeiten; werden automatisch nach Datum sortiert und ab 0 durchnummeriert (erste Woche = #0).
+- **Einstellungen** — Zonen-Sets mit Gültig-ab-Datum (HF, Pace mm:ss, Power in Watt), Analyse-Schwellen inkl. Intensitäts-Einstufung (TSS-basiert), Profile umbenennen/löschen (mit Bestätigungscode), **Strava-Verbindung**.
 - **Auswahllisten** — Phasen, Sportarten und Einheitstypen ohne Code-Änderung hinzufügen/umbenennen/umfärben.
 
 ## Profile (mehrere Personen, ein PC)
@@ -68,7 +69,7 @@ automatisch eine leere an) oder `training.empty.db` als `training.db` mitkopiere
 `dist/` müssen nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.3.0**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.4.0**.
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.

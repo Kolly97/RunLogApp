@@ -10,9 +10,10 @@ import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel } from "../lib/util.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
+import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
@@ -87,6 +88,7 @@ export default function LongTerm() {
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
   const [pmc, setPmc] = useState<PmcPoint[]>([]);
   const [rows, setRows] = useState<SeasonRow[]>([]);
+  const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, todayIso()) }
@@ -106,9 +108,23 @@ export default function LongTerm() {
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
     Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([sessions, all]) => setRows(buildSeasonRows(season, sessions, all)))
+      .then(([sessions, all]) => { setRows(buildSeasonRows(season, sessions, all)); setAllSessions(sessions); })
       .catch(() => setRows([]));
   }, [season]);
+
+  const racesByDate = raceMarkersByDate(allSessions);
+  const sickByDate = sickRangesByDate(season);
+  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const sickLabels = sickWeekLabels(season);
+
+  // Kacheln: Summen je Kategorie im gewählten Zeitraum (#17)
+  const cat = { run: { km: 0, s: 0 }, bike: { km: 0, s: 0 }, str: { s: 0 } };
+  for (const a of acts) {
+    const km = (a.distance_m || 0) / 1000, s = a.moving_s || 0;
+    if (a.sport === "Run") { cat.run.km += km; cat.run.s += s; }
+    else if (a.sport?.startsWith("Bike") || a.sport === "General") { cat.bike.km += km; cat.bike.s += s; }
+    else if (a.sport === "Strength" || a.sport === "Physio") { cat.str.s += s; }
+  }
 
   const visibleRows = range
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
@@ -134,16 +150,23 @@ export default function LongTerm() {
         </div>
       </div>
 
+      {/* Summen-Kacheln für den gewählten Zeitraum (#17) */}
+      <div className="grid cols-3" style={{ marginBottom: 14 }}>
+        <div className="card stat"><div className="label">Lauf</div><div className="value fitness">{Math.round(cat.run.km)} km</div><div className="sub">{fmtDur(cat.run.s)}</div></div>
+        <div className="card stat"><div className="label">Rad (indoor + outdoor + Commute)</div><div className="value">{Math.round(cat.bike.km)} km</div><div className="sub">{fmtDur(cat.bike.s)}</div></div>
+        <div className="card stat"><div className="label">Kraft / Mobility</div><div className="value">{fmtDur(cat.str.s)}</div><div className="sub">nur Zeit</div></div>
+      </div>
+
       {/* PMC über den gewählten Zeitraum */}
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
-        <Pmc data={pmc} />
+        <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate} />
       </div>
 
       {/* Saison-Progression (geplant vs. gelaufen) über den gewählten Zeitraum */}
       <div className="card">
         <div className="spread"><h2>Saison-Progression</h2><span className="tiny muted">Ziel · geplant · gelaufen (km je Woche)</span></div>
-        <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} />
+        <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
       </div>
 
       {/* (a) Wellness-Verläufe */}

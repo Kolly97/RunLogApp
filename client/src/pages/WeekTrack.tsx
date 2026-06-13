@@ -259,6 +259,14 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
           sport={e.sport} zones={zs?.hr_zones} />
       </div>
 
+      {/* Editierbare Einheit-Notiz (ToDo #2): vorbefüllt mit Strava-Beschreibung, frei änderbar */}
+      <div style={{ marginTop: 10 }}>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Notizen zur Einheit (z.B. aus Strava — editierbar)</span>
+          <textarea value={e.notes ?? ""} rows={2} onChange={(x) => set({ notes: x.target.value })} />
+        </label>
+      </div>
+
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
         {e.id && <button className="sm ghost danger" onClick={() => api.deleteActivity(e.id!).then(onChange)}>Löschen</button>}
         <button className="sm ghost" onClick={() => (a.id ? setOpen(false) : onChange())}>Abbrechen</button>

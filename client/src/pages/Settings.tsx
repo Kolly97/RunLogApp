@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, type ZoneSet, type SeasonWeek } from "../lib/api.ts";
-import { todayIso, num, phaseLabel } from "../lib/util.ts";
-import { useOptions } from "../lib/options.ts";
+import { api, type ZoneSet, type SeasonWeek, type Profile } from "../lib/api.ts";
+import { todayIso, num } from "../lib/util.ts";
 
 export default function Settings() {
   const [zonesets, setZonesets] = useState<ZoneSet[]>([]);
   const [season, setSeason] = useState<SeasonWeek[]>([]);
   const [settings, setSettings] = useState<any>(null);
-  const [msg, setMsg] = useState("");
+  const [msg] = useState("");
 
   async function reload() {
     setZonesets(await api.zonesets());
@@ -16,12 +15,6 @@ export default function Settings() {
   }
   useEffect(() => { reload(); }, []);
 
-  async function seed() {
-    const r = await api.seed();
-    setMsg(`Importiert: ${r.weeks} Wochen, ${r.sessions} Einheiten.`);
-    reload();
-  }
-
   if (!settings) return <p className="muted">Lädt…</p>;
 
   return (
@@ -29,28 +22,8 @@ export default function Settings() {
       <h1>Einstellungen</h1>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
 
-      {/* Saison */}
-      <div className="card">
-        <div className="spread"><h2>Saisonplan</h2>
-          <div className="row">
-            <button onClick={seed}>Beispiel-Saison importieren (Word-Plan KW9–17)</button>
-            {season.length > 0 && <button onClick={() => addWeekBefore(season)}>+ Woche davor</button>}
-            <button className="primary" onClick={() => addWeek(season, setSeason)}>+ Woche</button>
-          </div>
-        </div>
-        <p className="tiny muted" style={{ marginTop: 2 }}>
-          „Beispiel-Saison importieren" lädt den fest eingebauten Seed aus <code>Trainingsplan_KW_10-17.docx</code> (Wochen 0–8) — kein allgemeiner Datei-Import.
-        </p>
-        {!season.length && <p className="muted">Noch keine Wochen. „Beispiel-Saison importieren" lädt die Saison (Wochen 0–8) aus dem alten Word-Trainingsplan.</p>}
-        {season.length > 0 && (
-          <table>
-            <thead><tr><th>#</th><th>Phase</th><th>Start</th><th>Ende</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
-            <tbody>
-              {season.map((w) => <WeekRow key={w.week_no} w={w} onChange={reload} />)}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {/* Profile / Accounts (umbenennen + löschen mit Code 4397, ToDo #1) */}
+      <ProfilesCard />
 
       {/* Zonen-Sets */}
       <div className="card">
@@ -73,6 +46,13 @@ export default function Settings() {
           <Num label="TSB Race Week min" v={settings.thresholds.tsb_raceweek_min} on={(x) => saveThr(settings, "tsb_raceweek_min", x, setSettings)} />
           <Num label="Rad→Run Faktor" v={settings.run_equiv_bike_factor} step="0.05" on={(x) => save1("run_equiv_bike_factor", x, setSettings)} />
           <Num label="COROS→TSS Faktor" v={settings.coros_to_tss} step="0.05" on={(x) => save1("coros_to_tss", x, setSettings)} />
+        </div>
+        <h3 style={{ marginTop: 12 }}>Intensitäts-Einstufung (Donut & Wochen-Bewertung)</h3>
+        <p className="tiny muted" style={{ marginTop: 0 }}>Vergleich mit dem Ø-TSS der letzten Wochen: ≤ Easy-% = easy, bis Hart-% = moderat, darüber = hart.</p>
+        <div className="grid cols-4">
+          <Num label="Easy ≤ % vom Ø-TSS" v={settings.thresholds.easy_pct ?? 80} on={(x) => saveThr(settings, "easy_pct", x, setSettings)} />
+          <Num label="Hart ≥ % vom Ø-TSS" v={settings.thresholds.hard_pct ?? 105} on={(x) => saveThr(settings, "hard_pct", x, setSettings)} />
+          <Num label="Referenz-Fenster (Wochen)" v={settings.thresholds.intensity_window_weeks ?? 4} on={(x) => saveThr(settings, "intensity_window_weeks", x, setSettings)} />
         </div>
       </div>
 
@@ -161,24 +141,49 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
   );
 }
 
-// ---- Saison-Zeile ------------------------------------------------------
-function WeekRow({ w, onChange }: { w: SeasonWeek; onChange: () => void }) {
-  const [e, setE] = useState(w);
-  const { phases } = useOptions();
-  const save = (patch: Partial<SeasonWeek>) => { const n = { ...e, ...patch }; setE(n); api.saveWeek(w.week_no, n).then(onChange); };
-  // Alt-Phasenwerte bestehender Wochen bleiben wählbar, auch wenn nicht in der neuen Liste.
-  const phaseVals = phases.map((p) => p.value);
-  const phaseOpts = !e.phase || phaseVals.includes(e.phase) ? phaseVals : [e.phase, ...phaseVals];
+// ---- Profile / Accounts -------------------------------------------------
+const CONFIRM_CODE = "4397"; // Bestätigungscode für Umbenennen + Löschen (ToDo #1)
+
+function ProfilesCard() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [active, setActive] = useState(1);
+  const reload = () => api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
+  useEffect(() => { reload(); }, []);
+
+  async function rename(p: Profile) {
+    const name = window.prompt(`Profil „${p.name}" umbenennen in:`, p.name)?.trim();
+    if (!name || name === p.name) return;
+    if (window.prompt(`Zum Bestätigen Code eingeben:`) !== CONFIRM_CODE) { alert("Falscher Code."); return; }
+    await api.renameProfile(p.id, name);
+    reload();
+  }
+  async function remove(p: Profile) {
+    if (p.id === active) { alert("Das aktive Profil kann nicht gelöscht werden — erst wechseln."); return; }
+    if (!window.confirm(`Profil „${p.name}" mit ALLEN Daten unwiderruflich löschen?`)) return;
+    if (window.prompt(`Zum endgültigen Löschen Code eingeben:`) !== CONFIRM_CODE) { alert("Falscher Code."); return; }
+    try { await api.deleteProfile(p.id); reload(); }
+    catch { alert("Löschen nicht möglich (geschütztes/aktives Profil)."); }
+  }
+
   return (
-    <tr>
-      <td>{w.week_no}</td>
-      <td><select value={e.phase} onChange={(x) => save({ phase: x.target.value })} style={{ minWidth: 130 }}>{phaseOpts.map((p) => <option key={p} value={p}>{phaseLabel(p)}</option>)}</select></td>
-      <td><input type="date" value={e.start_date} onChange={(x) => save({ start_date: x.target.value })} /></td>
-      <td><input type="date" value={e.end_date} onChange={(x) => save({ end_date: x.target.value })} /></td>
-      <td style={{ width: 80 }}><input type="number" value={e.target_km ?? ""} onChange={(x) => save({ target_km: num(x.target.value) })} /></td>
-      <td><input value={e.goal_race ?? ""} onChange={(x) => save({ goal_race: x.target.value })} /></td>
-      <td><button className="sm ghost danger" onClick={() => api.deleteWeek(w.week_no).then(onChange)}>✕</button></td>
-    </tr>
+    <div className="card">
+      <h2>Profile / Accounts</h2>
+      <p className="tiny muted">Wechseln oben in der Seitenleiste. Umbenennen und Löschen erfordern den Bestätigungscode. Das aktive Profil und „Kolja" (Bestandsdaten) sind geschützt.</p>
+      <table>
+        <thead><tr><th>Profil</th><th></th></tr></thead>
+        <tbody>
+          {profiles.map((p) => (
+            <tr key={p.id}>
+              <td>{p.name}{p.id === active ? " · aktiv" : ""}{p.id === 1 ? " · Bestandsdaten" : ""}</td>
+              <td style={{ textAlign: "right" }}>
+                <button className="sm ghost" onClick={() => rename(p)}>Umbenennen</button>
+                {p.id !== 1 && <button className="sm ghost danger" onClick={() => remove(p)}>Löschen</button>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -274,25 +279,6 @@ function save1(key: string, val: number, setSettings: (fn: any) => void) {
   setSettings((s: any) => ({ ...s, [key]: val }));
   api.saveSettings({ [key]: val });
 }
-async function addWeek(season: SeasonWeek[], _set: (s: SeasonWeek[]) => void) {
-  const next = season.length ? Math.max(...season.map((w) => w.week_no)) + 1 : 1;
-  const start = season.length ? addOneWeek(maxIso(season.map((w) => w.end_date))) : todayIso();
-  await api.saveWeek(next, { phase: "Belastung", start_date: start, end_date: addDaysStr(start, 6), target_km: 70, goal_race: "", label: `Woche ${next}` });
-  location.reload();
-}
-/** #71: Woche VOR der bisher frühesten anlegen — week_no darf negativ werden.
- *  Sortierung der Listen kommt vom Server (ORDER BY start_date), hier nichts umsortieren. */
-async function addWeekBefore(season: SeasonWeek[]) {
-  if (!season.length) return;
-  const prev = Math.min(...season.map((w) => w.week_no)) - 1;
-  const start = addDaysStr(minIso(season.map((w) => w.start_date)), -7);
-  await api.saveWeek(prev, { phase: "Base", start_date: start, end_date: addDaysStr(start, 6), target_km: null, goal_race: "", label: `Woche ${prev}` });
-  location.reload();
-}
-function minIso(dates: string[]) { return dates.reduce((a, b) => (b < a ? b : a)); }
-function maxIso(dates: string[]) { return dates.reduce((a, b) => (b > a ? b : a)); }
-function addOneWeek(iso: string) { return addDaysStr(iso, 1); }
-function addDaysStr(iso: string, n: number) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 async function newZoneset(zonesets: ZoneSet[], reload: () => void) {
   const base = zonesets[0];
   await api.addZoneset({ valid_from: todayIso(), hr_zones: base?.hr_zones, pace_zones: base?.pace_zones, lthr: base?.lthr, ftp: base?.ftp, threshold_pace: base?.threshold_pace, source: "Diagnostik", note: "" });

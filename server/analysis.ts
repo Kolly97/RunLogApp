@@ -219,6 +219,82 @@ export function weekTotals(
   };
 }
 
+// ---- TSS-basierte Intensität (ToDo #7/#13) ------------------------------
+
+export type IntLevel = "easy" | "moderate" | "hard";
+
+/** Klassifiziert einen Wert relativ zu einer Referenz (%): <=easyPct easy, <hardPct moderate, sonst hard. */
+export function classifyTss(value: number, ref: number, easyPct: number, hardPct: number): IntLevel {
+  if (!(ref > 0)) return "easy";
+  const pct = (value / ref) * 100;
+  if (pct >= hardPct) return "hard";
+  if (pct > easyPct) return "moderate";
+  return "easy";
+}
+
+/** Donut: TSS-Anteile (%) je Kategorie — jede Einheit nach ihrem TSS vs. Ø-Einheit-TSS der letzten 4 Wochen. */
+export function tssIntensityShares(
+  sessions: PlannedSession[], refSessionTss: number | null, easyPct: number, hardPct: number,
+): { easy: number; mod: number; hard: number } {
+  const acc = { easy: 0, mod: 0, hard: 0 };
+  let total = 0;
+  for (const s of sessions) {
+    if (s.type === "Rest") continue;
+    const t = s.planned_tss || 0;
+    if (t <= 0) continue;
+    total += t;
+    if (refSessionTss && refSessionTss > 0) {
+      const c = classifyTss(t, refSessionTss, easyPct, hardPct);
+      if (c === "hard") acc.hard += t;
+      else if (c === "moderate") acc.mod += t;
+      else acc.easy += t;
+    } else acc.easy += t; // ohne Referenz neutral
+  }
+  if (total <= 0) return { easy: 0, mod: 0, hard: 0 };
+  return { easy: r1((acc.easy / total) * 100), mod: r1((acc.mod / total) * 100), hard: r1((acc.hard / total) * 100) };
+}
+
+/** Wochen-Bewertung: Wochen-TSS vs. Ø-Wochen-TSS der letzten 4 Wochen. */
+export function weekRatingLevel(weekTss: number, refWeekly: number, easyPct: number, hardPct: number) {
+  return { level: classifyTss(weekTss, refWeekly, easyPct, hardPct), weekTss: r1(weekTss), avg4: r1(refWeekly) };
+}
+
+/** Seitenlegende: %-km je Zonen-Gruppe (Easy Z1-2 / Moderat Z3 / Hart Z4-6) aus den geplanten Lauf-km. */
+export function zoneKmIntensityOf(
+  sessions: PlannedSession[], zones: HrZone[], paceZones?: number[],
+): { easy: number; mod: number; hard: number } {
+  const zk: Record<number, number> = {};
+  zones.forEach((z) => (zk[z.z] = 0));
+  for (const s of sessions) {
+    if (s.sport !== "Run") continue;
+    const km = s.planned_km || 0;
+    if (km <= 0) continue;
+    const alloc = s.zone_alloc;
+    if (alloc?.byKm && Object.values(alloc.byKm).some((v) => (v || 0) > 0)) {
+      for (const z of zones) zk[z.z] += alloc.byKm[z.z] || 0;
+      continue;
+    }
+    if (alloc?.byMin && Object.values(alloc.byMin).some((v) => (v || 0) > 0)) {
+      for (const z of zones) {
+        const pace = paceZones?.[z.z - 1] || DEFAULT_ZONE_PACE[z.z - 1]; // s/km
+        zk[z.z] += ((alloc.byMin[z.z] || 0) * 60) / pace; // min*60s / (s/km) = km
+      }
+      continue;
+    }
+    // Typ-Default (km auf Zonen verteilt, analog sessionZoneMinutes)
+    if (s.type === "Easy" || s.type === "Long") zk[2] += km;
+    else if (s.type === "Threshold") { zk[2] += km * 0.4; zk[4] += km * 0.6; }
+    else if (s.type === "VO2" || s.type === "Race") { zk[2] += km * 0.4; zk[5] += km * 0.6; }
+    else if (s.type === "Hill") { zk[2] += km * 0.5; zk[4] += km * 0.5; }
+    else zk[2] += km;
+  }
+  const tot = Object.values(zk).reduce((a, b) => a + b, 0) || 1;
+  const easy = ((zk[1] + zk[2]) / tot) * 100;
+  const mod = (zk[3] / tot) * 100;
+  const hard = ((zk[4] + zk[5] + zk[6]) / tot) * 100;
+  return { easy: r1(easy), mod: r1(mod), hard: r1(hard) };
+}
+
 // ---- Intervall-/Effort-Trend (ToDo 2/13/20) -----------------------------
 
 /** Eine Belastungs-Zeile einer Aktivität (Vertrag mit client/src/lib/api.ts: Effort). */

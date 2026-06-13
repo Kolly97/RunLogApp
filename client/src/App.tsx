@@ -6,12 +6,13 @@ import WeekPlan from "./pages/WeekPlan.tsx";
 import WeekTrack from "./pages/WeekTrack.tsx";
 import WeekReport from "./pages/WeekReport.tsx";
 import LongTerm from "./pages/LongTerm.tsx";
+import SeasonPlan from "./pages/SeasonPlan.tsx";
 import Settings from "./pages/Settings.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
-const BUILD_DATE = "12.06.2026";
+const BUILD_DATE = "13.06.2026";
 
 const NAV = [
   { to: "/", ico: "▣", label: "Dashboard", end: true },
@@ -19,6 +20,7 @@ const NAV = [
   { to: "/track", ico: "✓", label: "Tracking" },
   { to: "/report", ico: "🖨", label: "Wochenbericht" },
   { to: "/longterm", ico: "📈", label: "Langzeit" },
+  { to: "/season", ico: "🗓", label: "Saisonplan" },
   { to: "/settings", ico: "⚙", label: "Einstellungen" },
   { to: "/options", ico: "🏷", label: "Auswahllisten" },
 ];
@@ -44,6 +46,7 @@ export default function App() {
           <Route path="/track" element={<WeekTrack />} />
           <Route path="/report" element={<WeekReport />} />
           <Route path="/longterm" element={<LongTerm />} />
+          <Route path="/season" element={<SeasonPlan />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/options" element={<OptionsConfig />} />
         </Routes>

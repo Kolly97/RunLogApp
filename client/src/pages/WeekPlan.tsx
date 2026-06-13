@@ -1,11 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { api, type PlannedSession, type AnalyzeResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel,
 } from "../lib/util.ts";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
-import IntensityDonut from "../charts/IntensityDonut.tsx";
+import IntensityCard from "../charts/IntensityCard.tsx";
 import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 
@@ -112,14 +112,7 @@ export default function WeekPlan() {
           {analyze && t && (
             <div className="card tight">
               <h3>Intensität & Zonen (geplant)</h3>
-              <div className="grid" style={{ gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 8 }}>
-                <IntensityDonut intensity={t.intensity} height={120} />
-                <div className="tiny">
-                  <L> Easy {t.intensity.easy}%</L>
-                  <L> Moderat (Z3) {t.intensity.mod}%</L>
-                  <L> Hart {t.intensity.hard}%</L>
-                </div>
-              </div>
+              <IntensityCard tss={analyze.tssIntensity ?? t.intensity} zoneKm={analyze.zoneKmIntensity ?? t.intensity} rating={analyze.weekRating ?? null} height={120} />
               <div style={{ marginTop: 6 }}>
                 <ZoneDistribution zones={analyze.zones} rows={[{ name: "Geplant", minutes: t.zoneMin }]} height={80} />
               </div>
@@ -152,4 +145,3 @@ function Stat({ label, value, sub, color }: { label: string; value: number | str
     </div>
   );
 }
-function L({ children }: { children: ReactNode }) { return <div>{children}</div>; }

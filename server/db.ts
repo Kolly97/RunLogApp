@@ -344,6 +344,9 @@ function seedDefaults() {
       z3_pct_max: 15, // grey zone
       longrun_pct_max: 35,
       tsb_raceweek_min: -5, // Form sollte Richtung Race week nicht zu negativ sein
+      easy_pct: 80, // Intensitäts-Klassifikation (ToDo #7): <= easy_pct% des Referenz-TSS -> easy
+      hard_pct: 105, // >= hard_pct% -> hart; dazwischen moderat
+      intensity_window_weeks: 4, // Referenz-Fenster (Wochen) für Ø-TSS
     });
     setSetting("run_equiv_bike_factor", 0.25); // 1 Rad-km = 0.25 Run-km (editierbar)
     setSetting("coros_to_tss", 0.6); // Kalibrierfaktor COROS TL -> TSS (grobe Startannahme)

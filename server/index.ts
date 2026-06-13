@@ -15,6 +15,9 @@ import {
   analyzeWeek,
   plannedSessionTss,
   intervalEffortStat,
+  tssIntensityShares,
+  zoneKmIntensityOf,
+  weekRatingLevel,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
@@ -77,17 +80,22 @@ function effectiveZoneSet(date: string) {
   };
 }
 
+const THRESHOLD_DEFAULTS = {
+  volume_pct: 10,
+  ctl_ramp_max: 7,
+  acwr_high: 1.3,
+  acwr_low: 0.8,
+  hard_pct_max: 20,
+  z3_pct_max: 15,
+  longrun_pct_max: 35,
+  tsb_raceweek_min: -5,
+  easy_pct: 80, // Intensitäts-Klassifikation (ToDo #7)
+  hard_pct: 105,
+  intensity_window_weeks: 4,
+};
+// Defaults + gespeicherte Werte mischen → neue Keys gelten auch für ältere Bestände.
 function thresholds() {
-  return getSetting("thresholds", {
-    volume_pct: 10,
-    ctl_ramp_max: 7,
-    acwr_high: 1.3,
-    acwr_low: 0.8,
-    hard_pct_max: 20,
-    z3_pct_max: 15,
-    longrun_pct_max: 35,
-    tsb_raceweek_min: -5,
-  });
+  return { ...THRESHOLD_DEFAULTS, ...getSetting("thresholds", {} as Record<string, number>) };
 }
 
 // Tages-TSS: real (<=heute) aus activities, geplant (>heute) aus planned_sessions.
@@ -206,6 +214,13 @@ app.post("/api/profiles", (req, res) => {
   if (!name) return res.status(400).json({ error: "Name fehlt" });
   const r = db.prepare("INSERT INTO profiles(name) VALUES(?)").run(name);
   res.json({ id: Number(r.lastInsertRowid) });
+});
+
+app.put("/api/profiles/:id", (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Name fehlt" });
+  db.prepare("UPDATE profiles SET name=? WHERE id=?").run(name, req.params.id);
+  res.json({ ok: true });
 });
 
 app.put("/api/profile/active", (req, res) => {
@@ -516,6 +531,33 @@ function weekActualKm(start: string, end: string): number {
   return Math.round(((row?.m || 0) / 1000) * 10) / 10;
 }
 
+function isoShift(date: string, days: number): string {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Referenz für die Intensitäts-Klassifikation (ToDo #7), profil-gefiltert, Fenster = Wochen.
+function avgSessionTss(beforeDate: string, weeks: number): number | null {
+  const from = isoShift(beforeDate, -7 * weeks);
+  const r = db.prepare(
+    "SELECT AVG(planned_tss) a FROM planned_sessions WHERE profile_id=? AND date>=? AND date<? AND type!='Rest' AND COALESCE(planned_tss,0)>0",
+  ).get(pid(), from, beforeDate) as { a: number | null };
+  return r.a ?? null;
+}
+function avgWeeklyTss(beforeDate: string, weeks: number): number | null {
+  const prev = db.prepare(
+    "SELECT start_date, end_date FROM season_weeks_v2 WHERE profile_id=? AND start_date<? ORDER BY start_date DESC LIMIT ?",
+  ).all(pid(), beforeDate, weeks) as { start_date: string; end_date: string }[];
+  const vals = prev
+    .map((p) => {
+      const row = db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), p.start_date, p.end_date) as { s: number };
+      return row.s || 0;
+    })
+    .filter((v) => v > 0);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+
 app.get("/api/analyze/week/:no", (req, res) => {
   const wk = db.prepare("SELECT * FROM season_weeks_v2 WHERE week_no=? AND profile_id=?").get(req.params.no, pid()) as any;
   const sessions = db.prepare("SELECT * FROM planned_sessions WHERE week_no=? AND profile_id=? ORDER BY date").all(req.params.no, pid()) as any[];
@@ -620,7 +662,21 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realByCategory.strength.h = r1(realByCategory.strength.min / 60);
   }
 
-  res.json({ totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb, realZoneMin, realZoneKm, realByCategory });
+  // TSS-basierte Intensität (ToDo #7/#13): Donut-Anteile, Zonen-km-Legende, Wochen-Bewertung.
+  const thr = thresholds() as any;
+  const win = Math.max(1, Math.round(thr.intensity_window_weeks ?? 4));
+  const refDate = wk?.start_date || todayIso();
+  const refSession = avgSessionTss(refDate, win);
+  const tssIntensity = tssIntensityShares(planned, refSession, thr.easy_pct ?? 80, thr.hard_pct ?? 105);
+  const zoneKmIntensity = zoneKmIntensityOf(planned, zs.hr_zones, zs.pace_zones);
+  const refWeekly = avgWeeklyTss(refDate, win);
+  const weekRating = refWeekly != null ? weekRatingLevel(totals.tss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+
+  res.json({
+    totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
+    realZoneMin, realZoneKm, realByCategory,
+    tssIntensity, zoneKmIntensity, weekRating,
+  });
 });
 
 function r1(n: number): number {

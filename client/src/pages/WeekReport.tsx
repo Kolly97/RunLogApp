@@ -9,11 +9,13 @@ import {
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
-  fmtDur, weekLabel, phaseLabel, addDays,
+  fmtDur, weekLabel, phaseLabel, addDays, todayIso,
 } from "../lib/util.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
+import IntensityCard from "../charts/IntensityCard.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WellnessTrends from "../charts/WellnessTrends.tsx";
@@ -83,6 +85,8 @@ export default function WeekReport() {
   const [wlog, setWlog] = useState<any>({});
   const [pmcWin, setPmcWin] = useState<PmcPoint[]>([]);
   const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([]);
+  const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
+  const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
 
   async function reload() {
     if (!week) return;
@@ -97,21 +101,21 @@ export default function WeekReport() {
   }
   useEffect(() => {
     reload();
-    // PMC-Ausschnitt ±6 Wochen um die Berichtswoche
+    // PMC baut sich ab 1.1. des aktuellen Jahres auf, 2 Wochen Prognose über heute (ToDo #8).
     if (week) {
-      api.pmc(addDays(week.start_date, -28), addDays(week.end_date, 14))
+      api.pmc(yearStart, addDays(todayIso(), 14))
         .then((r) => setPmcWin(r.pmc)).catch(() => setPmcWin([]));
     }
     // eslint-disable-next-line
   }, [week?.week_no]);
 
-  // Saison-Progression (ganze Saison, Berichtswoche hervorgehoben)
+  // Saison-Progression ab 1.1. des aktuellen Jahres (baut sich auf), Berichtswoche hervorgehoben.
   useEffect(() => {
     if (!season.length) return;
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
     Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([s, a]) => setSeasonRows(buildSeasonRows(season, s, a)))
+      .then(([s, a]) => { setSeasonRows(buildSeasonRows(season, s, a).filter((r) => !r.start || r.start >= yearStart)); setAllSessions(s); })
       .catch(() => setSeasonRows([]));
   }, [season]);
 
@@ -119,6 +123,11 @@ export default function WeekReport() {
   if (!week) return <div className="empty">Keine Woche.</div>;
 
   const days = daysOfWeek(week.start_date);
+  // Marker (Races gold, Krank rot) für PMC + Saison-Progression
+  const racesByDate = raceMarkersByDate(allSessions);
+  const sickByDate = sickRangesByDate(season);
+  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const sickLabels = sickWeekLabels(season);
   const runActs = acts.filter((a) => a.sport === "Run");
   const actualKm = round1(runActs.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
   const actualTss = round1(acts.reduce((s, a) => s + (a.tss || 0), 0));
@@ -251,27 +260,32 @@ export default function WeekReport() {
               {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
             </div>
             <div className="chart-card">
-              <h3>Intensität</h3>
-              <div className="row" style={{ alignItems: "flex-start", gap: 6, flexWrap: "nowrap" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="tiny muted center">Geplant</div>
-                  {analyze && <IntensityDonut intensity={analyze.totals.intensity} height={105} />}
-                </div>
-                {hasRealZones && (
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="tiny muted center">Real</div>
-                    <IntensityDonut intensity={realIntensity} height={105} />
+              <h3>Intensität (geplant)</h3>
+              {analyze && (
+                <IntensityCard tss={analyze.tssIntensity ?? analyze.totals.intensity}
+                  zoneKm={analyze.zoneKmIntensity ?? analyze.totals.intensity} rating={analyze.weekRating ?? null} height={105} />
+              )}
+              {hasRealZones && (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: "0 0 auto", width: 90 }}>
+                    <div className="tiny muted center">Real (Zonen)</div>
+                    <IntensityDonut intensity={realIntensity} height={90} />
                   </div>
-                )}
-              </div>
+                  <div className="tiny muted" style={{ flex: 1 }}>
+                    Reale Verteilung aus eingetragenen Zonen-Minuten/HF-Streams.
+                  </div>
+                </div>
+              )}
             </div>
             <div className="chart-card">
-              <h3>PMC — Letzte 4 Wochen vor {weekLabel(week)}</h3>
-              <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }} />
+              <h3>PMC — seit Jahresbeginn</h3>
+              <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }}
+                races={racesByDate} sickRanges={sickByDate} />
             </div>
             <div className="chart-card">
               <h3>Saison-Progression (geplant / real km)</h3>
-              <SeasonProgress rows={seasonRows} height={185} highlightLabel={weekLabel(week)} />
+              <SeasonProgress rows={seasonRows} height={185} highlightLabel={weekLabel(week)}
+                races={racesByWeek} sickLabels={sickLabels} />
             </div>
           </div>
 

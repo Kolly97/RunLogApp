@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
@@ -12,6 +13,7 @@ export default function Dashboard() {
   const [range, setRange] = useState<DateRange | null>(null);
   const [pmc, setPmc] = useState<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number } | null>(null);
   const [rows, setRows] = useState<SeasonRow[]>([]);
+  const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
 
@@ -33,9 +35,15 @@ export default function Dashboard() {
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
     Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([sessions, acts]) => setRows(buildSeasonRows(season, sessions, acts)))
+      .then(([sessions, acts]) => { setRows(buildSeasonRows(season, sessions, acts)); setAllSessions(sessions); })
       .catch(() => setRows([]));
   }, [season]);
+
+  // Marker für PMC + Saison-Progression (Races gold, Krank rot)
+  const racesByDate = raceMarkersByDate(allSessions);
+  const sickByDate = sickRangesByDate(season);
+  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const sickLabels = sickWeekLabels(season);
 
   useEffect(() => {
     if (week) api.analyzeWeek(week.week_no).then(setAnalyze).catch(() => setAnalyze(null));
@@ -68,13 +76,13 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
-        <Pmc data={pmc?.pmc ?? []} />
+        <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate} />
       </div>
 
       <div className="grid cols-2" style={{ alignItems: "start" }}>
         <div className="card">
           <h2>Saison-Progression</h2>
-          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} />
+          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
         </div>
         <div className="card">
           <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
