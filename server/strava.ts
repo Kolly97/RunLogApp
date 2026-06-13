@@ -168,23 +168,27 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
     }
 
     // Detail-Anreicherung (Beschreibung → COROS-TL, kcal) mit Budget — neueste zuerst.
-    // Marker „schon angereichert" = notes nicht mehr leer (Beschreibung bzw. ' ' als Platzhalter),
-    // damit dieselben Aktivitäten nicht bei jedem Sync erneut abgefragt werden.
+    // Marker „schon abgerufen" = desc_fetched=1 (ToDo Z.45), unabhängig von den Notizen → der Nutzer
+    // kann Notizen ändern/löschen, ohne dass ein Re-Sync sie wieder überschreibt.
     const candidates = db
       .prepare(
         `SELECT id, strava_id FROM activities
-         WHERE source='strava' AND profile_id=? AND (notes IS NULL OR notes='') AND date >= ?
+         WHERE source='strava' AND profile_id=? AND desc_fetched=0 AND date >= ?
          ORDER BY date DESC LIMIT ?`,
       )
       .all(profile, after, DETAIL_BUDGET_PER_SYNC) as { id: number; strava_id: string }[];
     let enriched = 0;
-    const upd = db.prepare("UPDATE activities SET training_load=?, tss=COALESCE(?, tss), kcal=COALESCE(?, kcal), notes=? WHERE id=?");
+    // Daten (TL/TSS/kcal) immer setzen; die Beschreibung nur in leere Notizen schreiben (Edits bleiben).
+    const upd = db.prepare(
+      "UPDATE activities SET training_load=?, tss=COALESCE(?, tss), kcal=COALESCE(?, kcal), " +
+        "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, desc_fetched=1 WHERE id=?",
+    );
     for (const c of candidates) {
       try {
         const d = (await api(`/activities/${c.strava_id}`)) as any;
         const tl = parseCorosLoad(d.description);
         const tssFromTl = tl != null ? Math.round(tl * corosFactor * 10) / 10 : null;
-        upd.run(tl, tssFromTl, d.calories ?? null, (d.description || "").slice(0, 500) || " ", c.id);
+        upd.run(tl, tssFromTl, d.calories ?? null, (d.description || "").slice(0, 500), c.id);
         enriched++;
       } catch {
         break; // Rate-Limit o.ä. → Rest beim nächsten Sync

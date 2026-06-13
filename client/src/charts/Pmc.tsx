@@ -5,7 +5,8 @@ import {
 } from "recharts";
 import type { PmcPoint } from "../lib/api.ts";
 import { todayIso, fmtDate } from "../lib/util.ts";
-import ChartDecor, { type PhaseRun, type YearMark } from "./ChartDecor.tsx";
+import { phaseColor, phaseLabel } from "../lib/options.ts";
+import ChartDecor, { vRefLabel, type PhaseRun, type YearMark } from "./ChartDecor.tsx";
 
 export interface RaceMarker { date: string; label: string; }
 export interface DateRange2 { from: string; to: string; }
@@ -72,6 +73,9 @@ export default function Pmc({
   const hl = highlight && data.some((p) => p.date >= highlight.from && p.date <= highlight.to) ? highlight : null;
   const toggle = (k: SeriesKey) => setHidden((h) => ({ ...h, [k]: !h[k] }));
   const hoverName = hoverDate ? namesByDate?.[hoverDate] : undefined;
+  const phaseAt = (d: string | null): string =>
+    d ? phaseRuns.find((r) => r.fromKey <= d && d <= r.toKey)?.phase || "" : "";
+  const curPhase = phaseAt(hoverDate) || phaseAt(today);
 
   return (
     <div className="pmc-wrap" style={{ position: "relative" }}>
@@ -81,7 +85,7 @@ export default function Pmc({
         </div>
       )}
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 16, right: 12, left: -6, bottom: 30 }}
+        <ComposedChart data={rows} margin={{ top: 16, right: 12, left: -6, bottom: 42 }}
           onMouseMove={(s: any) => setHoverDate(s?.activeLabel ? String(s.activeLabel) : null)}
           onMouseLeave={() => setHoverDate(null)}
           onClick={(s: any) => s?.activeLabel && onPick?.(String(s.activeLabel))}
@@ -107,8 +111,6 @@ export default function Pmc({
           <YAxis yAxisId="week" hide domain={[0, Math.ceil(maxWeek * 1.08)]} />
           <Tooltip content={<PmcTooltip />} />
 
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} />} />
-
           <Bar yAxisId="bars" dataKey="tss" fill="#c3ccd6" barSize={5} hide={hidden.tss} isAnimationActive={false} />
           <Line yAxisId="week" type="stepAfter" dataKey="weekSum" stroke="#7c9cbf" strokeWidth={1.4} dot={false} hide={hidden.week} isAnimationActive={false} />
           <Area yAxisId="load" type="monotone" dataKey="ctl_p" stroke="#2b6cb0" strokeWidth={2.2} fill="url(#ctlFill)" dot={false} hide={hidden.fitness} isAnimationActive={false} />
@@ -123,8 +125,12 @@ export default function Pmc({
             label={{ value: "heute", fontSize: 10, fill: "#94a3b8", position: "top" }} />
           {!hidden.races && races.map((r, i) => (
             <ReferenceLine key={`race${i}`} yAxisId="load" x={r.date} stroke="#d4af37" strokeWidth={1.4}
-              label={{ value: short(r.label), fontSize: 9, fill: "#b8860b", position: "top" }} />
+              label={vRefLabel(short(r.label))} />
           ))}
+
+          {/* Phasenband + Jahresmarke + Phasenname zuletzt → liegen über den TSS-Balken (ToDo Z.39). */}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks}
+            phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="pmc-legend">

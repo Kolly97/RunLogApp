@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import type { Activity, PlannedSession, SeasonWeek } from "../lib/api.ts";
 import { weekLabel } from "../lib/util.ts";
-import ChartDecor from "./ChartDecor.tsx";
+import ChartDecor, { vRefLabel } from "./ChartDecor.tsx";
 import { phaseRunsByWeek, yearMarksByWeek } from "../lib/markers.ts";
 
 function short(s: string, n = 14): string { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
@@ -43,7 +43,7 @@ export function buildSeasonRows(season: SeasonWeek[], sessions: PlannedSession[]
 }
 
 export default function SeasonProgress({
-  rows, height = 280, highlightLabel, races = [], sickLabels = [],
+  rows, height = 280, highlightLabel, races = [], sickLabels = [], showYears = true,
 }: {
   rows: SeasonRow[]; height?: number;
   /** Label der hervorzuhebenden Woche (z.B. aktuelle Berichtswoche). */
@@ -52,21 +52,22 @@ export default function SeasonProgress({
   races?: RaceWeekMarker[];
   /** Labels der Wochen mit Phase „Krank" (rote Hinterlegung, ToDo #5). */
   sickLabels?: string[];
+  /** Jahresmarke anzeigen — im Wochenbericht aus (beginnt ohnehin am 1.1., ToDo Z.31). */
+  showYears?: boolean;
 }) {
   const [showRaces, setShowRaces] = useState(true);
   if (!rows.length) return <div className="empty">Noch kein Saisonplan. Lege Wochen unter „Saisonplan" an oder importiere den bestehenden Plan.</div>;
   const phaseRuns = phaseRunsByWeek(rows);
-  const yearMarks = yearMarksByWeek(rows);
+  const yearMarks = showYears ? yearMarksByWeek(rows) : [];
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 30 }}>
+        <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 42 }}>
           <CartesianGrid stroke="#eef1f5" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} angle={0} minTickGap={0} textAnchor="middle" height={30} />
           <YAxis tick={{ fontSize: 11, fill: "#8a96a6" }} width={36} unit="" />
           <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} />} />
           {/* Krank-Wochen rot hinterlegt */}
           {sickLabels.map((l) => (
             <ReferenceArea key={`sick-${l}`} x1={l} x2={l} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -75,14 +76,16 @@ export default function SeasonProgress({
             <ReferenceLine x={highlightLabel} stroke="var(--accent)" strokeDasharray="3 4"
               label={{ value: "diese Woche", fontSize: 10, fill: "var(--accent)", position: "top" }} />
           )}
-          {/* Races als goldener Strich + Label (an/aus) */}
+          {/* Races als goldener Strich + vertikales Label (an/aus) */}
           {showRaces && races.map((r) => (
             <ReferenceLine key={`race-${r.label}`} x={r.label} stroke="#d4af37" strokeWidth={1.6}
-              label={{ value: short(r.text), fontSize: 9, fill: "#b8860b", position: "top" }} />
+              label={vRefLabel(short(r.text))} />
           ))}
           <Bar dataKey="planned" name="Geplant (km)" fill="#9ec3ea" barSize={16} radius={[3, 3, 0, 0]} />
           <Bar dataKey="actual" name="Real (km)" fill="var(--fitness)" barSize={16} radius={[3, 3, 0, 0]} />
           <Line dataKey="target" name="Phasenziel" stroke="var(--form)" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2 }} />
+          {/* Phasenband + Jahresmarke zuletzt → liegen über den Balken (ToDo Z.39/Z.46). */}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} />} />
         </ComposedChart>
       </ResponsiveContainer>
       {races.length > 0 && (

@@ -6,6 +6,7 @@ export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?
 export interface Race {
   id?: number; date: string; name?: string; distance_m?: number | null; time_s?: number | null;
   placement?: string; notes?: string; splits?: RaceSplit[];
+  max_hr?: number | null; elevation_m?: number | null; source?: string;
 }
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
@@ -134,6 +135,7 @@ export const api = {
   addRace: (b: Race) => j<{ id: number }>("/api/races", { method: "POST", body: JSON.stringify(b) }),
   updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
+  importRacesFromSeason: () => j<{ created: number }>("/api/races/import-from-season", { method: "POST" }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

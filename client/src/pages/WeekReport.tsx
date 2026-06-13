@@ -264,7 +264,7 @@ export default function WeekReport() {
                     <div className="spread">
                       <strong>{r.name || "Wettkampf"} <span className="muted tiny">· {fmtDate(r.date)}</span></strong>
                       <span className="tiny">
-                        {km ? `${km} km · ` : ""}{fmtClock(r.time_s)}{pace ? ` · ${paceStr(pace)}/km` : ""}{r.placement ? ` · Platz ${r.placement}` : ""}
+                        {km ? `${km} km · ` : ""}{fmtClock(r.time_s)}{pace ? ` · ${paceStr(pace)}/km` : ""}{r.placement ? ` · Platz ${r.placement}` : ""}{r.max_hr ? ` · max ${Math.round(r.max_hr)} bpm` : ""}{r.elevation_m ? ` · ${Math.round(r.elevation_m)} hm` : ""}
                       </span>
                     </div>
                     {r.splits && r.splits.length > 0 && (
@@ -295,8 +295,14 @@ export default function WeekReport() {
             <div className="chart-card">
               <h3>Intensität (geplant)</h3>
               {analyze && (
-                <IntensityCard tss={analyze.tssIntensity ?? analyze.totals.intensity}
-                  zoneKm={analyze.zoneKmIntensity ?? analyze.totals.intensity} rating={analyze.weekRating ?? null} height={105} />
+                <IntensityCard tss={analyze.tssIntensity ?? analyze.totals.intensity} height={105} />
+              )}
+              {analyze && (
+                <div style={{ marginTop: 6 }}>
+                  {analyze.flags.filter((f) => f.code.startsWith("week_load") || f.code.startsWith("km_")).map((f, i) => (
+                    <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+                  ))}
+                </div>
               )}
               {hasRealZones && (
                 <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
@@ -318,7 +324,7 @@ export default function WeekReport() {
             <div className="chart-card">
               <h3>Saison-Progression (geplant / real km)</h3>
               <SeasonProgress rows={seasonRows} height={185} highlightLabel={weekLabel(week)}
-                races={racesByWeek} sickLabels={sickLabels} />
+                races={racesByWeek} sickLabels={sickLabels} showYears={false} />
             </div>
           </div>
 

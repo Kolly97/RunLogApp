@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Versionshistorie im Detail: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`.
-> Stand: **v0.5.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.6.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -71,12 +71,14 @@
 - **v2-Tabellen sind die LIVE-Tabellen** (Originale bleiben als Backup): `season_weeks_v2` (PK profile_id,week_no),
   `week_log_v2` (PK profile_id,week_no), `daily_log_v2` (PK date,profile_id).
 - `planned_sessions` (profile_id, `zone_alloc` JSON {byKm/byMin}, `efforts` JSON, `structured`, `planned_tss`),
-  `activities` (profile_id, `kcal`, `zones`/`zone_min`/`zone_km` JSON, `efforts` JSON, `tss`, `training_load`, `strava_id`),
+  `activities` (profile_id, `kcal`, `zones`/`zone_min`/`zone_km` JSON, `efforts` JSON, `tss`, `training_load`, `strava_id`,
+  `desc_fetched` = Strava-Beschreibung schon abgerufen → schützt Notizen vor Re-Sync-Überschreiben),
   `zone_sets` (profile_id, hr_zones/pace_zones/speed_zones/power_zones JSON, lthr/ftp/threshold_pace, valid_from),
-  `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr}]),
+  `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr}],
+  `max_hr`, `elevation_m`, `source` = manual|season; Auto-Import aus Saisonplan `goal_race` via Ledger `season_races_imported_<pid>`),
   `options` (kind: phase|sport|sessionType, value/label/color/sort/active), `settings` (key→JSON value).
 
-## 4. Aktueller Funktionsstand (v0.5.0)
+## 4. Aktueller Funktionsstand (v0.6.0)
 
 Planung mit km-je-Zone + Live-Prüf-Engine · Tracking (Wellness + Aktivitäten + Intervall-Builder + Notizen) ·
 **PMC** (CTL/ATL/TSB, Prognose gestrichelt, Wochen-TSS-Summe, große Tagesbalken, Phasen-Farbband, Race-Marker
@@ -86,15 +88,26 @@ Race/Krank) · **Intensitäts-Panel** (TSS-Donut mit Legende, km-Anteil je Zone,
 (einzeln im Bericht) · **2-seitiger Druck-Bericht** ab 1.1. · konfigurierbare Auswahllisten · Kalenderwochen ·
 leichte **Profile** (Wechsel in Sidebar, Umbenennen/Löschen mit Code **4397**) · **Strava** (OAuth + Sync, COROS-TL→TSS).
 
+**v0.6.0-Schliff:** Intensitäts-Panel = nur noch TSS-Donut + %-km-Balken je Zone; Wochen-TSS-Last &
+km-Polarisierung als Hinweise im Wochen-Check (`weekLoadFlag`/`kmPolarizationFlag` in `analysis.ts`,
+angehängt in der `/api/analyze/week`-Route). Phasen-Farbband liegt jetzt VOR den Balken (Customized zuletzt
+gerendert) + Phasenname unten links im PMC (folgt dem Hover). Jahresmarke positionsbasiert (Band-Index in
+`markers.ts`/`ChartDecor.tsx`) → konsistent über alle Zeiträume, zwischen KW1/KW2, schwarz. Race-Labels
+vertikal (`vRefLabel` in `ChartDecor.tsx`). Races mit Max-HF/Höhenmeter + Auto-Import aus Saisonplan.
+
 ## 5. Offen / nächste Schritte
 
-- **Strava nutzen:** Kolja hat eine Strava-API-App + Jahresimport gemacht (Daten sind drin). Bei neuem Sync ggf.
-  mehrfach (Rate-Limit-Häppchen à 50 für COROS-TL/kcal-Anreicherung).
-- **Bekannte Feinheiten v0.5.0** (falls Kolja sich meldet): Phasen-Farbband + Jahres-Beschriftung sitzen an festen
-  Pixel-Offsets in `charts/ChartDecor.tsx` (y = plotBottom-5 fürs Band, plotBottom+25 für die Jahreszahl) → bei
-  Bedarf dort justieren. „Real"-Zonenverteilung ist nur dort km-genau, wo `zone_km` eingetragen ist (Strava liefert Sekunden).
+- **Zurückgestellt — ToDo.md Z.47 (km je Zone aus Strava-Sekunden):** Strava liefert nur Zeit/Zone und das
+  nur über extra, ratenlimitierte `/activities/{id}/zones`-Abrufe (Sync vermeidet das bewusst); zudem Strava-
+  HF-Zonen ≠ eigene Zonen. Eigene Runde. Bis dahin ist „Real"-km je Zone nur dort genau, wo `zone_km` manuell
+  eingetragen ist.
+- **Strava nutzen:** Bei neuem Sync ggf. mehrfach (Rate-Limit-Häppchen à 50 für COROS-TL/kcal-Anreicherung).
+  Notizen sind seit v0.6.0 vor Überschreiben geschützt (`desc_fetched`).
+- **Bekannte Feinheiten v0.6.0** (falls Kolja sich meldet): Chart-Bodenbereich in `charts/ChartDecor.tsx` —
+  Phasenband bei `plotBottom-6`, Jahres-/Phasentext bei `plotBottom+30`, Jahresstrich 0.25·Höhe; Chart-Bottom-
+  Margin in `Pmc.tsx`/`SeasonProgress.tsx` = 42. Bei Bedarf dort justieren. Phasenname unten links nur im PMC.
 - **ToDo.md „In Zukunft NICHT JETZT":** v2.0-Redesign (awwwards-Stil, GSAP/Three.js, eigener Branch/Folder),
-  Chrome-DevTools-Testing. Erst auf ausdrücklichen Wunsch.
+  Chrome-DevTools-Testing, Intervall-Daten automatisch aus Strava extrahieren. Erst auf ausdrücklichen Wunsch.
 
 ## 6. Verifikations-Routine
 

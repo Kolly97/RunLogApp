@@ -167,6 +167,15 @@ function migrate(): void {
   // ToDo 14: Sleep Performance bei den Tagesfaktoren
   addColumn("daily_log", "sleep_performance", "REAL");
 
+  // ToDo Z.45: Marker „Strava-Beschreibung bereits abgerufen" — trennt das Detail-Fetch von den Notizen,
+  // damit vom Nutzer geänderte/gelöschte Notizen beim Re-Sync NICHT mehr überschrieben werden.
+  if (!hasColumn("activities", "desc_fetched")) {
+    db.exec("ALTER TABLE activities ADD COLUMN desc_fetched INTEGER DEFAULT 0");
+    // Backfill: bereits angereicherte Strava-Aktivitäten (Notiz vorhanden) gelten als abgerufen → keine
+    // Massen-Neuabrufe. Leere bleiben 0 und werden wie bisher schrittweise angereichert.
+    db.prepare("UPDATE activities SET desc_fetched=1 WHERE source='strava' AND notes IS NOT NULL AND TRIM(notes) <> ''").run();
+  }
+
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
     CREATE TABLE IF NOT EXISTS options (
@@ -212,6 +221,10 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_races_date ON races(date);
   `);
+  // ToDo Z.43: Max-HF + Höhenmeter je Wettkampf. ToDo Z.44: Herkunft (Auto-Import aus Saisonplan, Dedup).
+  addColumn("races", "max_hr", "INTEGER");
+  addColumn("races", "elevation_m", "REAL");
+  addColumn("races", "source", "TEXT");
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

@@ -29,9 +29,15 @@ export function yearMarksByDate(dates: string[]): YearMark[] {
   for (const d of dates) { const y = d.slice(0, 4); if (prev && y !== prev) out.push({ key: d, year: y }); prev = y; }
   return out;
 }
+// Wochen-Charts: per Band-INDEX positioniert (immun gegen doppelte KW-Labels über Saisongrenzen).
+// Marke sitzt am linken Rand der ZWEITEN Woche des neuen Jahres → optisch „zwischen KW1 und KW2".
 export function yearMarksByWeek(rows: { label: string; start?: string }[]): YearMark[] {
   const out: YearMark[] = []; let prev = "";
-  for (const r of rows) { const y = r.start?.slice(0, 4); if (!y) continue; if (prev && y !== prev) out.push({ key: r.label, year: y }); prev = y; }
+  rows.forEach((r, i) => {
+    const y = r.start?.slice(0, 4); if (!y) return;
+    if (prev && y !== prev) out.push({ index: Math.min(i + 1, rows.length - 1), year: y });
+    prev = y;
+  });
   return out;
 }
 

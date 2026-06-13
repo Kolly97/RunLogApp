@@ -19,6 +19,8 @@ import {
   zoneKmIntensityOf,
   zoneKmOf,
   weekRatingLevel,
+  weekLoadFlag,
+  kmPolarizationFlag,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
@@ -253,22 +255,55 @@ app.get("/api/races", (req, res) => {
 app.post("/api/races", (req, res) => {
   const b = req.body || {};
   const r = db.prepare(
-    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits) VALUES(?,?,?,?,?,?,?,?)`,
-  ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "", JSON.stringify(b.splits || []));
+    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, elevation_m, source)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.elevation_m ?? null, b.source || "manual");
   res.json({ id: Number(r.lastInsertRowid) });
 });
 
 app.put("/api/races/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=? WHERE id=? AND profile_id=?`,
-  ).run(b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "", JSON.stringify(b.splits || []), req.params.id, pid());
+    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=?, max_hr=?, elevation_m=? WHERE id=? AND profile_id=?`,
+  ).run(b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.elevation_m ?? null, req.params.id, pid());
   res.json({ ok: true });
 });
 
 app.delete("/api/races/:id", (req, res) => {
   db.prepare("DELETE FROM races WHERE id=? AND profile_id=?").run(req.params.id, pid());
   res.json({ ok: true });
+});
+
+// ToDo Z.44: Wettkämpfe aus dem Saisonplan (goal_race) automatisch als Race anlegen — Datum = Wochen-
+// Enddatum. Idempotent über ein Profil-Ledger (gelöschte Auto-Races tauchen nicht wieder auf) + Dedup
+// gegen vorhandene Races mit gleichem Datum+Name. Manuelle Races bleiben unberührt.
+app.post("/api/races/import-from-season", (_req, res) => {
+  const profile = pid();
+  const weeks = db.prepare(
+    "SELECT week_no, end_date, goal_race FROM season_weeks_v2 WHERE profile_id=? AND goal_race IS NOT NULL AND TRIM(goal_race) <> ''",
+  ).all(profile) as { week_no: number; end_date: string; goal_race: string }[];
+  const ledgerKey = `season_races_imported_${profile}`;
+  const seen = new Set(getSetting<string[]>(ledgerKey, []));
+  const ins = db.prepare(
+    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, elevation_m, source)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+  );
+  const dupQ = db.prepare("SELECT id FROM races WHERE profile_id=? AND date=? AND name=?");
+  let created = 0;
+  for (const w of weeks) {
+    const name = w.goal_race.trim();
+    const key = `${w.week_no}|${name}`;
+    if (seen.has(key)) continue;
+    if (!dupQ.get(profile, w.end_date, name)) {
+      ins.run(profile, w.end_date, name, null, null, "", "", "[]", null, null, "season");
+      created++;
+    }
+    seen.add(key);
+  }
+  setSetting(ledgerKey, [...seen]);
+  res.json({ created });
 });
 
 // ---- options (konfigurierbare Auswahllisten: phase/sport/sessionType/...) ----
@@ -704,6 +739,12 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const plannedZoneKm = zoneKmOf(planned, zs.hr_zones, zs.pace_zones);
   const refWeekly = avgWeeklyTss(refDate, win);
   const weekRating = refWeekly != null ? weekRatingLevel(totals.tss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+
+  // Bewertungen (Wochen-TSS-Last + km-Polarisierung) als Flags in den Wochen-Check (ToDo Z.41).
+  const loadFlag = weekLoadFlag(weekRating);
+  if (loadFlag) flags.push(loadFlag);
+  const polFlag = kmPolarizationFlag(zoneKmIntensity);
+  if (polFlag) flags.push(polFlag);
 
   res.json({
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,

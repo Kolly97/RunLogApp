@@ -4,6 +4,32 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.6.0] – 2026-06-13 — Panel-Konsolidierung & Detail-Schliff
+
+### Hinzugefügt
+- **Phasenname unten links im PMC** (in Phasenfarbe) — folgt dem Hover und zeigt die Phase des Tages unter dem Cursor.
+- **Races:** Max-HF & Höhenmeter je Wettkampf; **Auto-Import** der Wettkämpfe aus dem Saisonplan
+  (`goal_race`, Datum = Wochen-Enddatum) — manuelles Hinzufügen weiterhin möglich, gelöschte Auto-Races
+  bleiben gelöscht.
+- **Wochen-Check:** Wochen-TSS-Last und km-Polarisierung erscheinen jetzt als Hinweise im Check.
+
+### Geändert
+- **Intensitäts-Panel** entschlackt: nur noch **ein TSS-Donut** + der bestehende %-km-Balken je Zone.
+  Die doppelten Prozent-Zeilen und die zwei Bewertungs-Boxen sind raus (Bewertungen → Wochen-Check).
+- **Phasen-Farbband** liegt jetzt **über** den TSS-Balken (wurde vorher verdeckt) und ist etwas kräftiger.
+- **Race-Marker** in PMC & Saison-Progression als **vertikales Label** an der Markierung.
+- **Jahresmarke** schwarz, kürzer (kein Strich quer durch den Graphen), Jahreszahl tiefer; im
+  Wochenbericht ausgeblendet (beginnt ohnehin am 1.1.).
+
+### Behoben
+- **Jahresmarke in den Wochen-Charts** war bei „1 J / Saison" unzuverlässig (doppelte KW-Labels über
+  Jahresgrenzen) — jetzt positionsbasiert (Band-Index), konsistent und sitzt zwischen KW1 und KW2.
+- **Strava-Notizen:** Geänderte/gelöschte Notizen werden beim erneuten Sync **nicht mehr überschrieben**
+  (neuer `desc_fetched`-Marker trennt den Beschreibungs-Abruf von den Notizen).
+
+### Zurückgestellt
+- km-je-Zone aus Strava-Zeit-in-Zone (braucht eigene, ratenlimitierte Zonen-Abrufe + Zonen-Mapping).
+
 ## [0.5.0] – 2026-06-13 — Chart-Politur & Races
 
 ### Hinzugefügt

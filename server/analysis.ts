@@ -259,6 +259,26 @@ export function weekRatingLevel(weekTss: number, refWeekly: number, easyPct: num
   return { level: classifyTss(weekTss, refWeekly, easyPct, hardPct), weekTss: r1(weekTss), avg4: r1(refWeekly) };
 }
 
+/** Wochen-TSS-Last als Flag für den Wochen-Check (ToDo Z.41: aus der Intensitäts-Karte hierher verschoben). */
+export function weekLoadFlag(rating: { level: IntLevel; weekTss: number; avg4: number } | null): Flag | null {
+  if (!rating) return null;
+  const w = Math.round(rating.weekTss), a = Math.round(rating.avg4);
+  if (rating.level === "hard") return { level: "warn", code: "week_load_high", message: `Wochen-Last hoch: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
+  if (rating.level === "easy") return { level: "info", code: "week_load_low", message: `Wochen-Last niedrig: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
+  return { level: "ok", code: "week_load_ok", message: `Wochen-Last moderat: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
+}
+
+/** km-Polarisierung (Easy/Grey/Hart) als Flag für den Wochen-Check (ToDo Z.41). */
+export function kmPolarizationFlag(zk: { easy: number; mod: number; hard: number } | null): Flag | null {
+  if (!zk) return null;
+  const e = Math.round(zk.easy), m = Math.round(zk.mod), h = Math.round(zk.hard);
+  const note = `${e}/${m}/${h}% easy/grey/hart`;
+  if (zk.mod >= 18) return { level: "info", code: "km_grey", message: `km-Polarisierung: viel Grey-Zone (${m}% Z3) — ${note}.` };
+  if (zk.hard >= 25) return { level: "warn", code: "km_hard", message: `km-Polarisierung: sehr hart (${h}% > Z3) — ${note}.` };
+  if (zk.easy >= 78 && zk.hard <= 22) return { level: "ok", code: "km_polarized", message: `km-Polarisierung: polarisiert — ${note}.` };
+  return { level: "info", code: "km_balanced", message: `km-Polarisierung: ausgewogen — ${note}.` };
+}
+
 /** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */
 export function zoneKmOf(sessions: PlannedSession[], zones: HrZone[], paceZones?: number[]): Record<number, number> {
   const zk: Record<number, number> = {};

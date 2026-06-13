@@ -16,14 +16,15 @@ function fmtTime(s?: number | null): string {
   return h ? `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}` : `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-const EMPTY: Race = { date: todayIso(), name: "", distance_m: null, time_s: null, placement: "", notes: "", splits: [] };
+const EMPTY: Race = { date: todayIso(), name: "", distance_m: null, time_s: null, placement: "", notes: "", splits: [], max_hr: null, elevation_m: null };
 
 export default function Races() {
   const [races, setRaces] = useState<Race[]>([]);
   const [edit, setEdit] = useState<Race | null>(null);
 
   const reload = () => api.races().then(setRaces).catch(() => setRaces([]));
-  useEffect(() => { reload(); }, []);
+  // ToDo Z.44: Wettkämpfe aus dem Saisonplan automatisch übernehmen (idempotent), dann Liste laden.
+  useEffect(() => { api.importRacesFromSeason().catch(() => {}).finally(reload); }, []);
 
   return (
     <div>
@@ -93,9 +94,11 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
       <div className="grid cols-4">
         <label className="field"><span>Datum</span><input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
         <label className="field"><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} placeholder="z.B. 10k Suprema Mannheim" /></label>
-        <label className="field"><span>Distanz (km)</span><input type="number" step="0.1" value={kmStr} onChange={(x) => setKmStr(x.target.value)} /></label>
+        <label className="field"><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10 oder 0.5" /></label>
         <label className="field"><span>Endzeit (mm:ss / h:mm:ss)</span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="38:24" /></label>
         <label className="field"><span>Platzierung</span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
+        <label className="field"><span>Max-HF (bpm)</span><input type="number" min="0" value={e.max_hr ?? ""} onChange={(x) => set({ max_hr: num(x.target.value) })} placeholder="z.B. 188" /></label>
+        <label className="field"><span>Höhenmeter (m)</span><input type="number" min="0" value={e.elevation_m ?? ""} onChange={(x) => set({ elevation_m: num(x.target.value) })} placeholder="z.B. 120" /></label>
       </div>
 
       <div className="spread" style={{ marginTop: 8 }}><h3>Splits</h3><button className="sm" onClick={addSplit}>+ Split</button></div>
