@@ -75,7 +75,7 @@ nicht mit — sie entstehen via `npm install` / `npm run build`.
 Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.10.0**.
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
-v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.
+v2.0-Redesign (GSAP/Three.js)
 
 ## Lizenz
-[MIT](LICENSE) © 2026 Kolja Hildenbrand. Erstellt mit Claude (Fable 5).
+[MIT](LICENSE) © 2026 Kolja Hildenbrand
