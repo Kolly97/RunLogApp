@@ -156,6 +156,11 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
   const { sports } = useOptions();
   const set = (patch: Partial<Activity>) => setE((p) => ({ ...p, ...patch }));
   const bike = isBikeSport(e.sport);
+  // Commute (ToDo Z.14): Sportart → „Allgemein/Commute" (General), Name „Commute", keine Notizen.
+  const commute = e.sport === "General";
+  const setCommute = (on: boolean) =>
+    on ? set({ sport: "General", name: "Commute", notes: "" })
+       : set({ sport: "BikeRoad", name: e.name === "Commute" ? "" : e.name });
 
   // Bug #76: Formular-State frisch aus den Props initialisieren, sobald man öffnet.
   // Vorher hielt die Zeile eine veraltete Kopie (`e` wurde nie re-synct) und save()
@@ -218,7 +223,12 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
     <div className="card tight" style={{ background: "#fafbfd", marginBottom: 8 }}>
       <div className="grid cols-4" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>Sport</span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
-        <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} /></label>
+        {(bike || commute) && (
+          <label className="field" style={{ margin: 0 }}><span>Commute</span>
+            <input type="checkbox" checked={commute} onChange={(x) => setCommute(x.target.checked)} style={{ width: "auto", marginTop: 6 }} title="Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)" />
+          </label>
+        )}
+        <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
         <label className="field" style={{ margin: 0 }}><span>km</span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Dauer (min)</span><input type="number" value={e.moving_s != null ? Math.round(e.moving_s / 60) : ""} onChange={(x) => set({ moving_s: num(x.target.value) != null ? Number(x.target.value) * 60 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>{bike ? "Ø Geschwindigkeit" : "Ø Pace"}</span>
@@ -274,7 +284,9 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
       <div style={{ marginTop: 10 }}>
         <label className="field" style={{ margin: 0 }}>
           <span>Notizen zur Einheit (z.B. aus Strava — editierbar)</span>
-          <textarea value={e.notes ?? ""} rows={2} onChange={(x) => set({ notes: x.target.value })} />
+          <textarea value={commute ? "" : (e.notes ?? "")} rows={2} disabled={commute}
+            placeholder={commute ? "Commutes haben keine Notizen" : ""}
+            onChange={(x) => set({ notes: x.target.value })} />
         </label>
       </div>
 

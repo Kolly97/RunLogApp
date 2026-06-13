@@ -30,12 +30,12 @@ export function yearMarksByDate(dates: string[]): YearMark[] {
   return out;
 }
 // Wochen-Charts: per Band-INDEX positioniert (immun gegen doppelte KW-Labels über Saisongrenzen).
-// Marke sitzt am linken Rand der ZWEITEN Woche des neuen Jahres → optisch „zwischen KW1 und KW2".
+// Marke sitzt am linken Rand der ERSTEN Woche des neuen Jahres → optisch „zwischen KW52 und KW1" (ToDo Z.9).
 export function yearMarksByWeek(rows: { label: string; start?: string }[]): YearMark[] {
   const out: YearMark[] = []; let prev = "";
   rows.forEach((r, i) => {
     const y = r.start?.slice(0, 4); if (!y) return;
-    if (prev && y !== prev) out.push({ index: Math.min(i + 1, rows.length - 1), year: y });
+    if (prev && y !== prev) out.push({ index: i, year: y });
     prev = y;
   });
   return out;
@@ -47,28 +47,22 @@ function shortRace(s?: string | null): string {
   return t.length > 22 ? t.slice(0, 20) + "…" : t;
 }
 
-/** Races als Datum (PMC): races-Tabelle (Datum+Name) ∪ geplante „Race"-Einheiten (Fallback). */
-export function raceMarkersByDate(sessions: PlannedSession[], races: { date: string; name?: string }[] = []): RaceMarker[] {
+/** Races als Datum (PMC): NUR aus der races-Tabelle (Single Source of Truth, ToDo Z.12 — gelöschte Races
+ *  verschwinden zuverlässig; Saisonplan-Races sind via Auto-Import ohnehin in der Tabelle). */
+export function raceMarkersByDate(_sessions: PlannedSession[], races: { date: string; name?: string }[] = []): RaceMarker[] {
   const seen = new Set<string>();
   const out: RaceMarker[] = [];
   for (const r of races) { if (!seen.has(r.date)) { seen.add(r.date); out.push({ date: r.date, label: shortRace(r.name) }); } }
-  for (const s of sessions) { if (s.type === "Race" && !seen.has(s.date)) { seen.add(s.date); out.push({ date: s.date, label: shortRace(s.description) }); } }
   return out;
 }
 
-/** Races je Woche (Saison-Progression): races-Tabelle ∪ Race-Einheiten ∪ `goal_race`. */
-export function raceMarkersByWeek(season: SeasonWeek[], sessions: PlannedSession[], races: { date: string; name?: string }[] = []): RaceWeekMarker[] {
+/** Races je Woche (Saison-Progression): NUR aus der races-Tabelle (ToDo Z.12). */
+export function raceMarkersByWeek(season: SeasonWeek[], _sessions: PlannedSession[], races: { date: string; name?: string }[] = []): RaceWeekMarker[] {
   const out: RaceWeekMarker[] = [];
   const seen = new Set<string>();
-  const add = (date: string, text: string) => {
-    const w = season.find((x) => x.start_date <= date && date <= x.end_date);
-    if (w && !seen.has(weekLabel(w))) { seen.add(weekLabel(w)); out.push({ label: weekLabel(w), text: shortRace(text) }); }
-  };
-  for (const r of races) add(r.date, r.name || "Race");
-  for (const s of sessions) if (s.type === "Race") add(s.date, s.description || "Race");
-  for (const w of season) {
-    const lbl = weekLabel(w);
-    if (w.goal_race && !seen.has(lbl)) { seen.add(lbl); out.push({ label: lbl, text: shortRace(w.goal_race) }); }
+  for (const r of races) {
+    const w = season.find((x) => x.start_date <= r.date && r.date <= x.end_date);
+    if (w && !seen.has(weekLabel(w))) { seen.add(weekLabel(w)); out.push({ label: weekLabel(w), text: shortRace(r.name || "Race") }); }
   }
   return out;
 }

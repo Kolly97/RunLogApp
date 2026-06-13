@@ -149,6 +149,14 @@ export default function LongTerm() {
     })
     .filter((x): x is { x1: string; x2: string } => x != null);
   const eff = easyRunWeeks(acts);
+  // Krank-Hinterlegung für die Zonen-Effizienz-Charts (ToDo Z.8): Range auf vorhandene Wochen-Punkte mappen.
+  const effDates = eff.map((e) => e.date);
+  const effSickSegments = sickByDate
+    .map((s) => {
+      const inRange = effDates.filter((d) => d >= s.from && d <= s.to);
+      return inRange.length ? { x1: inRange[0], x2: inRange[inRange.length - 1] } : null;
+    })
+    .filter((x): x is { x1: string; x2: string } => x != null);
   const effPaces = eff.map((e) => e.pace).filter((x): x is number => x != null);
   const paceDomain: [number, number] = effPaces.length
     ? [Math.floor((Math.min(...effPaces) - 15) / 15) * 15, Math.ceil((Math.max(...effPaces) + 15) / 15) * 15]
@@ -240,6 +248,9 @@ export default function LongTerm() {
               <ResponsiveContainer width="100%" height={220}>
                 <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  {effSickSegments.map((s, i) => (
+                    <ReferenceArea key={`esick-${i}`} yAxisId="pace" x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
+                  ))}
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
                   <YAxis yAxisId="pace" reversed domain={paceDomain} tickFormatter={(v: number) => paceStr(v)}
                     width={44} tick={{ fontSize: 11, fill: "#8a96a6" }} />
@@ -266,6 +277,9 @@ export default function LongTerm() {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  {effSickSegments.map((s, i) => (
+                    <ReferenceArea key={`esick2-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
+                  ))}
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={44} />
                   <Tooltip

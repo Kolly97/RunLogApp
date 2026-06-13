@@ -4,6 +4,31 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.8.0] – 2026-06-13 — Geplant-vs-real-Donuts, Commute & Chart-Feinschliff
+
+### Hinzugefügt
+- **Wochenbericht-Intensität:** zwei TSS-Donuts nebeneinander — **Geplant vs. Real** — je mit der TSS-Zahl
+  in der Mitte und der Auflistung (easy/moderat/hart). Reale Intensität **hybrid**: zonen-anteilig wo
+  Zonen-Daten vorliegen, sonst nach dem Typ der gematchten geplanten Einheit. Der alte km-„Real (Zonen)"-Donut
+  entfällt.
+- **Commute-Schalter** im Aktivitäts-Formular (bei Radfahrten): setzt Sportart auf „Allgemein/Commute",
+  Name auf „Commute", löscht & sperrt die Notizen — kurze Pendelfahrten verstopfen den Wochenbericht nicht
+  mehr (zählen aber weiter als Rad-km). Strava-Sync füllt die Notiz nicht wieder (`desc_fetched`).
+- **Krank-Hinterlegung** jetzt auch in den Zonen-Effizienz-Charts (Langzeit).
+- **Races:** Höhenmeter **pro Split**; das Distanz-km-Feld doppelt so breit.
+
+### Geändert
+- **Zonenverteilung** (Bericht): dickere Balken (weniger Weißfläche) + X-Achse in 20 %-Schritten.
+- **Jahresmarke** in Saison-Progression/Wochenkm sitzt jetzt **vor KW1** (zwischen KW52 und KW1).
+- **„Diese Woche"** in der Saison-Progression als dezente **Wochen-Markierung** statt gestrichelter Linie.
+
+### Behoben
+- **Geister-Race-Marker:** goldene Marker kommen nur noch aus der **Races-Tabelle** (nicht mehr aus geplanten
+  „Race"-Einheiten/`goal_race`) — ein in Races gelöschter Wettkampf verschwindet zuverlässig.
+
+### Zurückgestellt
+- running-TSS nach TrainingPeaks-Formel (COROS-/Garmin-unabhängig) · TrainingPeaks-Artikel auswerten.
+
 ## [0.7.0] – 2026-06-13 — TSS-Bewertung korrigiert & Layout-Welle
 
 ### Behoben

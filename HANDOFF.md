@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Versionshistorie im Detail: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`.
-> Stand: **v0.7.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.8.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -81,7 +81,7 @@
   `options` (kind: phase|sport|sessionType, value/label/color/sort/active, `intensity` = easy|moderate|hard nur bei sessionType
   → Grundlage für den TSS-Donut „nach Typ"), `settings` (key→JSON value).
 
-## 4. Aktueller Funktionsstand (v0.7.0)
+## 4. Aktueller Funktionsstand (v0.8.0)
 
 Planung mit km-je-Zone + Live-Prüf-Engine · Tracking (Wellness + Aktivitäten + Intervall-Builder + Notizen) ·
 **PMC** (CTL/ATL/TSB, Prognose gestrichelt, Wochen-TSS-Summe, große Tagesbalken, Phasen-Farbband, Race-Marker
@@ -106,6 +106,14 @@ wieder eintippbar (uncontrolled `defaultValue`+`onBlur`). Layout: Dashboard 2/3+
 PMC/Wochenkm ~20 % höher (Defaults 360/336), Phasenname auch im Wochenkm-Chart, Races-Toggle in der Legende.
 Wellness-Langzeit mit Krank-Hinterlegung. Persönliche DB in `data/`.
 
+**v0.8.0-Schliff:** Wochenbericht-Intensität = zwei TSS-Donuts (Geplant/Real) mit TSS-Zahl in der Mitte;
+reale Intensität **hybrid** (`realTssIntensity`/`realTotalTss` in der `/api/analyze/week`-Route: zonen-anteilig,
+sonst gematchter Plan-Typ). Race-Marker nur noch aus der Races-Tabelle (`raceMarkers*` in `markers.ts`,
+`sessions`-Param ignoriert → behebt Geister-Marker). Jahresmarke vor KW1 (`yearMarksByWeek` Index `i`).
+„Diese Woche" als `ReferenceArea`. Zonen-Effizienz mit Krank-Rot. **Commute** (Schalter im Aktivitäts-Formular
+`WeekTrack.tsx` → Sportart `General`, Name „Commute", Notiz weg + `desc_fetched=1`). Split-Höhenmeter
+(`RaceSplit.elevation_m`, JSON). ZoneDistribution: dickere Balken + 20 %-Ticks.
+
 ## 5. Offen / nächste Schritte
 
 - **Zurückgestellt — Strava-Stream-Runde:** (a) km je Zone aus Strava-Zeit-in-Zone, (b) Intervalldaten
@@ -114,10 +122,14 @@ Wellness-Langzeit mit Krank-Hinterlegung. Persönliche DB in `data/`.
   Bis dahin ist „Real"-km je Zone nur dort genau, wo `zone_km` manuell eingetragen ist.
 - **Strava nutzen:** Bei neuem Sync ggf. mehrfach (Rate-Limit-Häppchen à 50 für COROS-TL/kcal-Anreicherung).
   Notizen sind seit v0.6.0 vor Überschreiben geschützt (`desc_fetched`).
-- **Bekannte Feinheiten v0.7.0** (falls Kolja sich meldet): Chart-Bodenbereich in `charts/ChartDecor.tsx` —
-  Phasenband bei `plotBottom-6`, Jahres-/Phasentext bei `plotBottom+34`, Jahresstrich 0.25·Höhe (Opacity 0.85);
-  Chart-Bottom-Margin in `Pmc.tsx`/`SeasonProgress.tsx` = 48; Default-Höhen 360 (PMC) / 336 (Wochenkm).
-  Phasenname unten links jetzt in PMC **und** Wochenkm. Typ→Intensität-Map steuert den Donut (in „Auswahllisten").
+- **Zurückgestellt — running-TSS (rTSS):** TSS für Belastungen UND geplante Workouts nach der TrainingPeaks-
+  Formel rechnen (NGP/Schwellen-Pace), COROS-/Garmin-unabhängig. Größere Mathe-Runde (ggf. mit den
+  TrainingPeaks-Artikeln). Bis dahin: COROS-TL→TSS bzw. hrTSS wie bisher.
+- **Bekannte Feinheiten (Kolja justiert Chart-Kosmetik selbst!):** Jahresmarke ist in `ChartDecor.tsx` ein
+  **Dreieck** (polygon, Spitze `plotBottom-20`), Jahreszahl `plotBottom+34`, Phasentext `plotBottom+50`,
+  Phasenband `plotBottom-6`. Chart-Bottom-Margin: `Pmc.tsx` 30, `SeasonProgress.tsx` 28. Diese Werte sind
+  bewusst von Kolja gesetzt — **nicht ohne Anlass zurückdrehen.** Typ→Intensität-Map steuert den Donut
+  (in „Auswahllisten"); reale Donut-Intensität ist hybrid.
 - **ToDo.md „In Zukunft NICHT JETZT":** v2.0-Redesign (awwwards-Stil, GSAP/Three.js, eigener Branch/Folder),
   Chrome-DevTools-Testing. Erst auf ausdrücklichen Wunsch.
 

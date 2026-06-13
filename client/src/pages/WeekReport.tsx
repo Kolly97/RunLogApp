@@ -15,7 +15,6 @@ import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels,
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
-import IntensityCard from "../charts/IntensityCard.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WellnessTrends from "../charts/WellnessTrends.tsx";
@@ -147,7 +146,6 @@ export default function WeekReport() {
   }
   const realZoneMin = serverRealZone && Object.values(serverRealZone).some((x) => (x || 0) > 0) ? serverRealZone : clientRealZone;
   const hasRealZones = Object.values(realZoneMin).some((x) => (x || 0) > 0);
-  const realIntensity = intensityOf(realZoneMin);
 
   // ---- Kategorie-Summen (ToDo 21): Server bevorzugt, sonst clientseitig aggregiert ----
   const plannedCat: Cat = analyze?.totals?.byCategory ?? catsFromPlan(sessions);
@@ -269,9 +267,9 @@ export default function WeekReport() {
                     </div>
                     {r.splits && r.splits.length > 0 && (
                       <table className="splits">
-                        <thead><tr><th>km</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th></tr></thead>
+                        <thead><tr><th>km</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th><th>Hm</th></tr></thead>
                         <tbody>{r.splits.map((s, i) => (
-                          <tr key={i}><td>{s.km ?? "—"}</td><td>{fmtClock(s.time_s)}</td><td>{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td><td>{s.avg_hr ?? "—"}</td><td>{s.max_hr ?? "—"}</td></tr>
+                          <tr key={i}><td>{s.km ?? "—"}</td><td>{fmtClock(s.time_s)}</td><td>{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td><td>{s.avg_hr ?? "—"}</td><td>{s.max_hr ?? "—"}</td><td>{s.elevation_m ?? "—"}</td></tr>
                         ))}</tbody>
                       </table>
                     )}
@@ -286,33 +284,33 @@ export default function WeekReport() {
           <div className="chart-grid mt">
             <div className="chart-card">
               <h3>Zonenverteilung geplant vs. real</h3>
-              {analyze && <ZoneDistribution zones={analyze.zones} height={110} rows={[
+              {analyze && <ZoneDistribution zones={analyze.zones} height={92} rows={[
                 { name: "Geplant", values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
                 ...(hasRealZones ? [{ name: "Real", values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
               ]} />}
               {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
             </div>
             <div className="chart-card">
-              <h3>Intensität (geplant)</h3>
+              <h3>Intensität (TSS) — geplant vs. real</h3>
               {analyze && (
-                <IntensityCard tss={analyze.tssIntensity ?? analyze.totals.intensity} height={105} />
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="tiny muted center" style={{ marginBottom: 2 }}>Geplant</div>
+                    <IntensityDonut intensity={analyze.tssIntensity ?? analyze.totals.intensity}
+                      center={{ value: Math.round(analyze.totals.tss), sub: "TSS" }} height={120} showLegend />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="tiny muted center" style={{ marginBottom: 2 }}>Real</div>
+                    <IntensityDonut intensity={analyze.realTssIntensity ?? { easy: 0, mod: 0, hard: 0 }}
+                      center={{ value: Math.round(analyze.realTotalTss ?? 0), sub: "TSS" }} height={120} showLegend />
+                  </div>
+                </div>
               )}
               {analyze && (
                 <div style={{ marginTop: 6 }}>
                   {analyze.flags.filter((f) => f.code.startsWith("week_load") || f.code.startsWith("km_")).map((f, i) => (
                     <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
                   ))}
-                </div>
-              )}
-              {hasRealZones && (
-                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: "0 0 auto", width: 90 }}>
-                    <div className="tiny muted center">Real (Zonen)</div>
-                    <IntensityDonut intensity={realIntensity} height={90} />
-                  </div>
-                  <div className="tiny muted" style={{ flex: 1 }}>
-                    Reale Verteilung aus eingetragenen Zonen-Minuten/HF-Streams.
-                  </div>
                 </div>
               )}
             </div>

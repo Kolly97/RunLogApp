@@ -77,7 +77,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
     const next = splits.map((s, j) => (j === i ? { ...s, ...p } : s));
     set({ splits: recomputePace(next) });
   };
-  const addSplit = () => set({ splits: [...splits, { km: 1, time_s: null, avg_hr: null, max_hr: null }] });
+  const addSplit = () => set({ splits: [...splits, { km: 1, time_s: null, avg_hr: null, max_hr: null, elevation_m: null }] });
   const delSplit = (i: number) => set({ splits: splits.filter((_, j) => j !== i) });
 
   async function save() {
@@ -94,7 +94,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
       <div className="grid cols-4">
         <label className="field"><span>Datum</span><input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
         <label className="field"><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} placeholder="z.B. 10k Suprema Mannheim" /></label>
-        <label className="field"><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10 oder 0.5" /></label>
+        <label className="field" style={{ gridColumn: "span 2" }}><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10 oder 0.5" /></label>
         <label className="field"><span>Endzeit (mm:ss / h:mm:ss)</span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="38:24" /></label>
         <label className="field"><span>Platzierung</span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
         <label className="field"><span>Ø-HF (bpm)</span><input type="number" min="0" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} placeholder="z.B. 172" /></label>
@@ -105,7 +105,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
       <div className="spread" style={{ marginTop: 8 }}><h3>Splits</h3><button className="sm" onClick={addSplit}>+ Split</button></div>
       {splits.length > 0 && (
         <table>
-          <thead><tr><th>km</th><th>Zeit (mm:ss)</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th><th></th></tr></thead>
+          <thead><tr><th>km</th><th>Zeit (mm:ss)</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th><th>Höhenmeter</th><th></th></tr></thead>
           <tbody>
             {splits.map((s, i) => (
               <tr key={i}>
@@ -115,6 +115,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
                 <td className="muted">{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td>
                 <td style={{ width: 70 }}><input type="number" min="0" value={s.avg_hr ?? ""} onChange={(x) => setSplit(i, { avg_hr: num(x.target.value) })} /></td>
                 <td style={{ width: 70 }}><input type="number" min="0" value={s.max_hr ?? ""} onChange={(x) => setSplit(i, { max_hr: num(x.target.value) })} /></td>
+                <td style={{ width: 80 }}><input type="number" min="0" value={s.elevation_m ?? ""} onChange={(x) => setSplit(i, { elevation_m: num(x.target.value) })} /></td>
                 <td><button className="sm ghost danger" onClick={() => delSplit(i)}>✕</button></td>
               </tr>
             ))}

@@ -18,8 +18,8 @@ export default function ZoneDistribution({
   });
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }} barCategoryGap={10}>
-        <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11, fill: "#8a96a6" }} />
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }} barCategoryGap={6}>
+        <XAxis type="number" domain={[0, 100]} unit="%" ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} />
         <YAxis type="category" dataKey="name" width={58} tick={{ fontSize: 12, fill: "#46505f" }} />
         <Tooltip formatter={(v: number, n: string) => [`${v}%`, zoneLabel(zones, n)]} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
         {zones.map((z) => (

@@ -489,7 +489,8 @@ app.post("/api/activities", (req, res) => {
 app.put("/api/activities/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE activities SET date=?, sport=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=? WHERE id=?`,
+    // Commute (sport=General): desc_fetched=1 setzen, damit der Strava-Sync die geleerte Notiz nicht neu füllt (ToDo Z.14).
+    `UPDATE activities SET date=?, sport=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?) WHERE id=?`,
   ).run(
     b.date,
     b.sport || "Run",
@@ -513,6 +514,7 @@ app.put("/api/activities/:id", (req, res) => {
     JSON.stringify(b.overrides || []),
     b.matched_session_id ?? null,
     b.notes || "",
+    b.sport === "General" ? 1 : 0,
     req.params.id,
   );
   res.json({ ok: true });
@@ -673,12 +675,25 @@ app.get("/api/analyze/week/:no", (req, res) => {
     thresholds: thresholds(),
   });
 
+  // Intensität je Einheitstyp (aus den Optionen) — Basis für den Donut „nach Typ" (geplant) und den
+  // Typ-Fallback der realen Klassifikation. Vor dem Aktivitäts-Loop gebaut, da dort genutzt (ToDo Z.7).
+  const typeRows = db.prepare("SELECT value, intensity FROM options WHERE kind='sessionType'").all() as { value: string; intensity: string | null }[];
+  const intByType = new Map(typeRows.map((r) => [r.value, r.intensity]));
+  const typeIntensity = (type: string): IntLevel => {
+    const v = intByType.get(type);
+    return v === "easy" || v === "moderate" || v === "hard" ? v : "moderate";
+  };
+  const typeBySession = new Map<number, string>(planned.filter((p) => p.id != null).map((p) => [p.id as number, p.type]));
+
   // Reale Zeit-in-Zone + Kategorie-Summen aus den activities der Woche (ToDo 4/21, #77).
   // Priorität je Aktivität: zone_km (km je Zone, manuell) > zone_min (Minuten, manuell) > zones (Strava-Sek./60).
   // zone_km -> Minuten: km × Pace der Zone (pace_zones[z-1] s/km, sonst Ø-Pace der Aktivität, sonst 300 s/km).
   // realZoneKm: km je Zone nur aus zone_km — wo nur zone_min/zones existiert, bleiben km weg.
+  // realTssAcc (ToDo Z.7, hybrid): reale TSS je Intensität — zonen-anteilig wo Zonen da sind, sonst Plan-Typ.
   const realZoneMin: Record<number, number> = {};
   const realZoneKm: Record<number, number> = {};
+  const realTssAcc = { easy: 0, mod: 0, hard: 0 };
+  let realTotalTss = 0;
   zs.hr_zones.forEach((z) => {
     realZoneMin[z.z] = 0;
     realZoneKm[z.z] = 0;
@@ -689,7 +704,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0 } };
   if (wk) {
     const acts = db
-      .prepare("SELECT sport, distance_m, moving_s, zones, zone_min, zone_km FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT sport, distance_m, moving_s, zones, zone_min, zone_km, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -718,6 +733,27 @@ app.get("/api/analyze/week/:no", (req, res) => {
       } else if (a.sport === "Strength" || a.sport === "Physio") {
         realByCategory.strength.min += min;
       }
+      // Hybrid: TSS dieser Aktivität auf easy/mod/hart verteilen (zonen-anteilig, sonst nach Plan-Typ).
+      const t = a.tss || 0;
+      realTotalTss += t;
+      if (t > 0) {
+        const zw = hasZoneKm ? zKm
+          : (zMin && Object.values(zMin).some((v) => (v || 0) > 0)) ? zMin
+          : (zSec && Object.values(zSec).some((v) => (v || 0) > 0)) ? zSec
+          : null;
+        let e = 0, m = 0, h = 0;
+        if (zw) for (const [z, v] of Object.entries(zw)) { const zi = Number(z); const val = v || 0; if (zi <= 2) e += val; else if (zi === 3) m += val; else h += val; }
+        const tot = e + m + h;
+        if (tot > 0) {
+          realTssAcc.easy += (t * e) / tot;
+          realTssAcc.mod += (t * m) / tot;
+          realTssAcc.hard += (t * h) / tot;
+        } else {
+          const type = a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined;
+          const cls = type ? typeIntensity(type) : "easy";
+          if (cls === "hard") realTssAcc.hard += t; else if (cls === "moderate") realTssAcc.mod += t; else realTssAcc.easy += t;
+        }
+      }
     }
     for (const z of Object.keys(realZoneMin)) realZoneMin[Number(z)] = r1(realZoneMin[Number(z)]);
     for (const z of Object.keys(realZoneKm)) realZoneKm[Number(z)] = r1(realZoneKm[Number(z)]);
@@ -736,14 +772,12 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const win = Math.max(1, Math.round(thr.intensity_window_weeks ?? 4));
   const refDate = wk?.start_date || todayIso();
 
-  // Donut: Intensität je Einheitstyp (aus den Optionen), TSS-gewichtet — kein TSS-Größen-Mapping mehr.
-  const typeRows = db.prepare("SELECT value, intensity FROM options WHERE kind='sessionType'").all() as { value: string; intensity: string | null }[];
-  const intByType = new Map(typeRows.map((r) => [r.value, r.intensity]));
-  const typeIntensity = (type: string): IntLevel => {
-    const v = intByType.get(type);
-    return v === "easy" || v === "moderate" || v === "hard" ? v : "moderate";
-  };
+  // Geplanter Donut: Intensität je Einheitstyp (typeIntensity oben gebaut). Realer Donut: hybrid (s.o.).
   const tssIntensity = typeIntensityShares(planned, typeIntensity);
+  const rtot = realTssAcc.easy + realTssAcc.mod + realTssAcc.hard;
+  const realTssIntensity = rtot > 0
+    ? { easy: r1((realTssAcc.easy / rtot) * 100), mod: r1((realTssAcc.mod / rtot) * 100), hard: r1((realTssAcc.hard / rtot) * 100) }
+    : { easy: 0, mod: 0, hard: 0 };
   const zoneKmIntensity = zoneKmIntensityOf(planned, zs.hr_zones, zs.pace_zones);
   const plannedZoneKm = zoneKmOf(planned, zs.hr_zones, zs.pace_zones);
 
@@ -768,7 +802,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
   res.json({
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
-    tssIntensity, zoneKmIntensity, plannedZoneKm, weekRating,
+    tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, plannedZoneKm, weekRating,
   });
 });
 

@@ -77,8 +77,9 @@ export default function SeasonProgress({
           {sickLabels.map((l) => (
             <ReferenceArea key={`sick-${l}`} x1={l} x2={l} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
           ))}
+          {/* „diese Woche" als dezente Wochen-Markierung statt gestrichelter Linie (ToDo Z.13) */}
           {highlightLabel && rows.some((r) => r.label === highlightLabel) && (
-            <ReferenceLine x={highlightLabel} stroke="var(--accent)" strokeDasharray="3 4"
+            <ReferenceArea x1={highlightLabel} x2={highlightLabel} fill="var(--accent)" fillOpacity={0.14} ifOverflow="hidden"
               label={{ value: "diese Woche", fontSize: 10, fill: "var(--accent)", position: "top" }} />
           )}
           <Bar dataKey="planned" name="Geplant (km)" fill="#9ec3ea" barSize={16} radius={[3, 3, 0, 0]} />

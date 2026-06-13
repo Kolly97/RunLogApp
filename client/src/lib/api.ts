@@ -2,7 +2,7 @@
 import type { Option } from "./options.ts";
 
 export interface Profile { id: number; name: string; }
-export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?: number | null; avg_hr?: number | null; max_hr?: number | null; }
+export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?: number | null; avg_hr?: number | null; max_hr?: number | null; elevation_m?: number | null; }
 export interface Race {
   id?: number; date: string; name?: string; distance_m?: number | null; time_s?: number | null;
   placement?: string; notes?: string; splits?: RaceSplit[];
@@ -49,6 +49,8 @@ export interface AnalyzeResult {
   projectedCtlRamp: number | null; projectedTsb: number | null;
   // ToDo #7/#13 — TSS-basierte Intensität (optional, defensiv konsumieren)
   tssIntensity?: IntensityShare; zoneKmIntensity?: IntensityShare; weekRating?: WeekRating | null;
+  // ToDo Z.7 — reale TSS-Intensität (hybrid) + reale Gesamt-TSS für den „Real"-Donut
+  realTssIntensity?: IntensityShare; realTotalTss?: number;
   // reale + geplante Verteilung/Kategorien (vom Server geliefert)
   plannedZoneKm?: Record<number, number>;
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
