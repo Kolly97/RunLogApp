@@ -2,10 +2,13 @@
 node_modules/
 dist/
 
-# Persönliche Datenbank NICHT mitgeben (deine Trainingsdaten!)
+# Persönliche Daten NICHT mitgeben (deine Trainingsdaten!) — beim Update nur data/ kopieren (Z.25)
+data/
 training.db
 training.db-wal
 training.db-shm
+training.db.bak
+*.bak
 *.backup-*
 *.old
 

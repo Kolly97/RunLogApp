@@ -11,6 +11,8 @@ export interface Option {
   color?: string | null;
   sort?: number;
   active?: number;
+  /** Nur sessionType: easy | moderate | hard — Grundlage für den TSS-Donut „nach Typ". */
+  intensity?: string | null;
 }
 
 export type OptionKind = "phase" | "sport" | "sessionType" | "activityType";
@@ -27,12 +29,13 @@ export const DEFAULT_SPORTS: Option[] = [
 ];
 
 export const DEFAULT_SESSION_TYPES: Option[] = [
-  { kind: "sessionType", value: "Easy", label: "Easy / GA1", color: "#3b82f6" },
-  { kind: "sessionType", value: "Long", label: "Longrun", color: "#6366f1" },
-  { kind: "sessionType", value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308" },
-  { kind: "sessionType", value: "VO2", label: "VO2 / Intervalle", color: "#f97316" },
-  { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7" },
-  { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444" },
+  { kind: "sessionType", value: "Easy", label: "Easy / GA1", color: "#3b82f6", intensity: "easy" },
+  { kind: "sessionType", value: "Long", label: "Longrun", color: "#6366f1", intensity: "easy" },
+  { kind: "sessionType", value: "Steady", label: "Steady / Tempo", color: "#22c55e", intensity: "moderate" },
+  { kind: "sessionType", value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308", intensity: "hard" },
+  { kind: "sessionType", value: "VO2", label: "VO2 / Intervalle", color: "#f97316", intensity: "hard" },
+  { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7", intensity: "hard" },
+  { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444", intensity: "hard" },
   { kind: "sessionType", value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
   { kind: "sessionType", value: "Physio", label: "KG / Physio", color: "#64748b" },
   { kind: "sessionType", value: "Rest", label: "Ruhetag", color: "#9ca3af" },
@@ -97,6 +100,11 @@ export function typeLabel(v: string): string {
 }
 export function typeColor(v: string): string {
   return CACHE.sessionType.find((o) => o.value === v)?.color ?? "#9ca3af";
+}
+/** Intensitätsklasse eines Einheitstyps (easy|moderate|hard) für den TSS-Donut; Fallback moderate. */
+export function typeIntensity(v: string): "easy" | "moderate" | "hard" {
+  const i = CACHE.sessionType.find((o) => o.value === v)?.intensity;
+  return i === "easy" || i === "moderate" || i === "hard" ? i : "moderate";
 }
 export function phaseLabel(v: string): string {
   return CACHE.phase.find((o) => o.value === v)?.label ?? v;

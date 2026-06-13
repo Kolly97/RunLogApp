@@ -31,7 +31,7 @@ function short(s: string, n = 16): string { return s.length > n ? s.slice(0, n -
 // TrainingPeaks-Farbsemantik: CTL blau, ATL rosa, TSB gelb. Prognose (rechts von heute) gestrichelt.
 // TSS-Tagesbalken + Wochen-TSS auf eigenen, versteckten Achsen → Fitness nutzt die linke Achse voll.
 export default function Pmc({
-  data, height = 300, highlight, races = [], sickRanges = [],
+  data, height = 360, highlight, races = [], sickRanges = [],
   phaseRuns = [], yearMarks = [], namesByDate, onPick,
 }: {
   data: PmcPoint[]; height?: number;
@@ -85,7 +85,7 @@ export default function Pmc({
         </div>
       )}
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 16, right: 12, left: -6, bottom: 42 }}
+        <ComposedChart data={rows} margin={{ top: 20, right: 12, left: -6, bottom: 48 }}
           onMouseMove={(s: any) => setHoverDate(s?.activeLabel ? String(s.activeLabel) : null)}
           onMouseLeave={() => setHoverDate(null)}
           onClick={(s: any) => s?.activeLabel && onPick?.(String(s.activeLabel))}
@@ -123,14 +123,14 @@ export default function Pmc({
           <ReferenceLine yAxisId="form" y={0} stroke="#cbd5e1" strokeDasharray="2 4" />
           <ReferenceLine yAxisId="load" x={today} stroke="#94a3b8" strokeDasharray="4 4"
             label={{ value: "heute", fontSize: 10, fill: "#94a3b8", position: "top" }} />
+          {/* Phasenband + Jahresmarke + Phasenname über den TSS-Balken (ToDo Z.39). */}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks}
+            phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
+          {/* Races zuletzt → Label im Vordergrund, von nichts überlappt (ToDo Z.27) */}
           {!hidden.races && races.map((r, i) => (
             <ReferenceLine key={`race${i}`} yAxisId="load" x={r.date} stroke="#d4af37" strokeWidth={1.4}
               label={vRefLabel(short(r.label))} />
           ))}
-
-          {/* Phasenband + Jahresmarke + Phasenname zuletzt → liegen über den TSS-Balken (ToDo Z.39). */}
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks}
-            phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="pmc-legend">

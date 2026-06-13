@@ -45,13 +45,13 @@ export default function ChartDecor(props: any) {
         if (x == null || !isFinite(x)) return null;
         return (
           <g key={`yr${i}`}>
-            <line x1={x} x2={x} y1={plotBottom} y2={plotBottom - offset.height * 0.25} stroke="#0f172a" strokeWidth={1} strokeOpacity={0.55} />
-            <text x={x} y={plotBottom + 30} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f172a">{y.year}</text>
+            <line x1={x} x2={x} y1={plotBottom} y2={plotBottom - offset.height * 0.25} stroke="#0f172a" strokeWidth={1.2} strokeOpacity={0.85} />
+            <text x={x} y={plotBottom + 34} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f172a">{y.year}</text>
           </g>
         );
       })}
       {phaseText && (
-        <text x={(offset.left ?? 0) + 2} y={plotBottom + 30} textAnchor="start" fontSize={12} fontWeight={600} fill={phaseFill}>
+        <text x={(offset.left ?? 0) + 2} y={plotBottom + 34} textAnchor="start" fontSize={12} fontWeight={600} fill={phaseFill}>
           {phaseText}
         </text>
       )}

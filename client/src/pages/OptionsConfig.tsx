@@ -47,7 +47,7 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
       <div className="spread"><h2>{title}</h2><span className="tiny muted">{hint}</span></div>
       {rows.length > 0 && (
         <table>
-          <thead><tr><th>Label (Anzeige)</th><th>Wert (intern)</th><th>Farbe</th><th>Sort</th><th></th></tr></thead>
+          <thead><tr><th>Label (Anzeige)</th><th>Wert (intern)</th><th>Farbe</th><th>Sort</th>{kind === "sessionType" && <th>Intensität</th>}<th></th></tr></thead>
           <tbody>{rows.map((o) => <OptRow key={o.id} o={o} onChange={onChange} />)}</tbody>
         </table>
       )}
@@ -69,6 +69,16 @@ function OptRow({ o, onChange }: { o: Option; onChange: () => void }) {
       <td className="tiny muted">{e.value}</td>
       <td><input type="color" value={e.color || "#94a3b8"} onChange={(x) => save({ color: x.target.value })} style={{ width: 42, height: 28, padding: 0 }} /></td>
       <td style={{ width: 64 }}><input type="number" value={e.sort ?? 0} onChange={(x) => setE({ ...e, sort: Number(x.target.value) })} onBlur={() => save({ sort: e.sort })} /></td>
+      {o.kind === "sessionType" && (
+        <td>
+          <select value={e.intensity ?? ""} onChange={(x) => save({ intensity: x.target.value || null })} title="Intensität für den TSS-Donut">
+            <option value="">—</option>
+            <option value="easy">easy</option>
+            <option value="moderate">moderat</option>
+            <option value="hard">hart</option>
+          </select>
+        </td>
+      )}
       <td><button className="sm ghost danger" title="Entfernen" onClick={() => api.deleteOption(o.id!).then(onChange)}>✕</button></td>
     </tr>
   );

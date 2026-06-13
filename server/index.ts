@@ -15,12 +15,13 @@ import {
   analyzeWeek,
   plannedSessionTss,
   intervalEffortStat,
-  tssIntensityShares,
+  typeIntensityShares,
   zoneKmIntensityOf,
   zoneKmOf,
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  type IntLevel,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
@@ -255,19 +256,19 @@ app.get("/api/races", (req, res) => {
 app.post("/api/races", (req, res) => {
   const b = req.body || {};
   const r = db.prepare(
-    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, elevation_m, source)
-     VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, avg_hr, elevation_m, source)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
-    JSON.stringify(b.splits || []), b.max_hr ?? null, b.elevation_m ?? null, b.source || "manual");
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.source || "manual");
   res.json({ id: Number(r.lastInsertRowid) });
 });
 
 app.put("/api/races/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=?, max_hr=?, elevation_m=? WHERE id=? AND profile_id=?`,
+    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=?, max_hr=?, avg_hr=?, elevation_m=? WHERE id=? AND profile_id=?`,
   ).run(b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
-    JSON.stringify(b.splits || []), b.max_hr ?? null, b.elevation_m ?? null, req.params.id, pid());
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, req.params.id, pid());
   res.json({ ok: true });
 });
 
@@ -319,15 +320,15 @@ app.get("/api/options", (req, res) => {
 app.post("/api/options", (req, res) => {
   const b = req.body || {};
   const r = db
-    .prepare("INSERT INTO options(kind, value, label, color, sort, active) VALUES(?,?,?,?,?,?)")
-    .run(b.kind, b.value, b.label || b.value, b.color ?? null, b.sort ?? 0, b.active ?? 1);
+    .prepare("INSERT INTO options(kind, value, label, color, sort, active, intensity) VALUES(?,?,?,?,?,?,?)")
+    .run(b.kind, b.value, b.label || b.value, b.color ?? null, b.sort ?? 0, b.active ?? 1, b.intensity ?? null);
   res.json({ id: Number(r.lastInsertRowid) });
 });
 
 app.put("/api/options/:id", (req, res) => {
   const b = req.body || {};
-  db.prepare("UPDATE options SET label=?, color=?, sort=?, active=? WHERE id=?").run(
-    b.label, b.color ?? null, b.sort ?? 0, b.active ?? 1, req.params.id,
+  db.prepare("UPDATE options SET label=?, color=?, sort=?, active=?, intensity=? WHERE id=?").run(
+    b.label, b.color ?? null, b.sort ?? 0, b.active ?? 1, b.intensity ?? null, req.params.id,
   );
   res.json({ ok: true });
 });
@@ -598,19 +599,20 @@ function weekActualKm(start: string, end: string): number {
   return Math.round(((row?.m || 0) / 1000) * 10) / 10;
 }
 
-function isoShift(date: string, days: number): string {
-  const d = new Date(date + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
-// Referenz für die Intensitäts-Klassifikation (ToDo #7), profil-gefiltert, Fenster = Wochen.
-function avgSessionTss(beforeDate: string, weeks: number): number | null {
-  const from = isoShift(beforeDate, -7 * weeks);
-  const r = db.prepare(
-    "SELECT AVG(planned_tss) a FROM planned_sessions WHERE profile_id=? AND date>=? AND date<? AND type!='Rest' AND COALESCE(planned_tss,0)>0",
-  ).get(pid(), from, beforeDate) as { a: number | null };
-  return r.a ?? null;
+// Referenz für die Wochen-Last in der PLANUNG (ToDo A3): Ø der GEPLANTEN Wochen-TSS der letzten Wochen
+// (Summe planned_tss je Vor-Saisonwoche) — geplant↔geplant, kein Geplant/Real-Bruch.
+function avgPlannedWeeklyTss(beforeDate: string, weeks: number): number | null {
+  const prev = db.prepare(
+    "SELECT start_date, end_date FROM season_weeks_v2 WHERE profile_id=? AND start_date<? ORDER BY start_date DESC LIMIT ?",
+  ).all(pid(), beforeDate, weeks) as { start_date: string; end_date: string }[];
+  const vals = prev
+    .map((p) => {
+      const row = db.prepare("SELECT SUM(COALESCE(planned_tss,0)) s FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), p.start_date, p.end_date) as { s: number };
+      return row.s || 0;
+    })
+    .filter((v) => v > 0);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 }
 function avgWeeklyTss(beforeDate: string, weeks: number): number | null {
   const prev = db.prepare(
@@ -729,18 +731,35 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realByCategory.strength.h = r1(realByCategory.strength.min / 60);
   }
 
-  // TSS-basierte Intensität (ToDo #7/#13): Donut-Anteile, Zonen-km-Legende, Wochen-Bewertung.
+  // Intensität & Wochen-Last (ToDo v0.7.0): Donut nach Einheitstyp, Polarisierung über km-in-Zone.
   const thr = thresholds() as any;
   const win = Math.max(1, Math.round(thr.intensity_window_weeks ?? 4));
   const refDate = wk?.start_date || todayIso();
-  const refSession = avgSessionTss(refDate, win);
-  const tssIntensity = tssIntensityShares(planned, refSession, thr.easy_pct ?? 80, thr.hard_pct ?? 105);
+
+  // Donut: Intensität je Einheitstyp (aus den Optionen), TSS-gewichtet — kein TSS-Größen-Mapping mehr.
+  const typeRows = db.prepare("SELECT value, intensity FROM options WHERE kind='sessionType'").all() as { value: string; intensity: string | null }[];
+  const intByType = new Map(typeRows.map((r) => [r.value, r.intensity]));
+  const typeIntensity = (type: string): IntLevel => {
+    const v = intByType.get(type);
+    return v === "easy" || v === "moderate" || v === "hard" ? v : "moderate";
+  };
+  const tssIntensity = typeIntensityShares(planned, typeIntensity);
   const zoneKmIntensity = zoneKmIntensityOf(planned, zs.hr_zones, zs.pace_zones);
   const plannedZoneKm = zoneKmOf(planned, zs.hr_zones, zs.pace_zones);
-  const refWeekly = avgWeeklyTss(refDate, win);
-  const weekRating = refWeekly != null ? weekRatingLevel(totals.tss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
 
-  // Bewertungen (Wochen-TSS-Last + km-Polarisierung) als Flags in den Wochen-Check (ToDo Z.41).
+  // Wochen-Last adaptiv (ToDo A3): laufende/künftige Woche geplant↔Ø geplant, abgeschlossene real↔Ø real.
+  const isPast = !!wk && wk.end_date < todayIso();
+  let weekRating: ReturnType<typeof weekRatingLevel> | null = null;
+  if (isPast) {
+    const realWeekTss = (db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), wk.start_date, wk.end_date) as { s: number }).s || 0;
+    const refWeekly = avgWeeklyTss(refDate, win);
+    weekRating = refWeekly != null ? weekRatingLevel(realWeekTss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+  } else {
+    const refPlanned = avgPlannedWeeklyTss(refDate, win);
+    weekRating = refPlanned != null ? weekRatingLevel(totals.tss, refPlanned, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+  }
+
+  // Bewertungen (Wochen-TSS-Last + km-Polarisierung) als Flags in den Wochen-Check (ToDo Z.41/Z.24).
   const loadFlag = weekLoadFlag(weekRating);
   if (loadFlag) flags.push(loadFlag);
   const polFlag = kmPolarizationFlag(zoneKmIntensity);

@@ -1,9 +1,21 @@
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, copyFileSync, renameSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.RUNLOG_DB || join(__dirname, "..", "training.db");
+// Persönliche Daten liegen in data/ (gitignored) — beim Update nur diesen Ordner kopieren (ToDo Z.25).
+const DB_PATH = process.env.RUNLOG_DB || join(__dirname, "..", "data", "training.db");
+mkdirSync(dirname(DB_PATH), { recursive: true });
+// Einmalige, sichere Migration: bestehende training.db aus dem alten Wurzel-Pfad nach data/ übernehmen.
+// Kopieren (inkl. WAL/SHM) statt verschieben; danach das Original als .bak sichern (Bestand ist heilig).
+if (!process.env.RUNLOG_DB) {
+  const OLD = join(__dirname, "..", "training.db");
+  if (!existsSync(DB_PATH) && existsSync(OLD)) {
+    for (const sfx of ["", "-wal", "-shm"]) if (existsSync(OLD + sfx)) copyFileSync(OLD + sfx, DB_PATH + sfx);
+    renameSync(OLD, OLD + ".bak");
+  }
+}
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");
@@ -191,6 +203,18 @@ function migrate(): void {
   `);
   seedOptions();
 
+  // ToDo Z.41/v0.7.0: Intensität (easy/moderat/hart) je Einheitstyp — Grundlage für den TSS-Donut „nach Typ".
+  // In „Auswahllisten" pro Typ einstellbar. Defaults idempotent setzen + neuen Typ „Steady/Tempo" (moderat).
+  addColumn("options", "intensity", "TEXT");
+  const setIntensity = db.prepare("UPDATE options SET intensity=? WHERE kind='sessionType' AND value=? AND intensity IS NULL");
+  for (const [value, intensity] of [
+    ["Easy", "easy"], ["Long", "easy"], ["Threshold", "hard"], ["VO2", "hard"], ["Hill", "hard"], ["Race", "hard"],
+  ] as const) setIntensity.run(intensity, value);
+  db.prepare(
+    "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity) " +
+      "VALUES('sessionType','Steady','Steady / Tempo','#22c55e',(SELECT COALESCE(MAX(sort),0)+1 FROM options WHERE kind='sessionType'),1,'moderate')",
+  ).run();
+
   // ToDo #9 (12.6.): leichte Profile/Accounts (ohne Passwort). Bestandsdaten = Profil 1 „Kolja".
   db.exec(`CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
   if ((db.prepare("SELECT COUNT(*) n FROM profiles").get() as { n: number }).n === 0) {
@@ -222,9 +246,11 @@ function migrate(): void {
     CREATE INDEX IF NOT EXISTS idx_races_date ON races(date);
   `);
   // ToDo Z.43: Max-HF + Höhenmeter je Wettkampf. ToDo Z.44: Herkunft (Auto-Import aus Saisonplan, Dedup).
+  // ToDo Z.23: Ø-HF je Wettkampf.
   addColumn("races", "max_hr", "INTEGER");
   addColumn("races", "elevation_m", "REAL");
   addColumn("races", "source", "TEXT");
+  addColumn("races", "avg_hr", "INTEGER");
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

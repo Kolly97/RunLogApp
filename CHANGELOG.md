@@ -4,6 +4,34 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.7.0] – 2026-06-13 — TSS-Bewertung korrigiert & Layout-Welle
+
+### Behoben
+- **TSS-Donut fachlich korrekt:** Die Intensität einer Einheit kommt jetzt aus dem **Einheitstyp**
+  (easy/moderat/hart), nicht mehr aus der TSS-Größe. Vorher wurde ein langer ruhiger Dauerlauf wegen
+  hoher TSS als „hart" eingestuft und eine kurze VO2-Einheit als „moderat" — genau verkehrt. TSS ist nun
+  nur noch das Gewicht (Anteil der Last je Intensität).
+- **Wochen-Last adaptiv:** Vergleich konsistent — in der Planung geplant↔Ø geplant, im abgeschlossenen
+  Wochenbericht real↔Ø real (vorher geplant diese Woche ↔ real letzte 4 Wochen, also Äpfel mit Birnen).
+- **Races:** Split-Zeiten lassen sich wieder eintippen (vorher setzte das Parsen bei jedem Tastendruck zurück).
+
+### Hinzugefügt
+- **Intensität je Einheitstyp** in „Auswahllisten" einstellbar (easy/moderat/hart); neuer Typ
+  **„Steady / Tempo"** (moderat). Defaults: Easy/Long = easy, Threshold/VO2/Hill/Race = hart.
+- **Races:** Ø-HF je Wettkampf und **Max-HF je Split** (Ø-HF vor Max-HF in Tabelle & Bericht).
+- **Wellness-Langzeitbericht:** Krank-Wochen rot hinterlegt (wie in den anderen Charts).
+- **Persönliche Daten in `data/`** ausgelagert — beim Update nur diesen Ordner kopieren. Bestehende
+  `training.db` wird einmalig sicher übernommen (Original bleibt als `training.db.bak`).
+
+### Geändert
+- **Polarisierung** nur noch über **km-in-Zone** (die Zeit-in-Zone-Polarisierungs-Hinweise sind raus).
+- **Layout:** Dashboard Wochenkm 2/3 + aktuelle Woche 1/3; Wochenbericht PMC + Saison-Progression über
+  volle Breite; PMC & Wochenkm-Charts ~20 % höher; Race-Labels im Vordergrund; Jahreslinie kräftiger;
+  Phasenname auch im Wochenkm-Chart + mehr Abstand; Legende näher am Graph; Races-Toggle in die Legende.
+
+### Zurückgestellt
+- km/Zone aus Strava-Sekunden · Intervalldaten für harte Einheiten aus Strava (eigene Strava-Stream-Runde).
+
 ## [0.6.0] – 2026-06-13 — Panel-Konsolidierung & Detail-Schliff
 
 ### Hinzugefügt

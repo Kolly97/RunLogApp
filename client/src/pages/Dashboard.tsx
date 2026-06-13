@@ -90,7 +90,7 @@ export default function Dashboard() {
           phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
       </div>
 
-      <div className="grid cols-2" style={{ alignItems: "start" }}>
+      <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "2fr 1fr" }}>
         <div className="card">
           <h2>Saison-Progression</h2>
           <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />

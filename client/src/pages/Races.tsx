@@ -77,7 +77,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
     const next = splits.map((s, j) => (j === i ? { ...s, ...p } : s));
     set({ splits: recomputePace(next) });
   };
-  const addSplit = () => set({ splits: [...splits, { km: 1, time_s: null, avg_hr: null }] });
+  const addSplit = () => set({ splits: [...splits, { km: 1, time_s: null, avg_hr: null, max_hr: null }] });
   const delSplit = (i: number) => set({ splits: splits.filter((_, j) => j !== i) });
 
   async function save() {
@@ -97,6 +97,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
         <label className="field"><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10 oder 0.5" /></label>
         <label className="field"><span>Endzeit (mm:ss / h:mm:ss)</span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="38:24" /></label>
         <label className="field"><span>Platzierung</span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
+        <label className="field"><span>Ø-HF (bpm)</span><input type="number" min="0" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} placeholder="z.B. 172" /></label>
         <label className="field"><span>Max-HF (bpm)</span><input type="number" min="0" value={e.max_hr ?? ""} onChange={(x) => set({ max_hr: num(x.target.value) })} placeholder="z.B. 188" /></label>
         <label className="field"><span>Höhenmeter (m)</span><input type="number" min="0" value={e.elevation_m ?? ""} onChange={(x) => set({ elevation_m: num(x.target.value) })} placeholder="z.B. 120" /></label>
       </div>
@@ -104,14 +105,16 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
       <div className="spread" style={{ marginTop: 8 }}><h3>Splits</h3><button className="sm" onClick={addSplit}>+ Split</button></div>
       {splits.length > 0 && (
         <table>
-          <thead><tr><th>km</th><th>Zeit (mm:ss)</th><th>Pace</th><th>Ø-HF</th><th></th></tr></thead>
+          <thead><tr><th>km</th><th>Zeit (mm:ss)</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th><th></th></tr></thead>
           <tbody>
             {splits.map((s, i) => (
               <tr key={i}>
-                <td style={{ width: 70 }}><input type="number" step="0.1" value={s.km ?? ""} onChange={(x) => setSplit(i, { km: num(x.target.value) })} /></td>
-                <td style={{ width: 110 }}><input value={s.time_s != null ? fmtTime(s.time_s) : ""} onChange={(x) => setSplit(i, { time_s: parseTime(x.target.value) })} placeholder="3:48" /></td>
+                {/* km + Zeit uncontrolled (key + defaultValue + onBlur) → freies Tippen, Parse erst beim Verlassen */}
+                <td style={{ width: 70 }}><input key={`km-${i}-${s.km}`} type="number" step="0.1" min="0" defaultValue={s.km ?? ""} onBlur={(x) => setSplit(i, { km: num(x.target.value) })} /></td>
+                <td style={{ width: 110 }}><input key={`t-${i}-${s.time_s}`} defaultValue={s.time_s != null ? fmtTime(s.time_s) : ""} onBlur={(x) => setSplit(i, { time_s: parseTime(x.target.value) })} placeholder="3:48" /></td>
                 <td className="muted">{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td>
-                <td style={{ width: 70 }}><input type="number" value={s.avg_hr ?? ""} onChange={(x) => setSplit(i, { avg_hr: num(x.target.value) })} /></td>
+                <td style={{ width: 70 }}><input type="number" min="0" value={s.avg_hr ?? ""} onChange={(x) => setSplit(i, { avg_hr: num(x.target.value) })} /></td>
+                <td style={{ width: 70 }}><input type="number" min="0" value={s.max_hr ?? ""} onChange={(x) => setSplit(i, { max_hr: num(x.target.value) })} /></td>
                 <td><button className="sm ghost danger" onClick={() => delSplit(i)}>✕</button></td>
               </tr>
             ))}

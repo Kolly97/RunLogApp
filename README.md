@@ -57,20 +57,22 @@ gehören dem Profil „Kolja".
 - Migrationen sind strikt **additiv** (`ALTER TABLE ADD COLUMN` + v2-Tabellen mit Kopie) — Bestandsdaten werden nie angetastet.
 
 ## App weitergeben / Datenbank zurücksetzen
-Deine Trainingsdaten liegen ausschließlich in `training.db`. Diese Datei ist per `.gitignore`
-von der Versionskontrolle ausgenommen, damit sie beim Teilen nicht mitgeht.
+Deine Trainingsdaten liegen ausschließlich im Ordner **`data/`** (`data/training.db`). Dieser Ordner ist per
+`.gitignore` von der Versionskontrolle ausgenommen. **Beim Update der App** kopierst du einfach deinen
+`data/`-Ordner in die neue Version. (Eine alte `training.db` aus dem Projekt-Wurzelordner wird beim ersten
+Start einmalig automatisch nach `data/` übernommen; das Original bleibt als `training.db.bak`.)
 
 - **Leere Vorlage erzeugen** (zum Mitgeben): `npm run db:template` → schreibt `training.empty.db`
-  (nur Schema + Default-Zonen/Auswahllisten, **keine** persönlichen Daten). Deine eigene `training.db` bleibt unberührt.
-- **Eigene Daten zurücksetzen** (neu anfangen): `npm run db:reset` — sichert deine aktuelle `training.db`
-  automatisch als `training.db.backup-…` und legt eine frische an.
+  (nur Schema + Default-Zonen/Auswahllisten, **keine** persönlichen Daten). Dein `data/`-Ordner bleibt unberührt.
+- **Eigene Daten zurücksetzen** (neu anfangen): `npm run db:reset` — sichert deine aktuelle `data/training.db`
+  automatisch und legt eine frische an.
 
-**Beim Weitergeben:** entweder den Ordner **ohne `training.db`** teilen (die App legt beim ersten Start
-automatisch eine leere an) oder `training.empty.db` als `training.db` mitkopieren. `node_modules/` und
-`dist/` müssen nicht mit — sie entstehen via `npm install` / `npm run build`.
+**Beim Weitergeben:** den Ordner **ohne `data/`** teilen (die App legt beim ersten Start automatisch eine
+leere DB an) oder `training.empty.db` als `data/training.db` mitkopieren. `node_modules/` und `dist/` müssen
+nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.6.0**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.7.0**.
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 v2.0-Redesign (GSAP/Three.js), gestrichelte Prediction-Linien rechts von „heute", TSS-Wochenverlauf im PMC.

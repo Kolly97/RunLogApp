@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
+  ResponsiveContainer, ReferenceLine, ReferenceArea, Legend,
 } from "recharts";
 import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
@@ -139,6 +139,15 @@ export default function LongTerm() {
     : rows;
   const points = wellnessPoints(daily);
   const visibleMetrics = METRICS.filter((m) => points.some((p) => p[m.key] != null));
+  // Krank-Wochen rot hinterlegen (ToDo Z.21): je Range auf die VORHANDENEN Punkt-Tage mappen
+  // (die Wellness-X-Achse enthält nur Tage mit Daten → exakte Range-Grenzen existieren evtl. nicht).
+  const pointDates = points.map((p) => p.date);
+  const sickSegments = sickByDate
+    .map((s) => {
+      const inRange = pointDates.filter((d) => d >= s.from && d <= s.to);
+      return inRange.length ? { x1: inRange[0], x2: inRange[inRange.length - 1] } : null;
+    })
+    .filter((x): x is { x1: string; x2: string } => x != null);
   const eff = easyRunWeeks(acts);
   const effPaces = eff.map((e) => e.pace).filter((x): x is number => x != null);
   const paceDomain: [number, number] = effPaces.length
@@ -192,6 +201,9 @@ export default function LongTerm() {
               <ResponsiveContainer width="100%" height={110}>
                 <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: -4 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  {sickSegments.map((s, i) => (
+                    <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
+                  ))}
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
                   <YAxis
                     tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]}

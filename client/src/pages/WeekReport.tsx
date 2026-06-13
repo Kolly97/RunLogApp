@@ -264,14 +264,14 @@ export default function WeekReport() {
                     <div className="spread">
                       <strong>{r.name || "Wettkampf"} <span className="muted tiny">· {fmtDate(r.date)}</span></strong>
                       <span className="tiny">
-                        {km ? `${km} km · ` : ""}{fmtClock(r.time_s)}{pace ? ` · ${paceStr(pace)}/km` : ""}{r.placement ? ` · Platz ${r.placement}` : ""}{r.max_hr ? ` · max ${Math.round(r.max_hr)} bpm` : ""}{r.elevation_m ? ` · ${Math.round(r.elevation_m)} hm` : ""}
+                        {km ? `${km} km · ` : ""}{fmtClock(r.time_s)}{pace ? ` · ${paceStr(pace)}/km` : ""}{r.placement ? ` · Platz ${r.placement}` : ""}{r.avg_hr ? ` · Ø ${Math.round(r.avg_hr)} bpm` : ""}{r.max_hr ? ` · max ${Math.round(r.max_hr)} bpm` : ""}{r.elevation_m ? ` · ${Math.round(r.elevation_m)} hm` : ""}
                       </span>
                     </div>
                     {r.splits && r.splits.length > 0 && (
                       <table className="splits">
-                        <thead><tr><th>km</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th></tr></thead>
+                        <thead><tr><th>km</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th><th>Max-HF</th></tr></thead>
                         <tbody>{r.splits.map((s, i) => (
-                          <tr key={i}><td>{s.km ?? "—"}</td><td>{fmtClock(s.time_s)}</td><td>{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td><td>{s.avg_hr ?? "—"}</td></tr>
+                          <tr key={i}><td>{s.km ?? "—"}</td><td>{fmtClock(s.time_s)}</td><td>{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td><td>{s.avg_hr ?? "—"}</td><td>{s.max_hr ?? "—"}</td></tr>
                         ))}</tbody>
                       </table>
                     )}
@@ -316,16 +316,17 @@ export default function WeekReport() {
                 </div>
               )}
             </div>
-            <div className="chart-card">
-              <h3>PMC — seit Jahresbeginn</h3>
-              <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }}
-                races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
-            </div>
-            <div className="chart-card">
-              <h3>Saison-Progression (geplant / real km)</h3>
-              <SeasonProgress rows={seasonRows} height={185} highlightLabel={weekLabel(week)}
-                races={racesByWeek} sickLabels={sickLabels} showYears={false} />
-            </div>
+          </div>
+          {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
+          <div className="chart-card mt">
+            <h3>PMC — seit Jahresbeginn</h3>
+            <Pmc data={pmcWin} height={210} highlight={{ from: week.start_date, to: week.end_date }}
+              races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
+          </div>
+          <div className="chart-card mt">
+            <h3>Saison-Progression (geplant / real km)</h3>
+            <SeasonProgress rows={seasonRows} height={210} highlightLabel={weekLabel(week)}
+              races={racesByWeek} sickLabels={sickLabels} showYears={false} />
           </div>
 
           {/* Whoop / Wellness Summary */}

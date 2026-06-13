@@ -2,11 +2,11 @@
 import type { Option } from "./options.ts";
 
 export interface Profile { id: number; name: string; }
-export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?: number | null; avg_hr?: number | null; }
+export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?: number | null; avg_hr?: number | null; max_hr?: number | null; }
 export interface Race {
   id?: number; date: string; name?: string; distance_m?: number | null; time_s?: number | null;
   placement?: string; notes?: string; splits?: RaceSplit[];
-  max_hr?: number | null; elevation_m?: number | null; source?: string;
+  max_hr?: number | null; avg_hr?: number | null; elevation_m?: number | null; source?: string;
 }
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }

@@ -232,9 +232,13 @@ export function classifyTss(value: number, ref: number, easyPct: number, hardPct
   return "easy";
 }
 
-/** Donut: TSS-Anteile (%) je Kategorie — jede Einheit nach ihrem TSS vs. Ø-Einheit-TSS der letzten 4 Wochen. */
-export function tssIntensityShares(
-  sessions: PlannedSession[], refSessionTss: number | null, easyPct: number, hardPct: number,
+/**
+ * Donut: TSS-Anteile (%) je Intensität — Intensität kommt aus dem EINHEITSTYP (easy/moderat/hart),
+ * nicht aus der TSS-Größe (sonst würde ein langer ruhiger Lauf wegen hoher TSS „hart"). TSS ist nur
+ * das Gewicht: Anteil = Σ TSS der Klasse / Σ TSS. `typeIntensity` mappt Typ → Klasse (aus den Optionen).
+ */
+export function typeIntensityShares(
+  sessions: PlannedSession[], typeIntensity: (type: string) => IntLevel,
 ): { easy: number; mod: number; hard: number } {
   const acc = { easy: 0, mod: 0, hard: 0 };
   let total = 0;
@@ -243,12 +247,10 @@ export function tssIntensityShares(
     const t = s.planned_tss || 0;
     if (t <= 0) continue;
     total += t;
-    if (refSessionTss && refSessionTss > 0) {
-      const c = classifyTss(t, refSessionTss, easyPct, hardPct);
-      if (c === "hard") acc.hard += t;
-      else if (c === "moderate") acc.mod += t;
-      else acc.easy += t;
-    } else acc.easy += t; // ohne Referenz neutral
+    const c = typeIntensity(s.type);
+    if (c === "hard") acc.hard += t;
+    else if (c === "moderate") acc.mod += t;
+    else acc.easy += t;
   }
   if (total <= 0) return { easy: 0, mod: 0, hard: 0 };
   return { easy: r1((acc.easy / total) * 100), mod: r1((acc.mod / total) * 100), hard: r1((acc.hard / total) * 100) };
@@ -488,13 +490,8 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
   if (ctx.phase && /race/i.test(ctx.phase) && ctx.projectedTsb != null && ctx.projectedTsb < t.tsb_raceweek_min)
     flags.push({ level: "warn", code: "taper", message: `Race Week, aber projizierte Form (TSB ${ctx.projectedTsb}) zu negativ — mehr tapern.` });
 
-  // 5. Polarisierung
-  if (totals.intensity.hard > t.hard_pct_max)
-    flags.push({ level: "warn", code: "hard_high", message: `Harter Anteil ${totals.intensity.hard}% (Z4-6) über ~${t.hard_pct_max}% — zu intensiv, mehr Z1/2.` });
-  if (totals.intensity.mod > t.z3_pct_max)
-    flags.push({ level: "info", code: "grey_zone", message: `Z3 „grey zone" ${totals.intensity.mod}% relativ hoch — polarisierter trainieren.` });
-  if (totals.intensity.easy >= 75 && totals.intensity.hard <= t.hard_pct_max)
-    flags.push({ level: "ok", code: "polarized", message: `Polarisierung ok: ${totals.intensity.easy}% easy / ${totals.intensity.hard}% hart.` });
+  // 5. Polarisierung: bewusst NICHT mehr über Zeit-in-Zone (ToDo Z.24) — die km-in-Zone-Polarisierung
+  // wird in der analyze-Route als `kmPolarizationFlag` angehängt (eine einzige, km-basierte Aussage).
 
   // 6. Quality-Spacing
   if (totals.hardSessions > 3)
