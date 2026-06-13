@@ -1,5 +1,5 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
-import { bikeTssEstimate, hrTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, type HrZone } from "./load.ts";
+import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, type HrZone } from "./load.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
 const DEFAULT_BIKE_KMH = 25;
@@ -137,7 +137,7 @@ function bikePowerPlannedTss(s: PlannedSession, minutes: number, powerZones?: nu
  * Rad: bevorzugt Watt-basiert über power_zones (IF = Zonen-Watt/FTP), sonst
  * IF-basiert nach Typ (TSS = h * IF^2 * 100), NICHT über HF-Zonen — die
  * Lauf-HF-Schätzung lieferte für Rad absurde Werte (60 min Easy-Rolle ~100 TSS).
- * Lauf/sonst: aus Zonen-Allokation (pace_zones bevorzugt), sonst Typ+Dauer.
+ * Lauf: rTSS per Zone (pace_zones vs. Schwellen-Pace, ToDo v0.9.0); sonst HF-Zonen-Fallback.
  */
 export function plannedSessionTss(
   s: PlannedSession,
@@ -146,6 +146,7 @@ export function plannedSessionTss(
   paceZones?: number[],
   powerZones?: number[],
   ftp?: number,
+  thresholdPace?: number,
 ): number {
   if (isBikeSport(s.sport)) {
     const min = sessionMinutes(s, paceZones);
@@ -156,6 +157,8 @@ export function plannedSessionTss(
   const zm = sessionZoneMinutes(s, zones, paceZones); // Minuten je Zone (Allokation oder Typ-Schätzung)
   const secondsPerZone: Record<number, number> = {};
   for (const z of zones) secondsPerZone[z.z] = (zm[z.z] || 0) * 60;
+  // Lauf → rTSS per Zone (Pace vs. Schwellen-Pace). Ohne Schwellen-Pace: HF-Zonen-Fallback.
+  if (s.sport === "Run" && thresholdPace && thresholdPace > 0) return rTssFromZones(secondsPerZone, paceZones, thresholdPace);
   return hrTssFromZones(secondsPerZone, zones, lthr);
 }
 

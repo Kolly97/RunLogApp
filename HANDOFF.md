@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Versionshistorie im Detail: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`.
-> Stand: **v0.8.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.9.0** (13.6.2026). Eine lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -74,14 +74,15 @@
   `week_log_v2` (PK profile_id,week_no), `daily_log_v2` (PK date,profile_id).
 - `planned_sessions` (profile_id, `zone_alloc` JSON {byKm/byMin}, `efforts` JSON, `structured`, `planned_tss`),
   `activities` (profile_id, `kcal`, `zones`/`zone_min`/`zone_km` JSON, `efforts` JSON, `tss`, `training_load`, `strava_id`,
-  `desc_fetched` = Strava-Beschreibung schon abgerufen → schützt Notizen vor Re-Sync-Überschreiben),
+  `desc_fetched` = Strava-Beschreibung schon abgerufen → schützt Notizen vor Re-Sync; `ngp` = grade-adjusted
+  normalisierte Pace (s/km) aus Streams; `streams_fetched` = HF/Pace/Höhe-Streams schon geholt),
   `zone_sets` (profile_id, hr_zones/pace_zones/speed_zones/power_zones JSON, lthr/ftp/threshold_pace, valid_from),
   `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,max_hr}],
   `avg_hr`, `max_hr`, `elevation_m`, `source` = manual|season; Auto-Import aus Saisonplan `goal_race` via Ledger `season_races_imported_<pid>`),
   `options` (kind: phase|sport|sessionType, value/label/color/sort/active, `intensity` = easy|moderate|hard nur bei sessionType
   → Grundlage für den TSS-Donut „nach Typ"), `settings` (key→JSON value).
 
-## 4. Aktueller Funktionsstand (v0.8.0)
+## 4. Aktueller Funktionsstand (v0.9.0)
 
 Planung mit km-je-Zone + Live-Prüf-Engine · Tracking (Wellness + Aktivitäten + Intervall-Builder + Notizen) ·
 **PMC** (CTL/ATL/TSB, Prognose gestrichelt, Wochen-TSS-Summe, große Tagesbalken, Phasen-Farbband, Race-Marker
@@ -114,17 +115,24 @@ sonst gematchter Plan-Typ). Race-Marker nur noch aus der Races-Tabelle (`raceMar
 `WeekTrack.tsx` → Sportart `General`, Name „Commute", Notiz weg + `desc_fetched=1`). Split-Höhenmeter
 (`RaceSplit.elevation_m`, JSON). ZoneDistribution: dickere Balken + 20 %-Ticks.
 
+**v0.9.0-Schliff (PMC + rTSS):** PMC nach TrainingPeaks — **TSB = gestrige CTL−ATL** (`computePmc` in `load.ts`),
+CTL/ATL **aus voller Historie geseedet** (`earliestDataDate()` + Zuschnitt in `/api/pmc` & analyze-Route),
+**CTL-Ramp am heute-Punkt**. **rTSS** ist primäre Lauf-TSS: geplant per-Zone (`rTssFromZones`), Aktivität
+`runTss` (NGP→Ø-Pace; `activityTssToStore` respektiert manuelles `overrides:['tss']`). **NGP** aus Strava-
+Streams (`computeNgp`/`gradeFactor` Minetti+30s in `load.ts`; Abruf je Lauf im `strava.ts`-Enrichment →
+`zone_min`/`zone_km`/`ngp`/`streams_fetched`, nur leere Felder). Recompute: `POST /api/recompute-run-tss`
+(Backup via `VACUUM INTO`) + Button in Settings. Skala ↕ ggü. COROS — CTL-Zahlen verschieben sich (gewollt).
+
 ## 5. Offen / nächste Schritte
 
-- **Zurückgestellt — Strava-Stream-Runde:** (a) km je Zone aus Strava-Zeit-in-Zone, (b) Intervalldaten
-  (Zeit/Strecke/Pace/Ø+Max-HF) für harte Einheiten automatisch aus dem Strava-Upload. Beide brauchen extra,
-  ratenlimitierte `/activities/{id}/zones`- bzw. Lap/Stream-Abrufe + Mapping Strava-Zonen → eigene Zonen.
-  Bis dahin ist „Real"-km je Zone nur dort genau, wo `zone_km` manuell eingetragen ist.
-- **Strava nutzen:** Bei neuem Sync ggf. mehrfach (Rate-Limit-Häppchen à 50 für COROS-TL/kcal-Anreicherung).
-  Notizen sind seit v0.6.0 vor Überschreiben geschützt (`desc_fetched`).
-- **Zurückgestellt — running-TSS (rTSS):** TSS für Belastungen UND geplante Workouts nach der TrainingPeaks-
-  Formel rechnen (NGP/Schwellen-Pace), COROS-/Garmin-unabhängig. Größere Mathe-Runde (ggf. mit den
-  TrainingPeaks-Artikeln). Bis dahin: COROS-TL→TSS bzw. hrTSS wie bisher.
+- **Strava-Streams/rTSS nachziehen:** NGP + min/Zone + km/Zone werden je Lauf erst beim Sync (budgetiert,
+  ~bis 90 Req/Sync) geholt → für den Altbestand mehrere Syncs nötig. Danach „**Lauf-TSS (rTSS) neu berechnen**"
+  (Settings, mit Backup) drücken, damit die rTSS die genauere NGP nutzt. Recompute ist auf das **aktive Profil**
+  gescoped (anderes Profil: umschalten + erneut).
+- **Strava nutzen:** Bei neuem Sync ggf. mehrfach (Rate-Limit). Notizen seit v0.6.0 geschützt (`desc_fetched`),
+  Streams seit v0.9.0 (`streams_fetched`); manuelle zone_min/zone_km werden nicht überschrieben.
+- **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts (Zeit/Strecke/Pace/Ø+Max-HF je Wiederholung) für harte
+  Einheiten automatisch aus Lap/Stream ziehen. Eigene Runde.
 - **Bekannte Feinheiten (Kolja justiert Chart-Kosmetik selbst!):** Jahresmarke ist in `ChartDecor.tsx` ein
   **Dreieck** (polygon, Spitze `plotBottom-20`), Jahreszahl `plotBottom+34`, Phasentext `plotBottom+50`,
   Phasenband `plotBottom-6`. Chart-Bottom-Margin: `Pmc.tsx` 30, `SeasonProgress.tsx` 28. Diese Werte sind

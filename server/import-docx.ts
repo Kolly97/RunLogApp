@@ -106,7 +106,7 @@ export function seedSeason(): { weeks: number; sessions: number } {
       const type = parseType(text);
       const km = sport.startsWith("Bike") ? null : parseKm(text);
       const min = parseMin(text);
-      const tss = plannedSessionTss({ date, sport, type, planned_km: km, planned_min: min, zone_alloc: null }, zs.hr_zones, zs.lthr, zs.pace_zones);
+      const tss = plannedSessionTss({ date, sport, type, planned_km: km, planned_min: min, zone_alloc: null }, zs.hr_zones, zs.lthr, zs.pace_zones, undefined, undefined, zs.threshold_pace);
       db.prepare(
         `INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, planned_tss, sort_order)
          VALUES(?,?,?,?,?,?,?,?,?,?,?)`,

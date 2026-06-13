@@ -4,6 +4,27 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.9.0] – 2026-06-13 — PMC nach TrainingPeaks & running-TSS (rTSS/NGP)
+
+### Behoben / Geändert (PMC)
+- **Form (TSB)** jetzt TrainingPeaks-konform: **gestrige Fitness − gestrige Fatigue** (vorher heutige Werte).
+- **CTL/ATL aus der vollen Historie geseedet** — Fitness/Fatigue am Anfang jedes Zeitraums sind korrekt
+  (vorher startete jede Ansicht bei 0).
+- **CTL-Ramp** wird am „heute"-Punkt gemessen (vorher am Ende des in die Zukunft reichenden Zeitraums).
+
+### Hinzugefügt (running-TSS)
+- **rTSS** ist jetzt die primäre Lauf-TSS (TrainingPeaks-Formel, COROS-/Garmin-unabhängig). Geplante Läufe:
+  per-Zone aus Pace vs. Schwellen-Pace; Aktivitäten: aus NGP, sonst Ø-Pace. COROS-Load bleibt informativ.
+- **Strava-Streams für Läufe** beim Import: Minuten/Zone (HF-Stream gegen deine Zonen), km/Zone (Strecke je
+  Zone) und **NGP** (Normalized Graded Pace; Minetti-Grade-Korrektur + 30s-Normalisierung) — füllt leere
+  Zonen-Felder automatisch (manuelle Werte bleiben), berechnet daraus die genaue rTSS. Budgetiert (Rate-Limit).
+- **„Lauf-TSS (rTSS) neu berechnen"** in den Einstellungen (mit automatischem DB-Backup) — rechnet alle Läufe
+  + geplanten Lauf-TSS neu; nach Syncs (mehr NGP-Daten) erneut auslösbar.
+
+### Hinweis
+- Skala ändert sich ggü. COROS×0.6 → CTL-Zahlen verschieben sich (gewollt). Bis die Streams für den Altbestand
+  nachgeladen sind, nutzen alte Läufe Ø-Pace (NGP folgt mit den nächsten Syncs).
+
 ## [0.8.0] – 2026-06-13 — Geplant-vs-real-Donuts, Commute & Chart-Feinschliff
 
 ### Hinzugefügt

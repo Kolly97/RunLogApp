@@ -283,7 +283,9 @@ export default function WeekReport() {
           {/* Kern-Visualisierung */}
           <div className="chart-grid mt">
             <div className="chart-card">
-              <h3>Zonenverteilung geplant vs. real</h3>
+              <h3 style={{ textAlign: "center" }}>
+                Zonenverteilung geplant vs. real
+              </h3>
               {analyze && <ZoneDistribution zones={analyze.zones} height={92} rows={[
                 { name: "Geplant", values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
                 ...(hasRealZones ? [{ name: "Real", values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
@@ -291,7 +293,9 @@ export default function WeekReport() {
               {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
             </div>
             <div className="chart-card">
-              <h3>Intensität (TSS) — geplant vs. real</h3>
+              <h3 style={{ textAlign: "center" }}>
+                Intensität (TSS) — geplant vs. real
+              </h3>
               {analyze && (
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>

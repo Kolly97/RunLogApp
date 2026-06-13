@@ -2,11 +2,12 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
-import { db, initSchema, getSetting, setSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES } from "./db.ts";
+import { db, initSchema, getSetting, setSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
 import {
   plannedTss,
   computePmc,
   ctlRamp,
+  runTss,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
@@ -118,6 +119,17 @@ function dailyTssMap(from: string, to: string): Map<string, number> {
   }
   return map;
 }
+
+/** Frühestes Datum mit Trainingsdaten (Aktivität oder geplante Einheit) im aktiven Profil — für PMC-Seeding. */
+function earliestDataDate(): string | null {
+  const r = db.prepare(
+    "SELECT MIN(d) m FROM (SELECT MIN(date) d FROM activities WHERE profile_id=? UNION ALL SELECT MIN(date) d FROM planned_sessions WHERE profile_id=?)",
+  ).get(pid(), pid()) as { m: string | null };
+  return r?.m ?? null;
+}
+
+/** ISO-Minimum zweier Datumsstrings. */
+function minIso(a: string, b: string): string { return a < b ? a : b; }
 
 // ---- settings & zones --------------------------------------------------
 
@@ -374,7 +386,19 @@ app.post("/api/seed", (_req, res) => {
 
 function computeSessionTss(b: any): number {
   const zs = effectiveZoneSet(b.date || todayIso());
-  return plannedSessionTss(b, zs.hr_zones, zs.lthr, zs.pace_zones, zs.power_zones, zs.ftp);
+  return plannedSessionTss(b, zs.hr_zones, zs.lthr, zs.pace_zones, zs.power_zones, zs.ftp, zs.threshold_pace);
+}
+
+// Server-autoritative Lauf-TSS: rTSS (NGP falls vorhanden, sonst Ø-Pace), COROS-unabhängig (ToDo v0.9.0).
+// Ausnahme: Nutzer hat tss explizit überschrieben (overrides enthält 'tss'). Bike/sonstige: Client-Wert.
+function activityTssToStore(b: any): number | null {
+  const overridden = Array.isArray(b.overrides) && b.overrides.includes("tss");
+  if (b.sport === "Run" && !overridden && b.distance_m && b.moving_s) {
+    const zs = effectiveZoneSet(b.date || todayIso());
+    const t = runTss(b.distance_m, b.moving_s, zs.threshold_pace, b.ngp ?? null);
+    if (t > 0) return t;
+  }
+  return b.tss ?? null;
 }
 
 app.get("/api/sessions", (req, res) => {
@@ -473,7 +497,7 @@ app.post("/api/activities", (req, res) => {
       b.elevation ?? null,
       b.avg_cadence ?? null,
       b.training_load ?? null,
-      b.tss ?? null,
+      activityTssToStore(b),
       b.kcal ?? null,
       JSON.stringify(b.zones || null),
       JSON.stringify(b.zone_min || null),
@@ -505,7 +529,7 @@ app.put("/api/activities/:id", (req, res) => {
     b.elevation ?? null,
     b.avg_cadence ?? null,
     b.training_load ?? null,
-    b.tss ?? null,
+    activityTssToStore(b),
     b.kcal ?? null,
     JSON.stringify(b.zones || null),
     JSON.stringify(b.zone_min || null),
@@ -587,9 +611,45 @@ app.put("/api/weeklog/:week", (req, res) => {
 app.get("/api/pmc", (req, res) => {
   const from = String(req.query.from || "2026-01-01");
   const to = String(req.query.to || todayIso());
-  const map = dailyTssMap(from, to);
-  const pmc = computePmc(map, from, to, todayIso());
-  res.json({ pmc, ctlRamp7: ctlRamp(pmc, 7), ctlRamp28: ctlRamp(pmc, 28) });
+  const today = todayIso();
+  // Seeding: ab der vollen Historie rechnen (CTL/ATL korrekt am Zeitraum-Anfang), dann auf [from,to] zuschneiden.
+  const calcFrom = minIso(earliestDataDate() ?? from, from);
+  const full = computePmc(dailyTssMap(calcFrom, to), calcFrom, to, today);
+  const pmc = full.filter((p) => p.date >= from);
+  // CTL-Ramp am „heute"-Punkt (nicht am Ende des in die Zukunft reichenden Zeitraums).
+  const upToToday = full.filter((p) => p.date <= today);
+  res.json({ pmc, ctlRamp7: ctlRamp(upToToday, 7), ctlRamp28: ctlRamp(upToToday, 28) });
+});
+
+// ToDo v0.9.0: alle Lauf-TSS rückwirkend auf rTSS umrechnen (Aktivitäten via NGP/Ø-Pace, geplante per Zone).
+// Vorher konsistenter DB-Snapshot (VACUUM INTO). Mit jedem Strava-Sync (mehr NGP-Daten) erneut auslösbar.
+app.post("/api/recompute-run-tss", (_req, res) => {
+  try {
+    const profile = pid();
+    const bak = `${DB_PATH}.${todayIso()}-recompute.bak`;
+    db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
+
+    const acts = db.prepare(
+      "SELECT id, date, distance_m, moving_s, ngp FROM activities WHERE profile_id=? AND sport='Run' AND distance_m IS NOT NULL AND moving_s IS NOT NULL",
+    ).all(profile) as { id: number; date: string; distance_m: number; moving_s: number; ngp: number | null }[];
+    const updA = db.prepare("UPDATE activities SET tss=? WHERE id=?");
+    let activities = 0;
+    for (const a of acts) {
+      const t = runTss(a.distance_m, a.moving_s, effectiveZoneSet(a.date).threshold_pace, a.ngp ?? null);
+      if (t > 0) { updA.run(t, a.id); activities++; }
+    }
+
+    const sess = db.prepare("SELECT * FROM planned_sessions WHERE profile_id=? AND sport='Run'").all(profile) as any[];
+    const updS = db.prepare("UPDATE planned_sessions SET planned_tss=? WHERE id=?");
+    let sessions = 0;
+    for (const s of sess) {
+      const t = computeSessionTss({ ...s, zone_alloc: parseJson(s.zone_alloc, null) });
+      updS.run(t, s.id); sessions++;
+    }
+    res.json({ ok: true, backup: bak, activities, sessions });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 // ---- analyze week ------------------------------------------------------
@@ -648,7 +708,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
   let projectedCtlRamp: number | null = null;
   let projectedTsb: number | null = null;
   if (wk) {
-    const from = "2026-01-01";
+    // Seeding aus der vollen Historie → korrekte CTL/ATL bis ins Wochenende (Projektion).
+    const from = minIso(earliestDataDate() ?? "2026-01-01", "2026-01-01");
     const map = dailyTssMap(from, wk.end_date);
     const pmc = computePmc(map, from, wk.end_date, todayIso());
     projectedCtlRamp = ctlRamp(pmc, 7);

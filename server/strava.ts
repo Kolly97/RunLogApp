@@ -7,7 +7,7 @@
 // Credentials (Client-ID/Secret der eigenen Strava-API-App) liegen in settings; Tokens ebenso.
 import type { Request, Response } from "express";
 import { db, getSetting, setSetting, activeProfile } from "./db.ts";
-import { parseCorosLoad } from "./load.ts";
+import { parseCorosLoad, runTss, computeNgp, streamZoneSplit } from "./load.ts";
 import { effectiveZoneSet } from "./zones.ts";
 
 const API = "https://www.strava.com/api/v3";
@@ -147,12 +147,14 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
         if (!date) continue;
         const sport = mapSport(String(a.sport_type || a.type || ""));
         const movingS = a.moving_time ?? null;
-        const lthr = effectiveZoneSet(date).lthr;
-        const tss = movingS
-          ? a.average_heartrate
-            ? tssFromAvgHr(movingS, a.average_heartrate, lthr)
-            : fallbackTss(sport, movingS)
-          : null;
+        const zsA = effectiveZoneSet(date);
+        // Lauf-TSS primär rTSS (Ø-Pace; NGP folgt bei der Stream-Anreicherung). Sonst hrTSS/Fallback.
+        let tss: number | null = null;
+        if (movingS) {
+          if (sport === "Run" && a.distance) tss = runTss(a.distance, movingS, zsA.threshold_pace);
+          else if (a.average_heartrate) tss = tssFromAvgHr(movingS, a.average_heartrate, zsA.lthr);
+          else tss = fallbackTss(sport, movingS);
+        }
         const matched = (matchPlan.get(date, sport, profile) as any)?.id ?? null;
         const r = insert.run(
           profile, sid, date, sport, "strava", a.name || "", a.distance ?? null, movingS, a.elapsed_time ?? null,
@@ -167,29 +169,73 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
       if (list.length < 100) break;
     }
 
-    // Detail-Anreicherung (Beschreibung → COROS-TL, kcal) mit Budget — neueste zuerst.
-    // Marker „schon abgerufen" = desc_fetched=1 (ToDo Z.45), unabhängig von den Notizen → der Nutzer
-    // kann Notizen ändern/löschen, ohne dass ein Re-Sync sie wieder überschreibt.
+    // Anreicherung (budgetiert, neueste zuerst):
+    //  1) Detail (Beschreibung → COROS-TL, kcal) — Marker desc_fetched=1 (ToDo Z.45).
+    //  2) Lauf-Streams (HF/Pace/Höhe) → min/Zone, km/Zone, NGP, rTSS — Marker streams_fetched=1 (ToDo v0.9.0).
+    // Pro Aktivität bis zu 2 ratenlimitierte Abrufe → Request-Budget statt fixem Aktivitäts-Limit.
     const candidates = db
       .prepare(
-        `SELECT id, strava_id FROM activities
-         WHERE source='strava' AND profile_id=? AND desc_fetched=0 AND date >= ?
+        `SELECT id, strava_id, sport, date, distance_m, moving_s, desc_fetched, streams_fetched FROM activities
+         WHERE source='strava' AND profile_id=? AND date >= ?
+           AND (desc_fetched=0 OR (sport='Run' AND streams_fetched=0))
          ORDER BY date DESC LIMIT ?`,
       )
-      .all(profile, after, DETAIL_BUDGET_PER_SYNC) as { id: number; strava_id: string }[];
-    let enriched = 0;
-    // Daten (TL/TSS/kcal) immer setzen; die Beschreibung nur in leere Notizen schreiben (Edits bleiben).
-    const upd = db.prepare(
-      "UPDATE activities SET training_load=?, tss=COALESCE(?, tss), kcal=COALESCE(?, kcal), " +
-        "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, desc_fetched=1 WHERE id=?",
+      .all(profile, after, DETAIL_BUDGET_PER_SYNC) as
+      { id: number; strava_id: string; sport: string; date: string; distance_m: number | null; moving_s: number | null; desc_fetched: number; streams_fetched: number }[];
+
+    // Detail: COROS-TL/kcal immer; Beschreibung nur in leere Notizen; tss NICHT für Läufe (rTSS bleibt).
+    const updDesc = db.prepare(
+      "UPDATE activities SET training_load=?, kcal=COALESCE(?, kcal), " +
+        "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, " +
+        "tss=CASE WHEN sport='Run' THEN tss ELSE COALESCE(?, tss) END, desc_fetched=1 WHERE id=?",
     );
+    // Streams: zone_min/zone_km nur in leere Felder (manuelle Werte bleiben); ngp + rTSS setzen.
+    const updStream = db.prepare(
+      "UPDATE activities SET " +
+        "zone_min=CASE WHEN (zone_min IS NULL OR zone_min='' OR zone_min='null') THEN ? ELSE zone_min END, " +
+        "zone_km=CASE WHEN (zone_km IS NULL OR zone_km='' OR zone_km='null') THEN ? ELSE zone_km END, " +
+        "ngp=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
+    );
+
+    let enriched = 0, reqs = 0;
+    const MAX_REQ = 90; // Strava-Rate-Limit-Schutz (≈100/15min)
     for (const c of candidates) {
       try {
-        const d = (await api(`/activities/${c.strava_id}`)) as any;
-        const tl = parseCorosLoad(d.description);
-        const tssFromTl = tl != null ? Math.round(tl * corosFactor * 10) / 10 : null;
-        upd.run(tl, tssFromTl, d.calories ?? null, (d.description || "").slice(0, 500), c.id);
-        enriched++;
+        if (!c.desc_fetched) {
+          if (reqs >= MAX_REQ) break;
+          const d = (await api(`/activities/${c.strava_id}`)) as any; reqs++;
+          const tl = parseCorosLoad(d.description);
+          const tssFromTl = tl != null ? Math.round(tl * corosFactor * 10) / 10 : null;
+          updDesc.run(tl, d.calories ?? null, (d.description || "").slice(0, 500), tssFromTl, c.id);
+          enriched++;
+        }
+        if (c.sport === "Run" && !c.streams_fetched) {
+          if (reqs >= MAX_REQ) break;
+          const s = (await api(
+            `/activities/${c.strava_id}/streams?keys=time,heartrate,velocity_smooth,grade_smooth,distance&key_by_type=true`,
+          )) as any; reqs++;
+          const zsA = effectiveZoneSet(c.date);
+          const time: number[] = s?.time?.data ?? [];
+          const hr: number[] = s?.heartrate?.data ?? [];
+          const vel: number[] = s?.velocity_smooth?.data ?? [];
+          const grade: number[] = s?.grade_smooth?.data ?? [];
+          const dist: number[] = s?.distance?.data ?? [];
+          const ngp = vel.length && grade.length && time.length ? computeNgp(vel, grade, time) : null;
+          let zoneMinJson: string | null = null, zoneKmJson: string | null = null;
+          if (hr.length && time.length) {
+            const sp = streamZoneSplit(hr, time, dist, zsA.hr_zones);
+            const zMin: Record<number, number> = {}, zKm: Record<number, number> = {};
+            for (const z of zsA.hr_zones) {
+              if (sp.sec[z.z] > 0) zMin[z.z] = Math.round((sp.sec[z.z] / 60) * 10) / 10;
+              if (sp.meters[z.z] > 0) zKm[z.z] = Math.round((sp.meters[z.z] / 1000) * 100) / 100;
+            }
+            zoneMinJson = Object.keys(zMin).length ? JSON.stringify(zMin) : null;
+            zoneKmJson = Object.keys(zKm).length ? JSON.stringify(zKm) : null;
+          }
+          const tss = runTss(c.distance_m ?? 0, c.moving_s ?? 0, zsA.threshold_pace, ngp);
+          updStream.run(zoneMinJson, zoneKmJson, ngp, tss || null, c.id);
+          enriched++;
+        }
       } catch {
         break; // Rate-Limit o.ä. → Rest beim nächsten Sync
       }

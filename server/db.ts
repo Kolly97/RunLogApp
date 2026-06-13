@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, copyFileSync, renameSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Persönliche Daten liegen in data/ (gitignored) — beim Update nur diesen Ordner kopieren (ToDo Z.25).
-const DB_PATH = process.env.RUNLOG_DB || join(__dirname, "..", "data", "training.db");
+export const DB_PATH = process.env.RUNLOG_DB || join(__dirname, "..", "data", "training.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
 // Einmalige, sichere Migration: bestehende training.db aus dem alten Wurzel-Pfad nach data/ übernehmen.
 // Kopieren (inkl. WAL/SHM) statt verschieben; danach das Original als .bak sichern (Bestand ist heilig).
@@ -187,6 +187,11 @@ function migrate(): void {
     // Massen-Neuabrufe. Leere bleiben 0 und werden wie bisher schrittweise angereichert.
     db.prepare("UPDATE activities SET desc_fetched=1 WHERE source='strava' AND notes IS NOT NULL AND TRIM(notes) <> ''").run();
   }
+
+  // ToDo v0.9.0: NGP (grade-adjusted normalisierte Pace, s/km) + Marker, dass die Strava-Streams (HF/Pace/
+  // Höhe) schon geholt wurden → Basis für rTSS, min/Zone, km/Zone. Wird je Lauf einmalig (budgetiert) befüllt.
+  addColumn("activities", "ngp", "REAL");
+  addColumn("activities", "streams_fetched", "INTEGER DEFAULT 0");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`

@@ -122,6 +122,88 @@ export function rTss(movingSec: number, avgPaceSecPerKm: number, thresholdPaceSe
   return round1((movingSec / 3600) * ifr * ifr * 100);
 }
 
+/** rTSS per Zone (für geplante Läufe): Σ (sec_z/3600)·IF_z²·100, IF_z = Schwellen-Pace / Zonen-Pace. */
+export function rTssFromZones(secondsPerZone: Record<number, number>, paceZones: number[] | undefined, thresholdPace: number): number {
+  let tss = 0;
+  for (const [z, secRaw] of Object.entries(secondsPerZone)) {
+    const sec = secRaw || 0;
+    if (sec <= 0) continue;
+    const zi = Number(z);
+    const zonePace = paceZones?.[zi - 1] || DEFAULT_ZONE_PACE[zi - 1] || thresholdPace;
+    const ifr = thresholdPace / zonePace; // schneller (kleinere Pace) → höheres IF
+    tss += (sec / 3600) * ifr * ifr * 100;
+  }
+  return round1(tss);
+}
+
+/** Lauf-TSS einer Aktivität: rTSS aus NGP (falls vorhanden), sonst aus Ø-Pace (Distanz/Zeit). */
+export function runTss(distanceM: number, movingS: number, thresholdPace: number, ngp?: number | null): number {
+  if (!movingS || movingS <= 0) return 0;
+  const pace = ngp && ngp > 0 ? ngp : distanceM > 0 ? movingS / (distanceM / 1000) : 0;
+  if (!pace) return 0;
+  return rTss(movingS, pace, thresholdPace);
+}
+
+/**
+ * Grade-Adjustment-Faktor (Stravas GAP zugrunde liegend): relative Lauf-Energiekosten nach Minetti
+ * C(g)/C(0), g = Steigung als Dezimal (geclamped ±0.45). >1 bergauf, <1 leicht bergab.
+ */
+export function gradeFactor(g: number): number {
+  const x = Math.max(-0.45, Math.min(0.45, g));
+  const c = 155.4 * x ** 5 - 30.4 * x ** 4 - 43.3 * x ** 3 + 46.3 * x ** 2 + 19.5 * x + 3.6;
+  return c / 3.6;
+}
+
+/**
+ * NGP (Normalized Graded Pace) aus Strava-Streams: pro Sample grade-adjusted Speed (Minetti),
+ * 30s zeitgewichtetes gleitendes Mittel, dann NGP = (Ø(roll⁴))^¼. Rückgabe als Pace (s/km).
+ * velocity in m/s, grade in % (Strava grade_smooth), time kumulativ in s.
+ */
+export function computeNgp(velocity: number[], grade: number[], time: number[]): number {
+  const n = Math.min(velocity.length, grade.length, time.length);
+  if (n < 2) return 0;
+  const gas = new Array<number>(n); // grade-adjusted speed (m/s)
+  for (let i = 0; i < n; i++) {
+    const v = velocity[i] ?? 0;
+    gas[i] = v > 0 ? v * gradeFactor((grade[i] ?? 0) / 100) : 0;
+  }
+  // 30s gleitendes Mittel (zeitbasiert, O(n) über einen lo-Zeiger)
+  const roll = new Array<number>(n);
+  let lo = 0, sum = 0, cnt = 0;
+  for (let i = 0; i < n; i++) {
+    sum += gas[i]; cnt++;
+    while (lo < i && (time[i] ?? i) - (time[lo] ?? lo) > 30) { sum -= gas[lo]; cnt--; lo++; }
+    roll[i] = cnt > 0 ? sum / cnt : 0;
+  }
+  let p4 = 0, m = 0;
+  for (let i = 0; i < n; i++) if (gas[i] > 0.3) { p4 += roll[i] ** 4; m++; } // >0.3 m/s ≈ in Bewegung
+  if (m === 0) return 0;
+  const ngpSpeed = Math.pow(p4 / m, 0.25);
+  return ngpSpeed > 0 ? round1(1000 / ngpSpeed) : 0; // s/km
+}
+
+/** Aus HF-/Zeit-/Distanz-Streams Sekunden UND Meter je HF-Zone (für zone_min/zone_km beim Import). */
+export function streamZoneSplit(
+  hr: number[], time: number[], distance: number[] | undefined, zones: HrZone[],
+): { sec: Record<number, number>; meters: Record<number, number> } {
+  const sec: Record<number, number> = {};
+  const meters: Record<number, number> = {};
+  zones.forEach((z) => { sec[z.z] = 0; meters[z.z] = 0; });
+  for (let i = 1; i < hr.length; i++) {
+    const dt = (time[i] ?? i) - (time[i - 1] ?? i - 1);
+    if (dt <= 0 || dt > 30) continue;
+    const bpm = hr[i];
+    const zn = zones.find((z) => bpm >= z.min && bpm <= z.max) ?? zones[0];
+    if (!zn) continue;
+    sec[zn.z] += dt;
+    if (distance && distance[i] != null && distance[i - 1] != null) {
+      const dd = distance[i] - distance[i - 1];
+      if (dd > 0) meters[zn.z] += dd;
+    }
+  }
+  return { sec, meters };
+}
+
 /** Power-TSS fürs Rad: IF = NP/FTP. */
 export function powerTss(movingSec: number, avgPower: number, ftp: number): number {
   if (!movingSec || !avgPower || !ftp) return 0;
@@ -165,8 +247,12 @@ export interface PmcPoint {
 }
 
 /**
- * Performance Management Chart: CTL (42d), ATL (7d), TSB = CTL-ATL.
- * dailyTss: Map "YYYY-MM-DD" -> TSS (real + geplant). Lücken = 0.
+ * Performance Management Chart (TrainingPeaks): CTL (42d), ATL (7d).
+ *  CTL_heute = CTL_gestern + (TSS_heute − CTL_gestern)/42, ATL analog mit /7.
+ *  Form/TSB = GESTRIGE Fitness − GESTRIGE Fatigue (TrainingPeaks-Konvention), also CTL/ATL VOR dem
+ *  heutigen Update — die Frische, mit der man in den heutigen Tag geht.
+ * dailyTss: Map "YYYY-MM-DD" -> TSS (real + geplant). Lücken = 0. Für korrekte Werte ab der vollen
+ * Historie rechnen und danach auf den Anzeige-Zeitraum zuschneiden (Seeding).
  */
 export function computePmc(
   dailyTss: Map<string, number>,
@@ -180,14 +266,15 @@ export function computePmc(
   let atl = seed.atl;
   for (const date of eachDay(startDate, endDate)) {
     const tss = dailyTss.get(date) ?? 0;
-    ctl = ctl + (tss - ctl) / 42;
-    atl = atl + (tss - atl) / 7;
+    const ctlPrev = ctl, atlPrev = atl;
+    ctl = ctlPrev + (tss - ctlPrev) / 42;
+    atl = atlPrev + (tss - atlPrev) / 7;
     out.push({
       date,
       tss: round1(tss),
       ctl: round1(ctl),
       atl: round1(atl),
-      tsb: round1(ctl - atl),
+      tsb: round1(ctlPrev - atlPrev), // TrainingPeaks: gestrige Fitness − gestrige Fatigue
       planned: date > todayIso,
     });
   }
