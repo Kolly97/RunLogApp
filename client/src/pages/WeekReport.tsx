@@ -99,7 +99,7 @@ export default function WeekReport() {
     reload();
     // PMC-Ausschnitt ±6 Wochen um die Berichtswoche
     if (week) {
-      api.pmc(addDays(week.start_date, -42), addDays(week.end_date, 42))
+      api.pmc(addDays(week.start_date, -28), addDays(week.end_date, 14))
         .then((r) => setPmcWin(r.pmc)).catch(() => setPmcWin([]));
     }
     // eslint-disable-next-line
@@ -266,7 +266,7 @@ export default function WeekReport() {
               </div>
             </div>
             <div className="chart-card">
-              <h3>PMC — ±6 Wochen um {weekLabel(week)}</h3>
+              <h3>PMC — Letzte 4 Wochen vor {weekLabel(week)}</h3>
               <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }} />
             </div>
             <div className="chart-card">
