@@ -85,7 +85,7 @@ export default function Pmc({
         </div>
       )}
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 20, right: 12, left: -6, bottom: 48 }}
+        <ComposedChart data={rows} margin={{ top: 20, right: 12, left: -6, bottom: 30 }}
           onMouseMove={(s: any) => setHoverDate(s?.activeLabel ? String(s.activeLabel) : null)}
           onMouseLeave={() => setHoverDate(null)}
           onClick={(s: any) => s?.activeLabel && onPick?.(String(s.activeLabel))}
@@ -154,7 +154,7 @@ function PmcTooltip({ active, payload }: any) {
   );
   return (
     <div style={{ background: "#fff", border: "1px solid #e3e8ef", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>{fmtDate(p.date)}</div>
+      <div style={{ fontWeight: 100, marginBottom: 4 }}>{fmtDate(p.date)}</div>
       {row("Fitness", p.ctl, "#2b6cb0")}
       {row("Fatigue", p.atl, "#d53f8c")}
       {row("Form", p.tsb, "#e0a300")}

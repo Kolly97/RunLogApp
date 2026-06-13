@@ -35,7 +35,7 @@ export default function ChartDecor(props: any) {
         const left = Math.min(a, b);
         const width = Math.max(1, Math.abs(b - a) + band);
         return (
-          <rect key={`pb${i}`} x={left} y={plotBottom - 6} width={width} height={6} fill={phaseColor(r.phase)} opacity={0.92} rx={1}>
+          <rect key={`pb${i}`} x={left} y={plotBottom - 6} width={width} height={6} fill={phaseColor(r.phase)} opacity={0.9} rx={1}>
             <title>{phaseLabel(r.phase)}</title>
           </rect>
         );
@@ -45,13 +45,31 @@ export default function ChartDecor(props: any) {
         if (x == null || !isFinite(x)) return null;
         return (
           <g key={`yr${i}`}>
-            <line x1={x} x2={x} y1={plotBottom} y2={plotBottom - offset.height * 0.25} stroke="#0f172a" strokeWidth={1.2} strokeOpacity={0.85} />
-            <text x={x} y={plotBottom + 34} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f172a">{y.year}</text>
+          <polygon
+            points={`
+              ${x},${plotBottom - 20}
+              ${x - 10},${plotBottom}
+              ${x + 10},${plotBottom}
+            `}
+            fill="#0f172a"
+            opacity={0.9}
+          />
+
+          <text
+            x={x}
+            y={plotBottom + 34}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight={700}
+            fill="#0f172a"
+          >
+            {y.year}
+          </text>
           </g>
         );
       })}
       {phaseText && (
-        <text x={(offset.left ?? 0) + 2} y={plotBottom + 34} textAnchor="start" fontSize={12} fontWeight={600} fill={phaseFill}>
+        <text x={(offset.left ?? 0) + 2} y={plotBottom + 50} textAnchor="start" fontSize={12} fontWeight={600} fill={phaseFill}>
           {phaseText}
         </text>
       )}

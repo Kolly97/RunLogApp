@@ -66,7 +66,7 @@ export default function SeasonProgress({
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 48 }}
+        <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 28 }}
           onMouseMove={(s: any) => setHoverPhase(s?.activePayload?.[0]?.payload?.phase ?? null)}
           onMouseLeave={() => setHoverPhase(null)}>
           <CartesianGrid stroke="#eef1f5" vertical={false} />
@@ -83,24 +83,24 @@ export default function SeasonProgress({
           )}
           <Bar dataKey="planned" name="Geplant (km)" fill="#9ec3ea" barSize={16} radius={[3, 3, 0, 0]} />
           <Bar dataKey="actual" name="Real (km)" fill="var(--fitness)" barSize={16} radius={[3, 3, 0, 0]} />
-          <Line dataKey="target" name="Phasenziel" stroke="var(--form)" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2 }} />
+          <Line dataKey="target" name="Phasenziel" stroke="var(--form)" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3 }} />
           {/* Phasenband + Jahresmarke + Phasenname über den Balken (ToDo Z.18/Z.39/Z.46). */}
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} 
             phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
           {/* Races zuletzt → Label im Vordergrund, von nichts überlappt (ToDo Z.27) */}
           {showRaces && races.map((r) => (
-            <ReferenceLine key={`race-${r.label}`} x={r.label} stroke="#d4af37" strokeWidth={1.6}
+            <ReferenceLine key={`race-${r.label}`} x={r.label} stroke="#d4af37" strokeWidth={2}
               label={vRefLabel(short(r.text))} />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
       {/* Vereinheitlichte Legende inkl. Races-Toggle (ToDo Z.28) */}
-      <div className="pmc-legend" style={{ marginTop: 2 }}>
+      <div className="pmc-legend" style={{ marginTop: 4 }}>
         <span className="lg"><span className="dot" style={{ background: "#9ec3ea" }} /> Geplant (km)</span>
         <span className="lg"><span className="dot" style={{ background: "var(--fitness)" }} /> Real (km)</span>
         <span className="lg"><span className="dot" style={{ background: "var(--form)" }} /> Phasenziel</span>
         {races.length > 0 && (
-          <button type="button" onClick={() => setShowRaces((v) => !v)} style={{ opacity: showRaces ? 1 : 0.4 }}>
+          <button type="button" onClick={() => setShowRaces((v) => !v)} style={{ opacity: showRaces ? 1 : 0.2 }}>
             <span className="dot" style={{ background: "#d4af37" }} /> Races
           </button>
         )}
