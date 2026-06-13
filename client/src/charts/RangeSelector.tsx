@@ -43,9 +43,9 @@ function resolve(mode: RangeMode, custom: DateRange, seasonRange?: DateRange | n
     }
     case "season":
       if (seasonRange) return seasonRange;
-      return { from: addDays(today, -365), to: addDays(today, 21) }; // Fallback ohne Saisonplan
+      return { from: addDays(today, -365), to: addDays(today, 56) }; // Fallback ohne Saisonplan
     case "6m": return { from: addDays(today, -182), to: addDays(today, 14) };
-    case "1y": return { from: addDays(today, -365), to: addDays(today, 31) };
+    case "1y": return { from: addDays(today, -365), to: addDays(today, 28) };
   }
 }
 
