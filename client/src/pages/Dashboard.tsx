@@ -63,11 +63,11 @@ export default function Dashboard() {
       {/* Zeitraum gilt für die großen Übersichts-Charts (PMC, Saison-Progression, Intervall-Trend) */}
       <div className="row" style={{ justifyContent: "flex-end", margin: "14px 0 10px" }}>
         <span className="tiny muted">Zeitraum</span>
-        <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="3w" />
+        <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="ytd" />
       </div>
 
       <div className="card">
-        <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
+        <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
         <Pmc data={pmc?.pmc ?? []} />
       </div>
 

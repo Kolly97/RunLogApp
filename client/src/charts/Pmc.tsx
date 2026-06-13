@@ -18,10 +18,10 @@ export default function Pmc({
   const hl = highlight && data.some((p) => p.date >= highlight.from && p.date <= highlight.to) ? highlight : null;
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={data} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+      <ComposedChart data={data} margin={{ top: 14, right: 12, left: -6, bottom: 0 }}>
         <defs>
           <linearGradient id="ctlFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--fitness)" stopOpacity={0.28} />
+            <stop offset="0%" stopColor="var(--fitness)" stopOpacity={0.6} />
             <stop offset="100%" stopColor="var(--fitness)" stopOpacity={0.02} />
           </linearGradient>
         </defs>

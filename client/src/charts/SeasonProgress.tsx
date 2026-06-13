@@ -46,9 +46,9 @@ export default function SeasonProgress({
   if (!rows.length) return <div className="empty">Noch kein Saisonplan. Lege Wochen unter „Einstellungen → Saisonplan" an oder importiere den bestehenden Plan.</div>;
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+      <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 0 }}>
         <CartesianGrid stroke="#eef1f5" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} interval={0} angle={-12} textAnchor="end" height={48} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} angle={0} minTickGap={0} textAnchor="middle" height={30} />
         <YAxis tick={{ fontSize: 11, fill: "#8a96a6" }} width={36} unit="" />
         <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />

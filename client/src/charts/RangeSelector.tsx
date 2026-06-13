@@ -4,15 +4,15 @@
 import { useEffect, useState } from "react";
 import { addDays, todayIso } from "../lib/util.ts";
 
-export type RangeMode = "3w" | "season" | "1m" | "6m" | "1y" | "custom";
+export type RangeMode =  "1m" | "6m" | "1y" | "ytd" | "season" | "custom";
 export interface DateRange { from: string; to: string; }
 
 const PRESETS: { mode: RangeMode; label: string }[] = [
-  { mode: "3w", label: "3 Wo" },
-  { mode: "season", label: "Saison" },
   { mode: "1m", label: "1M" },
   { mode: "6m", label: "6M" },
+  { mode: "ytd", label: "YTD" },
   { mode: "1y", label: "1J" },
+  { mode: "season", label: "Saison" },
   { mode: "custom", label: "Eigene" },
 ];
 
@@ -22,21 +22,30 @@ function mondayOf(iso: string): string {
   return addDays(iso, -((d.getUTCDay() + 6) % 7));
 }
 
+/** 1. Januar des aktuellen Jahres als ISO-Date-String. */
+function startOfCurrentYear(): string {
+  const year = new Date().getFullYear();
+  return `${year}-01-01`;
+}
+
 function resolve(mode: RangeMode, custom: DateRange, seasonRange?: DateRange | null): DateRange {
   const today = todayIso();
   switch (mode) {
     case "custom": return custom;
-    case "3w": {
-      // Letzte 2 Wochen + die kommende (wochenbündig Mo–So).
+    case "1m": {
+      // Letzte 4 Wochen + die kommende (wochenbündig Mo–So).
       const mon = mondayOf(today);
-      return { from: addDays(mon, -14), to: addDays(mon, 13) };
+      return { from: addDays(mon, -28), to: addDays(mon, 13) };
+    }
+    case "ytd": {
+      const year_date = startOfCurrentYear();
+      return { from: addDays(year_date, 0), to: addDays(today, 14)};
     }
     case "season":
       if (seasonRange) return seasonRange;
       return { from: addDays(today, -365), to: addDays(today, 21) }; // Fallback ohne Saisonplan
-    case "1m": return { from: addDays(today, -30), to: addDays(today, 14) };
     case "6m": return { from: addDays(today, -182), to: addDays(today, 14) };
-    case "1y": return { from: addDays(today, -365), to: addDays(today, 14) };
+    case "1y": return { from: addDays(today, -365), to: addDays(today, 31) };
   }
 }
 

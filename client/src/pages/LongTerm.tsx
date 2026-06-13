@@ -187,7 +187,6 @@ export default function LongTerm() {
       <div className="card">
         <div className="spread">
           <h2>Zonen-Effizienz (Easy-Läufe)</h2>
-          <span className="tiny muted">Wochenmittel aller lockeren Läufe (ohne Intervall-Belastungen) — sinkende Pace bei gleichem Puls = bessere Ökonomie</span>
         </div>
         {!eff.length && <p className="muted tiny">Keine Lauf-Aktivitäten im gewählten Zeitraum.</p>}
         {eff.length > 0 && (
@@ -214,6 +213,9 @@ export default function LongTerm() {
                     strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#d53f8c", strokeWidth: 0 }} />
                 </ComposedChart>
               </ResponsiveContainer>
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                Wochenmittel aller lockeren Läufe (ohne Intervall-Belastungen) sinkende Pace bei gleichem Puls = bessere Ökonomie
+              </p>
             </div>
             <div className="chart-card">
               <h3>Effizienz-Faktor (m/min je Herzschlag)</h3>
