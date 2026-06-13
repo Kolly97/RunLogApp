@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession } from "../lib/api.ts";
+import { useNavigate } from "react-router-dom";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
@@ -10,10 +11,13 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 
 export default function Dashboard() {
   const { season, week } = useSeason();
+  const navigate = useNavigate();
   const [range, setRange] = useState<DateRange | null>(null);
   const [pmc, setPmc] = useState<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number } | null>(null);
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
+  const [acts, setActs] = useState<Activity[]>([]);
+  const [allRaces, setAllRaces] = useState<Race[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
 
@@ -34,16 +38,22 @@ export default function Dashboard() {
     if (!season.length) return;
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
-    Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([sessions, acts]) => { setRows(buildSeasonRows(season, sessions, acts)); setAllSessions(sessions); })
+    Promise.all([api.sessions({}), api.activities({ from, to }), api.races()])
+      .then(([sessions, a, rc]) => { setRows(buildSeasonRows(season, sessions, a)); setAllSessions(sessions); setActs(a); setAllRaces(rc); })
       .catch(() => setRows([]));
   }, [season]);
 
-  // Marker für PMC + Saison-Progression (Races gold, Krank rot)
-  const racesByDate = raceMarkersByDate(allSessions);
+  // Marker für PMC + Saison-Progression (Races gold, Krank rot, Phasenband, Jahresmarke)
+  const racesByDate = raceMarkersByDate(allSessions, allRaces);
   const sickByDate = sickRangesByDate(season);
-  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const racesByWeek = raceMarkersByWeek(season, allSessions, allRaces);
   const sickLabels = sickWeekLabels(season);
+  const pmcDates = (pmc?.pmc ?? []).map((p) => p.date);
+  const phaseRuns = phaseRunsByDate(pmcDates, season);
+  const yearMarks = yearMarksByDate(pmcDates);
+  const namesByDate: Record<string, string> = {};
+  for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
+  const pickDay = (date: string) => navigate("/track?date=" + date);
 
   useEffect(() => {
     if (week) api.analyzeWeek(week.week_no).then(setAnalyze).catch(() => setAnalyze(null));
@@ -76,7 +86,8 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
-        <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate} />
+        <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
+          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
       </div>
 
       <div className="grid cols-2" style={{ alignItems: "start" }}>

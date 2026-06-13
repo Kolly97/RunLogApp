@@ -6,13 +6,14 @@ export default function ZoneDistribution({
   zones, rows, height = 130,
 }: {
   zones: HrZone[];
-  rows: { name: string; minutes: Record<number, number> }[];
+  /** Werte je Zone (Lauf: km; Verteilung wird als % dargestellt). */
+  rows: { name: string; values: Record<number, number> }[];
   height?: number;
 }) {
   const data = rows.map((r) => {
-    const total = Object.values(r.minutes).reduce((a, b) => a + b, 0) || 1;
+    const total = Object.values(r.values).reduce((a, b) => a + b, 0) || 1;
     const o: Record<string, number | string> = { name: r.name };
-    for (const z of zones) o["z" + z.z] = Math.round(((r.minutes[z.z] || 0) / total) * 1000) / 10;
+    for (const z of zones) o["z" + z.z] = Math.round(((r.values[z.z] || 0) / total) * 1000) / 10;
     return o;
   });
   return (

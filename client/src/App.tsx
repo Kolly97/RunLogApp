@@ -6,6 +6,7 @@ import WeekPlan from "./pages/WeekPlan.tsx";
 import WeekTrack from "./pages/WeekTrack.tsx";
 import WeekReport from "./pages/WeekReport.tsx";
 import LongTerm from "./pages/LongTerm.tsx";
+import Races from "./pages/Races.tsx";
 import SeasonPlan from "./pages/SeasonPlan.tsx";
 import Settings from "./pages/Settings.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
@@ -20,6 +21,7 @@ const NAV = [
   { to: "/track", ico: "✓", label: "Tracking" },
   { to: "/report", ico: "🖨", label: "Wochenbericht" },
   { to: "/longterm", ico: "📈", label: "Langzeit" },
+  { to: "/races", ico: "🏁", label: "Races" },
   { to: "/season", ico: "🗓", label: "Saisonplan" },
   { to: "/settings", ico: "⚙", label: "Einstellungen" },
   { to: "/options", ico: "🏷", label: "Auswahllisten" },
@@ -46,6 +48,7 @@ export default function App() {
           <Route path="/track" element={<WeekTrack />} />
           <Route path="/report" element={<WeekReport />} />
           <Route path="/longterm" element={<LongTerm />} />
+          <Route path="/races" element={<Races />} />
           <Route path="/season" element={<SeasonPlan />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/options" element={<OptionsConfig />} />

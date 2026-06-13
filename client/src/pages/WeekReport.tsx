@@ -4,14 +4,14 @@
 // Seite 2: vollständige Tagesfaktoren-Tabelle · Wellness-Verläufe · Reflexion.
 import { useEffect, useState } from "react";
 import {
-  api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort,
+  api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race,
 } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
   fmtDur, weekLabel, phaseLabel, addDays, todayIso,
 } from "../lib/util.ts";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
@@ -86,6 +86,7 @@ export default function WeekReport() {
   const [pmcWin, setPmcWin] = useState<PmcPoint[]>([]);
   const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
+  const [allRaces, setAllRaces] = useState<Race[]>([]);
   const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
 
   async function reload() {
@@ -114,8 +115,8 @@ export default function WeekReport() {
     if (!season.length) return;
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
-    Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([s, a]) => { setSeasonRows(buildSeasonRows(season, s, a).filter((r) => !r.start || r.start >= yearStart)); setAllSessions(s); })
+    Promise.all([api.sessions({}), api.activities({ from, to }), api.races()])
+      .then(([s, a, rc]) => { setSeasonRows(buildSeasonRows(season, s, a).filter((r) => !r.start || r.start >= yearStart)); setAllSessions(s); setAllRaces(rc); })
       .catch(() => setSeasonRows([]));
   }, [season]);
 
@@ -124,10 +125,12 @@ export default function WeekReport() {
 
   const days = daysOfWeek(week.start_date);
   // Marker (Races gold, Krank rot) für PMC + Saison-Progression
-  const racesByDate = raceMarkersByDate(allSessions);
+  const racesByDate = raceMarkersByDate(allSessions, allRaces);
   const sickByDate = sickRangesByDate(season);
-  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const racesByWeek = raceMarkersByWeek(season, allSessions, allRaces);
   const sickLabels = sickWeekLabels(season);
+  const pmcPhaseRuns = phaseRunsByDate(pmcWin.map((p) => p.date), season);
+  const weekRaces = allRaces.filter((r) => r.date >= week.start_date && r.date <= week.end_date);
   const runActs = acts.filter((a) => a.sport === "Run");
   const actualKm = round1(runActs.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
   const actualTss = round1(acts.reduce((s, a) => s + (a.tss || 0), 0));
@@ -249,13 +252,43 @@ export default function WeekReport() {
             </tbody>
           </table>
 
+          {/* Wettkämpfe der Woche (ToDo #24) — einzeln mit Splits */}
+          {weekRaces.length > 0 && (
+            <div className="mt">
+              <h3>Wettkämpfe</h3>
+              {weekRaces.map((r) => {
+                const km = (r.distance_m || 0) / 1000;
+                const pace = km && r.time_s ? r.time_s / km : null;
+                return (
+                  <div key={r.id} className="race-block">
+                    <div className="spread">
+                      <strong>{r.name || "Wettkampf"} <span className="muted tiny">· {fmtDate(r.date)}</span></strong>
+                      <span className="tiny">
+                        {km ? `${km} km · ` : ""}{fmtClock(r.time_s)}{pace ? ` · ${paceStr(pace)}/km` : ""}{r.placement ? ` · Platz ${r.placement}` : ""}
+                      </span>
+                    </div>
+                    {r.splits && r.splits.length > 0 && (
+                      <table className="splits">
+                        <thead><tr><th>km</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th></tr></thead>
+                        <tbody>{r.splits.map((s, i) => (
+                          <tr key={i}><td>{s.km ?? "—"}</td><td>{fmtClock(s.time_s)}</td><td>{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td><td>{s.avg_hr ?? "—"}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    )}
+                    {r.notes && <div className="tiny" style={{ marginTop: 4 }}>{r.notes}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Kern-Visualisierung */}
           <div className="chart-grid mt">
             <div className="chart-card">
               <h3>Zonenverteilung geplant vs. real</h3>
               {analyze && <ZoneDistribution zones={analyze.zones} height={110} rows={[
-                { name: "Geplant", minutes: analyze.totals.zoneMin },
-                ...(hasRealZones ? [{ name: "Real", minutes: realZoneMin }] : []),
+                { name: "Geplant", values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
+                ...(hasRealZones ? [{ name: "Real", values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
               ]} />}
               {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
             </div>
@@ -280,7 +313,7 @@ export default function WeekReport() {
             <div className="chart-card">
               <h3>PMC — seit Jahresbeginn</h3>
               <Pmc data={pmcWin} height={185} highlight={{ from: week.start_date, to: week.end_date }}
-                races={racesByDate} sickRanges={sickByDate} />
+                races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
             </div>
             <div className="chart-card">
               <h3>Saison-Progression (geplant / real km)</h3>
@@ -378,6 +411,12 @@ function fmtVal(v: unknown): string {
   if (!hasVal(v)) return "";
   if (typeof v === "number") return String(round1(v));
   return String(v);
+}
+
+function fmtClock(s?: number | null): string {
+  if (s == null) return "—";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.round(s % 60);
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 function intensityOf(zm: Record<number, number>): { easy: number; mod: number; hard: number } {

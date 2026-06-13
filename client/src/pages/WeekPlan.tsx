@@ -114,7 +114,7 @@ export default function WeekPlan() {
               <h3>Intensität & Zonen (geplant)</h3>
               <IntensityCard tss={analyze.tssIntensity ?? t.intensity} zoneKm={analyze.zoneKmIntensity ?? t.intensity} rating={analyze.weekRating ?? null} height={120} />
               <div style={{ marginTop: 6 }}>
-                <ZoneDistribution zones={analyze.zones} rows={[{ name: "Geplant", minutes: t.zoneMin }]} height={80} />
+                <ZoneDistribution zones={analyze.zones} rows={[{ name: "Geplant", values: analyze.plannedZoneKm ?? t.zoneMin }]} height={80} />
               </div>
             </div>
           )}

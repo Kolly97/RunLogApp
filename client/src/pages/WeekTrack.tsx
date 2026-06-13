@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
@@ -33,6 +34,16 @@ export default function WeekTrack() {
     setZs(z);
   }
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [week?.week_no]);
+
+  // Sprung aus dem PMC: ?date=YYYY-MM-DD wählt die zugehörige Woche.
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const d = params.get("date");
+    if (!d || !season.length) return;
+    const w = season.find((x) => x.start_date <= d && d <= x.end_date);
+    if (w) setWeekNo(w.week_no);
+    // eslint-disable-next-line
+  }, [season, params]);
 
   if (loading) return <p className="muted">Lädt…</p>;
   if (!week) return <div className="empty">Keine Woche — erst Saison anlegen (Einstellungen).</div>;

@@ -196,6 +196,22 @@ function migrate(): void {
   ensureV2("daily_log", "daily_log_v2", "date, profile_id");
   ensureV2("season_weeks", "season_weeks_v2", "profile_id, week_no");
   ensureV2("week_log", "week_log_v2", "profile_id, week_no");
+
+  // ToDo #24 (v0.5.0): Wettkämpfe mit Detail-Splits (eigene Seite + Bericht).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS races (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      name        TEXT,
+      distance_m  REAL,
+      time_s      INTEGER,
+      placement   TEXT,
+      notes       TEXT,
+      splits      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_races_date ON races(date);
+  `);
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

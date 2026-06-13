@@ -160,8 +160,21 @@ table.units tr.note-row > td:first-child { border-left: none; padding-left: 0; }
 table.units .note-name { font-style: normal; font-weight: 600; color: var(--muted); }
 table.units .note-efforts { color: var(--muted); }
 
+/* Wochenbericht: Wettkampf-Block */
+.race-block { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: #fffdf5; }
+.race-block table.splits { margin-top: 6px; font-size: 11px; }
+.race-block table.splits th, .race-block table.splits td { padding: 2px 8px; text-align: left; }
+
 /* Intensitäts-Karte: Wochen-Bewertungs-Badge */
-.int-rating { margin-top: 8px; padding: 5px 9px; border: 1px solid; border-radius: 8px; font-size: 13px; background: #fff; }
+.int-rating { margin-top: 6px; padding: 5px 9px; border: 1px solid; border-radius: 8px; font-size: 13px; background: #fff; }
+.donut-sublabel { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; }
+
+/* PMC: Hover-Overlay (Einheitsname oben links) */
+.pmc-hover {
+  position: absolute; top: 6px; left: 46px; z-index: 5; pointer-events: none;
+  background: rgba(255,255,255,0.92); border: 1px solid var(--line); border-radius: 8px;
+  padding: 3px 8px; font-size: 12px; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* PMC: klickbare Legende (Serien an/aus) */
 .pmc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 6px; }

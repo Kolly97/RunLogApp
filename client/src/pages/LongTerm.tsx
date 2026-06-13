@@ -10,9 +10,10 @@ import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels } from "../lib/markers.ts";
+import { useNavigate } from "react-router-dom";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
@@ -89,6 +90,7 @@ export default function LongTerm() {
   const [pmc, setPmc] = useState<PmcPoint[]>([]);
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
+  const [allRaces, setAllRaces] = useState<Race[]>([]);
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, todayIso()) }
@@ -107,15 +109,21 @@ export default function LongTerm() {
     if (!season.length) return;
     const from = season[0].start_date;
     const to = season[season.length - 1].end_date;
-    Promise.all([api.sessions({}), api.activities({ from, to })])
-      .then(([sessions, all]) => { setRows(buildSeasonRows(season, sessions, all)); setAllSessions(sessions); })
+    Promise.all([api.sessions({}), api.activities({ from, to }), api.races()])
+      .then(([sessions, all, rc]) => { setRows(buildSeasonRows(season, sessions, all)); setAllSessions(sessions); setAllRaces(rc); })
       .catch(() => setRows([]));
   }, [season]);
 
-  const racesByDate = raceMarkersByDate(allSessions);
+  const navigate = useNavigate();
+  const racesByDate = raceMarkersByDate(allSessions, allRaces);
   const sickByDate = sickRangesByDate(season);
-  const racesByWeek = raceMarkersByWeek(season, allSessions);
+  const racesByWeek = raceMarkersByWeek(season, allSessions, allRaces);
   const sickLabels = sickWeekLabels(season);
+  const pmcDates = pmc.map((p) => p.date);
+  const phaseRuns = phaseRunsByDate(pmcDates, season);
+  const yearMarks = yearMarksByDate(pmcDates);
+  const namesByDate: Record<string, string> = {};
+  for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
 
   // Kacheln: Summen je Kategorie im gewählten Zeitraum (#17)
   const cat = { run: { km: 0, s: 0 }, bike: { km: 0, s: 0 }, str: { s: 0 } };
@@ -160,7 +168,8 @@ export default function LongTerm() {
       {/* PMC über den gewählten Zeitraum */}
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
-        <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate} />
+        <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate}
+          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} />
       </div>
 
       {/* Saison-Progression (geplant vs. gelaufen) über den gewählten Zeitraum */}

@@ -3,13 +3,15 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 export const INT_COLORS = { easy: "#3b82f6", mod: "#22c55e", hard: "#f97316" };
 
 export default function IntensityDonut({
-  intensity, height = 150, center, showLegend = false,
+  intensity, height = 150, center, centerText, showLegend = false,
 }: {
   intensity: { easy: number; mod: number; hard: number };
   height?: number;
-  /** Mitteltext (Default: % hart). */
+  /** Mitteltext mit Zahl (z.B. % hart). */
   center?: { value: number; sub: string };
-  /** Kompakte Legende unter dem Donut (selten gebraucht; Karte nutzt Seitenlegende). */
+  /** Neutraler Mitteltext (z.B. „TSS") — keine widersprüchliche Zahl. */
+  centerText?: string;
+  /** Eigene 3-Farben-Legende unter dem Donut (Easy/Moderat/Hart %). */
   showLegend?: boolean;
 }) {
   const data = [
@@ -17,7 +19,6 @@ export default function IntensityDonut({
     { name: "Moderat", key: "mod", value: intensity.mod },
     { name: "Hart", key: "hard", value: intensity.hard },
   ];
-  const c = center ?? { value: intensity.hard, sub: "hart" };
   return (
     <div>
       <div style={{ position: "relative", height }}>
@@ -30,8 +31,14 @@ export default function IntensityDonut({
           </PieChart>
         </ResponsiveContainer>
         <div className="donut-center">
-          <div className="donut-value">{Math.round(c.value)}%</div>
-          <div className="donut-label">{c.sub}</div>
+          {centerText != null ? (
+            <div className="donut-sublabel">{centerText}</div>
+          ) : (
+            <>
+              <div className="donut-value">{Math.round((center ?? { value: intensity.hard }).value)}%</div>
+              <div className="donut-label">{(center ?? { sub: "hart" }).sub}</div>
+            </>
+          )}
         </div>
       </div>
       {showLegend && (

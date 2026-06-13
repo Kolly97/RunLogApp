@@ -2,6 +2,11 @@
 import type { Option } from "./options.ts";
 
 export interface Profile { id: number; name: string; }
+export interface RaceSplit { km?: number | null; time_s?: number | null; pace_s?: number | null; avg_hr?: number | null; }
+export interface Race {
+  id?: number; date: string; name?: string; distance_m?: number | null; time_s?: number | null;
+  placement?: string; notes?: string; splits?: RaceSplit[];
+}
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
 export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
@@ -43,7 +48,8 @@ export interface AnalyzeResult {
   projectedCtlRamp: number | null; projectedTsb: number | null;
   // ToDo #7/#13 — TSS-basierte Intensität (optional, defensiv konsumieren)
   tssIntensity?: IntensityShare; zoneKmIntensity?: IntensityShare; weekRating?: WeekRating | null;
-  // reale Verteilung/Kategorien (vom Server geliefert)
+  // reale + geplante Verteilung/Kategorien (vom Server geliefert)
+  plannedZoneKm?: Record<number, number>;
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
   realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
 }
@@ -119,6 +125,15 @@ export const api = {
   renameProfile: (id: number, name: string) => j(`/api/profiles/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   setActiveProfile: (id: number) => j("/api/profile/active", { method: "PUT", body: JSON.stringify({ id }) }),
   deleteProfile: (id: number) => j(`/api/profiles/${id}`, { method: "DELETE" }),
+
+  // Races / Wettkämpfe (ToDo #24)
+  races: (q?: { from?: string; to?: string }) => {
+    const p = q ? new URLSearchParams(q as Record<string, string>).toString() : "";
+    return j<Race[]>(`/api/races${p ? `?${p}` : ""}`);
+  },
+  addRace: (b: Race) => j<{ id: number }>("/api/races", { method: "POST", body: JSON.stringify(b) }),
+  updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

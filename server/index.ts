@@ -17,6 +17,7 @@ import {
   intervalEffortStat,
   tssIntensityShares,
   zoneKmIntensityOf,
+  zoneKmOf,
   weekRatingLevel,
   type PlannedSession,
   type CategoryTotals,
@@ -236,6 +237,37 @@ app.delete("/api/profiles/:id", (req, res) => {
   // Profil 1 (Kolja, Bestandsdaten) und das aktive Profil sind geschützt.
   if (id === 1 || id === pid()) return res.status(400).json({ error: "Profil ist geschützt/aktiv" });
   db.prepare("DELETE FROM profiles WHERE id=?").run(id);
+  res.json({ ok: true });
+});
+
+// ---- Races (Wettkämpfe mit Splits, ToDo #24) ----------------------------
+
+app.get("/api/races", (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  const rows = (from && to
+    ? db.prepare("SELECT * FROM races WHERE date BETWEEN ? AND ? AND profile_id=? ORDER BY date").all(from, to, pid())
+    : db.prepare("SELECT * FROM races WHERE profile_id=? ORDER BY date DESC").all(pid())) as any[];
+  res.json(rows.map((r) => ({ ...r, splits: parseJson(r.splits, []) })));
+});
+
+app.post("/api/races", (req, res) => {
+  const b = req.body || {};
+  const r = db.prepare(
+    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits) VALUES(?,?,?,?,?,?,?,?)`,
+  ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "", JSON.stringify(b.splits || []));
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+app.put("/api/races/:id", (req, res) => {
+  const b = req.body || {};
+  db.prepare(
+    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=? WHERE id=? AND profile_id=?`,
+  ).run(b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "", JSON.stringify(b.splits || []), req.params.id, pid());
+  res.json({ ok: true });
+});
+
+app.delete("/api/races/:id", (req, res) => {
+  db.prepare("DELETE FROM races WHERE id=? AND profile_id=?").run(req.params.id, pid());
   res.json({ ok: true });
 });
 
@@ -669,13 +701,14 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const refSession = avgSessionTss(refDate, win);
   const tssIntensity = tssIntensityShares(planned, refSession, thr.easy_pct ?? 80, thr.hard_pct ?? 105);
   const zoneKmIntensity = zoneKmIntensityOf(planned, zs.hr_zones, zs.pace_zones);
+  const plannedZoneKm = zoneKmOf(planned, zs.hr_zones, zs.pace_zones);
   const refWeekly = avgWeeklyTss(refDate, win);
   const weekRating = refWeekly != null ? weekRatingLevel(totals.tss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
 
   res.json({
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
-    tssIntensity, zoneKmIntensity, weekRating,
+    tssIntensity, zoneKmIntensity, plannedZoneKm, weekRating,
   });
 });
 

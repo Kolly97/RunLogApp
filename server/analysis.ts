@@ -259,10 +259,8 @@ export function weekRatingLevel(weekTss: number, refWeekly: number, easyPct: num
   return { level: classifyTss(weekTss, refWeekly, easyPct, hardPct), weekTss: r1(weekTss), avg4: r1(refWeekly) };
 }
 
-/** Seitenlegende: %-km je Zonen-Gruppe (Easy Z1-2 / Moderat Z3 / Hart Z4-6) aus den geplanten Lauf-km. */
-export function zoneKmIntensityOf(
-  sessions: PlannedSession[], zones: HrZone[], paceZones?: number[],
-): { easy: number; mod: number; hard: number } {
+/** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */
+export function zoneKmOf(sessions: PlannedSession[], zones: HrZone[], paceZones?: number[]): Record<number, number> {
   const zk: Record<number, number> = {};
   zones.forEach((z) => (zk[z.z] = 0));
   for (const s of sessions) {
@@ -281,17 +279,25 @@ export function zoneKmIntensityOf(
       }
       continue;
     }
-    // Typ-Default (km auf Zonen verteilt, analog sessionZoneMinutes)
     if (s.type === "Easy" || s.type === "Long") zk[2] += km;
     else if (s.type === "Threshold") { zk[2] += km * 0.4; zk[4] += km * 0.6; }
     else if (s.type === "VO2" || s.type === "Race") { zk[2] += km * 0.4; zk[5] += km * 0.6; }
     else if (s.type === "Hill") { zk[2] += km * 0.5; zk[4] += km * 0.5; }
     else zk[2] += km;
   }
+  for (const z of zones) zk[z.z] = r1(zk[z.z]);
+  return zk;
+}
+
+/** Seitenlegende: %-km je Zonen-Gruppe (Easy Z1-2 / Moderat Z3 / Hart Z4-6) aus den geplanten Lauf-km. */
+export function zoneKmIntensityOf(
+  sessions: PlannedSession[], zones: HrZone[], paceZones?: number[],
+): { easy: number; mod: number; hard: number } {
+  const zk = zoneKmOf(sessions, zones, paceZones);
   const tot = Object.values(zk).reduce((a, b) => a + b, 0) || 1;
-  const easy = ((zk[1] + zk[2]) / tot) * 100;
-  const mod = (zk[3] / tot) * 100;
-  const hard = ((zk[4] + zk[5] + zk[6]) / tot) * 100;
+  const easy = (((zk[1] || 0) + (zk[2] || 0)) / tot) * 100;
+  const mod = ((zk[3] || 0) / tot) * 100;
+  const hard = (((zk[4] || 0) + (zk[5] || 0) + (zk[6] || 0)) / tot) * 100;
   return { easy: r1(easy), mod: r1(mod), hard: r1(hard) };
 }
 

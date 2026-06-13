@@ -4,6 +4,23 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.5.0] – 2026-06-13 — Chart-Politur & Races
+
+### Hinzugefügt
+- **Races als eigene Seite** (🏁): Wettkämpfe mit Endzeit, Distanz, Platzierung, **manuellen Splits**
+  (km/Zeit/Pace/Ø-HF) und Notizen. Erscheinen als goldene Marker in den Charts und **einzeln im Wochenbericht**.
+- **Phasen-Farbband** unter der x-Achse von PMC & Saison-Progression (Hover = Phasenname) — verbindendes Orientierungselement.
+- **PMC-Klick → Tracking**: Hover zeigt oben links die Einheit des Tages, Klick springt zur passenden Tracking-Woche.
+- **Race-Marker an/aus** (Toggle) in beiden Charts.
+
+### Geändert
+- **PMC:** Wochen-TSS als echte Wochen-Summe (statt akkumuliertem Sägezahn); TSS-Tagesbalken größer
+  (höchster Balken reicht bis oben, eigene Achse).
+- **Jahresmarke** dezenter: halbhoher Strich + Jahreszahl unter der Achse (PMC + Saison-Progression).
+- **Intensitäts-Panel** verständlicher: Donut = TSS-Anteile mit eigener Legende & neutraler Mitte;
+  rechts km-Anteil je Zone; zwei Bewertungen (Last vs. Ø-Wochen **und** Polarisierung).
+- Beim Laufen durchgängig **km je Zone** (Zonenverteilung km-basiert).
+
 ## [0.4.0] – 2026-06-13 — Visualisierung & Accounts
 
 ### Hinzugefügt
@@ -80,6 +97,7 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 - Zonen-Sets mit Gültig-ab-Datum (neue Leistungsdiagnostik = neues Set).
 - Seed-Import des bestehenden `.docx`-Saisonplans; Import der 14 handschriftlich ausgefüllten Wochen-Scans.
 
+[0.5.0]: #050--2026-06-13--chart-politur--races
 [0.4.0]: #040--2026-06-13--visualisierung--accounts
 [0.3.0]: #030--2026-06-12--profile-strava--feinschliff
 [0.2.0]: #020--2026-06-12--auswertung-eingabe--konfigurierbarkeit
