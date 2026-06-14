@@ -1,6 +1,7 @@
-// Effort-/Intervall-Builder (ToDo 1/20) — Strava/Coros-artiger Editor für strukturierte
-// Belastungen (Threshold/VO2/Race). Wird in der Planung (SessionModal) und in der
-// Ist-Aktivitäts-Eingabe (WeekTrack) verwendet. Speichert als Effort[].
+// Effort-/Intervall-Builder (ToDo 1/20; Sets v0.12.0/ToDo 2) — Strava/Coros-artiger Editor für
+// strukturierte Belastungen. Wird in der Planung (SessionModal) und der Ist-Eingabe (WeekTrack) genutzt.
+// Speichert als Effort[]; ein Eintrag ist entweder eine Leaf-Zeile ODER eine Wiederholungs-Gruppe
+// (`group:true`, `reps`, `children:Effort[]`) für Sets wie 3×(1000+200).
 import type { CSSProperties } from "react";
 import type { Effort, HrZone } from "../lib/api.ts";
 import { isBikeSport, num, paceStr, speedKmh } from "../lib/util.ts";
@@ -10,8 +11,7 @@ export const EFFORT_TYPES = ["Threshold", "VO2", "Race"];
 
 export const ZONE_COLORS = ["#9aa7b4", "#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444"];
 
-/** Anzeige-Bereich einer Zone: HF-Spanne + (falls vorhanden) Pace-Obergrenze.
- *  Konvention pace_zones: Index z-1 = schnellste erlaubte Pace (s/km) der Zone z. */
+/** Anzeige-Bereich einer Zone: HF-Spanne + (falls vorhanden) Pace-Obergrenze. */
 export function zoneRange(z: number, zones?: HrZone[] | null, paceZones?: number[] | null): {
   hr: string | null; pace: string | null; title: string;
 } {
@@ -44,29 +44,38 @@ export function parseMmSs(t: string): number | null {
   return isNaN(n) ? null : Math.round(n * 60);
 }
 
-/** Abgeleitete Zeit eines Reps (falls nicht gesetzt: aus Distanz × Pace). */
+/** Gruppen zu flachen Leaf-Efforts expandieren (Gruppen-reps × children). Für Statistik/Trend/Anzeige. */
+export function flattenEfforts(rows: Effort[] | null | undefined): Effort[] {
+  const out: Effort[] = [];
+  for (const e of rows ?? []) {
+    if (e.group && e.children?.length) {
+      const g = e.reps && e.reps > 0 ? e.reps : 1;
+      for (let i = 0; i < g; i++) for (const c of e.children) out.push(c);
+    } else if (!e.group) out.push(e);
+  }
+  return out;
+}
+
 function repSec(r: Effort): number | null {
   if (r.sec) return r.sec;
   if (r.dist_m && r.pace_s) return (r.dist_m / 1000) * r.pace_s;
   return null;
 }
-/** Abgeleitete Distanz eines Reps (falls nicht gesetzt: aus Zeit ÷ Pace). */
 function repDist(r: Effort): number | null {
   if (r.dist_m) return r.dist_m;
   if (r.sec && r.pace_s) return (r.sec / r.pace_s) * 1000;
   return null;
 }
-/** Abgeleitete Pace eines Reps in s/km. */
 function repPace(r: Effort): number | null {
   if (r.pace_s) return r.pace_s;
   if (r.sec && r.dist_m) return r.sec / (r.dist_m / 1000);
   return null;
 }
 
-/** Zeit-/Distanz-gewichtete Durchschnitte über alle Reps. */
+/** Zeit-/Distanz-gewichtete Durchschnitte über alle Reps (Gruppen werden flach expandiert). */
 export function effortStats(rows: Effort[]): { totalSec: number; totalM: number; avgHr: number | null } {
   let totalSec = 0, totalM = 0, hrW = 0, hrSum = 0;
-  for (const r of rows) {
+  for (const r of flattenEfforts(rows)) {
     const reps = r.reps && r.reps > 0 ? r.reps : 1;
     const sec = repSec(r);
     const dist = repDist(r);
@@ -78,29 +87,29 @@ export function effortStats(rows: Effort[]): { totalSec: number; totalM: number;
 }
 
 const COLS = "40px 58px 64px 68px 48px 48px 82px minmax(56px,1fr) 24px";
+const COLS_PLAN = "40px 58px 64px 68px 82px minmax(56px,1fr) 24px"; // Planung: ohne Ø-HF/Max-HF (ToDo v0.13.0)
 const cell: CSSProperties = { padding: "4px 5px", textAlign: "center", width: "100%" };
 
-export default function EffortBuilder({ value, onChange, sport, zones }: {
+export default function EffortBuilder({ value, onChange, sport, zones, planning }: {
   value: Effort[] | null | undefined;
   onChange: (efforts: Effort[] | null) => void;
   sport: string;
   zones?: HrZone[] | null;
+  /** Planung: Ø-HF/Max-HF ausblenden (kennt man beim Planen noch nicht — Zone reicht). */
+  planning?: boolean;
 }) {
   const rows = value ?? [];
   const bike = isBikeSport(sport);
+  const cols = planning ? COLS_PLAN : COLS;
 
-  const update = (i: number, patch: Partial<Effort>) => {
-    const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r));
-    onChange(next);
-  };
-  const remove = (i: number) => {
-    const next = rows.filter((_, j) => j !== i);
-    onChange(next.length ? next : null);
-  };
-  const add = () => {
-    const last = rows[rows.length - 1];
+  const update = (i: number, patch: Partial<Effort>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const replace = (i: number, next: Effort) => onChange(rows.map((r, j) => (j === i ? next : r)));
+  const remove = (i: number) => { const next = rows.filter((_, j) => j !== i); onChange(next.length ? next : null); };
+  const addLeaf = () => {
+    const last = [...rows].reverse().find((r) => !r.group);
     onChange([...rows, last ? { ...last } : { reps: 1 }]);
   };
+  const addGroup = () => onChange([...rows, { group: true, reps: 3, children: [{ reps: 1 }] }]);
 
   const st = effortStats(rows);
   const avgPace = st.totalSec && st.totalM ? st.totalSec / (st.totalM / 1000) : null;
@@ -108,33 +117,38 @@ export default function EffortBuilder({ value, onChange, sport, zones }: {
   return (
     <div className="field" style={{ marginBottom: 8 }}>
       <span style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 3 }}>
-        Intervalle / Efforts <span className="tiny">(Zeit als m:ss oder Minuten · Pace leer = automatisch)</span>
+        Intervalle / Efforts <span className="tiny">(Zeit als m:ss oder Minuten · Pace leer = automatisch · Gruppe = Set wie 3×(1000+200))</span>
       </span>
 
       {rows.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 4, alignItems: "center", fontSize: 12 }}>
-          <div className="tiny muted center">Wdh</div>
-          <div className="tiny muted center">Zeit</div>
-          <div className="tiny muted center">Dist. (m)</div>
-          <div className="tiny muted center">{bike ? "km/h" : "Pace /km"}</div>
-          <div className="tiny muted center">Ø HF</div>
-          <div className="tiny muted center">Max HF</div>
-          <div className="tiny muted center">Zone</div>
-          <div className="tiny muted center">Label</div>
-          <div />
-
-          {rows.map((r, i) => {
-            const derivedPace = !r.pace_s && r.sec && r.dist_m ? repPace(r) : null;
-            return (
-              <Row key={i} r={r} i={i} bike={bike} zones={zones} derivedPace={derivedPace}
-                update={update} remove={remove} />
-            );
-          })}
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 4, alignItems: "center", fontSize: 12 }}>
+            <div className="tiny muted center">Wdh</div>
+            <div className="tiny muted center">Zeit</div>
+            <div className="tiny muted center">Dist. (m)</div>
+            <div className="tiny muted center">{bike ? "km/h" : "Pace /km"}</div>
+            {!planning && <div className="tiny muted center">Ø HF</div>}
+            {!planning && <div className="tiny muted center">Max HF</div>}
+            <div className="tiny muted center">Zone</div>
+            <div className="tiny muted center">Label</div>
+            <div />
+          </div>
+          {rows.map((r, i) =>
+            r.group ? (
+              <GroupBox key={i} g={r} bike={bike} zones={zones} cols={cols} planning={planning}
+                onChange={(next) => replace(i, next)} onRemove={() => remove(i)} />
+            ) : (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 4, alignItems: "center", fontSize: 12 }}>
+                <Row r={r} bike={bike} zones={zones} planning={planning} onChange={(patch) => update(i, patch)} onRemove={() => remove(i)} />
+              </div>
+            ),
+          )}
+        </>
       )}
 
       <div className="row" style={{ marginTop: 6, gap: 10 }}>
-        <button type="button" className="sm ghost" onClick={add}>+ Intervall</button>
+        <button type="button" className="sm ghost" onClick={addLeaf}>+ Intervall</button>
+        <button type="button" className="sm ghost" onClick={addGroup}>+ Wiederholungs-Gruppe</button>
         {rows.length > 0 && (
           <span className="tiny muted">
             Σ {mmss(st.totalSec) || "–"}{st.totalM ? ` · ${(st.totalM / 1000).toFixed(1)} km` : ""}
@@ -150,32 +164,67 @@ export default function EffortBuilder({ value, onChange, sport, zones }: {
   );
 }
 
-function Row({ r, i, bike, zones, derivedPace, update, remove }: {
-  r: Effort; i: number; bike: boolean; zones?: HrZone[] | null; derivedPace: number | null;
-  update: (i: number, patch: Partial<Effort>) => void; remove: (i: number) => void;
+/** Wiederholungs-Gruppe (eine Ebene): N× über mehrere Leaf-Zeilen. */
+function GroupBox({ g, bike, zones, cols, planning, onChange, onRemove }: {
+  g: Effort; bike: boolean; zones?: HrZone[] | null; cols: string; planning?: boolean;
+  onChange: (next: Effort) => void; onRemove: () => void;
+}) {
+  const children = g.children ?? [];
+  const updateChild = (j: number, patch: Partial<Effort>) =>
+    onChange({ ...g, children: children.map((c, k) => (k === j ? { ...c, ...patch } : c)) });
+  const removeChild = (j: number) => onChange({ ...g, children: children.filter((_, k) => k !== j) });
+  const addChild = () => onChange({ ...g, children: [...children, { reps: 1 }] });
+
+  return (
+    <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 8px", margin: "4px 0", background: "#fafbfd" }}>
+      <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 4 }}>
+        <span className="tiny muted">Wiederholung</span>
+        <input type="number" min={1} style={{ width: 56, textAlign: "center" }} value={g.reps ?? 1}
+          onChange={(e) => onChange({ ...g, reps: num(e.target.value) ?? 1 })} />
+        <span className="tiny muted">× über die folgenden Zeilen</span>
+        <button type="button" className="sm ghost danger" style={{ marginLeft: "auto", padding: "2px 6px" }} onClick={onRemove}>Gruppe ✕</button>
+      </div>
+      {children.map((c, j) => (
+        <div key={j} style={{ display: "grid", gridTemplateColumns: cols, gap: 4, alignItems: "center", fontSize: 12 }}>
+          <Row r={c} bike={bike} zones={zones} planning={planning} onChange={(patch) => updateChild(j, patch)} onRemove={() => removeChild(j)} />
+        </div>
+      ))}
+      <button type="button" className="sm ghost" style={{ marginTop: 4 }} onClick={addChild}>+ Zeile in Gruppe</button>
+    </div>
+  );
+}
+
+function Row({ r, bike, zones, planning, onChange, onRemove }: {
+  r: Effort; bike: boolean; zones?: HrZone[] | null; planning?: boolean;
+  onChange: (patch: Partial<Effort>) => void; onRemove: () => void;
 }) {
   const sec = repSec(r);
   const dist = repDist(r);
+  const derivedPace = !r.pace_s && r.sec && r.dist_m ? repPace(r) : null;
   return (
     <>
       <input type="number" min={1} style={cell} value={r.reps ?? ""}
-        onChange={(e) => update(i, { reps: num(e.target.value) ?? undefined })} />
-      <input key={`t${i}-${r.sec ?? ""}`} style={cell} placeholder="6:00" defaultValue={mmss(r.sec)}
-        onBlur={(e) => update(i, { sec: parseMmSs(e.target.value) })} />
+        onChange={(e) => onChange({ reps: num(e.target.value) ?? undefined })} />
+      <input key={`t-${r.sec ?? ""}`} style={cell} placeholder="6:00" defaultValue={mmss(r.sec)}
+        onBlur={(e) => onChange({ sec: parseMmSs(e.target.value) })} />
       <input type="number" style={cell} value={r.dist_m ?? ""} placeholder={dist ? `${Math.round(dist)}` : ""}
-        onChange={(e) => update(i, { dist_m: num(e.target.value) })} />
+        onChange={(e) => onChange({ dist_m: num(e.target.value) })} />
       {bike ? (
         <div className="tiny muted center nowrap">{speedKmh(dist, sec)}</div>
       ) : (
-        <input key={`p${i}-${r.pace_s ?? ""}`} style={cell} placeholder={derivedPace ? paceStr(derivedPace) : "4:00"}
-          defaultValue={mmss(r.pace_s)} onBlur={(e) => update(i, { pace_s: parseMmSs(e.target.value) })} />
+        <input key={`p-${r.pace_s ?? ""}`} style={cell} placeholder={derivedPace ? paceStr(derivedPace) : "4:00"}
+          defaultValue={mmss(r.pace_s)} onBlur={(e) => onChange({ pace_s: parseMmSs(e.target.value) })} />
       )}
-      <input type="number" style={cell} value={r.avg_hr ?? ""}
-        onChange={(e) => update(i, { avg_hr: num(e.target.value) })} />
-      <input type="number" style={cell} value={r.max_hr ?? ""}
-        onChange={(e) => update(i, { max_hr: num(e.target.value) })} />
+      {!planning && (
+        <input type="number" style={cell} value={r.avg_hr ?? ""}
+          onChange={(e) => onChange({ avg_hr: num(e.target.value) })} />
+      )}
+      {!planning && (
+        <input type="number" style={cell} value={r.max_hr ?? ""}
+          onChange={(e) => onChange({ max_hr: num(e.target.value) })} />
+      )}
       <select style={{ padding: "4px 2px", width: "100%" }} value={r.zone ?? ""}
-        onChange={(e) => update(i, { zone: num(e.target.value) })}>
+        onChange={(e) => onChange({ zone: num(e.target.value) })}>
         <option value="">–</option>
         {[1, 2, 3, 4, 5, 6].map((z) => {
           const zn = zones?.find((x) => x.z === z);
@@ -187,8 +236,8 @@ function Row({ r, i, bike, zones, derivedPace, update, remove }: {
         })}
       </select>
       <input style={{ ...cell, textAlign: "left" }} placeholder="z.B. LT2" value={r.label ?? ""}
-        onChange={(e) => update(i, { label: e.target.value || undefined })} />
-      <button type="button" className="sm ghost danger" style={{ padding: "2px 6px" }} onClick={() => remove(i)}>✕</button>
+        onChange={(e) => onChange({ label: e.target.value || undefined })} />
+      <button type="button" className="sm ghost danger" style={{ padding: "2px 6px" }} onClick={onRemove}>✕</button>
     </>
   );
 }

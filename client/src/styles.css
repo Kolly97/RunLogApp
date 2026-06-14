@@ -258,9 +258,13 @@ table.units .note-efforts { color: var(--muted); }
 .wy-week .wy-week-label { font-size: 13px; font-weight: 600; min-width: 46px; }
 .wy-week .wy-week-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Wochen-Check-Heatmap (Langzeit, ToDo 7 v0.11.0) */
+/* Wochen-Check-Heatmap (Langzeit, ToDo 7 v0.11.0; Score + sticky v0.12.0) */
 .check-heatmap-scroll { overflow-x: auto; padding-bottom: 4px; }
 .check-heatmap { display: grid; gap: 3px; align-items: center; min-width: min-content; }
+/* erste Spalte (Ecke, Kategorie-Namen, Score-Label) bleibt beim Horizontal-Scroll stehen */
+.check-heatmap .ch-corner, .check-heatmap .ch-row-head, .check-heatmap .ch-score-head {
+  position: sticky; left: 0; z-index: 2; background: #fff;
+}
 .check-heatmap .ch-corner { height: 40px; }
 .check-heatmap .ch-col-head {
   font-size: 9px; color: var(--muted); text-align: center; height: 40px;
@@ -273,6 +277,14 @@ table.units .note-efforts { color: var(--muted); }
 }
 .check-heatmap .ch-cell { height: 16px; border-radius: 3px; background: #eef1f5; }
 .check-heatmap .ch-cell.on { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04); }
+.check-heatmap .ch-score-head {
+  font-size: 11px; font-weight: 600; color: var(--ink); white-space: nowrap;
+  padding: 6px 10px 0 0; text-align: right;
+}
+.check-heatmap .ch-score-cell {
+  height: 18px; margin-top: 3px; border-radius: 3px; background: #eef1f5;
+  font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
 
 /* WeekdayBars: gruppierte Legende (Distanz kühl / Belastung warm), v0.11.0 */
 .weekday-legend { display: flex; flex-wrap: wrap; gap: 6px 24px; justify-content: center; margin-top: 6px; }

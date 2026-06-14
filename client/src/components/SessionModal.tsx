@@ -58,7 +58,7 @@ export default function SessionModal({
 
         {/* Strukturierte Belastungen (geplante Intervalle) — ToDo 1/20 */}
         <EffortBuilder value={s.efforts ?? null} onChange={(ef) => set({ efforts: ef })}
-          sport={s.sport} zones={zs?.hr_zones} />
+          sport={s.sport} zones={zs?.hr_zones} planning />
 
         <div className="field">
           <span style={{ fontSize: 12, color: "var(--muted)" }}>

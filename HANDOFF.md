@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v0.11.0** (14.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.13.0** (14.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -62,7 +62,7 @@
   (`MAX_REQ ≈ 90`/Sync): Detail (COROS-TL→`training_load`, kcal, Beschreibung→leere Notiz; `desc_fetched=1`) +
   **Streams** für Lauf (velocity/grade/hr/distance → `ngp`, `zone_min`, `zone_km`) und Rad (watts/hr → `np`,
   `zone_min`) → `streams_fetched=1`, nur leere Zonenfelder. COROS setzt `tss` NICHT (nur informativ).
-- `import-docx.ts` (Seed), `import-scans.ts` (historisch), `reset-db.ts` (leere Vorlage).
+- `import-scans.ts` (historisch), `reset-db.ts` (leere Vorlage). (`import-docx.ts`/Seed in v0.12.0 entfernt.)
 
 **client/src/**
 - `lib/api.ts` — ALLE Typen + `api`-Objekt (eine Stelle für Endpunkte; `Activity` hat u.a. `ngp`/`np`/`elevation`).
@@ -96,7 +96,39 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v0.11.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v0.13.0 (Ist-Stand, nicht Historie)
+
+**Neu in v0.13.0 (Kurz):**
+- **Geplante km per Datumsbereich:** `/api/analyze/week` + `/api/sessions?week` laden `planned_sessions`
+  per `date BETWEEN wk.start..end` (nicht week_no) → „Geplante Woche" == Tag-Raster; fehlgeleitete Altlast
+  verfälscht nicht mehr. [index.ts](server/index.ts).
+- **Wochen-Pfeile** ← → im [WeekSelector](client/src/components/WeekSelector.tsx) (season ist datums-sortiert).
+- **Planung ohne HF:** [EffortBuilder](client/src/components/EffortBuilder.tsx) `planning`-Prop blendet Ø-/Max-HF
+  aus (SessionModal übergibt `planning`). Tracking unverändert.
+- **Strava nur anreichern:** `enrichBudgeted()` ausgelagert; neuer Endpoint `POST /api/strava/enrich`
+  (`stravaEnrich`) + Button in den Einstellungen — zieht Details/Streams/Laps für Bestand nach, ohne neue zu importieren.
+- **Tagesfaktor-Kategorien:** Options-`kind='dailyCat'` (editierbar in Auswahllisten); Zuordnung je Feld in der
+  `color`-Spalte des `daily`-Options. DailyForm rendert klappbare Sektionen je Kategorie (`legs` als Spezialfeld).
+- **Reset** löscht zusätzlich planned_sessions/season_weeks_v2/races (+ Race-Ledger); nur zone_sets bleiben.
+
+**Neu in v0.12.0 (Kurz):**
+- **Saisonplan KW-gesteuert** ([SeasonPlan.tsx](client/src/pages/SeasonPlan.tsx)): nur KW(+Jahr) editierbar,
+  Datum (Mo–So) automatisch via `mondayOfIsoWeek` (util.ts). „Beispiel-Saison importieren" **entfernt**
+  (`import-docx.ts` gelöscht, Route `/api/seed` + npm-Script `seed` weg). `deleteWeek` löscht die geplanten
+  Einheiten der Woche mit; `POST /api/season/cleanup-orphans` (beim Laden) entfernt Plan-Einheiten ohne Woche.
+- **Wiederholungs-Gruppen (Sets)** im EffortBuilder: `Effort` kann `{group:true, reps, children}` sein;
+  `flattenEfforts`/`flattenEffortLines` expandieren für Stats/Trend/Bericht (`fmtEffort` → „3×(1000+200)").
+- **Strava-Work-Laps** ([strava.ts](server/strava.ts) `extractWorkLaps`): Laps schneller als Z3 / Ø-HF ≥ Z4
+  → Efforts (nur in leere), Marker `activities.laps_fetched`.
+- **Profil-Seite** ([Profile.tsx](client/src/pages/Profile.tsx), Route `/profile`): Profile + Reset
+  (`POST /api/profiles/:id/reset`, löscht activities/daily/weeklog/**planned_sessions/season_weeks_v2/races** +
+  Race-Import-Ledger, behält NUR zone_sets, Backup) + HF-Zonen/Schwellen
+  ([components/ZoneSets.tsx](client/src/components/ZoneSets.tsx), aus Settings ausgelagert).
+- **Konfigurierbare Tagesfaktoren**: Options-`kind='daily'` (Feldtyp in der `intensity`-Spalte), feste Basis
+  (`BASE_DAILY` in options.ts); eigene Felder in `daily_log_v2.custom` (JSON). DailyForm/OptionsConfig getrieben.
+- **HF-Zonen-Eingabe** nur Obergrenze (Untergrenze = Vorzone+1); **Heatmap-Wochen-Score** (gold→rot) + sticky
+  Kategorie-Spalte; **Phasenname im Chart-Tooltip** (Wellness/Effizienz) + Jahresmarken via `yearMarksByDateAll`;
+  **Bericht** 3 Karten (Balken/Donuts/breite reale Schilder); **Tracking-Layout** in Blöcke; OptionsConfig-Eingabe Label→Wert.
 
 **Neu in v0.11.0 (Kurz):**
 - **Schilder geplant/real getrennt:** `/api/analyze/week` liefert `flags` (geplant → Wochenplanung) **plus**
@@ -148,9 +180,11 @@ geschützt. **Commute**-Schalter (Bike-Einheit → Sportart General, Name „Com
 
 ## 5. Offen / nächste Schritte
 
-- **v0.11.0-Runde abgeschlossen** (alle 11 ToDo-Punkte umgesetzt). Restlicher Backlog steht in `ToDo.md`
-  unter „In Zukunft NICHT JETZT" (Readiness, Trainingsplanung mit Sets/Wiederholungen, Dashboard-Tagesvorschlag,
-  Intervall-Auto-Extraktion, v2.0-Redesign). **Nach dem Update einmal „TSS neu berechnen" drücken** (Wander-TSS).
+- **v0.12.0 + v0.13.0 abgeschlossen** (**Desktop-App bewusst verschoben** → eigener Meilenstein).
+  Restlicher Backlog in `ToDo.md` „In Zukunft NICHT JETZT" (Readiness, Dashboard-Tagesvorschlag, % Plan-Treffer,
+  v2.0-Redesign). Strava-Sync zieht Work-Lap-Intervalle nach (oder Button „Details/Splits nachziehen"). Geplante
+  km laden jetzt per Datumsbereich → doppelte/fehlgeleitete Alt-Einheiten verfälschen die Summe nicht mehr; eine
+  sichtbare Doppel-Einheit am selben Tag ggf. in der Wochenplanung direkt löschen.
 - **Strava-Streams nachziehen:** NGP/NP + min/Zone + km/Zone kommen je Einheit erst beim Sync (budgetiert) →
   Altbestand braucht mehrere Syncs; danach „TSS neu berechnen (Lauf + Rad)" drücken. Recompute ist **profil-gescoped**.
 - **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts (Zeit/Strecke/Pace/Ø+Max-HF je Wiederholung) für harte

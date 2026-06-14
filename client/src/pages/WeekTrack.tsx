@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
@@ -6,7 +6,7 @@ import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
   paceOrSpeed, isBikeSport, speedKmh, paceStr,
 } from "../lib/util.ts";
-import { useOptions } from "../lib/options.ts";
+import { useOptions, type Option } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "../components/EffortBuilder.tsx";
 import "./track.css";
@@ -72,7 +72,6 @@ function DayCard({ date, dayName, planned, acts, daily, coros, zs, onChange }: {
 }) {
   const [adding, setAdding] = useState(false);
   const [quick, setQuick] = useState(false);
-  const [more, setMore] = useState(false);
   const today = date === todayIso();
 
   // ToDo: Neue Aktivität mit der (noch nicht abgehakten) geplanten Einheit vorbefüllen.
@@ -107,7 +106,7 @@ function DayCard({ date, dayName, planned, acts, daily, coros, zs, onChange }: {
       {acts.map((a) => <ActivityRow key={a.id} a={a} coros={coros} zs={zs} onChange={onChange} />)}
       {adding && <ActivityRow a={newAct} coros={coros} zs={zs} onChange={() => { setAdding(false); onChange(); }} isNew />}
 
-      <DailyForm date={date} daily={daily} more={more} setMore={setMore} />
+      <DailyForm date={date} daily={daily} />
     </div>
   );
 }
@@ -225,13 +224,9 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
 
   return (
     <div className="card tight" style={{ background: "#fafbfd", marginBottom: 8 }}>
-      <div className="grid cols-4" style={{ gap: 8 }}>
+      {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
+      <div className="grid cols-3" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>Sport</span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
-        {(bike || commute) && (
-          <label className="field" style={{ margin: 0 }}><span>Commute</span>
-            <input type="checkbox" checked={commute} onChange={(x) => setCommute(x.target.checked)} style={{ width: "auto", marginTop: 6 }} title="Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)" />
-          </label>
-        )}
         <label className="field" style={{ margin: 0 }}><span>Typ</span>
           <select value={e.type ?? ""} onChange={(x) => set({ type: x.target.value || null })} title="Einheitstyp (z.B. LT2, VO2max kurz) — steuert den Real-Donut & Intervall-Trend">
             <option value="">—</option>
@@ -239,6 +234,16 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
           </select>
         </label>
         <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
+      </div>
+      {(bike || commute) && (
+        <label className="row tiny" style={{ gap: 6, width: "auto", margin: "6px 0 0" }}>
+          <input type="checkbox" checked={commute} onChange={(x) => setCommute(x.target.checked)} style={{ width: "auto" }}
+            title="Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)" /> Als Commute markieren
+        </label>
+      )}
+
+      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Leistung</div>
+      <div className="grid cols-4" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>km</span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Dauer (min)</span><input type="number" value={e.moving_s != null ? Math.round(e.moving_s / 60) : ""} onChange={(x) => set({ moving_s: num(x.target.value) != null ? Number(x.target.value) * 60 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>{bike ? "Ø Geschwindigkeit" : "Ø Pace"}</span>
@@ -247,9 +252,13 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
             {e.sport === "Run" && e.ngp ? <span className="tiny muted" style={{ fontWeight: 400, marginLeft: 6 }}>· GAP {paceStr(e.ngp)}/km</span> : null}
           </div>
         </label>
+        <label className="field" style={{ margin: 0 }}><span>Höhenmeter (hm)</span><input type="number" value={e.elevation ?? ""} onChange={(x) => set({ elevation: num(x.target.value) })} /></label>
+      </div>
+
+      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Körper &amp; Last</div>
+      <div className="grid" style={{ gap: 8, gridTemplateColumns: "repeat(5, 1fr)" }}>
         <label className="field" style={{ margin: 0 }}><span>Ø HF</span><input type="number" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Ø Power</span><input type="number" value={e.avg_power ?? ""} onChange={(x) => set({ avg_power: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>Höhenmeter (hm)</span><input type="number" value={e.elevation ?? ""} onChange={(x) => set({ elevation: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>kcal</span><input type="number" value={e.kcal ?? ""} onChange={(x) => set({ kcal: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>COROS Load</span><input type="number" value={e.training_load ?? ""} onChange={(x) => set({ training_load: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>TSS (optional)</span><input type="number" value={e.tss ?? ""} placeholder={e.training_load != null ? `${Math.round(e.training_load * coros)}` : ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>
@@ -313,85 +322,97 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
   );
 }
 
-// ---- Tägliche Wellness-Werte (gruppiert, ToDo 22) ------------------------
-type FType = "number" | "time" | "text";
-type FieldDef = [key: string, label: string, type?: FType];
+// ---- Tägliche Wellness-Werte (konfigurierbar, ToDo 12 v0.12.0) -----------
+// Felder kommen aus den Auswahllisten (kind='daily'); Basis-Felder sind fest. Bekannte Spalten landen in
+// den daily_log_v2-Spalten, eigene Felder in der custom-JSON-Spalte. `legs` bleibt ein Spezialfeld.
+const KNOWN_DAILY_COLS = new Set([
+  "weight", "resting_hr", "hrv", "recovery", "strain", "sleep_h", "bedtime", "wake_time",
+  "sleep_efficiency", "sleep_consistency", "sleep_performance", "rem_h", "deep_h", "resp_rate", "spo2",
+  "energy", "mood", "stress", "motivation", "legs", "soreness", "pain", "pain_location",
+  "rpe", "alcohol", "caffeine", "hydration", "fueling", "travel", "sick", "notes",
+]);
 
-const G_MORGENS: FieldDef[] = [
-  ["weight", "Gewicht (kg)"], ["resting_hr", "Ruhepuls"], ["hrv", "HRV"],
-  ["recovery", "Recovery %"], ["strain", "Strain"],
-];
-const G_SCHLAF: FieldDef[] = [
-  ["sleep_h", "Schlaf (h)"], ["bedtime", "Bettzeit", "time"], ["wake_time", "Aufwachzeit", "time"],
-  ["sleep_efficiency", "Effizienz %"], ["sleep_consistency", "Konsistenz %"], ["sleep_performance", "Performance %"],
-  ["rem_h", "REM (h)"], ["deep_h", "Tief (h)"],
-];
-const G_SUBJEKTIV: FieldDef[] = [
-  ["energy", "Energie 1-10"], ["mood", "Stimmung 1-10"], ["stress", "Stress 1-10"], ["motivation", "Motivation 1-10"],
-  ["soreness", "Muskelkater 0-10"], ["pain", "Schmerz 0-10"], ["pain_location", "Schmerz-Ort", "text"], ["rpe", "RPE 1-10"],
-];
-const G_SONSTIGES: FieldDef[] = [
-  ["resp_rate", "Atemfreq."], ["spo2", "SpO2 %"], ["alcohol", "Alkohol (Einh.)"], ["caffeine", "Koffein (mg)"],
-];
+function parseCustom(v: unknown): Record<string, unknown> {
+  if (v && typeof v === "object") return v as Record<string, unknown>;
+  if (typeof v === "string" && v.trim()) { try { return JSON.parse(v); } catch { return {}; } }
+  return {};
+}
 
-function DailyForm({ date, daily, more, setMore }: { date: string; daily?: DailyLog; more: boolean; setMore: (b: boolean) => void }) {
+function DailyForm({ date, daily }: { date: string; daily?: DailyLog }) {
+  const { dailyFields, dailyCats } = useOptions();
   const [v, setV] = useState<Record<string, unknown>>(daily || {});
   useEffect(() => setV(daily || {}), [daily]);
-  const save = (k: string, val: unknown) => { setV((p) => ({ ...p, [k]: val })); api.saveDaily(date, { [k]: val }); };
+  const custom = parseCustom(v.custom);
+  const getVal = (f: Option) => (KNOWN_DAILY_COLS.has(f.value) ? v[f.value] : custom[f.value]);
+  const save = (f: Option, val: unknown) => {
+    if (KNOWN_DAILY_COLS.has(f.value)) { setV((p) => ({ ...p, [f.value]: val })); api.saveDaily(date, { [f.value]: val }); }
+    else {
+      const nextCustom = { ...custom, [f.value]: val };
+      setV((p) => ({ ...p, custom: nextCustom })); api.saveDaily(date, { custom: { [f.value]: val } });
+    }
+  };
+  const saveLegs = (val: string) => { setV((p) => ({ ...p, legs: val })); api.saveDaily(date, { legs: val }); };
 
-  const fields = (defs: FieldDef[]) => defs.map(([k, label, type]) => (
-    <DField key={`${k}-${String(v[k] ?? "")}`} label={label} value={v[k]} type={type} onSave={(val) => save(k, val)} />
-  ));
+  // Felder je Kategorie gruppieren (Feld.color = Kategorie-Wert; ToDo v0.13.0). Unbekannte → „Sonstiges".
+  const cats = dailyCats.length ? dailyCats : [{ kind: "dailyCat", value: "", label: "Tagesfaktoren" } as Option];
+  const known = new Set(cats.map((c) => c.value));
+  const uncategorized = dailyFields.filter((f) => !known.has(f.color || ""));
+  const groups: { cat: Option; fields: Option[] }[] = cats.map((c) => ({ cat: c, fields: dailyFields.filter((f) => (f.color || "") === c.value) }));
+  if (uncategorized.length) groups.push({ cat: { kind: "dailyCat", value: "__rest__", label: "Sonstiges" }, fields: uncategorized });
+  // „Beine"-Spezialfeld in die Subjektiv-Kategorie (sonst erste).
+  const legsCat = groups.find((g) => g.cat.value === "subjektiv")?.cat.value ?? groups[0]?.cat.value;
+
+  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set(groups.length ? [groups[0].cat.value] : []));
+  const toggle = (val: string) => setOpenCats((s) => { const n = new Set(s); if (n.has(val)) n.delete(val); else n.add(val); return n; });
 
   return (
     <div className="df">
-      <Section title="Morgens">{fields(G_MORGENS)}</Section>
-      <Section title="Schlaf">{fields(G_SCHLAF)}</Section>
-      {more && (
-        <>
-          <Section title="Subjektiv">
-            {fields(G_SUBJEKTIV)}
-            <div className="df-field">
-              <div className="df-label">Beine</div>
-              <select value={(v.legs as string) ?? ""} onChange={(e) => save("legs", e.target.value)}>
-                <option value="">–</option><option value="easy">easy</option><option value="ok">ok</option><option value="hard">hard</option>
-              </select>
+      {groups.map((g) => {
+        if (!g.fields.length && g.cat.value !== legsCat) return null;
+        const open = openCats.has(g.cat.value);
+        return (
+          <div key={g.cat.value} className="df-section">
+            <div className="df-title" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggle(g.cat.value)}>
+              <span style={{ fontSize: 10, color: "var(--muted)", marginRight: 6 }}>{open ? "▾" : "▸"}</span>{g.cat.label}
             </div>
-          </Section>
-          <Section title="Sonstiges">
-            {fields(G_SONSTIGES)}
-            <label className="df-field check">
-              <input type="checkbox" checked={Number(v.sick ?? 0) === 1} onChange={(e) => save("sick", e.target.checked ? 1 : 0)} />
-              <span className="df-label" style={{ margin: 0 }}>krank</span>
-            </label>
-            <DField key={`notes-${String(v.notes ?? "")}`} label="Notizen" value={v.notes} type="text" wide onSave={(val) => save("notes", val)} />
-          </Section>
-        </>
-      )}
-      <div className="df-foot">
-        <button className="sm ghost" onClick={() => setMore(!more)}>{more ? "weniger" : "mehr Werte"}</button>
-      </div>
+            {open && (
+              <div className="df-grid">
+                {g.fields.map((f) => (
+                  <DailyField key={`${f.value}-${String(getVal(f) ?? "")}`} field={f} value={getVal(f)} onSave={(val) => save(f, val)} />
+                ))}
+                {g.cat.value === legsCat && (
+                  <div className="df-field">
+                    <div className="df-label">Beine</div>
+                    <select value={(v.legs as string) ?? ""} onChange={(e) => saveLegs(e.target.value)}>
+                      <option value="">–</option><option value="easy">easy</option><option value="ok">ok</option><option value="hard">hard</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function DailyField({ field, value, onSave }: { field: Option; value: unknown; onSave: (v: unknown) => void }) {
+  const type = field.intensity || "number";
+  if (type === "checkbox") {
+    return (
+      <label className="df-field check">
+        <input type="checkbox" checked={Number(value ?? 0) === 1} onChange={(e) => onSave(e.target.checked ? 1 : 0)} />
+        <span className="df-label" style={{ margin: 0 }}>{field.label}</span>
+      </label>
+    );
+  }
+  const inputType = type === "time" ? "time" : type === "text" ? "text" : "number";
   return (
-    <div className="df-section">
-      <div className="df-title">{title}</div>
-      <div className="df-grid">{children}</div>
-    </div>
-  );
-}
-
-function DField({ label, value, onSave, type = "number", wide }: {
-  label: string; value: unknown; onSave: (v: unknown) => void; type?: FType; wide?: boolean;
-}) {
-  return (
-    <div className={"df-field" + (wide ? " wide" : "")}>
-      <div className="df-label" title={label}>{label}</div>
-      <input type={type === "text" ? "text" : type} defaultValue={(value as string | number) ?? ""}
-        onBlur={(e) => onSave(type === "number" ? num(e.target.value) : e.target.value)} />
+    <div className={"df-field" + (type === "text" ? " wide" : "")}>
+      <div className="df-label" title={field.label}>{field.label}</div>
+      <input type={inputType} defaultValue={(value as string | number) ?? ""}
+        onBlur={(e) => onSave(type === "text" || type === "time" ? e.target.value : num(e.target.value))} />
     </div>
   );
 }

@@ -12,9 +12,9 @@ import {
 } from "recharts";
 import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { useOptions } from "../lib/options.ts";
+import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
@@ -183,16 +183,30 @@ export default function LongTerm() {
 
   // Chart-Dekoration (Phasenband + Jahres-Dreieck) für Wellness- (Tages-) und Effizienz- (Wochen-) Charts.
   // Eigene Marken je Datensatz, da die X-Achsen unterschiedliche Datums-Mengen haben (ToDo 1, v0.11.0).
-  const wellnessYears = yearMarksByDate(pointDates);
+  // v0.12.0: `…All` markiert jedes vorhandene Jahr (auch ohne Jahres-Wechsel sichtbar, ToDo 4).
+  const wellnessYears = yearMarksByDateAll(pointDates);
   const wellnessPhaseRuns = phaseRunsByDate(pointDates, season);
-  const effYears = yearMarksByDate(effDates);
+  const effYears = yearMarksByDateAll(effDates);
   const effPhaseRuns = phaseRunsByDate(effDates, season);
+  // Trainingsphase zu einem Datum (für die Chart-Tooltips, ToDo 4).
+  const phaseAtDate = (d: string): string => {
+    const w = season.find((x) => x.start_date <= d && d <= x.end_date);
+    return w ? phaseLabel(w.phase) : "";
+  };
 
   // Wochen-Check-Heatmap (ToDo 7): Spalten = Wochen im Zeitraum, Zeilen = Checks.
   const checkByWeek = new Map(weeklogs.map((w) => [w.week_no, w.checks || {}]));
   const heatWeeks = [...season]
     .filter((w) => !range || (w.end_date >= range.from && w.start_date <= range.to))
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  // Wochen-Score (v0.12.0, ToDo 7): % erfüllter Checks → Farbskala gold/grün/gelb/orange/rot.
+  const weekScore = (weekNo: number): number | null => {
+    if (!checks.length || !checkByWeek.has(weekNo)) return null;
+    const wc = checkByWeek.get(weekNo) || {};
+    return Math.round((checks.filter((c) => wc[c.value]).length / checks.length) * 100);
+  };
+  const scoreColor = (p: number): string =>
+    p >= 100 ? "#d4af37" : p >= 90 ? "#22c55e" : p >= 75 ? "#eab308" : p >= 50 ? "#f97316" : "#ef4444";
 
   return (
     <div>
@@ -250,7 +264,7 @@ export default function LongTerm() {
                     tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
                   />
                   <Tooltip
-                    labelFormatter={(d) => fmtDate(String(d))}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return p ? `${fmtDate(String(d))} · ${p}` : fmtDate(String(d)); }}
                     formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -291,7 +305,7 @@ export default function LongTerm() {
                   <YAxis yAxisId="hr" orientation="right" domain={["auto", "auto"]} width={34}
                     tick={{ fontSize: 11, fill: "#d53f8c" }} />
                   <Tooltip
-                    labelFormatter={(d) => `Woche ab ${fmtDate(String(d))}`}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => (n === "Ø-Pace" ? [`${paceStr(v)} /km`, n] : [Math.round(v), n])}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -326,7 +340,7 @@ export default function LongTerm() {
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={44} />
                   <Tooltip
-                    labelFormatter={(d) => `Woche ab ${fmtDate(String(d))}`}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number) => [v, "EF"]}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -372,6 +386,18 @@ export default function LongTerm() {
                   })}
                 </Fragment>
               ))}
+              {/* Score-Zeile: % erfüllter Checks je Woche, eingefärbt (gold/grün/gelb/orange/rot). */}
+              <div className="ch-score-head">Erfüllt %</div>
+              {heatWeeks.map((w) => {
+                const s = weekScore(w.week_no);
+                return (
+                  <div key={`sc-${w.week_no}`} className="ch-score-cell"
+                    style={s != null ? { background: scoreColor(s), color: "#fff" } : undefined}
+                    title={s != null ? `${weekLabel(w)}: ${s}% erfüllt` : `${weekLabel(w)}: keine Daten`}>
+                    {s != null ? s : ""}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

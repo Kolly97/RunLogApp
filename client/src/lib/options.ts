@@ -15,7 +15,7 @@ export interface Option {
   intensity?: string | null;
 }
 
-export type OptionKind = "phase" | "sport" | "sessionType" | "activityType" | "check";
+export type OptionKind = "phase" | "sport" | "sessionType" | "activityType" | "check" | "daily" | "dailyCat";
 
 // Defaults = Fallback bis der Server antwortet (und für Offline-Robustheit).
 export const DEFAULT_SPORTS: Option[] = [
@@ -54,6 +54,29 @@ export const DEFAULT_CHECKS: Option[] = [
   { kind: "check", value: "physio", label: "Physio/KG", color: "#64748b" },
 ];
 
+// Konfigurierbare Tagesfaktoren (Feldtyp in `intensity`; Kategorie-Zuordnung in `color`). Fallback.
+const d = (value: string, label: string, intensity: string, cat: string): Option => ({ kind: "daily", value, label, intensity, color: cat });
+export const DEFAULT_DAILY: Option[] = [
+  d("weight", "Gewicht (kg)", "number", "morgens"), d("sleep_h", "Schlaf (h)", "number", "schlaf"),
+  d("bedtime", "Bettzeit", "time", "schlaf"), d("wake_time", "Aufwachzeit", "time", "schlaf"),
+  d("energy", "Energie 1-10", "scale", "subjektiv"), d("mood", "Stimmung 1-10", "scale", "subjektiv"),
+  d("stress", "Stress 1-10", "scale", "subjektiv"), d("sick", "Krank", "checkbox", "sonstiges"), d("notes", "Notizen", "text", "sonstiges"),
+  d("resting_hr", "Ruhepuls", "number", "morgens"), d("hrv", "HRV", "number", "morgens"), d("recovery", "Recovery %", "number", "morgens"),
+  d("strain", "Strain", "number", "morgens"), d("sleep_performance", "Sleep-Performance %", "number", "schlaf"),
+  d("rpe", "RPE 1-10", "scale", "subjektiv"), d("soreness", "Muskelkater 0-10", "scale", "subjektiv"), d("pain", "Schmerz 0-10", "scale", "subjektiv"),
+];
+
+// Tagesfaktor-Kategorien (in „Auswahllisten" editierbar). Fallback bis der Server antwortet.
+export const DEFAULT_DAILY_CATS: Option[] = [
+  { kind: "dailyCat", value: "morgens", label: "Morgens" },
+  { kind: "dailyCat", value: "schlaf", label: "Schlaf" },
+  { kind: "dailyCat", value: "subjektiv", label: "Subjektiv" },
+  { kind: "dailyCat", value: "sonstiges", label: "Sonstiges" },
+];
+
+/** Fest eingebaute Basis-Tagesfaktoren (nicht löschbar, immer sichtbar). */
+export const BASE_DAILY = new Set(["weight", "sleep_h", "bedtime", "wake_time", "energy", "mood", "stress", "sick", "notes"]);
+
 export const DEFAULT_PHASES: Option[] = [
   { kind: "phase", value: "Base", label: "Base", color: "#64748b" },
   { kind: "phase", value: "Belastung", label: "Belastung", color: "#3b82f6" },
@@ -69,6 +92,8 @@ let CACHE: Record<string, Option[]> = {
   phase: DEFAULT_PHASES,
   activityType: [],
   check: DEFAULT_CHECKS,
+  daily: DEFAULT_DAILY,
+  dailyCat: DEFAULT_DAILY_CATS,
 };
 
 const listeners = new Set<() => void>();
@@ -84,7 +109,7 @@ export async function loadOptions(): Promise<void> {
     const r = await fetch("/api/options");
     if (!r.ok) return;
     const rows = (await r.json()) as Option[];
-    const next: Record<string, Option[]> = { sport: [], sessionType: [], phase: [], activityType: [], check: [] };
+    const next: Record<string, Option[]> = { sport: [], sessionType: [], phase: [], activityType: [], check: [], daily: [], dailyCat: [] };
     for (const o of rows) {
       if (o.active === 0) continue;
       (next[o.kind] ||= []).push(o);
@@ -95,6 +120,8 @@ export async function loadOptions(): Promise<void> {
       phase: next.phase.length ? next.phase : DEFAULT_PHASES,
       activityType: next.activityType,
       check: next.check.length ? next.check : DEFAULT_CHECKS,
+      daily: next.daily.length ? next.daily : DEFAULT_DAILY,
+      dailyCat: next.dailyCat.length ? next.dailyCat : DEFAULT_DAILY_CATS,
     };
     emit();
   } catch {
@@ -146,6 +173,8 @@ export function useOptions() {
     phases: CACHE.phase,
     activityTypes: CACHE.activityType,
     checks: CACHE.check,
+    dailyFields: CACHE.daily,
+    dailyCats: CACHE.dailyCat,
     reload: loadOptions,
   };
 }

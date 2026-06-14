@@ -196,6 +196,8 @@ function migrate(): void {
   addColumn("activities", "np", "REAL");
   // v0.11.0 (ToDo 10): Einheitstyp je Aktivität (LT1/LT2/VO2max …) — steuert den Real-Donut + Intervall-Trend.
   addColumn("activities", "type", "TEXT");
+  // v0.12.0 (ToDo 3): Marker, dass die Strava-Laps (→ automatische Intervall-Efforts) schon geholt wurden.
+  addColumn("activities", "laps_fetched", "INTEGER DEFAULT 0");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
@@ -249,6 +251,43 @@ function migrate(): void {
     ["physio", "Physio/KG", "#64748b"],
   ].forEach(([value, label, color], i) => insCheck.run(value, label, color, i));
 
+  // v0.12.0 (ToDo 12): konfigurierbare Tagesfaktoren (kind='daily'); Feldtyp in der intensity-Spalte
+  // (number|time|text|checkbox|scale). Basis-Felder zuerst (niedrige sort), Rest danach.
+  const insDaily = db.prepare(
+    "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity) VALUES('daily', ?, ?, NULL, ?, 1, ?)",
+  );
+  [
+    // Basis (immer vorhanden): value, label, type
+    ["weight", "Gewicht (kg)", "number"], ["sleep_h", "Schlaf (h)", "number"],
+    ["bedtime", "Bettzeit", "time"], ["wake_time", "Aufwachzeit", "time"],
+    ["energy", "Energie 1-10", "scale"], ["mood", "Stimmung 1-10", "scale"],
+    ["stress", "Stress 1-10", "scale"], ["sick", "Krank", "checkbox"], ["notes", "Notizen", "text"],
+    // Weitere (Whoop/Subjektiv/Sonstiges)
+    ["resting_hr", "Ruhepuls", "number"], ["hrv", "HRV", "number"], ["recovery", "Recovery %", "number"],
+    ["strain", "Strain", "number"], ["sleep_efficiency", "Schlaf-Effizienz %", "number"],
+    ["sleep_consistency", "Schlaf-Konsistenz %", "number"], ["sleep_performance", "Sleep-Performance %", "number"],
+    ["rem_h", "REM (h)", "number"], ["deep_h", "Tief (h)", "number"], ["resp_rate", "Atemfreq.", "number"],
+    ["spo2", "SpO2 %", "number"], ["motivation", "Motivation 1-10", "scale"], ["soreness", "Muskelkater 0-10", "scale"],
+    ["pain", "Schmerz 0-10", "scale"], ["pain_location", "Schmerz-Ort", "text"], ["rpe", "RPE 1-10", "scale"],
+    ["alcohol", "Alkohol (Einh.)", "number"], ["caffeine", "Koffein (mg)", "number"],
+    ["hydration", "Hydration", "number"], ["fueling", "Fueling", "text"], ["travel", "Reise", "text"],
+  ].forEach(([value, label, type], i) => insDaily.run(value, label, i, type));
+
+  // v0.13.0: Tagesfaktoren in logische, in „Auswahllisten" editierbare Kategorien gruppieren.
+  // Kategorie-Liste = kind='dailyCat'; die Zuordnung eines Felds steht in dessen color-Spalte (Kategorie-Wert).
+  const insDailyCat = db.prepare("INSERT OR IGNORE INTO options(kind, value, label, color, sort, active) VALUES('dailyCat', ?, ?, NULL, ?, 1)");
+  [["morgens", "Morgens"], ["schlaf", "Schlaf"], ["subjektiv", "Subjektiv"], ["sonstiges", "Sonstiges"]]
+    .forEach(([value, label], i) => insDailyCat.run(value, label, i));
+  // Kategorie je Tagesfaktor setzen (nur wo noch keine gesetzt ist → Nutzer-Zuordnungen bleiben).
+  const setCat = db.prepare("UPDATE options SET color=? WHERE kind='daily' AND value=? AND (color IS NULL OR color='')");
+  const DAILY_CAT: Record<string, string[]> = {
+    morgens: ["weight", "resting_hr", "hrv", "recovery", "strain"],
+    schlaf: ["sleep_h", "bedtime", "wake_time", "sleep_efficiency", "sleep_consistency", "sleep_performance", "rem_h", "deep_h"],
+    subjektiv: ["energy", "mood", "stress", "motivation", "soreness", "pain", "pain_location", "rpe"],
+    sonstiges: ["resp_rate", "spo2", "alcohol", "caffeine", "hydration", "fueling", "travel", "sick", "notes"],
+  };
+  for (const [cat, fields] of Object.entries(DAILY_CAT)) for (const f of fields) setCat.run(cat, f);
+
   // ToDo #9 (12.6.): leichte Profile/Accounts (ohne Passwort). Bestandsdaten = Profil 1 „Kolja".
   db.exec(`CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
   if ((db.prepare("SELECT COUNT(*) n FROM profiles").get() as { n: number }).n === 0) {
@@ -263,6 +302,8 @@ function migrate(): void {
   ensureV2("daily_log", "daily_log_v2", "date, profile_id");
   ensureV2("season_weeks", "season_weeks_v2", "profile_id, week_no");
   ensureV2("week_log", "week_log_v2", "profile_id, week_no");
+  // v0.12.0 (ToDo 12): eigene Tagesfaktoren (über die festen Spalten hinaus) als JSON.
+  addColumn("daily_log_v2", "custom", "TEXT");
 
   // ToDo #24 (v0.5.0): Wettkämpfe mit Detail-Splits (eigene Seite + Bericht).
   db.exec(`

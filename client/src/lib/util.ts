@@ -96,6 +96,16 @@ export function isoWeek(iso: string): number {
   return 1 + Math.round((d.getTime() - firstThu.getTime()) / (7 * 86400000));
 }
 
+/** Inverse zu `isoWeek`: Montag (YYYY-MM-DD) der ISO-Kalenderwoche `week` im Jahr `year`.
+ *  ISO: der 4. Januar liegt immer in KW1. (v0.12.0, ToDo 1) */
+export function mondayOfIsoWeek(year: number, week: number): string {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const dow = (jan4.getUTCDay() + 6) % 7; // Mo=0 … So=6
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - dow + (week - 1) * 7);
+  return monday.toISOString().slice(0, 10);
+}
+
 /** Anzeige-Label „KW9" aus dem Wochen-Start; Fallback auf „Woche N". */
 export function weekLabel(w: { start_date?: string; week_no?: number } | null | undefined): string {
   if (w?.start_date) return `KW${isoWeek(w.start_date)}`;

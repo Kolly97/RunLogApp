@@ -1,8 +1,9 @@
-// Saisonplan-Editor als eigene Seite (ausgelagert aus den Einstellungen).
-// Wochen werden serverseitig nach Datum sortiert und ab 0 durchnummeriert.
+// Saisonplan-Editor (v0.12.0, ToDo 1): KW ist die editierbare Größe, das Datum (Mo–So) wird automatisch
+// daraus berechnet und read-only angezeigt. Wochen werden serverseitig nach Datum sortiert & ab 0
+// durchnummeriert. Beim Laden werden verwaiste geplante Einheiten (ohne zugehörige Woche) bereinigt.
 import { useEffect, useState } from "react";
 import { api, type SeasonWeek } from "../lib/api.ts";
-import { todayIso, num, phaseLabel, groupByYear } from "../lib/util.ts";
+import { todayIso, num, phaseLabel, groupByYear, isoWeek, mondayOfIsoWeek, fmtDate, addDays } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 
 export default function SeasonPlan() {
@@ -14,34 +15,33 @@ export default function SeasonPlan() {
     setOpenYears((s) => { const n = new Set(s); if (n.has(y)) n.delete(y); else n.add(y); return n; });
 
   const reload = async () => setSeason(await api.season());
-  useEffect(() => { reload(); }, []);
-
-  async function seed() {
-    const r = await api.seed();
-    setMsg(`Importiert: ${r.weeks} Wochen, ${r.sessions} Einheiten.`);
-    reload();
-  }
+  useEffect(() => {
+    // Verwaiste Plan-Einheiten gelöschter Wochen einmalig aufräumen, dann laden (ToDo 1).
+    api.cleanupOrphans()
+      .then((r) => { if (r.removed > 0) setMsg(`${r.removed} verwaiste geplante Einheit(en) ohne Woche bereinigt.`); })
+      .catch(() => {})
+      .finally(reload);
+  }, []);
 
   return (
     <div>
       <div className="spread">
         <h1>Saisonplan</h1>
         <div className="row" style={{ width: "auto" }}>
-          <button onClick={seed}>Beispiel-Saison importieren (Word-Plan KW9–17)</button>
           {season.length > 0 && <button onClick={() => addWeekBefore(season)}>+ Woche davor</button>}
           <button className="primary" onClick={() => addWeek(season)}>+ Woche</button>
         </div>
       </div>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
       <p className="tiny muted" style={{ marginTop: 2 }}>
-        Wochen werden automatisch nach Startdatum sortiert und ab 0 durchnummeriert (erste Woche = #0).
-        „Beispiel-Saison importieren" lädt den fest eingebauten Seed aus <code>Trainingsplan_KW_10-17.docx</code> — kein allgemeiner Datei-Import.
+        Eine Woche = Kalenderwoche (Mo–So). Nur die <strong>KW</strong> ist editierbar; das Datum wird
+        automatisch berechnet. Wochen werden nach Startdatum sortiert und ab 0 durchnummeriert.
       </p>
       <div className="card">
-        {!season.length && <p className="muted">Noch keine Wochen. Lege mit „+ Woche" eine an oder importiere die Beispiel-Saison.</p>}
+        {!season.length && <p className="muted">Noch keine Wochen. Lege mit „+ Woche" eine an.</p>}
         {season.length > 0 && (
           <table>
-            <thead><tr><th>#</th><th>Phase</th><th>Start</th><th>Ende</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
+            <thead><tr><th>Phase</th><th>KW</th><th>Jahr</th><th>Datum (Mo–So)</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
             {groupByYear(season).map(({ year, items }) => {
               const isOpen = openYears.has(year);
               const sumKm = items.reduce((s, w) => s + (w.target_km || 0), 0);
@@ -68,36 +68,58 @@ export default function SeasonPlan() {
 function WeekRow({ w, onChange }: { w: SeasonWeek; onChange: () => void }) {
   const [e, setE] = useState(w);
   const { phases } = useOptions();
+  useEffect(() => setE(w), [w]);
   const save = (patch: Partial<SeasonWeek>) => { const n = { ...e, ...patch }; setE(n); api.saveWeek(w.week_no, n).then(onChange); };
   const phaseVals = phases.map((p) => p.value);
   const phaseOpts = !e.phase || phaseVals.includes(e.phase) ? phaseVals : [e.phase, ...phaseVals];
+
+  const kw = isoWeek(e.start_date);
+  const yr = Number(e.start_date.slice(0, 4));
+  // KW/Jahr ändern → Start (Montag der KW) + Ende (+6) automatisch berechnen.
+  const applyKwYear = (newKw: number, newYr: number) => {
+    const start = mondayOfIsoWeek(newYr, newKw);
+    save({ start_date: start, end_date: addDays(start, 6) });
+  };
+
+  async function remove() {
+    await api.deleteWeek(w.week_no);
+    await onChange(); // zuverlässig neu laden (Bugfix ToDo 5: Woche verschwand erst nach manuellem Reload)
+  }
+
   return (
     <tr>
-      <td>{w.week_no}</td>
       <td><select value={e.phase} onChange={(x) => save({ phase: x.target.value })} style={{ minWidth: 130 }}>{phaseOpts.map((p) => <option key={p} value={p}>{phaseLabel(p)}</option>)}</select></td>
-      <td><input type="date" value={e.start_date} onChange={(x) => save({ start_date: x.target.value })} /></td>
-      <td><input type="date" value={e.end_date} onChange={(x) => save({ end_date: x.target.value })} /></td>
+      <td style={{ width: 70 }}>
+        <input key={`kw-${e.start_date}`} type="number" min={1} max={53} defaultValue={kw} style={{ textAlign: "center" }}
+          onBlur={(x) => { const k = num(x.target.value); if (k != null && k !== kw) applyKwYear(k, yr); }} />
+      </td>
+      <td style={{ width: 80 }}>
+        <input key={`yr-${e.start_date}`} type="number" defaultValue={yr} style={{ textAlign: "center" }}
+          onBlur={(x) => { const y = num(x.target.value); if (y != null && y !== yr) applyKwYear(kw, y); }} />
+      </td>
+      <td className="tiny muted nowrap">{fmtDate(e.start_date)} – {fmtDate(e.end_date)}</td>
       <td style={{ width: 80 }}><input type="number" value={e.target_km ?? ""} onChange={(x) => save({ target_km: num(x.target.value) })} /></td>
       <td><input value={e.goal_race ?? ""} onChange={(x) => save({ goal_race: x.target.value })} /></td>
-      <td><button className="sm ghost danger" onClick={() => api.deleteWeek(w.week_no).then(onChange)}>✕</button></td>
+      <td><button className="sm ghost danger" onClick={remove}>✕</button></td>
     </tr>
   );
 }
 
-const addDaysStr = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const minIso = (dates: string[]) => dates.reduce((a, b) => (b < a ? b : a));
 const maxIso = (dates: string[]) => dates.reduce((a, b) => (b > a ? b : a));
 
 async function addWeek(season: SeasonWeek[]) {
   const next = season.length ? Math.max(...season.map((w) => w.week_no)) + 1 : 1;
-  const start = season.length ? addDaysStr(maxIso(season.map((w) => w.end_date)), 1) : todayIso();
-  await api.saveWeek(next, { phase: "Belastung", start_date: start, end_date: addDaysStr(start, 6), target_km: 70, goal_race: "", label: `Woche ${next}` });
+  // Start = Montag nach der letzten Woche (bzw. Montag der aktuellen Woche).
+  const lastEnd = season.length ? maxIso(season.map((w) => w.end_date)) : todayIso();
+  const start = season.length ? addDays(lastEnd, 1) : mondayOfIsoWeek(Number(todayIso().slice(0, 4)), isoWeek(todayIso()));
+  await api.saveWeek(next, { phase: "Belastung", start_date: start, end_date: addDays(start, 6), target_km: 70, goal_race: "", label: `Woche ${next}` });
   location.reload();
 }
 async function addWeekBefore(season: SeasonWeek[]) {
   if (!season.length) return;
   const prev = Math.min(...season.map((w) => w.week_no)) - 1;
-  const start = addDaysStr(minIso(season.map((w) => w.start_date)), -7);
-  await api.saveWeek(prev, { phase: "Base", start_date: start, end_date: addDaysStr(start, 6), target_km: null, goal_race: "", label: `Woche ${prev}` });
+  const start = addDays(minIso(season.map((w) => w.start_date)), -7);
+  await api.saveWeek(prev, { phase: "Base", start_date: start, end_date: addDays(start, 6), target_km: null, goal_race: "", label: `Woche ${prev}` });
   location.reload();
 }

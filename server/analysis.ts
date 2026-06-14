@@ -328,7 +328,8 @@ export function zoneKmIntensityOf(
 
 // ---- Intervall-/Effort-Trend (ToDo 2/13/20) -----------------------------
 
-/** Eine Belastungs-Zeile einer Aktivität (Vertrag mit client/src/lib/api.ts: Effort). */
+/** Eine Belastungs-Zeile einer Aktivität (Vertrag mit client/src/lib/api.ts: Effort).
+ *  v0.12.0: kann auch eine eine-Ebene-Gruppe sein (`group`/`reps`/`children`). */
 export interface EffortLine {
   reps?: number | null;
   sec?: number | null;
@@ -338,6 +339,20 @@ export interface EffortLine {
   max_hr?: number | null;
   zone?: number | null;
   label?: string;
+  group?: boolean;
+  children?: EffortLine[];
+}
+
+/** Gruppen (Sets) flach expandieren: Gruppen-reps × children. */
+export function flattenEffortLines(rows: EffortLine[] | null | undefined): EffortLine[] {
+  const out: EffortLine[] = [];
+  for (const e of rows ?? []) {
+    if (e.group && e.children?.length) {
+      const g = e.reps && e.reps > 0 ? e.reps : 1;
+      for (let i = 0; i < g; i++) for (const c of e.children) out.push(c);
+    } else if (!e.group) out.push(e);
+  }
+  return out;
 }
 
 /** Vertrag mit client/src/lib/api.ts: IntervalEffortStat. */
@@ -367,13 +382,14 @@ export function intervalEffortStat(args: {
   efforts: EffortLine[];
   lthr: number;
 }): IntervalEffortStat {
+  const efforts = flattenEffortLines(args.efforts); // Gruppen (Sets) flach expandieren (v0.12.0)
   let distM = 0, // Gesamt-Distanz (m) über alle Wiederholungen
     sec = 0, // Gesamt-Belastungszeit (s)
     hrWeighted = 0, // Summe avg_hr * Gewicht (Zeit)
     hrWeight = 0,
     reps = 0,
     blockSec = 0; // längster Einzel-Block (s) — bestimmt VO2short/-long
-  for (const e of args.efforts) {
+  for (const e of efforts) {
     const r = e.reps || 1;
     reps += r;
     let s = e.sec ?? null;
@@ -402,7 +418,7 @@ export function intervalEffortStat(args: {
   } else {
     // Fallback: pace_s der Zeilen, gewichtet nach Distanz (bzw. Wiederholungen).
     let w = 0, sum = 0;
-    for (const e of args.efforts) {
+    for (const e of efforts) {
       if (!e.pace_s) continue;
       const wt = (e.dist_m ?? 1000) * (e.reps || 1);
       w += wt;
@@ -439,7 +455,7 @@ export function intervalEffortStat(args: {
     avg_speed_kmh: isBike ? avg_speed_kmh : null,
     avg_hr,
     reps,
-    label: args.efforts.find((e) => e.label)?.label || args.name || undefined,
+    label: efforts.find((e) => e.label)?.label || args.name || undefined,
   };
 }
 

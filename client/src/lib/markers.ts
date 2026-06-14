@@ -29,6 +29,13 @@ export function yearMarksByDate(dates: string[]): YearMark[] {
   for (const d of dates) { const y = d.slice(0, 4); if (prev && y !== prev) out.push({ key: d, year: y }); prev = y; }
   return out;
 }
+// Erste Position JEDES vorhandenen Jahres (auch des ersten) — für Charts, deren Daten oft nur in einem Jahr
+// liegen (Wellness/Effizienz): so erscheint die Jahresmarke auch ohne Jahres-Wechsel (v0.12.0, ToDo 4).
+export function yearMarksByDateAll(dates: string[]): YearMark[] {
+  const out: YearMark[] = []; const seen = new Set<string>();
+  for (const d of dates) { const y = d.slice(0, 4); if (!seen.has(y)) { seen.add(y); out.push({ key: d, year: y }); } }
+  return out;
+}
 // Wochen-Charts: per Band-INDEX positioniert (immun gegen doppelte KW-Labels über Saisongrenzen).
 // Marke sitzt am linken Rand der ERSTEN Woche des neuen Jahres → optisch „zwischen KW52 und KW1" (ToDo Z.9).
 export function yearMarksByWeek(rows: { label: string; start?: string }[]): YearMark[] {

@@ -32,8 +32,7 @@ import {
   type EffortLine,
   type IntervalEffortStat,
 } from "./analysis.ts";
-import { seedSeason } from "./import-docx.ts";
-import { stravaStatus, stravaLogin, stravaCallback, stravaSync } from "./strava.ts";
+import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich } from "./strava.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -156,6 +155,7 @@ app.get("/api/strava/status", stravaStatus);
 app.get("/api/strava/login", stravaLogin);
 app.get("/api/strava/callback", stravaCallback);
 app.post("/api/strava/sync", stravaSync);
+app.post("/api/strava/enrich", stravaEnrich);
 
 app.put("/api/settings", (req, res) => {
   for (const [k, v] of Object.entries(req.body || {})) setSetting(k, v);
@@ -257,6 +257,29 @@ app.delete("/api/profiles/:id", (req, res) => {
   if (id === 1 || id === pid()) return res.status(400).json({ error: "Profil ist geschützt/aktiv" });
   db.prepare("DELETE FROM profiles WHERE id=?").run(id);
   res.json({ ok: true });
+});
+
+// Profil zurücksetzen (ToDo 6, v0.12.0): löscht ALLE Trainings-/Plandaten des Profils — Aktivitäten,
+// Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan (geplante km) und Wettkämpfe. BEHÄLT nur die
+// HF-Zonen/Schwellen (Diagnostik) und das Profil selbst. Mit DB-Backup (VACUUM INTO).
+app.post("/api/profiles/:id/reset", (req, res) => {
+  const id = Number(req.params.id);
+  if ((req.body?.code ?? "") !== "4397") return res.status(403).json({ error: "Falscher Code" });
+  try {
+    const bak = `${DB_PATH}.${new Date().toISOString().replace(/[:.]/g, "-")}-reset.bak`;
+    db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
+    const activities = db.prepare("DELETE FROM activities WHERE profile_id=?").run(id).changes ?? 0;
+    const daily = db.prepare("DELETE FROM daily_log_v2 WHERE profile_id=?").run(id).changes ?? 0;
+    const weeklogs = db.prepare("DELETE FROM week_log_v2 WHERE profile_id=?").run(id).changes ?? 0;
+    const sessions = db.prepare("DELETE FROM planned_sessions WHERE profile_id=?").run(id).changes ?? 0;
+    const weeks = db.prepare("DELETE FROM season_weeks_v2 WHERE profile_id=?").run(id).changes ?? 0;
+    const races = db.prepare("DELETE FROM races WHERE profile_id=?").run(id).changes ?? 0;
+    // Ledger für den Saison-Race-Auto-Import zurücksetzen, damit ein neuer Saisonplan sauber importiert.
+    db.prepare("DELETE FROM settings WHERE key=?").run(`season_races_imported_${id}`);
+    res.json({ ok: true, backup: bak, activities, daily, weeklogs, sessions, weeks, races });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 // ---- Races (Wettkämpfe mit Splits, ToDo #24) ----------------------------
@@ -375,15 +398,23 @@ app.put("/api/season/week/:no", (req, res) => {
 });
 
 app.delete("/api/season/week/:no", (req, res) => {
+  // v0.12.0 (ToDo 1/5): mit der Woche auch deren geplante Einheiten löschen, damit keine verwaisten
+  // Plan-km zurückbleiben. Sessions über den Datumsbereich der Woche (robust gegen week_no-Renumber).
+  const wk = db.prepare("SELECT start_date, end_date FROM season_weeks_v2 WHERE week_no=? AND profile_id=?").get(req.params.no, pid()) as { start_date: string; end_date: string } | undefined;
+  if (wk) db.prepare("DELETE FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ?").run(pid(), wk.start_date, wk.end_date);
   db.prepare("DELETE FROM season_weeks_v2 WHERE week_no=? AND profile_id=?").run(req.params.no, pid());
   renumberWeeks();
   res.json({ ok: true });
 });
 
-app.post("/api/seed", (_req, res) => {
-  const r = seedSeason();
-  renumberWeeks();
-  res.json(r);
+// Verwaiste geplante Einheiten bereinigen: alles, was in KEINER Saison-Woche liegt (ToDo 1, v0.12.0).
+app.post("/api/season/cleanup-orphans", (_req, res) => {
+  const r = db.prepare(
+    `DELETE FROM planned_sessions WHERE profile_id=? AND NOT EXISTS (
+       SELECT 1 FROM season_weeks_v2 w WHERE w.profile_id=planned_sessions.profile_id
+       AND planned_sessions.date BETWEEN w.start_date AND w.end_date)`,
+  ).run(pid());
+  res.json({ removed: r.changes ?? 0 });
 });
 
 // ---- planned sessions --------------------------------------------------
@@ -457,7 +488,13 @@ function activityTssToStore(b: any): number | null {
 app.get("/api/sessions", (req, res) => {
   const { week, from, to } = req.query as Record<string, string>;
   let rows;
-  if (week) rows = db.prepare("SELECT * FROM planned_sessions WHERE week_no=? AND profile_id=? ORDER BY date, sort_order").all(week, pid());
+  if (week) {
+    // v0.13.0: per Datumsbereich der Woche (konsistent mit dem Tag-Raster); Fallback auf week_no.
+    const wk = db.prepare("SELECT start_date, end_date FROM season_weeks_v2 WHERE week_no=? AND profile_id=?").get(week, pid()) as { start_date: string; end_date: string } | undefined;
+    rows = wk
+      ? db.prepare("SELECT * FROM planned_sessions WHERE date BETWEEN ? AND ? AND profile_id=? ORDER BY date, sort_order").all(wk.start_date, wk.end_date, pid())
+      : db.prepare("SELECT * FROM planned_sessions WHERE week_no=? AND profile_id=? ORDER BY date, sort_order").all(week, pid());
+  }
   else if (from && to) rows = db.prepare("SELECT * FROM planned_sessions WHERE date BETWEEN ? AND ? AND profile_id=? ORDER BY date, sort_order").all(from, to, pid());
   else rows = db.prepare("SELECT * FROM planned_sessions WHERE profile_id=? ORDER BY date, sort_order").all(pid());
   res.json((rows as any[]).map((r) => ({ ...r, zone_alloc: parseJson(r.zone_alloc, null), structured: parseJson(r.structured, null), efforts: parseJson(r.efforts, null) })));
@@ -624,12 +661,20 @@ app.get("/api/daily", (req, res) => {
 app.put("/api/daily/:date", (req, res) => {
   const b = req.body || {};
   const cols = DAILY_COLS.filter((c) => c in b);
+  const values: any[] = cols.map((c) => b[c]);
+  // v0.12.0 (ToDo 12): eigene Tagesfaktoren (custom JSON) in die custom-Spalte mergen.
+  if (b.custom && typeof b.custom === "object") {
+    const row = db.prepare("SELECT custom FROM daily_log_v2 WHERE date=? AND profile_id=?").get(req.params.date, pid()) as { custom?: string } | undefined;
+    const merged = { ...parseJson<Record<string, unknown>>(row?.custom ?? null, {}), ...b.custom };
+    cols.push("custom");
+    values.push(JSON.stringify(merged));
+  }
   const placeholders = cols.map(() => "?").join(",");
   const updates = cols.map((c) => `${c}=excluded.${c}`).join(",");
   db.prepare(
     `INSERT INTO daily_log_v2(date, profile_id${cols.length ? "," + cols.join(",") : ""}) VALUES(?,?${cols.length ? "," + placeholders : ""})
      ON CONFLICT(date, profile_id) DO UPDATE SET ${updates || "date=excluded.date"}`,
-  ).run(req.params.date, pid(), ...cols.map((c) => b[c]));
+  ).run(req.params.date, pid(), ...values);
   res.json({ ok: true });
 });
 
@@ -756,7 +801,11 @@ function avgWeeklyTss(beforeDate: string, weeks: number): number | null {
 
 app.get("/api/analyze/week/:no", (req, res) => {
   const wk = db.prepare("SELECT * FROM season_weeks_v2 WHERE week_no=? AND profile_id=?").get(req.params.no, pid()) as any;
-  const sessions = db.prepare("SELECT * FROM planned_sessions WHERE week_no=? AND profile_id=? ORDER BY date").all(req.params.no, pid()) as any[];
+  // v0.13.0: Einheiten per DATUMSBEREICH der Woche laden (nicht week_no) → geplante km/Einheiten stimmen
+  // mit dem Tag-Raster überein; fehlgeleitete Altlast-Einheiten (falsches week_no) verfälschen nichts mehr.
+  const sessions = (wk
+    ? db.prepare("SELECT * FROM planned_sessions WHERE date BETWEEN ? AND ? AND profile_id=? ORDER BY date").all(wk.start_date, wk.end_date, pid())
+    : db.prepare("SELECT * FROM planned_sessions WHERE week_no=? AND profile_id=? ORDER BY date").all(req.params.no, pid())) as any[];
   const planned: PlannedSession[] = sessions.map((s) => ({ ...s, zone_alloc: parseJson(s.zone_alloc, null) }));
   const zs = effectiveZoneSet(wk?.start_date || todayIso());
   const totals = weekTotals(planned, zs.hr_zones, zs.pace_zones);

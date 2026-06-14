@@ -37,8 +37,13 @@ export default function WeekSelector({
   const toggleYear = (y: string) =>
     setOpenYears((s) => { const n = new Set(s); if (n.has(y)) n.delete(y); else n.add(y); return n; });
 
+  // Vor/Zurück-Pfeile (v0.13.0): season ist nach Startdatum sortiert; einen Schritt verschieben.
+  const idx = season.findIndex((w) => w.week_no === weekNo);
+  const go = (delta: number) => { const t = season[idx + delta]; if (t) setWeekNo(t.week_no); };
+
   return (
     <span className="row" style={{ width: "auto", gap: 6, alignItems: "center" }}>
+      <button type="button" className="sm ghost" disabled={idx <= 0} onClick={() => go(-1)} title="Vorige Woche" style={{ padding: "4px 8px" }}>←</button>
       <div className="week-select" ref={ref}>
         <button type="button" className="week-select-trigger" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           <span className="wst-label">
@@ -81,6 +86,7 @@ export default function WeekSelector({
           </div>
         )}
       </div>
+      <button type="button" className="sm ghost" disabled={idx < 0 || idx >= season.length - 1} onClick={() => go(1)} title="Nächste Woche" style={{ padding: "4px 8px" }}>→</button>
       {jumpTo && (
         <Link to={jumpTo.href} className="sm ghost no-print" title={jumpTo.title} style={{ whiteSpace: "nowrap" }}>{jumpTo.label}</Link>
       )}

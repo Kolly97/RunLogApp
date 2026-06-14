@@ -295,7 +295,7 @@ export default function WeekReport() {
             </div>
           )}
 
-          {/* Kern-Visualisierung */}
+          {/* Kern-Visualisierung — Balken & Donuts je eigene Karte, Schilder breit darunter (ToDo 8, v0.12.0) */}
           <div className="chart-grid mt">
             <div className="chart-card">
               <h3 style={{ textAlign: "center" }}>
@@ -325,16 +325,18 @@ export default function WeekReport() {
                   </div>
                 </div>
               )}
-              {analyze && (
-                <div style={{ marginTop: 6 }}>
-                  {/* Reale Schilder (ToDo 2): Wochen-Last + km-Polarisierung über die REALEN Werte der Woche. */}
-                  {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
-                    <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
+
+          {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
+          {analyze && (analyze.realLoadFlag || analyze.realKmFlag) && (
+            <div className="chart-card mt">
+              <h3>Bewertung der realen Woche</h3>
+              {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
+                <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+              ))}
+            </div>
+          )}
           {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
           <div className="chart-card mt">
             <h3>PMC — seit Jahresbeginn</h3>
@@ -487,8 +489,10 @@ function catsFromPlan(sessions: PlannedSession[]): Cat {
   return out;
 }
 
-/** Kompakte Darstellung einer Belastung: „4× 8:00 min @ 3:45/km · Ø172/max181". */
+/** Kompakte Darstellung einer Belastung: „4× 8:00 min @ 3:45/km · Ø172/max181".
+ *  v0.12.0: Wiederholungs-Gruppen werden als „3×(1000 m + 200 m)" gerendert. */
 function fmtEffort(e: Effort): string {
+  if (e.group) return `${e.reps ?? 1}×(${(e.children ?? []).map(fmtEffort).join(" + ")})`;
   let core = "";
   if (e.sec) core = clock(e.sec);
   else if (e.dist_m) core = e.dist_m >= 1000 ? `${round1(e.dist_m / 1000)} km` : `${e.dist_m} m`;

@@ -13,10 +13,13 @@ export interface HrZone { z: number; min: number; max: number; label: string; co
 export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
 export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; goal_race: string; notes: string; }
 export interface ZoneAlloc { byKm?: Record<number, number>; byMin?: Record<number, number>; }
-/** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20. */
+/** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20.
+ *  v0.12.0 (ToDo 2): kann auch eine eine-Ebene-Gruppe sein (`group`, `reps`, `children`) für Coros-Sets
+ *  wie 3×(1000+200). Gruppen-`children` sind immer Leaf-Efforts (keine weitere Verschachtelung). */
 export interface Effort {
   reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null;
   avg_hr?: number | null; max_hr?: number | null; zone?: number | null; label?: string;
+  group?: boolean; children?: Effort[];
 }
 export interface PlannedSession {
   id?: number; date: string; week_no?: number | null; sport: string; type: string;
@@ -124,7 +127,7 @@ export const api = {
     const p = new URLSearchParams(q as Record<string, string>).toString();
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
   },
-  seed: () => j<{ weeks: number; sessions: number }>("/api/seed", { method: "POST" }),
+  cleanupOrphans: () => j<{ removed: number }>("/api/season/cleanup-orphans", { method: "POST" }),
 
   // Profile (leichter Account-Wechsel, ToDo #9)
   profiles: () => j<{ profiles: Profile[]; active: number }>("/api/profiles"),
@@ -132,6 +135,7 @@ export const api = {
   renameProfile: (id: number, name: string) => j(`/api/profiles/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   setActiveProfile: (id: number) => j("/api/profile/active", { method: "PUT", body: JSON.stringify({ id }) }),
   deleteProfile: (id: number) => j(`/api/profiles/${id}`, { method: "DELETE" }),
+  resetProfile: (id: number, code: string) => j<{ activities: number; daily: number; weeklogs: number; sessions: number; weeks: number; races: number }>(`/api/profiles/${id}/reset`, { method: "POST", body: JSON.stringify({ code }) }),
 
   // Races / Wettkämpfe (ToDo #24)
   races: (q?: { from?: string; to?: string }) => {

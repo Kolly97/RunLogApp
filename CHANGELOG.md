@@ -4,6 +4,55 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.13.0] – 2026-06-14 — Planungs-Feinschliff, Daily-Kategorien & Strava-Details
+
+### Hinzugefügt
+- **Vor/Zurück-Pfeile** (← →) neben dem Wochen-Dropdown in Planung, Tracking und Wochenbericht.
+- **Tagesfaktoren in Kategorien** (Morgens, Schlaf, Subjektiv, Sonstiges) — als aufklappbare Sektionen im
+  Tracking; die Kategorien selbst sind in „Auswahllisten → Tagesfaktor-Kategorien" editierbar, die Zuordnung
+  je Feld in „Tagesfaktoren".
+- **Strava „Details/Splits nachziehen"**-Knopf in den Einstellungen: holt nur Details, Streams (Zonen/NGP) und
+  Intervalle (aus den Laps) für bestehende Aktivitäten — ohne neue zu importieren (budgetiert).
+
+### Geändert
+- **Geplante km/Einheiten** in Planung & Analyse werden über den **Datumsbereich** der Woche geladen (statt
+  `week_no`) → die „Geplante Woche" stimmt jetzt immer mit dem Tag-Raster überein; alte fehlgeleitete
+  Einheiten (falsches `week_no`) verfälschen die Summe nicht mehr.
+- **Trainingsplanung**: im Intervall-/Set-Builder werden Ø-HF und Max-HF ausgeblendet (kennt man beim Planen
+  noch nicht — Zone reicht). Im Tracking bleiben sie.
+- **Profil-Reset** löscht jetzt auch geplante Einheiten, Saisonplan (Ziel-km) und Wettkämpfe — nur die
+  HF-Zonen/Schwellen bleiben (mit DB-Backup).
+
+## [0.12.0] – 2026-06-14 — KW-Saisonplan, Sets, Strava-Intervalle, Profil-Menü & konfigurierbare Felder
+
+### Hinzugefügt
+- **Trainingsplanung mit Wiederholungs-Gruppen**: Intervalle als Sets wie **3×(1000+200)** statt jede
+  Wiederholung einzeln (Coros-Stil) — im EffortBuilder „+ Wiederholungs-Gruppe".
+- **Automatische Intervall-Extraktion aus Strava**: beim Sync werden die **Work-Laps** (schneller als Z3 bzw.
+  Ø-HF ≥ Z4) als Efforts unter die Einheit geschrieben (nur in leere Effort-Felder, budgetiert).
+- **Profil-Seite** (`/profil`): Profile umbenennen/löschen + **Profil zurücksetzen** (löscht alle Trainings- &
+  Plandaten: Aktivitäten, Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan/Ziel-km und Wettkämpfe —
+  nur die HF-Zonen/Schwellen bleiben; mit DB-Backup) + HF-Zonen/Schwellen je Profil.
+- **Konfigurierbare Tagesfaktoren**: in „Auswahllisten" (Rubrik „Tagesfaktoren") mit Feldtyp
+  (Zahl/Zeit/Text/Haken/Skala); feste Basis-Felder. Eigene Felder landen in einer JSON-Spalte.
+- **Heatmap-Bewertung**: Wochen-Score gold/grün/gelb/orange/rot (% erfüllter Checks); Kategorie-Namen bleiben
+  beim Horizontal-Scrollen fixiert.
+- **Phasenname im Chart-Tooltip** bei Zonen-Effizienz & Wellness-Verläufen; Jahresmarken erscheinen dort jetzt
+  auch ohne Jahres-Wechsel.
+
+### Geändert
+- **Saisonplan KW-gesteuert**: nur die **KW** (+ Jahr) ist editierbar, das Datum (Mo–So) wird automatisch
+  berechnet und read-only angezeigt. „Beispiel-Saison importieren" entfernt (verhindert Geister-Wochen).
+- **Wochenbericht-Layout**: Zonen-Balken und TSS-Donuts je eigene Karte, darunter eine breite Karte mit den
+  realen Analyse-Schildern.
+- **Tracking-Layout** in logische Blöcke (oben nur Sport/Typ/Name, dann Leistung, dann Körper/Last).
+- **HF-Zonen-Eingabe** wie bei Pace: nur die Obergrenze je Zone, die Untergrenze ergibt sich automatisch.
+- **OptionsConfig**: Eingabefelder in der Reihenfolge Label → Wert (wie die Zeilen darüber).
+
+### Behoben
+- Gelöschte Wochen verschwinden im Saisonplan jetzt sofort (nicht erst nach Reload); beim Löschen einer Woche
+  werden ihre geplanten Einheiten mitentfernt, verwaiste Plan-Einheiten werden beim Laden bereinigt.
+
 ## [0.11.0] – 2026-06-14 — Chart-Decor, geplant/real-Schilder, Wochen-Checks & Wander-TSS
 
 ### Hinzugefügt
