@@ -3,6 +3,7 @@
 //          Kern-Visualisierung (Zonen, Intensität, PMC ±6 Wochen, Saison-Progression) · Wellness-Ø · Wochen-Checks.
 // Seite 2: vollständige Tagesfaktoren-Tabelle · Wellness-Verläufe · Reflexion.
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race,
 } from "../lib/api.ts";
@@ -12,6 +13,7 @@ import {
   fmtDur, weekLabel, phaseLabel, addDays, todayIso,
 } from "../lib/util.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
+import { useOptions } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
@@ -20,10 +22,6 @@ import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/Seaso
 import WeekdayBars from "../charts/WeekdayBars.tsx";
 import WellnessTrends from "../charts/WellnessTrends.tsx";
 
-const CHECKS: [string, string][] = [
-  ["mileage", "Mileage erreicht"], ["threshold2x", "2× Schwelle"], ["longrun", "Longrun"],
-  ["plyo", "Plyo/Athletik"], ["physio", "Physio/KG"],
-];
 const REFLECT: [string, string][] = [
   ["adherence", "Plan-Treue (% umgesetzt)"], ["progress", "Fortschritt ggü. Vorwoche"],
   ["highlight", "Highlight / Win der Woche"], ["pain", "Schmerzen / Niggles / Verletzungsrisiko"],
@@ -78,6 +76,7 @@ type Cat = { run: { km: number; min: number }; bike: { km: number; min: number }
 
 export default function WeekReport() {
   const { season, week, weekNo, setWeekNo, loading } = useSeason();
+  const { checks } = useOptions(); // konfigurierbare Wochen-Checks (ToDo 7, v0.11.0)
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [acts, setActs] = useState<Activity[]>([]);
   const [daily, setDaily] = useState<DailyLog[]>([]);
@@ -111,6 +110,16 @@ export default function WeekReport() {
     }
     // eslint-disable-next-line
   }, [week?.week_no]);
+
+  // Sprung aus dem Tracking: ?date=YYYY-MM-DD wählt die zugehörige Woche (Gegenstück zu WeekTrack).
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const d = params.get("date");
+    if (!d || !season.length) return;
+    const w = season.find((x) => x.start_date <= d && d <= x.end_date);
+    if (w) setWeekNo(w.week_no);
+    // eslint-disable-next-line
+  }, [season, params]);
 
   // Saison-Progression ab 1.1. des aktuellen Jahres (baut sich auf), Berichtswoche hervorgehoben.
   useEffect(() => {
@@ -168,7 +177,8 @@ export default function WeekReport() {
       <div className="spread no-print">
         <h1>Wochenbericht</h1>
         <div className="row">
-          <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo} />
+          <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
+            jumpTo={{ href: `/track?date=${week.start_date}`, title: "Zur gleichen Woche im Tracking", label: "→ Tracking" }} />
           <button className="primary" onClick={() => window.print()}>🖨 Drucken / PDF</button>
         </div>
       </div>
@@ -317,7 +327,8 @@ export default function WeekReport() {
               )}
               {analyze && (
                 <div style={{ marginTop: 6 }}>
-                  {analyze.flags.filter((f) => f.code.startsWith("week_load") || f.code.startsWith("km_")).map((f, i) => (
+                  {/* Reale Schilder (ToDo 2): Wochen-Last + km-Polarisierung über die REALEN Werte der Woche. */}
+                  {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
                     <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
                   ))}
                 </div>
@@ -349,12 +360,13 @@ export default function WeekReport() {
             {WELLNESS_KEYS.map(([k, label]) => <Mini key={k} label={label} v={wellness[k] ?? ""} />)}
           </div>
 
-          {/* Wochen-Check */}
+          {/* Wochen-Check — konfigurierbar in den Auswahllisten (ToDo 7) */}
           <h3 className="mt">Wochen-Check</h3>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-            {CHECKS.map(([k, label]) => (
-              <label key={k} className="row tiny" style={{ gap: 5, width: "auto" }}>
-                <input type="checkbox" style={{ width: "auto" }} checked={!!wlog.checks?.[k]} onChange={(e) => saveCheck(k, e.target.checked)} /> {label}
+            {checks.length === 0 && <span className="tiny muted">Keine Checks definiert — in „Auswahllisten" anlegen.</span>}
+            {checks.map((c) => (
+              <label key={c.value} className="row tiny" style={{ gap: 5, width: "auto" }}>
+                <input type="checkbox" style={{ width: "auto" }} checked={!!wlog.checks?.[c.value]} onChange={(e) => saveCheck(c.value, e.target.checked)} /> {c.label}
               </label>
             ))}
           </div>

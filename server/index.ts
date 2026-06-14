@@ -10,6 +10,8 @@ import {
   runTss,
   powerTss,
   bikeTssEstimate,
+  hrTssFromZones,
+  round1,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
@@ -393,6 +395,40 @@ function computeSessionTss(b: any): number {
 
 // Server-autoritative Lauf-TSS: rTSS (NGP falls vorhanden, sonst Ø-Pace), COROS-unabhängig (ToDo v0.9.0).
 // Ausnahme: Nutzer hat tss explizit überschrieben (overrides enthält 'tss'). Bike/sonstige: Client-Wert.
+/** Sekunden je HF-Zone aus den Aktivitäts-Zonenfeldern (zone_min Minuten, sonst zones Sek.).
+ *  Verträgt sowohl geparste Objekte (POST/PUT) als auch JSON-Strings (Recompute über DB-Rows). */
+function activityZoneSeconds(b: any): Record<number, number> | null {
+  const parse = (v: any): Record<string, number> | null =>
+    (typeof v === "string" ? parseJson<Record<string, number> | null>(v, null) : v) || null;
+  const zMin = parse(b.zone_min);
+  if (zMin && Object.values(zMin).some((x) => (Number(x) || 0) > 0)) {
+    const out: Record<number, number> = {};
+    for (const [z, m] of Object.entries(zMin)) out[Number(z)] = (Number(m) || 0) * 60;
+    return out;
+  }
+  const zSec = parse(b.zones);
+  if (zSec && Object.values(zSec).some((x) => (Number(x) || 0) > 0)) {
+    const out: Record<number, number> = {};
+    for (const [z, s] of Object.entries(zSec)) out[Number(z)] = Number(s) || 0;
+    return out;
+  }
+  return null;
+}
+
+/** TSS für Allgemein/Sonstiges (Wandern, Spaziergang …) — HR-basiert, ToDo 11 (v0.11.0).
+ *  Wandern wurde über die Rad-IF-Schätzung (0.6) massiv überschätzt. Stattdessen:
+ *  1) HF-Zonen-TSS, 2) Einzel-Intensität aus Ø-HF, 3) niedriger Fixwert-IF (≈ 0.45). */
+function otherTssEstimate(b: any, zones: HrZone[], lthr: number): number {
+  const secByZone = activityZoneSeconds(b);
+  if (secByZone) return hrTssFromZones(secByZone, zones?.length ? zones : DEFAULT_HR_ZONES, lthr);
+  if (b.avg_hr && b.moving_s) {
+    const ifr = b.avg_hr / (lthr || 172);
+    return round1((b.moving_s / 3600) * ifr * ifr * 100);
+  }
+  if (b.moving_s) return round1((b.moving_s / 3600) * 0.45 * 0.45 * 100);
+  return 0;
+}
+
 function activityTssToStore(b: any): number | null {
   if (Array.isArray(b.overrides) && b.overrides.includes("tss")) return b.tss ?? null;
   const zs = effectiveZoneSet(b.date || todayIso());
@@ -401,12 +437,19 @@ function activityTssToStore(b: any): number | null {
     const t = runTss(b.distance_m, b.moving_s, zs.threshold_pace, b.ngp ?? null);
     if (t > 0) return t;
   }
-  // Rad/Rolle/Commute → Power-TSS (NP, sonst Ø-Power); ohne Leistung Dauer×IF-Schätzung (ToDo Z.10).
-  if ((b.sport?.startsWith("Bike") || b.sport === "General") && b.moving_s) {
+  // Rad/Rolle → Power-TSS (NP, sonst Ø-Power); ohne Leistung Dauer×IF-Schätzung (ToDo Z.10).
+  if (b.sport?.startsWith("Bike") && b.moving_s) {
     const power = b.np ?? b.avg_power ?? null;
     if (power && zs.ftp) { const t = powerTss(b.moving_s, power, zs.ftp); if (t > 0) return t; }
     const est = bikeTssEstimate(b.moving_s / 60, b.type || "Easy");
     if (est > 0) return est;
+  }
+  // Allgemein/Commute/Sonstiges → Power-TSS falls Leistung (Bike-Commute), sonst HR-basiert (Wandern).
+  if ((b.sport === "General" || b.sport === "Other") && b.moving_s) {
+    const power = b.np ?? b.avg_power ?? null;
+    if (power && zs.ftp) { const t = powerTss(b.moving_s, power, zs.ftp); if (t > 0) return t; }
+    const t = otherTssEstimate(b, zs.hr_zones, zs.lthr);
+    if (t > 0) return t;
   }
   return b.tss ?? null;
 }
@@ -488,14 +531,15 @@ app.post("/api/activities", (req, res) => {
   const b = req.body || {};
   const r = db
     .prepare(
-      `INSERT INTO activities(profile_id, strava_id, date, sport, source, name, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, training_load, tss, kcal, zones, zone_min, zone_km, efforts, overrides, matched_session_id, notes)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO activities(profile_id, strava_id, date, sport, type, source, name, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, training_load, tss, kcal, zones, zone_min, zone_km, efforts, overrides, matched_session_id, notes)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       pid(),
       b.strava_id ?? null,
       b.date,
       b.sport || "Run",
+      b.type ?? null,
       b.source || "manual",
       b.name || "",
       b.distance_m ?? null,
@@ -524,10 +568,11 @@ app.put("/api/activities/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
     // Commute (sport=General): desc_fetched=1 setzen, damit der Strava-Sync die geleerte Notiz nicht neu füllt (ToDo Z.14).
-    `UPDATE activities SET date=?, sport=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?) WHERE id=?`,
+    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?) WHERE id=?`,
   ).run(
     b.date,
     b.sport || "Run",
+    b.type ?? null,
     b.source || "manual",
     b.name || "",
     b.distance_m ?? null,
@@ -594,6 +639,12 @@ app.get("/api/weeklog/:week", (req, res) => {
   const row = db.prepare("SELECT * FROM week_log_v2 WHERE week_no=? AND profile_id=?").get(req.params.week, pid()) as any;
   if (!row) return res.json(null);
   res.json({ ...row, checks: parseJson(row.checks, {}), whoop: parseJson(row.whoop, {}), refl_extra: parseJson(row.refl_extra, {}) });
+});
+
+// Alle Wochen-Checks des aktiven Profils (für die Langzeit-Heatmap, ToDo 7 v0.11.0).
+app.get("/api/weeklogs", (_req, res) => {
+  const rows = db.prepare("SELECT week_no, checks FROM week_log_v2 WHERE profile_id=?").all(pid()) as any[];
+  res.json(rows.map((r) => ({ week_no: r.week_no, checks: parseJson(r.checks, {}) })));
 });
 
 app.put("/api/weeklog/:week", (req, res) => {
@@ -779,7 +830,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0 } };
   if (wk) {
     const acts = db
-      .prepare("SELECT sport, distance_m, moving_s, zones, zone_min, zone_km, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT sport, type, distance_m, moving_s, zones, zone_min, zone_km, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -824,7 +875,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
           realTssAcc.mod += (t * m) / tot;
           realTssAcc.hard += (t * h) / tot;
         } else {
-          const type = a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined;
+          // v0.11.0 (ToDo 10): eigener Aktivitäts-Typ hat Vorrang vor dem gematchten Plan-Typ.
+          const type = a.type || (a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined);
           const cls = type ? typeIntensity(type) : "easy";
           if (cls === "hard") realTssAcc.hard += t; else if (cls === "moderate") realTssAcc.mod += t; else realTssAcc.easy += t;
         }
@@ -856,28 +908,40 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const zoneKmIntensity = zoneKmIntensityOf(planned, zs.hr_zones, zs.pace_zones);
   const plannedZoneKm = zoneKmOf(planned, zs.hr_zones, zs.pace_zones);
 
-  // Wochen-Last adaptiv (ToDo A3): laufende/künftige Woche geplant↔Ø geplant, abgeschlossene real↔Ø real.
+  // v0.11.0 (ToDo 2): geplant↔geplant und real↔real GETRENNT rechnen — die Wochenplanung zeigt die
+  // geplanten Schilder (`flags`), der Wochenbericht die realen (`realLoadFlag`/`realKmFlag`).
   const isPast = !!wk && wk.end_date < todayIso();
-  let weekRating: ReturnType<typeof weekRatingLevel> | null = null;
-  if (isPast) {
-    const realWeekTss = (db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), wk.start_date, wk.end_date) as { s: number }).s || 0;
-    const refWeekly = avgWeeklyTss(refDate, win);
-    weekRating = refWeekly != null ? weekRatingLevel(realWeekTss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
-  } else {
-    const refPlanned = avgPlannedWeeklyTss(refDate, win);
-    weekRating = refPlanned != null ? weekRatingLevel(totals.tss, refPlanned, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
-  }
+  const refPlanned = avgPlannedWeeklyTss(refDate, win);
+  const plannedRating = refPlanned != null ? weekRatingLevel(totals.tss, refPlanned, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+  const realWeekTss = wk
+    ? ((db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), wk.start_date, wk.end_date) as { s: number }).s || 0)
+    : 0;
+  const refWeekly = avgWeeklyTss(refDate, win);
+  const realRating = refWeekly != null ? weekRatingLevel(realWeekTss, refWeekly, thr.easy_pct ?? 80, thr.hard_pct ?? 105) : null;
+  // weekRating bleibt adaptiv (Rückwärtskompatibilität): real bei abgeschlossener Woche, sonst geplant.
+  const weekRating = isPast ? realRating : plannedRating;
 
-  // Bewertungen (Wochen-TSS-Last + km-Polarisierung) als Flags in den Wochen-Check (ToDo Z.41/Z.24).
-  const loadFlag = weekLoadFlag(weekRating);
+  // Reale km-Polarisierung aus den realen km-je-Zone (Z1-2 / Z3 / Z4-6).
+  const realKmTot = Object.values(realZoneKm).reduce((a, b) => a + (b || 0), 0) || 1;
+  const realKmIntensity = {
+    easy: r1((((realZoneKm[1] || 0) + (realZoneKm[2] || 0)) / realKmTot) * 100),
+    mod: r1(((realZoneKm[3] || 0) / realKmTot) * 100),
+    hard: r1((((realZoneKm[4] || 0) + (realZoneKm[5] || 0) + (realZoneKm[6] || 0)) / realKmTot) * 100),
+  };
+
+  // Geplante Schilder → in `flags` (Wochenplanung). Reale Schilder separat (Wochenbericht).
+  const loadFlag = weekLoadFlag(plannedRating);
   if (loadFlag) flags.push(loadFlag);
   const polFlag = kmPolarizationFlag(zoneKmIntensity);
   if (polFlag) flags.push(polFlag);
+  const realLoadFlag = weekLoadFlag(realRating);
+  const realKmFlag = kmPolarizationFlag(realKmIntensity);
 
   res.json({
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
-    tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, plannedZoneKm, weekRating,
+    tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
+    realLoadFlag, realKmFlag,
   });
 });
 
@@ -895,7 +959,7 @@ app.get("/api/intervals/trend", (req, res) => {
 
   const rows = db
     .prepare(
-      `SELECT id, date, sport, name, efforts, matched_session_id FROM activities
+      `SELECT id, date, sport, type, name, efforts, matched_session_id FROM activities
        WHERE date BETWEEN ? AND ? AND profile_id=? AND efforts IS NOT NULL AND efforts != 'null' AND efforts != '[]'
        ORDER BY date`,
     )
@@ -905,15 +969,16 @@ app.get("/api/intervals/trend", (req, res) => {
   // Abgeleitete Einheit: geplante Session am selben Tag mit gleichem Sport, harte Typen zuerst.
   const byDate = db.prepare(
     `SELECT type FROM planned_sessions WHERE date=? AND sport=? AND profile_id=? AND type != 'Rest'
-     ORDER BY CASE WHEN type IN ('Threshold','VO2','Race','Hill') THEN 0 ELSE 1 END, sort_order LIMIT 1`,
+     ORDER BY CASE WHEN type IN ('Threshold','VO2','Race','Hill','LT1','LT2','VO2short','VO2long') THEN 0 ELSE 1 END, sort_order LIMIT 1`,
   );
 
   const out: IntervalEffortStat[] = [];
   for (const a of rows) {
     const efforts = parseJson<EffortLine[] | null>(a.efforts, null);
     if (!Array.isArray(efforts) || !efforts.length) continue;
-    let sessionType: string | null = null;
-    if (a.matched_session_id) sessionType = (byId.get(a.matched_session_id) as any)?.type ?? null;
+    // v0.11.0 (ToDo 10): eigener Aktivitäts-Typ hat Vorrang, sonst gematchte/abgeleitete Plan-Einheit.
+    let sessionType: string | null = a.type ?? null;
+    if (!sessionType && a.matched_session_id) sessionType = (byId.get(a.matched_session_id) as any)?.type ?? null;
     if (!sessionType) sessionType = (byDate.get(a.date, a.sport, pid()) as any)?.type ?? null;
     const lthr = effectiveZoneSet(a.date).lthr;
     out.push(intervalEffortStat({ date: a.date, sport: a.sport, name: a.name, sessionType, efforts, lthr }));

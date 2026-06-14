@@ -101,3 +101,14 @@ export function weekLabel(w: { start_date?: string; week_no?: number } | null | 
   if (w?.start_date) return `KW${isoWeek(w.start_date)}`;
   return `Woche ${w?.week_no ?? ""}`.trim();
 }
+
+/** Gruppiert Elemente nach Jahr (aus start_date), Jahre aufsteigend; Reihenfolge innerhalb gewahrt. */
+export function groupByYear<T extends { start_date?: string }>(items: T[]): { year: string; items: T[] }[] {
+  const map = new Map<string, T[]>();
+  for (const it of items) {
+    const y = it.start_date?.slice(0, 4) || "—";
+    if (!map.has(y)) map.set(y, []);
+    map.get(y)!.push(it);
+  }
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([year, list]) => ({ year, items: list }));
+}

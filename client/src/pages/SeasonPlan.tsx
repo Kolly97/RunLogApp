@@ -2,12 +2,16 @@
 // Wochen werden serverseitig nach Datum sortiert und ab 0 durchnummeriert.
 import { useEffect, useState } from "react";
 import { api, type SeasonWeek } from "../lib/api.ts";
-import { todayIso, num, phaseLabel } from "../lib/util.ts";
+import { todayIso, num, phaseLabel, groupByYear } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 
 export default function SeasonPlan() {
   const [season, setSeason] = useState<SeasonWeek[]>([]);
   const [msg, setMsg] = useState("");
+  // Jahres-Akkordeon (ToDo 9): aktuelles Jahr offen, übrige eingeklappt.
+  const [openYears, setOpenYears] = useState<Set<string>>(() => new Set([todayIso().slice(0, 4)]));
+  const toggleYear = (y: string) =>
+    setOpenYears((s) => { const n = new Set(s); if (n.has(y)) n.delete(y); else n.add(y); return n; });
 
   const reload = async () => setSeason(await api.season());
   useEffect(() => { reload(); }, []);
@@ -38,7 +42,22 @@ export default function SeasonPlan() {
         {season.length > 0 && (
           <table>
             <thead><tr><th>#</th><th>Phase</th><th>Start</th><th>Ende</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
-            <tbody>{season.map((w) => <WeekRow key={w.week_no} w={w} onChange={reload} />)}</tbody>
+            {groupByYear(season).map(({ year, items }) => {
+              const isOpen = openYears.has(year);
+              const sumKm = items.reduce((s, w) => s + (w.target_km || 0), 0);
+              return (
+                <tbody key={year} className="season-year">
+                  <tr className="year-head" onClick={() => toggleYear(year)}>
+                    <td colSpan={7}>
+                      <span className="caret">{isOpen ? "▾" : "▸"}</span>
+                      <strong>{year}</strong>
+                      <span className="tiny muted"> · {items.length} Wochen{sumKm ? ` · Σ ${Math.round(sumKm)} km Ziel` : ""}</span>
+                    </td>
+                  </tr>
+                  {isOpen && items.map((w) => <WeekRow key={w.week_no} w={w} onChange={reload} />)}
+                </tbody>
+              );
+            })}
           </table>
         )}
       </div>

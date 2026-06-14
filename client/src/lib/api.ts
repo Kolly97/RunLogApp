@@ -24,7 +24,7 @@ export interface PlannedSession {
   description?: string; structured?: unknown; efforts?: Effort[] | null; planned_tss?: number | null; sort_order?: number;
 }
 export interface Activity {
-  id?: number; strava_id?: string | null; date: string; sport: string; source: string; name?: string;
+  id?: number; strava_id?: string | null; date: string; sport: string; type?: string | null; source: string; name?: string;
   distance_m?: number | null; moving_s?: number | null; elapsed_s?: number | null; avg_hr?: number | null;
   max_hr?: number | null; avg_power?: number | null; elevation?: number | null; avg_cadence?: number | null;
   training_load?: number | null; tss?: number | null; kcal?: number | null;
@@ -52,6 +52,8 @@ export interface AnalyzeResult {
   tssIntensity?: IntensityShare; zoneKmIntensity?: IntensityShare; weekRating?: WeekRating | null;
   // ToDo Z.7 — reale TSS-Intensität (hybrid) + reale Gesamt-TSS für den „Real"-Donut
   realTssIntensity?: IntensityShare; realTotalTss?: number;
+  // v0.11.0 (ToDo 2) — reale Schilder für den Wochenbericht (Planung nutzt `flags` = geplant).
+  realLoadFlag?: Flag | null; realKmFlag?: Flag | null; realKmIntensity?: IntensityShare;
   // reale + geplante Verteilung/Kategorien (vom Server geliefert)
   plannedZoneKm?: Record<number, number>;
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
@@ -114,6 +116,7 @@ export const api = {
 
   weeklog: (week: number) => j<any>(`/api/weeklog/${week}`),
   saveWeeklog: (week: number, b: Record<string, unknown>) => j(`/api/weeklog/${week}`, { method: "PUT", body: JSON.stringify(b) }),
+  weeklogs: () => j<{ week_no: number; checks: Record<string, boolean> }[]>("/api/weeklogs"),
 
   pmc: (from: string, to: string) => j<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number }>(`/api/pmc?from=${from}&to=${to}`),
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),

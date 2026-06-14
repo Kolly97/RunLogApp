@@ -15,7 +15,7 @@ export interface Option {
   intensity?: string | null;
 }
 
-export type OptionKind = "phase" | "sport" | "sessionType" | "activityType";
+export type OptionKind = "phase" | "sport" | "sessionType" | "activityType" | "check";
 
 // Defaults = Fallback bis der Server antwortet (und für Offline-Robustheit).
 export const DEFAULT_SPORTS: Option[] = [
@@ -32,13 +32,26 @@ export const DEFAULT_SESSION_TYPES: Option[] = [
   { kind: "sessionType", value: "Easy", label: "Easy / GA1", color: "#3b82f6", intensity: "easy" },
   { kind: "sessionType", value: "Long", label: "Longrun", color: "#6366f1", intensity: "easy" },
   { kind: "sessionType", value: "Steady", label: "Steady / Tempo", color: "#22c55e", intensity: "moderate" },
+  { kind: "sessionType", value: "LT1", label: "LT1 (Sub-Threshold)", color: "#84cc16", intensity: "moderate" },
+  { kind: "sessionType", value: "LT2", label: "LT2 (Threshold)", color: "#eab308", intensity: "hard" },
   { kind: "sessionType", value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308", intensity: "hard" },
   { kind: "sessionType", value: "VO2", label: "VO2 / Intervalle", color: "#f97316", intensity: "hard" },
+  { kind: "sessionType", value: "VO2short", label: "VO2max kurz", color: "#f97316", intensity: "hard" },
+  { kind: "sessionType", value: "VO2long", label: "VO2max lang", color: "#fb7185", intensity: "hard" },
   { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7", intensity: "hard" },
   { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444", intensity: "hard" },
   { kind: "sessionType", value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
   { kind: "sessionType", value: "Physio", label: "KG / Physio", color: "#64748b" },
   { kind: "sessionType", value: "Rest", label: "Ruhetag", color: "#9ca3af" },
+];
+
+// Manuelle Wochen-Checks (Default-Fallback bis der Server antwortet) — in „Auswahllisten" editierbar.
+export const DEFAULT_CHECKS: Option[] = [
+  { kind: "check", value: "mileage", label: "Mileage erreicht", color: "#3b82f6" },
+  { kind: "check", value: "threshold2x", label: "2× Schwelle", color: "#eab308" },
+  { kind: "check", value: "longrun", label: "Longrun", color: "#6366f1" },
+  { kind: "check", value: "plyo", label: "Plyo/Athletik", color: "#14b8a6" },
+  { kind: "check", value: "physio", label: "Physio/KG", color: "#64748b" },
 ];
 
 export const DEFAULT_PHASES: Option[] = [
@@ -55,6 +68,7 @@ let CACHE: Record<string, Option[]> = {
   sessionType: DEFAULT_SESSION_TYPES,
   phase: DEFAULT_PHASES,
   activityType: [],
+  check: DEFAULT_CHECKS,
 };
 
 const listeners = new Set<() => void>();
@@ -70,7 +84,7 @@ export async function loadOptions(): Promise<void> {
     const r = await fetch("/api/options");
     if (!r.ok) return;
     const rows = (await r.json()) as Option[];
-    const next: Record<string, Option[]> = { sport: [], sessionType: [], phase: [], activityType: [] };
+    const next: Record<string, Option[]> = { sport: [], sessionType: [], phase: [], activityType: [], check: [] };
     for (const o of rows) {
       if (o.active === 0) continue;
       (next[o.kind] ||= []).push(o);
@@ -80,6 +94,7 @@ export async function loadOptions(): Promise<void> {
       sessionType: next.sessionType.length ? next.sessionType : DEFAULT_SESSION_TYPES,
       phase: next.phase.length ? next.phase : DEFAULT_PHASES,
       activityType: next.activityType,
+      check: next.check.length ? next.check : DEFAULT_CHECKS,
     };
     emit();
   } catch {
@@ -130,6 +145,7 @@ export function useOptions() {
     sessionTypes: CACHE.sessionType,
     phases: CACHE.phase,
     activityTypes: CACHE.activityType,
+    checks: CACHE.check,
     reload: loadOptions,
   };
 }

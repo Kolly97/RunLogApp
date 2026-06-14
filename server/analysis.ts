@@ -425,7 +425,9 @@ export function intervalEffortStat(args: {
   }
 
   let category: IntervalEffortStat["category"] = "other";
-  if (sessionType === "Threshold") category = avg_hr != null && avg_hr < args.lthr - 4 ? "LT1" : "LT2";
+  // v0.11.0 (ToDo 10): explizite Einheitstypen direkt auf die Trend-Kategorie abbilden.
+  if (sessionType === "LT1" || sessionType === "LT2" || sessionType === "VO2short" || sessionType === "VO2long") category = sessionType;
+  else if (sessionType === "Threshold") category = avg_hr != null && avg_hr < args.lthr - 4 ? "LT1" : "LT2";
   else if (sessionType === "VO2") category = blockSec > 0 && blockSec <= 120 ? "VO2short" : "VO2long";
 
   const isBike = isBikeSport(args.sport);

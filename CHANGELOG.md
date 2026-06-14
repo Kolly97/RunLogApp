@@ -4,6 +4,30 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.11.0] – 2026-06-14 — Chart-Decor, geplant/real-Schilder, Wochen-Checks & Wander-TSS
+
+### Hinzugefügt
+- **Jahres-Dreieck + Phasen-Farbband** jetzt auch in den **Langzeit-Charts** (Wellness-Verläufe +
+  Zonen-Effizienz) — einheitliche Zeit-Orientierung wie bei PMC/Saison-Progression.
+- **Klickbare Effizienz-Legende**: Ø-Pace und Ø-HF lassen sich im „Ø-Pace vs. Ø-HF"-Chart einzeln
+  ein-/ausblenden (wie in der PMC-Legende).
+- **Einheitstyp beim Tracking** (Dropdown LT1, LT2, VO2max kurz/lang, Longrun …): überschreibt für den
+  **Real-Donut** den gematchten Plan-Typ und schärft den Intervall-Trend. Neue Spalte `activities.type`.
+- **Konfigurierbare Wochen-Checks**: in „Auswahllisten" (neue Liste „Wochen-Checks") frei definierbar;
+  im Wochenbericht abhakbar und in der **Langzeit-Heatmap** (Wochen × Checks) über die Saison getrackt.
+- **GAP + Höhenmeter im Tracking-Formular**: GAP neben der Ø-Pace, editierbares Höhenmeter-Feld.
+- **Sprung-Icon Wochenbericht ↔ Tracking** (gleiche Woche, beide Richtungen) am Wochen-Selector.
+- **Wochenauswahl + Saisonplan als Jahres-Akkordeon**: Wochen pro Jahr (2019…2026) auf-/zuklappbar mit
+  sanfter Animation; aktuelles Jahr automatisch offen.
+
+### Geändert
+- **Wochen-Schilder geplant vs. real getrennt**: Wochenplanung zeigt die Last- & km-Polarisierungs-Schilder
+  aus den **geplanten** Werten, der Wochenbericht aus den **realen** (Bericht behält beide TSS-Donuts).
+- **TSS für Wanderungen/Sonstiges** (Sport „Allgemein"/„Sonstiges") jetzt **HR-Zonen-basiert** statt der
+  Rad-IF-Schätzung (vorher stark überschätzt); ohne HF niedriger Fixwert-IF, mit Leistung weiter Power-TSS.
+  → einmal **„TSS neu berechnen"** drücken, um Altbestand rückwirkend zu korrigieren.
+- **Wochentags-Chart**: neue Farb-Semantik (Distanz kühl, Belastung warm) + gruppierte Legende.
+
 ## [0.10.0] – 2026-06-13 — Rad-TSS (NP), Bericht-Charts & Anzeige-Feinschliff
 
 ### Hinzugefügt

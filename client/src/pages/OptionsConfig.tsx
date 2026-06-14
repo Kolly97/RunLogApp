@@ -5,7 +5,8 @@ import { loadOptions, type Option } from "../lib/options.ts";
 const KINDS: { kind: string; title: string; hint: string }[] = [
   { kind: "phase", title: "Trainingsphasen", hint: "Wochen-Phasen (Base, Belastung, Entlastung …)" },
   { kind: "sport", title: "Sportarten", hint: "Lauf, Rennrad, Rolle, Kraft, Commute …" },
-  { kind: "sessionType", title: "Einheitstypen", hint: "Easy, Schwelle, VO2, Berg …" },
+  { kind: "sessionType", title: "Einheitstypen", hint: "Easy, LT1, LT2, VO2max kurz/lang, Berg …" },
+  { kind: "check", title: "Wochen-Checks", hint: "Manuelle Häkchen im Wochenbericht (z.B. Longrun, 2× Schwelle, Physio/KG)" },
 ];
 
 export default function OptionsConfig() {

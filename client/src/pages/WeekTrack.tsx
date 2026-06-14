@@ -52,7 +52,8 @@ export default function WeekTrack() {
 
   return (
     <div>
-      <div className="spread"><h1>Tracking</h1><WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo} /></div>
+      <div className="spread"><h1>Tracking</h1><WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
+        jumpTo={week ? { href: `/report?date=${week.start_date}`, title: "Zur gleichen Woche im Wochenbericht", label: "→ Bericht" } : undefined} /></div>
       <div className="card tight"><div className="row"><span className="pill phase">{week.phase}</span><strong>Woche {week.week_no}</strong><span className="muted tiny">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span></div></div>
 
       {days.map((d, i) => (
@@ -80,6 +81,7 @@ function DayCard({ date, dayName, planned, acts, daily, coros, zs, onChange }: {
   const newAct: Activity = {
     date, source: "manual",
     sport: nextPlanned?.sport ?? "Run",
+    type: nextPlanned?.type ?? null,
     name: nextPlanned ? (nextPlanned.description || typeLabel(nextPlanned.type)) : undefined,
     matched_session_id: nextPlanned?.id ?? null,
   };
@@ -153,7 +155,7 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
   const [open, setOpen] = useState(!!isNew);
   const [zoneUnit, setZoneUnit] = useState<"km" | "min">(() => defaultZoneUnit(a));
   const [saving, setSaving] = useState(false);
-  const { sports } = useOptions();
+  const { sports, sessionTypes } = useOptions();
   const set = (patch: Partial<Activity>) => setE((p) => ({ ...p, ...patch }));
   const bike = isBikeSport(e.sport);
   // Commute (ToDo Z.14): Sportart → „Allgemein/Commute" (General), Name „Commute", keine Notizen.
@@ -230,14 +232,24 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
             <input type="checkbox" checked={commute} onChange={(x) => setCommute(x.target.checked)} style={{ width: "auto", marginTop: 6 }} title="Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)" />
           </label>
         )}
+        <label className="field" style={{ margin: 0 }}><span>Typ</span>
+          <select value={e.type ?? ""} onChange={(x) => set({ type: x.target.value || null })} title="Einheitstyp (z.B. LT2, VO2max kurz) — steuert den Real-Donut & Intervall-Trend">
+            <option value="">—</option>
+            {sessionTypes.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
         <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
         <label className="field" style={{ margin: 0 }}><span>km</span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Dauer (min)</span><input type="number" value={e.moving_s != null ? Math.round(e.moving_s / 60) : ""} onChange={(x) => set({ moving_s: num(x.target.value) != null ? Number(x.target.value) * 60 : null })} /></label>
         <label className="field" style={{ margin: 0 }}><span>{bike ? "Ø Geschwindigkeit" : "Ø Pace"}</span>
-          <div style={{ padding: "6px 0", fontWeight: 600 }}>{paceOrSpeed(e.sport, e.distance_m, e.moving_s)}</div>
+          <div style={{ padding: "6px 0", fontWeight: 600 }}>
+            {paceOrSpeed(e.sport, e.distance_m, e.moving_s)}
+            {e.sport === "Run" && e.ngp ? <span className="tiny muted" style={{ fontWeight: 400, marginLeft: 6 }}>· GAP {paceStr(e.ngp)}/km</span> : null}
+          </div>
         </label>
         <label className="field" style={{ margin: 0 }}><span>Ø HF</span><input type="number" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Ø Power</span><input type="number" value={e.avg_power ?? ""} onChange={(x) => set({ avg_power: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span>Höhenmeter (hm)</span><input type="number" value={e.elevation ?? ""} onChange={(x) => set({ elevation: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>kcal</span><input type="number" value={e.kcal ?? ""} onChange={(x) => set({ kcal: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>COROS Load</span><input type="number" value={e.training_load ?? ""} onChange={(x) => set({ training_load: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>TSS (optional)</span><input type="number" value={e.tss ?? ""} placeholder={e.training_load != null ? `${Math.round(e.training_load * coros)}` : ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>

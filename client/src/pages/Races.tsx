@@ -93,9 +93,9 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
       </div>
       <div className="grid cols-4">
         <label className="field"><span>Datum</span><input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
-        <label className="field"><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} placeholder="z.B. 10k Suprema Mannheim" /></label>
-        <label className="field" style={{ gridColumn: "span 2" }}><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10 oder 0.5" /></label>
-        <label className="field"><span>Endzeit (mm:ss / h:mm:ss)</span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="38:24" /></label>
+        <label className="field"><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} placeholder="z.B. Olympia" /></label>
+        <label className="field" style={{ gridColumn: "span 1" }}><span>Distanz (km)</span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10" /></label>
+        <label className="field"><span>Endzeit (h:mm:ss)</span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="26:20" /></label>
         <label className="field"><span>Platzierung</span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
         <label className="field"><span>Ø-HF (bpm)</span><input type="number" min="0" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} placeholder="z.B. 172" /></label>
         <label className="field"><span>Max-HF (bpm)</span><input type="number" min="0" value={e.max_hr ?? ""} onChange={(x) => set({ max_hr: num(x.target.value) })} placeholder="z.B. 188" /></label>

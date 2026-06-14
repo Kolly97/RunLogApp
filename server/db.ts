@@ -194,6 +194,8 @@ function migrate(): void {
   addColumn("activities", "streams_fetched", "INTEGER DEFAULT 0");
   // ToDo v0.10.0: Normalized Power (W) aus dem Rad-Power-Stream → Power-TSS nach TrainingPeaks.
   addColumn("activities", "np", "REAL");
+  // v0.11.0 (ToDo 10): Einheitstyp je Aktivität (LT1/LT2/VO2max …) — steuert den Real-Donut + Intervall-Trend.
+  addColumn("activities", "type", "TEXT");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
@@ -221,6 +223,31 @@ function migrate(): void {
     "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity) " +
       "VALUES('sessionType','Steady','Steady / Tempo','#22c55e',(SELECT COALESCE(MAX(sort),0)+1 FROM options WHERE kind='sessionType'),1,'moderate')",
   ).run();
+
+  // v0.11.0 (ToDo 10): granulare Lauf-Typen fürs Tracking — LT1/LT2 + VO2max kurz/lang (idempotent).
+  const insType = db.prepare(
+    "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity) " +
+      "VALUES('sessionType', ?, ?, ?, (SELECT COALESCE(MAX(sort),0)+1 FROM options WHERE kind='sessionType'), 1, ?)",
+  );
+  for (const [value, label, color, intensity] of [
+    ["LT1", "LT1 (Sub-Threshold)", "#84cc16", "moderate"],
+    ["LT2", "LT2 (Threshold)", "#eab308", "hard"],
+    ["VO2short", "VO2max kurz", "#f97316", "hard"],
+    ["VO2long", "VO2max lang", "#fb7185", "hard"],
+  ] as const) insType.run(value, label, color, intensity);
+
+  // v0.11.0 (ToDo 7): manuelle Wochen-Checks als konfigurierbare Auswahlliste (kind='check', idempotent).
+  const insCheck = db.prepare(
+    "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active) " +
+      "VALUES('check', ?, ?, ?, ?, 1)",
+  );
+  [
+    ["mileage", "Mileage erreicht", "#3b82f6"],
+    ["threshold2x", "2× Schwelle", "#eab308"],
+    ["longrun", "Longrun", "#6366f1"],
+    ["plyo", "Plyo/Athletik", "#14b8a6"],
+    ["physio", "Physio/KG", "#64748b"],
+  ].forEach(([value, label, color], i) => insCheck.run(value, label, color, i));
 
   // ToDo #9 (12.6.): leichte Profile/Accounts (ohne Passwort). Bestandsdaten = Profil 1 „Kolja".
   db.exec(`CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);

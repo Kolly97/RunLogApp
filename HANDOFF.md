@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v0.10.0** (13.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.11.0** (14.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -96,7 +96,24 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v0.10.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v0.11.0 (Ist-Stand, nicht Historie)
+
+**Neu in v0.11.0 (Kurz):**
+- **Schilder geplant/real getrennt:** `/api/analyze/week` liefert `flags` (geplant → Wochenplanung) **plus**
+  `realLoadFlag`/`realKmFlag`/`realKmIntensity` (real → Wochenbericht). Bericht behält beide Donuts.
+- **Tracking-Einheitstyp:** Spalte `activities.type`; Dropdown im Tracking; im Real-Donut + Intervall-Trend
+  hat `a.type` Vorrang vor dem gematchten Plan-Typ. Neue sessionType-Optionen LT1/LT2/VO2short/VO2long
+  (idempotent geseedet, `intervalEffortStat` mappt sie direkt auf die Trend-Kategorie).
+- **Wochen-Checks konfigurierbar:** Options-`kind='check'` (Auswahllisten-Editor), Wochenbericht liest sie
+  dynamisch; **Langzeit-Heatmap** (`/api/weeklogs`, Wochen × Checks). week_log_v2.checks unverändert.
+- **Wander/Sonstiges-TSS:** `activityTssToStore` → General/Other HR-basiert (`otherTssEstimate`:
+  hrTssFromZones, sonst Ø-HF-IF, sonst Fixwert 0.45); Bike bleibt Power/`bikeTssEstimate`. **Recompute drücken.**
+- **Charts:** Jahres-Dreieck+Phasenband in den Langzeit-Wellness/Effizienz-Charts (`ChartDecor` via
+  `<Customized>`); Effizienz-Legende (Pace/HF) klickbar; Wochentags-Chart kühl=Distanz/warm=Last + gruppierte
+  Legende. **Jahres-Akkordeon** in `WeekSelector` (Popover) + Saisonplan-Tabelle (`groupByYear` in util.ts).
+- **Navigation:** Sprung-Icon Wochenbericht↔Tracking (`WeekSelector` `jumpTo`-Prop, `?date=`); GAP+Höhenmeter
+  im Tracking-Formular.
+
 
 **Seiten:** Dashboard · Wochenplanung · Tracking · Wochenbericht (2-seitig druckbar) · Langzeit · Races ·
 Saisonplan · Einstellungen · Auswahllisten. Leichte Profile (Wechsel in Sidebar; Löschen/Umbenennen mit Code **4397**).
@@ -131,6 +148,9 @@ geschützt. **Commute**-Schalter (Bike-Einheit → Sportart General, Name „Com
 
 ## 5. Offen / nächste Schritte
 
+- **v0.11.0-Runde abgeschlossen** (alle 11 ToDo-Punkte umgesetzt). Restlicher Backlog steht in `ToDo.md`
+  unter „In Zukunft NICHT JETZT" (Readiness, Trainingsplanung mit Sets/Wiederholungen, Dashboard-Tagesvorschlag,
+  Intervall-Auto-Extraktion, v2.0-Redesign). **Nach dem Update einmal „TSS neu berechnen" drücken** (Wander-TSS).
 - **Strava-Streams nachziehen:** NGP/NP + min/Zone + km/Zone kommen je Einheit erst beim Sync (budgetiert) →
   Altbestand braucht mehrere Syncs; danach „TSS neu berechnen (Lauf + Rad)" drücken. Recompute ist **profil-gescoped**.
 - **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts (Zeit/Strecke/Pace/Ø+Max-HF je Wiederholung) für harte

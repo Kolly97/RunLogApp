@@ -2,9 +2,17 @@
 //  1) km: Lauf-km + äquivalente Rad-km (Rad-km × Faktor),
 //  2) TSS: Lauf-rTSS + übrige TSS (Rad/Commute/…).
 // Reale Aktivitäten der Berichtswoche; km links, TSS rechts.
-import { Bar, ComposedChart, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+// Farb-Semantik (ToDo Z.12 v0.11.0): Distanz in kühlen Tönen (Blau/Türkis),
+// Belastung in warmen Tönen (Orange/Bernstein); Legende in zwei beschriftete Gruppen.
+import { Bar, ComposedChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import type { Activity } from "../lib/api.ts";
 import { DAY_NAMES } from "../lib/util.ts";
+
+// Distanz (kühl) vs. Belastung (warm) — klar getrennte Hue-Gruppen.
+const C_RUN_KM = "#93c5fd";   // Lauf-km — hell-blau
+const C_BIKE_KM = "#2dd4bf";  // Rad-km (äqu.) — türkis
+const C_RUN_TSS = "#f97316";  // rTSS (Lauf) — orange
+const C_OTHER_TSS = "#fbbf24"; // TSS (Rad/übrige) — bernstein
 
 export default function WeekdayBars({
   days, acts, bikeFactor = 0.25, height = 210,
@@ -28,19 +36,33 @@ export default function WeekdayBars({
     };
   });
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={rows} margin={{ top: 14, right: 6, left: -12, bottom: 4 }} barGap={2}>
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} />
-        <YAxis yAxisId="km" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
-        <YAxis yAxisId="tss" orientation="right" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
-        <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
-          formatter={(v: number, n: string) => [v, n]} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        <Bar yAxisId="km" dataKey="runKm" name="Lauf-km" stackId="km" fill="#9ec3ea" barSize={9} isAnimationActive={false} />
-        <Bar yAxisId="km" dataKey="bikeEq" name="Rad-km (äqu.)" stackId="km" fill="#6366f1" barSize={9} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-        <Bar yAxisId="tss" dataKey="runT" name="rTSS (Lauf)" stackId="t" fill="#f97316" barSize={9} isAnimationActive={false} />
-        <Bar yAxisId="tss" dataKey="otherT" name="TSS (Rad/übrige)" stackId="t" fill="#0ea5e9" barSize={9} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-      </ComposedChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={height}>
+        <ComposedChart data={rows} margin={{ top: 14, right: 6, left: -12, bottom: 4 }} barGap={2}>
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} />
+          <YAxis yAxisId="km" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
+          <YAxis yAxisId="tss" orientation="right" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
+          <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+            formatter={(v: number, n: string) => [v, n]} />
+          <Bar yAxisId="km" dataKey="runKm" name="Lauf-km" stackId="km" fill={C_RUN_KM} barSize={9} isAnimationActive={false} />
+          <Bar yAxisId="km" dataKey="bikeEq" name="Rad-km (äqu.)" stackId="km" fill={C_BIKE_KM} barSize={9} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          <Bar yAxisId="tss" dataKey="runT" name="rTSS (Lauf)" stackId="t" fill={C_RUN_TSS} barSize={9} isAnimationActive={false} />
+          <Bar yAxisId="tss" dataKey="otherT" name="TSS (Rad/übrige)" stackId="t" fill={C_OTHER_TSS} barSize={9} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      {/* Gruppierte Legende: Distanz (kühl, linke Achse) vs. Belastung (warm, rechte Achse). */}
+      <div className="weekday-legend">
+        <div className="grp">
+          <span className="grp-head">Distanz (km)</span>
+          <span className="lg"><span className="dot" style={{ background: C_RUN_KM }} /> Lauf</span>
+          <span className="lg"><span className="dot" style={{ background: C_BIKE_KM }} /> Rad (äqu.)</span>
+        </div>
+        <div className="grp">
+          <span className="grp-head">Belastung (TSS)</span>
+          <span className="lg"><span className="dot" style={{ background: C_RUN_TSS }} /> Lauf (rTSS)</span>
+          <span className="lg"><span className="dot" style={{ background: C_OTHER_TSS }} /> Rad / übrige</span>
+        </div>
+      </div>
+    </div>
   );
 }

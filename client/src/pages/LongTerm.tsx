@@ -5,20 +5,22 @@
 // (b) Zonen-Effizienz: Ø-Pace vs. Ø-HF der Easy-Läufe (Wochenmittel) + Effizienz-Faktor,
 // (c) Intervall-Trend nach Kategorie (LT1 / LT2 / VO2) — Chart wiederverwendet.
 // Zeitraum über RangeSelector (Default 6 Monate); „Drucken/PDF" druckt den eingestellten Zeitraum.
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, ReferenceArea, Legend,
+  ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
 import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
+import { useOptions } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
-import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, fmtDur } from "../lib/util.ts";
+import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
+import ChartDecor from "../charts/ChartDecor.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 
 // ---- Wellness-Metriken (kleine Multiples) ----
@@ -83,6 +85,8 @@ function easyRunWeeks(acts: Activity[]): EffRow[] {
 
 export default function LongTerm() {
   const { season, week } = useSeason();
+  const { checks } = useOptions(); // Wochen-Check-Definitionen (ToDo 7, v0.11.0)
+  const [weeklogs, setWeeklogs] = useState<{ week_no: number; checks: Record<string, boolean> }[]>([]);
   const [range, setRange] = useState<DateRange | null>(null);
   const [daily, setDaily] = useState<DailyLog[]>([]);
   const [acts, setActs] = useState<Activity[]>([]);
@@ -91,6 +95,8 @@ export default function LongTerm() {
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
+  // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
+  const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, todayIso()) }
@@ -113,6 +119,9 @@ export default function LongTerm() {
       .then(([sessions, all, rc]) => { setRows(buildSeasonRows(season, sessions, all)); setAllSessions(sessions); setAllRaces(rc); })
       .catch(() => setRows([]));
   }, [season]);
+
+  // Wochen-Checks (manuell abgehakt) für die Heatmap (ToDo 7) — unabhängig vom Zeitraum, einmal laden.
+  useEffect(() => { api.weeklogs().then(setWeeklogs).catch(() => setWeeklogs([])); }, []);
 
   const navigate = useNavigate();
   const racesByDate = raceMarkersByDate(allSessions, allRaces);
@@ -172,6 +181,19 @@ export default function LongTerm() {
     ? [Math.floor((Math.min(...effPaces) - 15) / 15) * 15, Math.ceil((Math.max(...effPaces) + 15) / 15) * 15]
     : [240, 480];
 
+  // Chart-Dekoration (Phasenband + Jahres-Dreieck) für Wellness- (Tages-) und Effizienz- (Wochen-) Charts.
+  // Eigene Marken je Datensatz, da die X-Achsen unterschiedliche Datums-Mengen haben (ToDo 1, v0.11.0).
+  const wellnessYears = yearMarksByDate(pointDates);
+  const wellnessPhaseRuns = phaseRunsByDate(pointDates, season);
+  const effYears = yearMarksByDate(effDates);
+  const effPhaseRuns = phaseRunsByDate(effDates, season);
+
+  // Wochen-Check-Heatmap (ToDo 7): Spalten = Wochen im Zeitraum, Zeilen = Checks.
+  const checkByWeek = new Map(weeklogs.map((w) => [w.week_no, w.checks || {}]));
+  const heatWeeks = [...season]
+    .filter((w) => !range || (w.end_date >= range.from && w.start_date <= range.to))
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
+
   return (
     <div>
       <div className="spread">
@@ -216,8 +238,8 @@ export default function LongTerm() {
           {visibleMetrics.map((m) => (
             <div key={m.key} className="chart-card tight">
               <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
-              <ResponsiveContainer width="100%" height={110}>
-                <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: -4 }}>
+              <ResponsiveContainer width="100%" height={135}>
+                <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
                   {sickSegments.map((s, i) => (
                     <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -238,6 +260,8 @@ export default function LongTerm() {
                   )}
                   <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.6}
                     dot={{ r: 1.8, fill: m.color, strokeWidth: 0 }} connectNulls />
+                  {/* Phasenband + Jahres-Dreieck (ohne Phasenname — bei Sparklines zu unruhig). */}
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} years={wellnessYears} />} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -255,8 +279,8 @@ export default function LongTerm() {
           <div className="grid cols-2" style={{ alignItems: "start" }}>
             <div className="chart-card">
               <h3>Ø-Pace vs. Ø-Herzfrequenz</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick-${i}`} yAxisId="pace" x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -271,21 +295,30 @@ export default function LongTerm() {
                     formatter={(v: number, n: string) => (n === "Ø-Pace" ? [`${paceStr(v)} /km`, n] : [Math.round(v), n])}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line yAxisId="pace" type="monotone" dataKey="pace" name="Ø-Pace" stroke="#2b6cb0"
-                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#2b6cb0", strokeWidth: 0 }} />
+                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#2b6cb0", strokeWidth: 0 }} hide={effHidden.pace} />
                   <Line yAxisId="hr" type="monotone" dataKey="hr" name="Ø-HF" stroke="#d53f8c"
-                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#d53f8c", strokeWidth: 0 }} />
+                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#d53f8c", strokeWidth: 0 }} hide={effHidden.hr} />
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={effPhaseRuns} years={effYears} />} />
                 </ComposedChart>
               </ResponsiveContainer>
+              {/* Klickbare Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0). */}
+              <div className="pmc-legend">
+                <button type="button" onClick={() => setEffHidden((h) => ({ ...h, pace: !h.pace }))} style={{ opacity: effHidden.pace ? 0.4 : 1 }}>
+                  <span className="dot" style={{ background: "#2b6cb0" }} /> Ø-Pace
+                </button>
+                <button type="button" onClick={() => setEffHidden((h) => ({ ...h, hr: !h.hr }))} style={{ opacity: effHidden.hr ? 0.4 : 1 }}>
+                  <span className="dot" style={{ background: "#d53f8c" }} /> Ø-HF
+                </button>
+              </div>
               <p className="tiny muted" style={{ margin: "6px 0 0" }}>
                 Wochenmittel aller lockeren Läufe (ohne Intervall-Belastungen) sinkende Pace bei gleichem Puls = bessere Ökonomie
               </p>
             </div>
             <div className="chart-card">
               <h3>Effizienz-Faktor (m/min je Herzschlag)</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick2-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -299,11 +332,46 @@ export default function LongTerm() {
                   />
                   <Line type="monotone" dataKey="ef" name="EF" stroke="#16a34a" strokeWidth={1.8}
                     connectNulls dot={{ r: 3, fill: "#16a34a", strokeWidth: 0 }} />
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={effPhaseRuns} years={effYears} />} />
                 </LineChart>
               </ResponsiveContainer>
               <p className="tiny muted" style={{ margin: "6px 0 0" }}>
                 Steigender EF bei gleicher Belastung = Herz-Kreislauf-System wird ökonomischer.
               </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* (b2) Wochen-Check-Heatmap (ToDo 7) */}
+      <div className="card">
+        <div className="spread">
+          <h2>Wochen-Checks</h2>
+          <span className="tiny muted">Manuell abgehakt je Woche — erfüllt = farbig, offen = blass</span>
+        </div>
+        {(!checks.length || !heatWeeks.length) ? (
+          <p className="muted tiny">Keine Checks definiert (in „Auswahllisten" anlegen) oder keine Wochen im Zeitraum.</p>
+        ) : (
+          <div className="check-heatmap-scroll">
+            <div className="check-heatmap" style={{ gridTemplateColumns: `150px repeat(${heatWeeks.length}, minmax(13px, 1fr))` }}>
+              <div className="ch-corner" />
+              {heatWeeks.map((w) => (
+                <div key={`hh-${w.week_no}`} className={"ch-col-head" + (w.phase === "Krank" ? " sick" : "")}
+                  title={`${weekLabel(w)} · ${fmtDateY(w.start_date)}`}>{isoWeek(w.start_date)}</div>
+              ))}
+              {checks.map((c) => (
+                <Fragment key={c.value}>
+                  <div className="ch-row-head" title={c.label}>{c.label}</div>
+                  {heatWeeks.map((w) => {
+                    const on = !!checkByWeek.get(w.week_no)?.[c.value];
+                    return (
+                      <div key={`${c.value}-${w.week_no}`} className={"ch-cell" + (on ? " on" : "")}
+                        style={on ? { background: c.color || "#3b82f6" } : undefined}
+                        title={`${c.label} · ${weekLabel(w)}: ${on ? "erfüllt" : "offen"}`} />
+                    );
+                  })}
+                </Fragment>
+              ))}
             </div>
           </div>
         )}
