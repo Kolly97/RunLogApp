@@ -19,3 +19,6 @@ training.empty.db-shm
 # macOS / Editoren
 .DS_Store
 *.log
+ToDo.md
+ToDo_archive.md
+CLAUDE.md
