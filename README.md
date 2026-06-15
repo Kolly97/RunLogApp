@@ -1,6 +1,4 @@
-# RunLog — Trainingsplanung, Tracking & TrainingPeaks-Auswertung
-
-![RunLog_GitHub_Repo_Card](/Users/kollybook/Library/Mobile Documents/com~apple~CloudDocs/Kolja_Hildenbrand/Privates/Sport/RunLogApp/app_icon/RunLog_GitHub_Repo_Card.jpg) 
+# RunLog — Trainingsplanung, Tracking & TrainingPeaks-Auswertung 
 
 Lokale, in sich geschlossene Web-App für die wöchentliche Trainingsplanung im Langstreckenlauf:
 Einheiten planen → sportwissenschaftlich prüfen (passt das zur Phase?) → reale Daten dagegen halten →
