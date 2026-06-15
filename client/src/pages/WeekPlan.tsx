@@ -17,6 +17,8 @@ export default function WeekPlan() {
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const [editingPhase, setEditingPhase] = useState(false);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   async function reload() {
     if (weekNo == null) return;
@@ -43,6 +45,17 @@ export default function WeekPlan() {
   }
   async function remove(id?: number) {
     if (id) { await api.deleteSession(id); reload(); }
+  }
+  async function moveSession(id: number, toDate: string) {
+    const s = sessions.find((x) => x.id === id);
+    if (!s || s.date === toDate) return;
+    await api.updateSession(id, { ...s, date: toDate });
+    reload();
+  }
+  async function copySession(s: PlannedSession) {
+    const { id: _id, ...rest } = s;
+    await api.addSession({ ...rest, week_no: weekNo });
+    reload();
   }
   // Ziel-km direkt in der Wochenplanung pflegen (v0.14.0, ToDo 3) — gleiche Quelle wie der Saisonplan.
   async function saveTargetKm(v: number | null) {
@@ -105,15 +118,23 @@ export default function WeekPlan() {
         <div>
           {days.map((d, i) => {
             const list = byDate(d);
+            const isDrop = dropTarget === d;
             return (
-              <div key={d} className={"day" + (d === today ? " today" : "")}>
+              <div key={d} className={"day" + (d === today ? " today" : "")}
+                onDragOver={(e) => { e.preventDefault(); setDropTarget(d); }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={(e) => { e.preventDefault(); if (dragId != null) moveSession(dragId, d); setDragId(null); setDropTarget(null); }}
+                style={isDrop ? { outline: "2px dashed var(--primary)", outlineOffset: -2 } : undefined}>
                 <div className="day-head">
                   <span><span className="day-name">{DAY_NAMES[i]}</span> <span className="muted tiny">{fmtDate(d)}</span></span>
                   <button className="sm ghost" onClick={() => setEditing({ date: d, sport: "Run", type: "Easy" })}>+ Einheit</button>
                 </div>
                 {list.length === 0 && <div className="tiny muted" style={{ padding: "2px 4px" }}>—</div>}
                 {list.map((s) => (
-                  <div key={s.id} className="sess" onClick={() => setEditing(s)} style={{ cursor: "pointer" }}>
+                  <div key={s.id} className="sess" draggable
+                    onDragStart={(e) => { e.stopPropagation(); setDragId(s.id ?? null); }}
+                    onDragEnd={() => { setDragId(null); setDropTarget(null); }}
+                    onClick={() => setEditing(s)} style={{ cursor: "grab" }}>
                     <span className="type-pill" style={{ background: typeColor(s.type) }}>{typeLabel(s.type)}</span>
                     <span style={{ flex: 1, minWidth: 120 }}>{s.description || sportLabel(s.sport)}</span>
                     <span className="tiny muted nowrap">
@@ -121,6 +142,7 @@ export default function WeekPlan() {
                       {s.planned_km ? s.planned_km + " km" : s.planned_min ? s.planned_min + " min" : ""}
                       {s.planned_tss ? ` · ${Math.round(s.planned_tss)} TSS` : ""}
                     </span>
+                    <button className="sm ghost" title="Kopieren" onClick={(e) => { e.stopPropagation(); copySession(s); }}>⊕</button>
                     <button className="sm ghost danger" onClick={(e) => { e.stopPropagation(); remove(s.id); }}>✕</button>
                   </div>
                 ))}

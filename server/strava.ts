@@ -115,6 +115,7 @@ function extractWorkLaps(
   if (!Array.isArray(laps) || laps.length < 2) return null;
   const z3Pace = zs.pace_zones?.[2]; // Z3-Obergrenze (s/km, schnellste erlaubte Z3-Pace)
   const z4HrMin = zs.hr_zones.find((z) => z.z === 4)?.min;
+  const z5HrMin = zs.hr_zones.find((z) => z.z === 5)?.min;
   const isRun = sport === "Run";
   const work: any[] = [];
   for (const lap of laps) {
@@ -125,6 +126,14 @@ function extractWorkLaps(
     const fastEnough = pace != null && z3Pace ? pace <= z3Pace : false;
     const hardHr = hr != null && z4HrMin ? hr >= z4HrMin : false;
     if (fastEnough || hardHr) {
+      let label: string | undefined;
+      if (hr != null) {
+        if (z5HrMin && hr >= z5HrMin) label = "VO2long";
+        else if (z4HrMin && hr >= z4HrMin) label = "LT2";
+        else label = "LT1";
+      } else if (fastEnough) {
+        label = "LT1";
+      }
       work.push({
         reps: 1,
         dist_m: dist ? Math.round(dist) : null,
@@ -132,6 +141,7 @@ function extractWorkLaps(
         pace_s: pace != null ? Math.round(pace) : null,
         avg_hr: hr != null ? Math.round(hr) : null,
         max_hr: lap.max_heartrate != null ? Math.round(lap.max_heartrate) : null,
+        label,
       });
     }
   }

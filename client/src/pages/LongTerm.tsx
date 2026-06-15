@@ -160,6 +160,20 @@ export default function LongTerm() {
       return inRange.length ? { x1: inRange[0], x2: inRange[inRange.length - 1] } : null;
     })
     .filter((x): x is { x1: string; x2: string } => x != null);
+  // 8-Wochen-Referenz: Mittelwert + ±1σ aus den letzten 56 Tagen je Wellness-Metrik.
+  const refCutoff = addDays(todayIso(), -56);
+  const wellnessRef = new Map<string, { mean: number; lo: number; hi: number }>();
+  for (const m of METRICS) {
+    const vals = points
+      .filter((p) => p.date >= refCutoff && p[m.key] != null)
+      .map((p) => p[m.key] as number);
+    if (vals.length >= 4) {
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+      wellnessRef.set(m.key, { mean, lo: mean - std, hi: mean + std });
+    }
+  }
+
   const eff = easyRunWeeks(acts);
   // Krank-Wochen ohne Easy-Lauf haben keinen Punkt → die Wochen-Montage als leere Punkte ergänzen, damit die
   // Krank-Schraffur überhaupt eine X-Kategorie zum Ankern hat (Bugfix Z.7).
@@ -283,6 +297,13 @@ export default function LongTerm() {
                     <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"
                       label={{ value: m.refLabel, fontSize: 9, fill: "#94a3b8", position: "right" }} />
                   )}
+                  {wellnessRef.has(m.key) && (() => {
+                    const r = wellnessRef.get(m.key)!;
+                    return (<>
+                      <ReferenceArea y1={r.lo} y2={r.hi} fill={m.color} fillOpacity={0.07} ifOverflow="hidden" />
+                      <ReferenceLine y={r.mean} stroke={m.color} strokeDasharray="5 3" strokeOpacity={0.45} strokeWidth={1.2} />
+                    </>);
+                  })()}
                   <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.6}
                     dot={{ r: 1.8, fill: m.color, strokeWidth: 0 }} connectNulls />
                   {/* Phasenband + Jahres-Dreieck (ohne Phasenname — bei Sparklines zu unruhig). */}

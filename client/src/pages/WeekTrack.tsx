@@ -96,7 +96,7 @@ export default function WeekTrack() {
 
       {view === "day" ? (
         <>
-          <WeekdayTabs days={days} sessions={sessions} acts={acts} selDate={curDay} onSelect={setSelDate} />
+          <WeekdayTabs days={days} sessions={sessions} acts={acts} adh={adh} selDate={curDay} onSelect={setSelDate} />
           {dayCard(curDay)}
         </>
       ) : (
@@ -108,8 +108,14 @@ export default function WeekTrack() {
 
 // Wochentag-Switcher (v0.14.0, ToDo 13): Tabs Mo–So mit Farbpunkten je geplanter Einheit (Typ-Farbe)
 // + grünem Punkt, sobald an dem Tag eine Einheit getrackt ist.
-function WeekdayTabs({ days, sessions, acts, selDate, onSelect }: {
-  days: string[]; sessions: PlannedSession[]; acts: Activity[]; selDate: string; onSelect: (d: string) => void;
+function dotSize(tss?: number | null): number {
+  if (!tss || tss <= 0) return 7;
+  return Math.round(Math.max(6, Math.min(14, 6 + Math.sqrt(tss) * 0.75)));
+}
+
+function WeekdayTabs({ days, sessions, acts, adh, selDate, onSelect }: {
+  days: string[]; sessions: PlannedSession[]; acts: Activity[];
+  adh: Record<number, { pct: number; tssOnly: boolean }>; selDate: string; onSelect: (d: string) => void;
 }) {
   const today = todayIso();
   return (
@@ -123,7 +129,15 @@ function WeekdayTabs({ days, sessions, acts, selDate, onSelect }: {
             <div className="wd-name">{DAY_NAMES[i]}</div>
             <div className="wd-date">{fmtDate(d)}</div>
             <div className="wd-dots">
-              {planned.map((p) => <span key={p.id} className="dot" style={{ background: typeColor(p.type) }} />)}
+              {planned.map((p) => {
+                const sz = dotSize(p.planned_tss);
+                const pa = p.id != null ? adh[p.id] : undefined;
+                const title = [typeLabel(p.type), p.planned_tss ? `${Math.round(p.planned_tss)} TSS` : null, pa ? `${pa.pct}% Plan` : null].filter(Boolean).join(" · ");
+                return (
+                  <span key={p.id} className="dot" title={title}
+                    style={{ background: typeColor(p.type), width: sz, height: sz, minWidth: sz }} />
+                );
+              })}
               {hasActs && <span className="dot" style={{ background: "var(--ok)" }} title="getrackt" />}
             </div>
           </button>

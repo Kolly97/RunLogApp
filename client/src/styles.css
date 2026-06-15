@@ -358,5 +358,18 @@ table.units .note-efforts { color: var(--muted); }
 
   /* Langzeit-Seite druckbar: Titel + Zeitraum bleiben sichtbar */
   h1.lt-title { display: block; font-size: 16px; margin: 0 0 2px; }
+
+  /* Wasserzeichen auf jeder gedruckten Seite */
+  body::after {
+    content: "RunLog \2013 Kolja Hildenbrand 2026 \00A9";
+    position: fixed;
+    bottom: 8mm;
+    right: 10mm;
+    font-size: 7.5pt;
+    color: #aaa;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    pointer-events: none;
+  }
 }
 
