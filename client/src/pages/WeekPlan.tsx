@@ -4,6 +4,7 @@ import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
 } from "../lib/util.ts";
+import { useOptions, phaseColor, phaseLabel } from "../lib/options.ts";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityCard from "../charts/IntensityCard.tsx";
 import WeekSelector from "../components/WeekSelector.tsx";
@@ -11,9 +12,11 @@ import SessionModal from "../components/SessionModal.tsx";
 
 export default function WeekPlan() {
   const { season, week, weekNo, setWeekNo, loading, reload: reloadSeason } = useSeason();
+  const { phases } = useOptions();
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
+  const [editingPhase, setEditingPhase] = useState(false);
 
   async function reload() {
     if (weekNo == null) return;
@@ -48,6 +51,13 @@ export default function WeekPlan() {
     await reloadSeason();
     reload();
   }
+  async function savePhase(v: string) {
+    if (!week) return;
+    setEditingPhase(false);
+    await api.saveWeek(week.week_no, { ...week, phase: v });
+    await reloadSeason();
+    reload();
+  }
 
   const t = analyze?.totals;
   const target = week.target_km ?? 0;
@@ -63,7 +73,20 @@ export default function WeekPlan() {
       <div className="card tight">
         <div className="spread">
           <div className="row">
-            <span className="pill phase">{week.phase || "—"}</span>
+            {editingPhase ? (
+              <select autoFocus style={{ fontSize: 12, padding: "2px 6px", borderRadius: 999 }}
+                value={week.phase ?? ""}
+                onChange={(e) => savePhase(e.target.value)}
+                onBlur={() => setEditingPhase(false)}>
+                <option value="">— Kein Typ —</option>
+                {phases.map((p) => <option key={p.value} value={p.value}>{phaseLabel(p.value)}</option>)}
+              </select>
+            ) : (
+              <span className="pill" title="Klicken zum Bearbeiten" style={{ cursor: "pointer", background: week.phase ? phaseColor(week.phase) : "#eef2f7", color: week.phase ? "#fff" : "#3a475a" }}
+                onClick={() => setEditingPhase(true)}>
+                {week.phase ? phaseLabel(week.phase) : "—"}
+              </span>
+            )}
             <strong>Woche {week.week_no}</strong>
             <span className="muted">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span>
             {week.goal_race && <span className="muted">· Ziel: {week.goal_race}</span>}

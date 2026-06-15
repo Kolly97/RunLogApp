@@ -471,6 +471,28 @@ function DailyForm({ date, daily }: { date: string; daily?: DailyLog }) {
   );
 }
 
+const DURATION_FIELDS = new Set(["sleep_h", "rem_h", "deep_h"]);
+
+function hhmm(h: number | null | undefined): string {
+  if (h == null || !isFinite(h) || h < 0) return "";
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${hh}:${mm.toString().padStart(2, "0")}`;
+}
+function parseHhmm(t: string): number | null {
+  const s = t.trim();
+  if (!s) return null;
+  if (s.includes(":")) {
+    const [hStr, mStr] = s.split(":");
+    const h = Number(hStr), m = Number(mStr);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h + m / 60;
+  }
+  const n = Number(s.replace(",", "."));
+  return isNaN(n) ? null : n;
+}
+
 function DailyField({ field, value, onSave }: { field: Option; value: unknown; onSave: (v: unknown) => void }) {
   const type = field.intensity || "number";
   if (type === "checkbox") {
@@ -479,6 +501,16 @@ function DailyField({ field, value, onSave }: { field: Option; value: unknown; o
         <input type="checkbox" checked={Number(value ?? 0) === 1} onChange={(e) => onSave(e.target.checked ? 1 : 0)} />
         <span className="df-label" style={{ margin: 0 }}>{field.label}</span>
       </label>
+    );
+  }
+  if (DURATION_FIELDS.has(field.value)) {
+    return (
+      <div className="df-field">
+        <div className="df-label" title={field.label}>{field.label}</div>
+        <input type="text" placeholder="h:mm" defaultValue={hhmm(value as number | null)}
+          key={String(value ?? "")}
+          onBlur={(e) => onSave(parseHhmm(e.target.value))} />
+      </div>
     );
   }
   const inputType = type === "time" ? "time" : type === "text" ? "text" : "number";

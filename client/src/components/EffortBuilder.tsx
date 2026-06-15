@@ -235,8 +235,14 @@ function Row({ r, bike, zones, planning, onChange, onRemove }: {
           );
         })}
       </select>
-      <input style={{ ...cell, textAlign: "left" }} placeholder="z.B. LT2" value={r.label ?? ""}
-        onChange={(e) => onChange({ label: e.target.value || undefined })} />
+      <select style={{ padding: "4px 2px", width: "100%" }} value={r.label ?? ""}
+        onChange={(e) => onChange({ label: e.target.value || undefined })}>
+        <option value="">–</option>
+        <option value="LT1">LT1</option>
+        <option value="LT2">LT2</option>
+        <option value="VO2short">VO2 kurz</option>
+        <option value="VO2long">VO2 lang</option>
+      </select>
       <button type="button" className="sm ghost danger" style={{ padding: "2px 6px" }} onClick={onRemove}>✕</button>
     </>
   );

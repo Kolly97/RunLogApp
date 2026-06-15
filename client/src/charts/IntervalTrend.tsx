@@ -2,6 +2,7 @@
 // gruppiert nach Belastungskategorie (LT1, LT2, VO2 kurz, VO2 lang).
 // Y-Achse invertiert (schneller = oben), Format mm:ss /km.
 // Datenquelle: /api/intervals/trend — Endpoint entsteht parallel; bei Fehler/leer wird nichts gerendert.
+import { useState } from "react";
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -29,6 +30,10 @@ export function hasRunTrend(data: IntervalEffortStat[] | null | undefined): bool
 }
 
 export default function IntervalTrend({ data, height = 260 }: { data: IntervalEffortStat[]; height?: number }) {
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const toggleLine = (key: string) =>
+    setHidden((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
   const runs = runStats(data);
   if (!runs.length) return null;
 
@@ -66,10 +71,12 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
           formatter={(v: number, n: string) => [`${paceStr(v)} /km`, n]}
           contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
         />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
+          onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey)); }} />
         {CATS.map((c) => (
           <Line key={c.key} type="monotone" dataKey={c.key} name={c.label} stroke={c.color}
-            strokeWidth={1.8} connectNulls dot={{ r: 3, fill: c.color, strokeWidth: 0 }} />
+            strokeWidth={1.8} connectNulls dot={{ r: 3, fill: c.color, strokeWidth: 0 }}
+            hide={hidden.has(c.key)} />
         ))}
       </ComposedChart>
     </ResponsiveContainer>
