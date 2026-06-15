@@ -80,13 +80,20 @@ label.field > span { display: block; font-size: 12px; color: var(--muted); margi
 button {
   font: inherit; font-weight: 600; padding: 8px 14px; border: 1px solid var(--line);
   border-radius: 8px; background: #fff; color: var(--ink); cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, color .12s ease;
 }
-button:hover { background: #f0f4f8; }
+button:hover { background: #f0f4f8; border-color: #cbd5e1; }
+button:focus-visible { outline: 2px solid #bcd4f0; outline-offset: 1px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:disabled:hover { background: #fff; border-color: var(--line); filter: none; }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-button.primary:hover { filter: brightness(1.07); }
+button.primary:hover { filter: brightness(1.07); box-shadow: 0 1px 4px rgba(43, 108, 176, 0.28); }
+button.primary:disabled:hover { background: var(--accent); }
 button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+button.ghost:hover { background: #eef2f7; border-color: transparent; color: var(--ink); }
 button.sm { padding: 4px 9px; font-size: 12px; }
 button.danger { color: var(--danger); }
+button.ghost.danger:hover { background: #fdf0f0; color: var(--danger); }
 
 /* Tables */
 table { width: 100%; border-collapse: collapse; }
@@ -105,6 +112,23 @@ tr:last-child td { border-bottom: none; }
 .flag.warn .dot { background: var(--warn); }
 .flag.danger { background: #fdf0f0; color: #971b1b; }
 .flag.danger .dot { background: var(--danger); }
+
+/* Reale Bewertungs-Schilder nebeneinander, gleich hoch (v0.14.0, ToDo 9) */
+.flag-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+.flag-row .flag { margin-bottom: 0; flex: 1 1 0; min-width: 220px; }
+
+/* Efficiency Factor je Wochentag (v0.14.0, ToDo 11) */
+.ef-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.ef-cell { border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; text-align: center; background: #f9fbfd; }
+.ef-cell.hard-prev { border-color: var(--warn); background: #fdf6ec; }
+.ef-cell .ef-day { font-size: 11px; color: var(--muted); font-weight: 700; }
+.ef-cell .ef-val { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.ef-cell .ef-mark { font-size: 9px; color: var(--warn); margin-top: 2px; line-height: 1.1; }
+
+/* PMC + Last-Kennzahlen am Wochenende nebeneinander (v0.14.0, ToDo 2) */
+.pmc-row { display: flex; gap: 14px; align-items: center; flex-wrap: nowrap; }
+.pmc-values { display: flex; flex-direction: column; gap: 8px; width: 124px; flex-shrink: 0; }
+.pmc-values .stat .value { line-height: 1.1; }
 
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .pill.phase { background: #eef2f7; color: #3a475a; }

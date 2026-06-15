@@ -47,7 +47,7 @@ export default function Races() {
               return (
                 <tr key={r.id}>
                   <td className="nowrap">{fmtDateY(r.date)}</td>
-                  <td>{r.name || "—"}</td>
+                  <td>{r.name || "—"}{r.source === "tracking" && <span className="muted tiny"> · aus Tracking</span>}</td>
                   <td>{km ? `${km} km` : "—"}</td>
                   <td>{fmtTime(r.time_s) || "—"}</td>
                   <td>{pace ? `${paceStr(pace)}/km` : "—"}</td>
@@ -110,11 +110,11 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
             {splits.map((s, i) => (
               <tr key={i}>
                 {/* km + Zeit uncontrolled (key + defaultValue + onBlur) → freies Tippen, Parse erst beim Verlassen */}
-                <td style={{ width: 70 }}><input key={`km-${i}-${s.km}`} type="number" step="0.1" min="0" defaultValue={s.km ?? ""} onBlur={(x) => setSplit(i, { km: num(x.target.value) })} /></td>
+                <td style={{ width: 120 }}><input key={`km-${i}-${s.km}`} type="number" step="0.1" min="0" defaultValue={s.km ?? ""} onBlur={(x) => setSplit(i, { km: num(x.target.value) })} /></td>
                 <td style={{ width: 110 }}><input key={`t-${i}-${s.time_s}`} defaultValue={s.time_s != null ? fmtTime(s.time_s) : ""} onBlur={(x) => setSplit(i, { time_s: parseTime(x.target.value) })} placeholder="3:48" /></td>
                 <td className="muted">{s.pace_s ? `${paceStr(s.pace_s)}/km` : "—"}</td>
-                <td style={{ width: 70 }}><input type="number" min="0" value={s.avg_hr ?? ""} onChange={(x) => setSplit(i, { avg_hr: num(x.target.value) })} /></td>
-                <td style={{ width: 70 }}><input type="number" min="0" value={s.max_hr ?? ""} onChange={(x) => setSplit(i, { max_hr: num(x.target.value) })} /></td>
+                <td style={{ width: 120 }}><input type="number" min="0" value={s.avg_hr ?? ""} onChange={(x) => setSplit(i, { avg_hr: num(x.target.value) })} /></td>
+                <td style={{ width: 120 }}><input type="number" min="0" value={s.max_hr ?? ""} onChange={(x) => setSplit(i, { max_hr: num(x.target.value) })} /></td>
                 <td style={{ width: 80 }}><input type="number" min="0" value={s.elevation_m ?? ""} onChange={(x) => setSplit(i, { elevation_m: num(x.target.value) })} /></td>
                 <td><button className="sm ghost danger" onClick={() => delSplit(i)}>✕</button></td>
               </tr>

@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v0.13.0** (14.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v0.14.0** (15.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -45,23 +45,25 @@
 - `load.ts` — **TSS-Mathe.** Lauf: `rTss` (Ø-Pace/NGP), `rTssFromZones` (geplant, per Zone), `runTss` (NGP→Ø-Pace).
   Rad: `powerTss` (NP/FTP), `bikeTssEstimate` (Dauer×IF). HF: `hrTssFromZones`, `timeInZone`. Streams:
   `computeNgp`+`gradeFactor` (NGP = Minetti-Grade-Korrektur + 30s-Norm), `computeNp` (NP, 30s-Norm),
-  `streamZoneSplit` (Sek.+Meter je Zone). PMC: `computePmc` (CTL 42d / ATL 7d, **TSB = gestrige CTL−ATL**),
-  `ctlRamp`. Sonst `parseCorosLoad`, `DEFAULT_ZONE_PACE/SPEED`, `round1`. Typen `HrZone`/`PmcPoint`.
-- `analysis.ts` — `weekTotals`, `plannedSessionTss` (Lauf → `rTssFromZones`, Rad → Power/IF, +`thresholdPace`-Param),
-  `typeIntensityShares` (Donut **nach Einheitstyp**), `zoneKmOf`/`zoneKmIntensityOf`, `classifyTss`,
-  `weekRatingLevel`, `weekLoadFlag` + `kmPolarizationFlag` (Wochen-Check), `intervalEffortStat`, `analyzeWeek`.
-- `index.ts` — alle Routen. `pid()` (aktives Profil; **alle Queries profil-gefiltert**), `effectiveZoneSet`,
-  `thresholds()`, `dailyTssMap`, `earliestDataDate` (PMC-Seeding), `avgPlannedWeeklyTss`/`avgWeeklyTss`,
-  `computeSessionTss`, `activityTssToStore` (Lauf rTSS / Rad Power-TSS/Schätzung, respektiert `overrides:['tss']`).
-  Wichtige Endpunkte: `/api/pmc` (geseedet, Ramp@heute), `/api/analyze/week/:no` (totals, flags, `tssIntensity`,
-  `realTssIntensity`/`realTotalTss`, `zoneKmIntensity`, `realZone*`, `weekRating`, `projectedTsb`),
-  `/api/recompute-tss` (Backup via `VACUUM INTO`, rechnet Lauf+Rad-TSS rückwirkend).
+  `streamZoneSplit` (HF-Zonen, Sek.+Meter), **`paceZoneSplit`** (Pace-Zonen-Sek. via `zoneFromPace`, für Plan-%),
+  **`computeKmSplits`** (per-km Race-Splits). PMC: `computePmc` (CTL 42d / ATL 7d, **TSB = gestrige CTL−ATL**),
+  `ctlRamp`. Sonst `DEFAULT_ZONE_PACE/SPEED`, `round1`. Typen `HrZone`/`PmcPoint`. (`parseCorosLoad` entfernt.)
+- `analysis.ts` — `weekTotals`, `plannedSessionTss`, `typeIntensityShares` (Donut **nach Einheitstyp**),
+  `zoneKmOf`/`zoneKmIntensityOf`, `classifyTss`, `weekRatingLevel`, `weekLoadFlag` + `kmPolarizationFlag`,
+  **`sessionCompletion`** (Plan-% = TSS-Treffer + Pace-Zonen-Overlap), `intervalEffortStat`, `analyzeWeek`
+  (Taper-Flag jetzt renntag-basiert: `raceDate/raceTsb/racePre7Tss/raceAvgWeeklyTss`).
+- `index.ts` — alle Routen. `pid()`, `effectiveZoneSet`, `thresholds()` (+ `raceweek_tss_max_pct`), `dailyTssMap`,
+  `earliestDataDate`, `avgPlannedWeeklyTss`/`avgWeeklyTss`, `addDaysIso`, **`ensureSeasonWeeks`** (2 Zukunftswochen
+  + bis Renntag), **`syncRaceFromActivity`** (Race aus Tracking), `activityTssToStore`. Endpunkte u.a.:
+  `/api/analyze/week/:no` (+ `adherence{perSession,weekPct}`), **`/api/bests`** (PB + CS), **`/api/plan-adherence`**
+  (Wochenmittel), **`/api/strava/import-zones`**, `/api/recompute-tss`. `GET /api/season` ruft `ensureSeasonWeeks`.
 - `zones.ts` — `effectiveZoneSet(date)` / `effectiveZoneSetForSeed()` (profil-gefiltert; hr/pace/power-zones,
   lthr/ftp/threshold_pace).
-- `strava.ts` — OAuth + `stravaSync`: Listen-Import per `strava_id` (nie überschreiben). Anreicherung budgetiert
-  (`MAX_REQ ≈ 90`/Sync): Detail (COROS-TL→`training_load`, kcal, Beschreibung→leere Notiz; `desc_fetched=1`) +
-  **Streams** für Lauf (velocity/grade/hr/distance → `ngp`, `zone_min`, `zone_km`) und Rad (watts/hr → `np`,
-  `zone_min`) → `streams_fetched=1`, nur leere Zonenfelder. COROS setzt `tss` NICHT (nur informativ).
+- `strava.ts` — OAuth (Scope `activity:read_all,profile:read_all`) + `stravaSync`: Listen-Import per `strava_id`
+  (nie überschreiben). `api()` führt Rate-Limit-Header mit → `rateLimitMessage()` (15-min vs. **Tageslimit**) +
+  `dayBudgetExhausted()`-Bremse. Anreicherung budgetiert: Detail (kcal, Beschreibung→leere Notiz; bei Läufen
+  `best_efforts`→`parseBestEfforts`) + **Streams** (Lauf: `ngp`, `zone_min/km`, **`pace_zone_min`**, bei `type=Race`
+  km-Splits ans verknüpfte Race; Rad: `np`). **`fetchAthleteZonesAndFtp`** für den Zonen-Import. Kein COROS mehr.
 - `import-scans.ts` (historisch), `reset-db.ts` (leere Vorlage). (`import-docx.ts`/Seed in v0.12.0 entfernt.)
 
 **client/src/**
@@ -72,8 +74,9 @@
   `typeIntensity` (easy|moderate|hard je sessionType), `sportLabel`.
 - `lib/hooks.ts` (`useSeason()`), `lib/markers.ts` (`raceMarkers*` NUR aus Races-Tabelle, `sick*`, `phaseRuns*`,
   `yearMarks*` per Band-Index).
-- `pages/` — `Dashboard`, `WeekPlan`, `WeekTrack` (?date), `WeekReport` (2-seitiger Druck), `LongTerm`, `Races`,
-  `SeasonPlan`, `Settings`, `OptionsConfig`.
+- `pages/` — `Dashboard`, `WeekPlan` (Ziel-km editierbar), `WeekTrack` (?date; Tag/Woche-Switcher + Plan-%),
+  `WeekReport` (2-seitiger Druck; EF + Plan-%-Graph + Werte-Block), `LongTerm` (+ Plan-%-Trend), `Races`,
+  **`Bests`** (Bestzeiten + Critical Speed), `SeasonPlan`, `Profile`, `Settings`, `OptionsConfig`.
 - `charts/` — `Pmc`, `SeasonProgress`, `ChartDecor` (Phasenband + Jahresmarke-Dreieck + Phasenname, `vRefLabel`),
   `IntensityDonut`, `IntensityCard`, `ZoneDistribution` (füllt Kachel + Z1–Z6-Legende), `WeekdayBars`
   (Bericht: gestapelt km [Lauf + Rad-äq.] und TSS [rTSS + übrige]), `IntervalTrend`, `WellnessTrends`, `RangeSelector`.
@@ -86,17 +89,47 @@
   `daily_log_v2` (PK date,profile_id).
 - `planned_sessions` (profile_id, `zone_alloc` JSON {byKm/byMin}, `efforts` JSON, `structured`, `planned_tss`).
 - `activities` (profile_id, `distance_m`, `moving_s`, `avg_hr`/`max_hr`, `avg_power`, `elevation`, `kcal`,
-  `zones`/`zone_min`/`zone_km` JSON, `efforts` JSON, `tss`, `training_load` (COROS, informativ), `strava_id`,
+  `zones`/`zone_min`/`zone_km` JSON, **`pace_zone_min`** JSON (Pace-Zonen-Min, für Plan-%), `efforts` JSON, `tss`,
+  `training_load` (Legacy, ungenutzt → null), **`best_efforts`** JSON {distance_m:time_s} (Bestzeiten), `strava_id`,
   `matched_session_id`, `overrides` JSON, `notes`, **`ngp`** (s/km, Lauf), **`np`** (W, Rad), `desc_fetched`,
   `streams_fetched`).
-- `zone_sets` (profile_id, hr/pace/speed/power-zones JSON, lthr/ftp/threshold_pace, valid_from).
+- `zone_sets` (profile_id, hr/pace/speed/power-zones JSON, lthr/ftp/threshold_pace, valid_from; `source` u.a. „Strava").
 - `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,
-  max_hr,elevation_m}], `avg_hr`, `max_hr`, `elevation_m`, `source`=manual|season; Auto-Import aus Saisonplan
-  `goal_race` via Ledger-Setting `season_races_imported_<pid>`).
+  max_hr,elevation_m}], `avg_hr`, `max_hr`, `elevation_m`, `source`=manual|season|**tracking**, **`activity_id`**
+  (verknüpfte getrackte Einheit); Auto-Import aus Saisonplan `goal_race` (Ledger `season_races_imported_<pid>`)
+  **und aus Tracking** (`type='Race'` → `syncRaceFromActivity`)).
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v0.13.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v0.14.0 (Ist-Stand, nicht Historie)
+
+**Neu in v0.14.0 (Kurz):**
+- **Geräteneutral:** COROS-Training-Load komplett raus (Parsing/Faktor/Feld). TSS nur noch rTSS/NGP,
+  Power-TSS/NP bzw. Schätzung + manuell. DB-Spalte `training_load` bleibt (additiv), wird nur noch `null`.
+- **Bestzeiten + Critical Speed** (`/bests`, [Bests.tsx](client/src/pages/Bests.tsx)): PBs je Distanz aus
+  Stravas `best_efforts` (Spalte `activities.best_efforts`); `GET /api/bests` aggregiert + fittet 2-Param-CS
+  (`d=CS·t+D'`, aerobe PBs 2–30 min) inkl. Prognosen. Backfill budgetiert über Enrich.
+- **Plan-Erfüllung (%)**: `sessionCompletion()` ([analysis.ts](server/analysis.ts)) = 0.5·TSS-Treffer +
+  0.5·Pace-Zonen-Overlap (Spalte `activities.pace_zone_min` via `paceZoneSplit`/`zoneFromPace` im Enrich;
+  fehlt sie → TSS-only). analyze-Route liefert `adherence{perSession,weekPct}`; `GET /api/plan-adherence`
+  (Wochenmittel) fürs Langzeit. Anzeige: Tracking-Kachel-Badge, Bericht-Balken, Langzeit-Trend.
+- **Efficiency Factor je Wochentag** im Bericht (NGP-m/min ÷ Ø-HF, nur Easy/Long), „⚡ hart davor"-Marker.
+- **Race aus Tracking**: Lauf-Typ `Race` → `syncRaceFromActivity` ([index.ts](server/index.ts)) legt
+  verknüpften Race an (Spalte `races.activity_id`, `source='tracking'`); km-Splits beim Enrich aus Streams
+  (`computeKmSplits`). Typ zurückgeändert → Auto-Race weg.
+- **Auto-Wochen**: `ensureSeasonWeeks()` hält immer 2 Zukunftswochen + Wochen bis Renntag (leer); läuft in
+  `GET /api/season` + nach `POST /api/races`.
+- **Race-Taper auf 7-Tage-Fenster**: analyze nutzt Renntag (Races/goal_race) → `raceTsb` + `racePre7Tss` vs.
+  `raceweek_tss_max_pct` (Default 60); ersetzt den phasen-basierten Taper-Flag.
+- **Strava-Zonen-Import**: `fetchAthleteZonesAndFtp` + `POST /api/strava/import-zones` → neues zone_set ab
+  wählbarem Datum (HF 5→6, Power, FTP; LTHR/Pace übernommen). Scope jetzt `activity:read_all,profile:read_all`
+  → einmal neu verbinden. Strava-`api()` führt Rate-Limit-Header mit (ehrliche Meldung + Tages-Bremse
+  `dayBudgetExhausted`).
+- **Strava-Zeitraum** als Setting `strava_sync_from`; Sync-Button „Sync ab Datum".
+- **Tracking-Redesign** ([WeekTrack.tsx](client/src/pages/WeekTrack.tsx)): Wochentag-Switcher (`WeekdayTabs`,
+  Punkte = geplant Typ-Farbe + grün wenn getrackt) + Tag/Woche-Toggle (Tag default); Kachel-Farbbalken nach Typ.
+- **Ziel-km in Wochenplanung** editierbar; **Dauer hh:mm:ss** (Tracking+Planung, `clockToSec`/`secToClock`);
+  Race-Splits-Felder breiter; globaler Button-Feinschliff.
 
 **Neu in v0.13.0 (Kurz):**
 - **Geplante km per Datumsbereich:** `/api/analyze/week` + `/api/sessions?week` laden `planned_sessions`
@@ -148,7 +181,7 @@
 
 
 **Seiten:** Dashboard · Wochenplanung · Tracking · Wochenbericht (2-seitig druckbar) · Langzeit · Races ·
-Saisonplan · Einstellungen · Auswahllisten. Leichte Profile (Wechsel in Sidebar; Löschen/Umbenennen mit Code **4397**).
+Bestzeiten · Saisonplan · Profil · Einstellungen · Auswahllisten. Leichte Profile (Wechsel in Sidebar; Löschen/Umbenennen mit Code **4397**).
 
 **TSS-Modell (Kern, TrainingPeaks):**
 - **Lauf → rTSS** = `(s/3600)·(NGP/FTP)²·100`, FTP = Schwellen-Pace. Aktivität nutzt `ngp` (aus Strava-Stream),
@@ -180,17 +213,18 @@ geschützt. **Commute**-Schalter (Bike-Einheit → Sportart General, Name „Com
 
 ## 5. Offen / nächste Schritte
 
-- **v0.12.0 + v0.13.0 abgeschlossen** (**Desktop-App bewusst verschoben** → eigener Meilenstein).
-  Restlicher Backlog in `ToDo.md` „In Zukunft NICHT JETZT" (Readiness, Dashboard-Tagesvorschlag, % Plan-Treffer,
-  v2.0-Redesign). Strava-Sync zieht Work-Lap-Intervalle nach (oder Button „Details/Splits nachziehen"). Geplante
-  km laden jetzt per Datumsbereich → doppelte/fehlgeleitete Alt-Einheiten verfälschen die Summe nicht mehr; eine
-  sichtbare Doppel-Einheit am selben Tag ggf. in der Wochenplanung direkt löschen.
-- **Strava-Streams nachziehen:** NGP/NP + min/Zone + km/Zone kommen je Einheit erst beim Sync (budgetiert) →
-  Altbestand braucht mehrere Syncs; danach „TSS neu berechnen (Lauf + Rad)" drücken. Recompute ist **profil-gescoped**.
-- **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts (Zeit/Strecke/Pace/Ø+Max-HF je Wiederholung) für harte
-  Einheiten automatisch aus Lap/Stream ziehen. Eigene Runde.
-- **Kleinkram (ToDo.md „In Zukunft NICHT JETZT"):** Donut „%"-Zeichen entfernen; v2.0-Redesign (awwwards-Stil,
-  GSAP/Three.js, eigener Branch/Folder) — erst auf ausdrücklichen Wunsch.
+- **v0.14.0 inhaltlich abgeschlossen** (ToDo.md v0.14.0 komplett bis auf den Desktop-Punkt). **Offen: WS 6 —
+  Electron-Desktop-App** (App per Icon auf Mac/Windows) → bewusst eigener Meilenstein (Packaging/Icons/Sidecar;
+  node:sqlite braucht Node 22+). Plan + Entscheidungen liegen in `~/.claude/plans/polished-sparking-russell.md`.
+- **Strava-Backfill (budgetiert):** `best_efforts` (Bestzeiten), `pace_zone_min` (Plan-Erfüllung Pace-Anteil),
+  NGP/NP + min/km-Zone, Race-Splits kommen je Einheit erst beim „Details/Splits nachziehen" rein → Altbestand
+  braucht mehrere Durchläufe (Tages-Bremse stoppt vor dem Strava-Tageslimit). Danach „TSS neu berechnen". Plan-%
+  ist bis dahin TSS-only (`tssOnly`), Bestzeiten/CS füllen sich nach und nach.
+- **Grenzen (dokumentiert):** Strava liefert nur *aktuelle* Zonen (Import-`valid_from` selbst wählen, 5→6-HF-
+  Mapping, Z6 geschätzt); CS-Modell braucht aerobe PBs; EF/Plan-% nur für Strava-Läufe mit Streams.
+- **Zurückgestellt — Intervall-Auto-Extraktion:** Efforts je Wiederholung automatisch aus Lap/Stream. Eigene Runde.
+- **„In Zukunft NICHT JETZT" (ToDo.md):** Readiness, Dashboard-Tagesvorschlag, VO2max, Pace-/HF-Histogramm,
+  Race-Prediction, v2.0-Redesign (awwwards/GSAP/Three.js, eigener Branch) — erst auf ausdrücklichen Wunsch.
 - **Bekannte Feinheiten (Kolja-Kosmetik, nicht zurückdrehen):** Jahresmarke-Dreieck in `ChartDecor.tsx`
   (Spitze `plotBottom-20`, Jahreszahl `plotBottom+34`, Phasentext `plotBottom+50`, Phasenband `plotBottom-6`);
   Chart-Bottom-Margin `Pmc.tsx` 30 / `SeasonProgress.tsx` 28.

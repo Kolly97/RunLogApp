@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { api, type PlannedSession, type ZoneSet } from "../lib/api.ts";
-import { num } from "../lib/util.ts";
+import { num, clockToSec, secToClock } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "./EffortBuilder.tsx";
 
@@ -47,8 +47,9 @@ export default function SessionModal({
           <label className="field"><span>Distanz (km)</span>
             <input type="number" step="0.1" value={s.planned_km ?? ""} onChange={(e) => set({ planned_km: num(e.target.value) })} />
           </label>
-          <label className="field"><span>Dauer (min)</span>
-            <input type="number" value={s.planned_min ?? ""} onChange={(e) => set({ planned_min: num(e.target.value) })} />
+          <label className="field"><span>Dauer (h:mm:ss)</span>
+            <input key={`pmin-${s.id ?? "new"}-${s.planned_min ?? ""}`} defaultValue={secToClock((s.planned_min ?? 0) * 60)} placeholder="1:00:00"
+              onBlur={(e) => { const sec = clockToSec(e.target.value); set({ planned_min: sec != null ? Math.round(sec / 60) : null }); }} />
           </label>
         </div>
 

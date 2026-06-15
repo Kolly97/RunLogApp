@@ -6,15 +6,37 @@ import { todayIso, num } from "../lib/util.ts";
 
 export default function ZoneSets() {
   const [zonesets, setZonesets] = useState<ZoneSet[]>([]);
+  const [importDate, setImportDate] = useState(todayIso()); // Gültig-ab für den Strava-Import (v0.14.0, ToDo 10)
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
   const reload = async () => setZonesets(await api.zonesets());
   useEffect(() => { reload(); }, []);
+
+  async function importStrava() {
+    setBusy(true); setMsg("Hole HF-/Power-Zonen aus Strava…");
+    try {
+      await api.importStravaZones(importDate);
+      setMsg(`Zonensatz aus Strava angelegt (gültig ab ${importDate}) — unten ggf. feinjustieren.`);
+      reload();
+    } catch (e) {
+      setMsg(String(e).includes("403")
+        ? "Strava-Berechtigung fehlt — bitte in den Einstellungen neu verbinden (Zonen-Zugriff freigeben)."
+        : `Import fehlgeschlagen: ${e}`);
+    } finally { setBusy(false); }
+  }
 
   return (
     <div className="card">
       <div className="spread"><h2>HF-Zonen & Schwellen</h2>
-        <button onClick={() => newZoneset(zonesets, reload)}>+ Neues Set (Leistungsdiagnostik)</button>
+        <div className="row" style={{ width: "auto", gap: 8 }}>
+          <label className="field" style={{ margin: 0, width: 140 }}><span>Strava-Import ab</span>
+            <input type="date" value={importDate} onChange={(e) => setImportDate(e.target.value)} /></label>
+          <button disabled={busy} onClick={importStrava} title="Aktuelle HF-/Power-Zonen + FTP aus Strava als neues Set ab dem gewählten Datum übernehmen">↧ Aus Strava holen</button>
+          <button onClick={() => newZoneset(zonesets, reload)}>+ Neues Set (Leistungsdiagnostik)</button>
+        </div>
       </div>
-      <p className="tiny muted">Bei neuer Diagnostik ein neues Set mit Gültig-ab-Datum anlegen — ältere Wochen werden weiter mit dem damals gültigen Set ausgewertet.</p>
+      <p className="tiny muted">Bei neuer Diagnostik ein neues Set mit Gültig-ab-Datum anlegen — ältere Wochen werden weiter mit dem damals gültigen Set ausgewertet. Der Strava-Import übernimmt nur die <em>aktuellen</em> Zonen (HF Z1–Z5, Z6 geschätzt) + FTP; ggf. einmal „neu verbinden", damit der Zonen-Zugriff greift.</p>
+      {msg && <div className="flag info"><span className="dot" /><span>{msg}</span></div>}
       {zonesets.map((z) => <ZoneSetEditor key={z.id} z={z} onChange={reload} canDelete={zonesets.length > 1} />)}
     </div>
   );

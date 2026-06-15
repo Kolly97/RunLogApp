@@ -7,7 +7,14 @@ export interface Race {
   id?: number; date: string; name?: string; distance_m?: number | null; time_s?: number | null;
   placement?: string; notes?: string; splits?: RaceSplit[];
   max_hr?: number | null; avg_hr?: number | null; elevation_m?: number | null; source?: string;
+  activity_id?: number | null; // v0.14.0: verknüpfte getrackte Einheit (Race aus Tracking)
 }
+
+// Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
+export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; }
+export interface CsModel { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number; }
+export interface BestsResult { pbs: Pb[]; cs: CsModel | null; predictions: { distance_m: number; time_s: number }[]; }
+export interface PlanAdherenceWeek { week_no: number; start: string; end: string; pct: number | null; n: number; }
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
 export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
@@ -61,6 +68,8 @@ export interface AnalyzeResult {
   plannedZoneKm?: Record<number, number>;
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
   realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
+  // v0.14.0 (ToDo 12) — Plan-Erfüllung je gematchter Einheit + Wochenmittel
+  adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null };
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -90,6 +99,8 @@ export const api = {
   addZoneset: (b: Partial<ZoneSet>) => j<{ id: number }>("/api/zonesets", { method: "POST", body: JSON.stringify(b) }),
   updateZoneset: (id: number, b: Partial<ZoneSet>) => j(`/api/zonesets/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteZoneset: (id: number) => j(`/api/zonesets/${id}`, { method: "DELETE" }),
+  // HF-/Power-Zonen aus Strava importieren (v0.14.0, ToDo 10)
+  importStravaZones: (valid_from: string) => j<{ ok: true }>("/api/strava/import-zones", { method: "POST", body: JSON.stringify({ valid_from }) }),
 
   season: () => j<SeasonWeek[]>("/api/season"),
   saveWeek: (no: number, b: Partial<SeasonWeek>) => j(`/api/season/week/${no}`, { method: "PUT", body: JSON.stringify(b) }),
@@ -146,6 +157,11 @@ export const api = {
   updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
   importRacesFromSeason: () => j<{ created: number }>("/api/races/import-from-season", { method: "POST" }),
+
+  // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
+  bests: () => j<BestsResult>("/api/bests"),
+  // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12)
+  planAdherence: () => j<PlanAdherenceWeek[]>("/api/plan-adherence"),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

@@ -7,6 +7,7 @@ import WeekTrack from "./pages/WeekTrack.tsx";
 import WeekReport from "./pages/WeekReport.tsx";
 import LongTerm from "./pages/LongTerm.tsx";
 import Races from "./pages/Races.tsx";
+import Bests from "./pages/Bests.tsx";
 import SeasonPlan from "./pages/SeasonPlan.tsx";
 import Settings from "./pages/Settings.tsx";
 import ProfilePage from "./pages/Profile.tsx";
@@ -14,7 +15,7 @@ import OptionsConfig from "./pages/OptionsConfig.tsx";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
-const BUILD_DATE = "14.06.2026";
+const BUILD_DATE = "15.06.2026";
 
 const NAV = [
   { to: "/", ico: "▣", label: "Dashboard", end: true },
@@ -23,6 +24,7 @@ const NAV = [
   { to: "/report", ico: "🖨", label: "Wochenbericht" },
   { to: "/longterm", ico: "📈", label: "Langzeit" },
   { to: "/races", ico: "🏁", label: "Races" },
+  { to: "/bests", ico: "🏅", label: "Bestzeiten" },
   { to: "/season", ico: "🗓", label: "Saisonplan" },
   { to: "/profile", ico: "👤", label: "Profil" },
   { to: "/settings", ico: "⚙", label: "Einstellungen" },
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/report" element={<WeekReport />} />
           <Route path="/longterm" element={<LongTerm />} />
           <Route path="/races" element={<Races />} />
+          <Route path="/bests" element={<Bests />} />
           <Route path="/season" element={<SeasonPlan />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<Settings />} />

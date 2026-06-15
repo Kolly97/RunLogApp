@@ -78,6 +78,7 @@
       <a href="#bericht">Wochenbericht</a>
       <a href="#langzeit">Langzeit</a>
       <a href="#races">Races</a>
+      <a href="#bestzeiten">Bestzeiten</a>
       <a href="#saisonplan">Saisonplan</a>
       <a href="#profil">Profil</a>
       <a href="#einstellungen">Einstellungen</a>
@@ -112,7 +113,8 @@
             <dt>✓ <a href="#tracking">Tracking</a></dt><dd>Reale Einheiten + Tagesfaktoren (Whoop &amp; Co.) erfassen.</dd>
             <dt>🖨 <a href="#bericht">Wochenbericht</a></dt><dd>Druckfertiger 2-Seiten-Bericht der Woche.</dd>
             <dt>📈 <a href="#langzeit">Langzeit</a></dt><dd>Monate-Entwicklung: Wellness, Zonen-Effizienz, Intervall-Trend.</dd>
-            <dt>🏁 <a href="#races">Races</a></dt><dd>Wettkämpfe mit Splits, Zeit, Platzierung, HF, Höhenmetern.</dd>
+            <dt>🏁 <a href="#races">Races</a></dt><dd>Wettkämpfe mit Splits, Zeit, Platzierung, HF, Höhenmetern (auch automatisch aus dem Tracking).</dd>
+            <dt>🏅 <a href="#bestzeiten">Bestzeiten</a></dt><dd>Persönliche Bestzeiten je Distanz + Critical-Speed-Modell.</dd>
             <dt>🗓 <a href="#saisonplan">Saisonplan</a></dt><dd>Wochen (KW-gesteuert) mit Phase, Ziel-km und Saisonziel-Rennen.</dd>
             <dt>👤 <a href="#profil">Profil</a></dt><dd>Profile verwalten/zurücksetzen, HF-Zonen &amp; Schwellen.</dd>
             <dt>⚙ <a href="#einstellungen">Einstellungen</a></dt><dd>Analyse-Schwellen &amp; Strava.</dd>
@@ -177,10 +179,16 @@
           <h3>Geplanter TSS</h3>
           <p>Für Läufe wird der geplante TSS <strong>per Zone als rTSS</strong> berechnet (Pace der Zone gegen die
             Schwellen-Pace), siehe <a href="#glossar">rTSS</a>. So zählt eine VO2-Einheit korrekt härter als ein langer Easy-Lauf.</p>
+          <h3>Ziel-km direkt hier</h3>
+          <p>Das <strong>Ziel-km</strong>-Feld im Wochenkopf lässt sich direkt in der Planung setzen (gleiche
+            Quelle wie der <a href="#saisonplan">Saisonplan</a>) und wirkt sofort auf den Volumen-Check.</p>
           <h3>Check: passt die Woche?</h3>
           <p>Live-Hinweise prüfen die Woche gegen Phase &amp; Verlauf: Volumen vs. Phasenziel, Ramp-Rate, CTL-Ramp,
-            Taper vor dem Rennen, <strong>km-Polarisierung</strong>, Anzahl harter Einheiten, Longrun-Anteil,
-            Readiness und <strong>Wochen-Last</strong> (Wochen-TSS vs. Ø der letzten 4 Wochen).</p>
+            <strong>km-Polarisierung</strong>, Anzahl harter Einheiten, Longrun-Anteil, Readiness und
+            <strong>Wochen-Last</strong> (Wochen-TSS vs. Ø der letzten 4 Wochen).</p>
+          <div class="note">Liegt ein <strong>Wettkampf</strong> in der Woche, prüft der <strong>Taper</strong>-Hinweis
+            die <strong>7 Tage vor dem Renntag</strong> (nicht die Kalenderwoche): warnt, wenn die projizierte Form
+            (TSB am Renntag) zu negativ <em>oder</em> die geplante 7-Tage-Last zu hoch ist (Schwelle „Race 7d-Last max %").</div>
           <div class="note">Der Donut „Intensität" zeigt den <strong>TSS-Anteil je Intensität</strong> (easy/moderat/hart),
             wobei die Intensität aus dem <em>Einheitstyp</em> kommt (einstellbar unter <a href="#optionen">Auswahllisten</a>).
             Daneben der dicke Balken = %-km je Zone.</div>
@@ -196,17 +204,36 @@
         <h1>✓ Tracking</h1>
         <p class="lead">Nach dem Training: reale Werte + tägliches Befinden erfassen.</p>
         <section class="card">
-          <h2>Reale Einheit</h2>
-          <p>Übersichtlich in Blöcken: oben <strong>Sport · Typ · Name</strong>, dann <em>Leistung</em>
-            (km, Dauer, Ø-Pace/GAP, Höhenmeter), dann <em>Körper&nbsp;&amp;&nbsp;Last</em> (Ø-/Max-HF, Ø-Power, kcal,
-            COROS-Load, TSS), darunter <strong>km bzw. Minuten je Zone</strong>, strukturierte Belastungen und Notizen.
-            Der <strong>Typ</strong> (LT1, LT2, VO2max kurz/lang, Longrun …) steuert den Real-Donut &amp; Intervall-Trend.</p>
+          <h2>Aufbau der Seite</h2>
+          <p>Oben ein <strong>Wochentag-Switcher</strong> (Mo–So): kleine <strong>Farbpunkte</strong> je Tag zeigen die
+            geplanten Einheiten (in Typ-Farbe) plus einen <span class="dot" style="background:#16a34a"></span><strong>grünen
+            Punkt</strong>, sobald an dem Tag etwas getrackt ist. Klick wählt den Tag. Mit dem <strong>Tag/Woche</strong>-
+            Umschalter siehst du entweder nur den gewählten Tag (Standard) oder die ganze Woche gestapelt.
+            <strong>„+ Zusätzliche Einheit"</strong> trägt eine getrackte Einheit mit frei wählbarem Datum ein (auch
+            außerhalb der Woche).</p>
+          <h2>Reale Einheit (Kachel)</h2>
+          <p>Jede getrackte Einheit ist eine Kachel mit <strong>Typ-Farbbalken</strong> links und — wenn sie zu einer
+            geplanten Einheit passt — einem <strong>„% Plan"-Badge</strong> (s.&nbsp;u.). Aufgeklappt in Blöcken:
+            <strong>Sport · Typ · Name</strong>, <em>Leistung</em> (km, Dauer als h:mm:ss, Ø-Pace/GAP, Höhenmeter),
+            <em>Körper&nbsp;&amp;&nbsp;Last</em> (Ø-/Max-HF, Ø-Power, kcal, TSS), <strong>km bzw. Minuten je Zone</strong>,
+            strukturierte Belastungen und Notizen. Der <strong>Typ</strong> steuert Real-Donut &amp; Intervall-Trend.</p>
+          <h3>Plan-Erfüllung (% Plan)</h3>
+          <p>Zeigt, wie gut die geplante Einheit umgesetzt wurde — <strong>zusammengesetzt aus TSS-Treffer und Zeit in der
+            Ziel-Pace-Zone</strong> (Pace statt Puls, weil der Puls oft nachzieht). Farbe nach Höhe (grün ≥ 90 %, gelb,
+            rot). Ein <code>*</code> heißt „vorerst nur TSS" — der Pace-Zonen-Anteil kommt, sobald die Strava-Streams
+            nachgezogen sind. Auch als Graph im <a href="#bericht">Wochenbericht</a> und als Wochenmittel im <a href="#langzeit">Langzeit</a>.</p>
+          <h3>Wettkampf → Races automatisch</h3>
+          <p>Setzt du bei einem Lauf den Typ auf <strong>„Wettkampf"</strong>, landet er automatisch als Eintrag in
+            <a href="#races">Races</a> (Datum/Name/Distanz/Zeit/HF/Höhenmeter). Die <strong>km-Splits</strong> rechnet
+            das nächste „Details/Splits nachziehen" aus den Strava-Streams. Typ wieder geändert → der Auto-Eintrag
+            verschwindet. So braucht man Wettkämpfe nicht doppelt zu pflegen.</p>
           <h3>TSS der Einheit</h3>
-          <p>Läufe: <strong>rTSS</strong> (aus NGP, sonst Ø-Pace) — unabhängig von COROS, also auch für Garmin &amp; Co.
-            Rad: aus Power bzw. Schätzung. Ein selbst eingetragener TSS hat Vorrang.</p>
+          <p>Läufe: <strong>rTSS</strong> (aus NGP, sonst Ø-Pace) — geräteneutral (Garmin/Polar/COROS …).
+            Rad: aus Power (NP/FTP) bzw. Schätzung. Ein selbst eingetragener TSS hat Vorrang.</p>
           <h3>Commute</h3>
           <p>Kurze Rad-Pendelfahrten per Schalter als <strong>Commute</strong> markieren: Sportart → „Allgemein/Commute",
-            Name → „Commute", Notiz wird geleert — so verstopfen sie den Wochenbericht nicht, zählen aber als Rad-km.</p>
+            Name → „Commute", Notiz wird geleert — so verstopfen sie den Wochenbericht nicht, zählen aber als Rad-km
+            (im Bericht je Tag zusammengelegt).</p>
           <h2>Tagesfaktoren</h2>
           <p>HRV, Ruhepuls, Recovery, Strain, Schlaf (h, Bettzeit, Performance/Effizienz), Gewicht, RPE, Beine,
             Stimmung, Stress … — Grundlage für die Wellness-Verläufe und Readiness-Hinweise. <strong>Welche Felder</strong>
@@ -224,14 +251,20 @@
         <section class="card">
           <h2>Inhalt</h2>
           <ul>
-            <li><strong>Seite 1:</strong> Kategorie-Summen (Lauf / Rad / Kraft), Einheiten geplant vs. real (mit Notizen),
-              Zonenverteilung (geplant vs. real), <strong>zwei TSS-Donuts</strong> (geplant &amp; real, mit der TSS-Zahl
-              in der Mitte), PMC seit Jahresbeginn, Saison-Progression, Wellness-Ø, Wochen-Checks und einzelne Wettkämpfe.</li>
+            <li><strong>Seite 1:</strong> Kategorie-Summen (Lauf / Rad / Kraft; Commutes je Tag zusammengelegt),
+              Einheiten geplant vs. real (mit Notizen), Zonenverteilung (geplant vs. real), <strong>zwei TSS-Donuts</strong>
+              (geplant &amp; real), <strong>Plan-Erfüllungs-Balken</strong> je Wochentag, <strong>Efficiency Factor</strong>
+              je Wochentag, <strong>PMC bis zu dieser Woche</strong> (mit Werte-Block rechts), Saison-Progression bis hierhin,
+              reale Bewertungs-Schilder nebeneinander, Wellness-Ø, Wochen-Checks und einzelne Wettkämpfe.</li>
             <li><strong>Seite 2:</strong> vollständige Tagesfaktoren-Tabelle, Wellness-Verläufe und Reflexion.</li>
           </ul>
           <p>Über <strong>„Drucken / PDF"</strong> als PDF sichern (Layout ist auf 2 Seiten optimiert).</p>
-          <div class="note">Der „Real"-Donut nutzt die reale Intensität <em>hybrid</em>: wo Zonen-Daten vorliegen
-            zonen-anteilig, sonst nach dem Typ der gematchten geplanten Einheit.</div>
+          <div class="note"><strong>PMC + Saison-Progression enden an der Berichtswoche</strong> (nicht bei „heute") —
+            so spiegelt der Bericht rückwirkend genau den Stand bis zu dieser Woche. Rechts neben dem PMC ein kompakter
+            Block mit <strong>Fitness (CTL), Fatigue (ATL), Form (TSB) und CTL-Ramp am Wochenende</strong>.</div>
+          <div class="note"><strong>Efficiency Factor je Wochentag</strong> (NGP-Tempo ÷ Ø-HF, nur DL/Longruns): zeigt mit
+            einem „⚡ hart davor"-Marker, wie eine harte Einheit/ein Wettkampf am Vortag die Ökonomie beeinflusst.
+            Der „Real"-Donut nutzt die Intensität <em>hybrid</em> (zonen-anteilig, sonst nach Plan-Typ).</div>
         </section>
       </div>
 
@@ -247,6 +280,8 @@
               Krank-Phasen sind rot hinterlegt.</dd>
             <dt>Zonen-Effizienz (Easy-Läufe)</dt><dd><strong>Ø-Pace vs. Ø-HF</strong> und der <strong>Effizienz-Faktor</strong>
               (m/min je Herzschlag) im Wochenmittel. Sinkende Pace bei gleichem Puls bzw. steigender EF = bessere Ökonomie.</dd>
+            <dt>Plan-Erfüllung (Wochenmittel)</dt><dd>Wie konsequent die geplanten Einheiten je Woche umgesetzt wurden
+              (% — TSS-Treffer + Zeit in der Ziel-Pace-Zone), als Trend über den Zeitraum.</dd>
             <dt>Intervall-Trend</dt><dd>Ø-Pace der Belastungen nach Kategorie (LT1 / LT2 / VO2 kurz/lang).</dd>
           </dl>
           <p>Zeitraum frei wählbar (Standard 6 Monate), druckbar.</p>
@@ -261,11 +296,37 @@
         <section class="card">
           <h2>Erfassen</h2>
           <p>Datum, Name, Distanz, Endzeit, Platzierung, <strong>Ø-HF</strong>, <strong>Max-HF</strong>, <strong>Höhenmeter</strong>
-            und <strong>Splits</strong> (km, Zeit, Pace, Ø-/Max-HF, Höhenmeter je Split). Wettkämpfe aus dem
-            <a href="#saisonplan">Saisonplan</a> werden automatisch übernommen; manuell hinzufügen geht weiterhin.</p>
-          <p>Races erscheinen als goldene Marker in PMC &amp; Saison-Progression (an-/ausschaltbar) und einzeln im Wochenbericht.</p>
+            und <strong>Splits</strong> (km, Zeit, Pace, Ø-/Max-HF, Höhenmeter je Split — Eingabefelder breit genug für 3 Ziffern).
+            Wettkämpfe aus dem <a href="#saisonplan">Saisonplan</a> <strong>und aus dem <a href="#tracking">Tracking</a></strong>
+            (Lauf-Typ „Wettkampf") werden automatisch übernommen; manuell hinzufügen geht weiterhin. Bei aus dem Tracking
+            stammenden Einträgen steht „· aus Tracking" am Namen — ihre Eckdaten pflegt die verknüpfte Einheit.</p>
+          <p>Races erscheinen als goldene Marker in PMC &amp; Saison-Progression (an-/ausschaltbar) und einzeln im Wochenbericht.
+            Ein neuer Wettkampf legt zudem alle Wochen bis zum Renntag an (Wettkampf-Planung).</p>
           <div class="note">Die goldenen Marker kommen ausschließlich aus der Races-Liste — ein dort gelöschter
             Wettkampf verschwindet zuverlässig aus den Charts.</div>
+        </section>
+      </div>
+
+      <!-- ============================ BESTZEITEN ============================ -->
+      <div class="page" id="bestzeiten">
+        <p class="crumbs">Die Seiten › Bestzeiten</p>
+        <h1>🏅 Bestzeiten</h1>
+        <p class="lead">Persönliche Bestzeiten und ein Critical-Speed-Modell aus den Strava-Daten.</p>
+        <section class="card">
+          <h2>Bestzeiten je Distanz</h2>
+          <p>Tabelle mit der schnellsten <strong>Zeit</strong> je Standarddistanz (400&nbsp;m … Marathon),
+            der <strong>Ø-Pace</strong> und dem <strong>Datum</strong>. Quelle sind Stravas
+            <code>best_efforts</code> (die schnellsten Abschnitte auch innerhalb längerer Läufe) — sie kommen
+            beim Strava-Import bzw. <a href="#strava">„Details/Splits nachziehen"</a> herein und füllen sich
+            über mehrere Syncs.</p>
+          <h2>Critical Speed (CS)</h2>
+          <p>Aus den aeroben Bestzeiten (ca. 2–30&nbsp;min) fittet RunLog ein <strong>2-Parameter-Modell</strong>
+            <code>Distanz = CS·t + D′</code>: <strong>CS</strong> = nachhaltige Dauerleistungs-Geschwindigkeit
+            (als Pace), <strong>D′</strong> = anaerobe Distanzreserve (m), <strong>R²</strong> = Güte des Fits.
+            Daraus <strong>Prognosen</strong> für 5k/10k/HM/Marathon. Ein Distanz-Zeit-Diagramm zeigt die
+            Bestzeit-Punkte mit der CS-Geraden (Steigung = CS, Achsenabschnitt = D′).</p>
+          <div class="warn note">Braucht Strava-Läufe mit GPS/Distanz; rein manuelle Einheiten liefern keine PBs.
+            Für ein belastbares CS-Modell helfen mehrere kurze bis mittlere harte Läufe (z.&nbsp;B. 1k, 3k, 5k, 10k).</div>
         </section>
       </div>
 
@@ -281,8 +342,11 @@
             Entlastung, Race Week, Race Specific, Krank …), <strong>Ziel-km</strong> und optional ein
             <strong>Saisonziel-Rennen</strong>. Jahre lassen sich als Akkordeon auf-/zuklappen. Löschst du eine Woche,
             werden ihre geplanten Einheiten mitentfernt; verwaiste Plan-km werden beim Öffnen automatisch bereinigt.</p>
-          <p>Die Phase steuert das Farbband in den Charts und die Check-Logik (z.&nbsp;B. Taper in der Race Week,
+          <p>Die Phase steuert das Farbband in den Charts und die Check-Logik (z.&nbsp;B. Taper vor dem Rennen,
             Entlastung in Deload-Wochen). „Krank"-Wochen werden in den Charts rot hinterlegt.</p>
+          <div class="note">Es sind <strong>immer mindestens 2 Wochen in der Zukunft</strong> vorhanden; ein neuer
+            <a href="#races">Wettkampf</a> legt automatisch alle Wochen bis zum Renntag an (leeres Gerüst). Die
+            <strong>Ziel-km</strong> lassen sich auch direkt in der <a href="#planung">Wochenplanung</a> setzen.</div>
         </section>
       </div>
 
@@ -295,12 +359,14 @@
           <div class="note">HF-Zonen, Schwellen und Profile sind in v0.12.0 in die eigene Seite
             <a href="#profil">Profil</a> umgezogen.</div>
           <h2>Analyse-Schwellen</h2>
-          <p>Grenzwerte der Check-Engine (Volumen-%, CTL-Ramp-max, Hart-%-max, Z3-%-max, Longrun-%-max, TSB Race Week min)
-            sowie die Intensitäts-Einstufung (easy-/hart-% und Referenz-Fenster in Wochen).</p>
-          <h2>Strava &amp; rTSS</h2>
-          <p>Strava verbinden &amp; synchronisieren (siehe <a href="#strava">Strava</a>) und <strong>„Lauf-TSS (rTSS)
-            neu berechnen"</strong> — rechnet alle Läufe + geplanten Lauf-TSS neu (mit automatischem DB-Backup),
-            z.&nbsp;B. nachdem neue NGP-Daten per Sync hereingekommen sind oder die Schwellen-Pace geändert wurde.</p>
+          <p>Grenzwerte der Check-Engine (Volumen-%, CTL-Ramp-max, Hart-%-max, Z3-%-max, Longrun-%-max,
+            TSB Race Week min, <strong>Race 7d-Last max %</strong>) sowie die Intensitäts-Einstufung
+            (easy-/hart-% und Referenz-Fenster in Wochen).</p>
+          <h2>Strava &amp; TSS</h2>
+          <p>Strava verbinden &amp; synchronisieren (siehe <a href="#strava">Strava</a>) — inkl. einstellbarem
+            <strong>„Daten ab"-Datum</strong> für den Import. <strong>„TSS neu berechnen (Lauf + Rad)"</strong>
+            rechnet alle Lauf- (rTSS/NGP) und Rad-TSS (Power-TSS/NP) + geplanten TSS neu (mit automatischem
+            DB-Backup), z.&nbsp;B. nachdem neue Streams per Sync hereingekommen sind oder die Schwellen geändert wurden.</p>
         </section>
       </div>
 
@@ -322,6 +388,12 @@
             <strong>Obergrenze</strong> je Zone ein — die Untergrenze ergibt sich automatisch (ein Puls über der Vorzone).
             Jedes Set hat ein <strong>„gültig ab"-Datum</strong>: neue Diagnostik als neues Set anlegen, alte Wochen
             bleiben mit den damaligen Zonen korrekt.</p>
+          <h3>Aus Strava holen</h3>
+          <p>Der Button <strong>„↧ Aus Strava holen"</strong> (mit Datumsfeld) legt ein neues Set ab dem gewählten
+            Datum an: HF-Zonen (Stravas 5 → App-Z1–Z5, Z6 oben drauf), Power-Zonen und FTP. LTHR/Schwellen-Pace/Pace-
+            Zonen werden vom bisherigen Set übernommen — alles danach feinjustierbar. Strava liefert nur die
+            <em>aktuellen</em> Zonen (kein Gültig-ab; Z6 ist geschätzt). Dafür ist einmaliges <strong>Neu-Verbinden</strong>
+            nötig (zusätzlicher Zonen-Zugriff); sonst kommt eine entsprechende Meldung.</p>
         </section>
       </div>
 
@@ -357,22 +429,26 @@
             <li>Auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">strava.com/settings/api</a>
               eine (kostenlose) API-App anlegen, Callback-Domain <code>localhost</code>.</li>
             <li>Client-ID + Client-Secret in den Einstellungen eintragen, „Mit Strava verbinden".</li>
-            <li>„Sync seit Saisonstart" oder „Ganzes Jahr importieren".</li>
+            <li><strong>„Daten ab"-Datum</strong> wählen und „Sync ab Datum" — oder „Ganzes Jahr importieren".</li>
           </ol>
           <h2>Was importiert wird</h2>
           <ul>
             <li>Basisdaten (km, Zeit, Ø-/Max-HF, Watt, Höhenmeter, kcal).</li>
-            <li><strong>Für Läufe (budgetiert pro Sync):</strong> die Roh-Streams → <strong>Minuten je Zone</strong>
-              (HF gegen deine Zonen), <strong>km je Zone</strong> und <strong>NGP</strong> → daraus die genaue rTSS.</li>
-            <li><strong>Intervalle aus den Laps</strong> (v0.12.0): die Work-Laps (schneller als Z3 bzw. Ø-HF ≥ Z4)
-              werden automatisch als Efforts unter die Einheit geschrieben — nur in leere Effort-Felder.</li>
-            <li><strong>„Details/Splits nachziehen"</strong> (v0.13.0): holt nur Details/Streams/Laps für bestehende
-              Aktivitäten nach, ohne neue zu importieren — praktisch nach geänderten Zonen oder für Altbestand.</li>
-            <li>COROS-Training-Load aus der Beschreibung (informativ; Lauf-TSS hängt nicht mehr daran).</li>
+            <li><strong>Für Läufe (budgetiert pro Sync):</strong> die Roh-Streams → <strong>Minuten/km je HF-Zone</strong>,
+              <strong>Zeit je Pace-Zone</strong> (für die Plan-Erfüllung), <strong>NGP</strong> (→ genaue rTSS) und die
+              <strong>Bestzeiten</strong> (Stravas <code>best_efforts</code> → <a href="#bestzeiten">Bestzeiten</a>/CS).</li>
+            <li><strong>Intervalle aus den Laps:</strong> Work-Laps (schneller als Z3 bzw. Ø-HF ≥ Z4) werden als Efforts
+              unter die Einheit geschrieben — nur in leere Felder. Bei <strong>Wettkampf</strong>-Läufen entstehen
+              zusätzlich die <strong>km-Splits</strong> am verknüpften <a href="#races">Race</a>.</li>
+            <li><strong>„Details/Splits nachziehen":</strong> holt nur Details/Streams/Laps für bestehende Aktivitäten
+              nach, ohne neue zu importieren — praktisch nach geänderten Zonen oder für Altbestand (so füllen sich
+              Bestzeiten, Pace-Zonen &amp; Race-Splits nach).</li>
+            <li><strong>HF-/Power-Zonen + FTP</strong> lassen sich separat importieren (siehe <a href="#profil">Profil</a>).</li>
           </ul>
-          <div class="warn note">Wegen des Strava-Rate-Limits arbeitet die Anreicherung in Häppchen — für den ganzen
-            Altbestand mehrere Syncs (Abstand ~15&nbsp;min) ausführen. Danach einmal „Lauf-TSS neu berechnen" drücken.
-            Manuell bearbeitete Notizen/Zonen werden nie überschrieben.</div>
+          <div class="warn note">Strava hat <strong>zwei</strong> Limits: 100/15&nbsp;min <em>und</em> ~1000/Tag (Reset
+            00:00&nbsp;UTC). Die Anreicherung läuft budgetiert und <strong>stoppt vor dem Tageslimit</strong>; die Meldung
+            sagt konkret, welches Limit erreicht ist. Für den ganzen Altbestand einfach an mehreren Tagen „Details
+            nachziehen" — danach „TSS neu berechnen (Lauf + Rad)". Manuell bearbeitete Notizen/Zonen/Splits werden nie überschrieben.</div>
         </section>
       </div>
 
@@ -414,8 +490,7 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
 <br>          = (<b>s</b> / 3600) · (NP / FTP)² · 100</div>
           <p><b>NP</b> = Normalized Power (W) — aus dem Strava-Watt-Stream, 30-Sekunden-normalisiert (wie die Lauf-NGP,
             ohne Steigung). <b>FTP</b> = Functional Threshold Power. Ohne Powermeter schätzt RunLog über einen
-            typ-abhängigen Intensitätsfaktor (Stunden · IF² · 100). COROS-Load fließt nicht mehr in die TSS ein
-            (nur informativ).</p>
+            typ-abhängigen Intensitätsfaktor (Stunden · IF² · 100).</p>
         </section>
 
         <section class="card">
@@ -468,14 +543,21 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
               Wochen-Check, ob du polarisiert genug trainierst.</dd>
             <dt>Wochen-Last</dt><dd>Wochen-TSS vs. Ø der letzten 4 Wochen — in der Planung geplant↔geplant, im
               abgeschlossenen Bericht real↔real.</dd>
-            <dt>Effizienz-Faktor (EF)</dt><dd>Meter pro Minute je Herzschlag bei lockeren Läufen — höher = ökonomischer.</dd>
+            <dt>Effizienz-Faktor (EF)</dt><dd>NGP-Tempo (m/min) je Herzschlag bei lockeren Läufen — höher = ökonomischer.
+              Im Bericht je Wochentag, im Langzeit als Wochenmittel-Trend.</dd>
+            <dt>Plan-Erfüllung (%)</dt><dd>Wie gut eine getrackte Einheit die geplante umsetzt — <strong>0,5 · TSS-Treffer
+              + 0,5 · Überlappung der Zeit in der Ziel-Pace-Zone</strong> (Pace statt Puls). Ohne Pace-Zonen-Daten zählt
+              vorerst nur der TSS-Anteil (<code>*</code>).</dd>
+            <dt>Critical Speed (CS) &amp; D′</dt><dd>2-Parameter-Modell aus den Bestzeiten: <code>Distanz = CS · t + D′</code>.
+              <strong>CS</strong> = nachhaltige Dauerleistungs-Geschwindigkeit (als Pace), <strong>D′</strong> = anaerobe
+              Distanzreserve (m). Lineare Regression über aerobe PBs (~2–30&nbsp;min); daraus Renn-Prognosen.</dd>
             <dt>Intervall-Kategorien</dt><dd>LT1 (unteres Schwellen-/Tempo), LT2 (Schwelle), VO2 kurz/lang — aus den
               Belastungs-Blöcken abgeleitet.</dd>
           </dl>
         </section>
 
         <footer>
-          RunLog v0.13.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+          RunLog v0.14.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
         </footer>
       </div>
     </main>

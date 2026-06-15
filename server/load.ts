@@ -1,4 +1,4 @@
-// TrainingPeaks-Last-Modell: TSS (rTSS/hrTSS/sRPE), Zeit-in-Zone, COROS-Parse, CTL/ATL/TSB.
+// TrainingPeaks-Last-Modell: TSS (rTSS/hrTSS/sRPE), Zeit-in-Zone, CTL/ATL/TSB.
 
 export interface HrZone {
   z: number;
@@ -72,12 +72,34 @@ export function powerZoneMidWatts(z: number, powerZones: number[]): number | nul
   return round1((lower + upper) / 2);
 }
 
-/** COROS Training Load aus Strava-Beschreibung parsen ("241 Training Load"). */
-export function parseCorosLoad(description?: string | null): number | null {
-  if (!description) return null;
-  const m = description.match(/(\d+(?:[.,]\d+)?)\s*Training\s*Load/i);
-  if (!m) return null;
-  return parseFloat(m[1].replace(",", "."));
+/** Per-km-Splits aus Distanz-/Zeit-/HF-Streams (v0.14.0, Race aus Tracking).
+ *  km=1 je vollem Kilometer (Pace = Zeit/km); letzter Teil-km als Bruchteil. Ø/Max-HF je Segment. */
+export function computeKmSplits(
+  dist: number[],
+  time: number[],
+  hr: number[] = [],
+): { km: number; time_s: number; pace_s: number; avg_hr: number | null; max_hr: number | null; elevation_m: number | null }[] {
+  const out: { km: number; time_s: number; pace_s: number; avg_hr: number | null; max_hr: number | null; elevation_m: number | null }[] = [];
+  const n = Math.min(dist.length, time.length);
+  if (n < 2) return out;
+  let kmIdx = 0; // abgeschlossene Kilometer
+  let segStart = time[0];
+  let hrSum = 0, hrCount = 0, hrMax = 0;
+  const pushSeg = (km: number, endTime: number) => {
+    const time_s = Math.max(0, Math.round(endTime - segStart));
+    const avg = hrCount ? Math.round(hrSum / hrCount) : null;
+    out.push({ km, time_s, pace_s: km > 0 ? Math.round(time_s / km) : time_s, avg_hr: avg, max_hr: hrMax || null, elevation_m: null });
+    segStart = endTime; hrSum = 0; hrCount = 0; hrMax = 0;
+  };
+  for (let i = 0; i < n; i++) {
+    const bucket = Math.floor(dist[i] / 1000);
+    while (bucket > kmIdx) { kmIdx++; pushSeg(1, time[i]); }
+    const h = hr[i];
+    if (h != null && h > 0) { hrSum += h; hrCount++; if (h > hrMax) hrMax = h; }
+  }
+  const partial = (dist[n - 1] - kmIdx * 1000) / 1000;
+  if (partial > 0.05) pushSeg(Math.round(partial * 100) / 100, time[n - 1]);
+  return out;
 }
 
 /** Zeit-in-Zone (Sekunden je Zone) aus HR- und Zeit-Stream. */
@@ -221,6 +243,22 @@ export function streamZoneSplit(
     }
   }
   return { sec, meters };
+}
+
+/** Sekunden je PACE-Zone aus Velocity-/Zeit-Stream (v0.14.0, Plan-Erfüllung). vel in m/s, time kumulativ.
+ *  Nutzt zoneFromPace() (gleiche Pace-Zonen wie Planung). Stehen/Ausrollen (v≤0.3 m/s) zählt nicht. */
+export function paceZoneSplit(vel: number[], time: number[], paceZones?: number[]): Record<number, number> {
+  const sec: Record<number, number> = {};
+  const n = Math.min(vel.length, time.length);
+  for (let i = 1; i < n; i++) {
+    const dt = (time[i] ?? i) - (time[i - 1] ?? i - 1);
+    if (dt <= 0 || dt > 30) continue;
+    const v = vel[i];
+    if (!v || v <= 0.3) continue;
+    const z = zoneFromPace(1000 / v, paceZones);
+    if (z >= 1) sec[z] = (sec[z] || 0) + dt;
+  }
+  return sec;
 }
 
 /** Power-TSS fürs Rad: IF = NP/FTP. */

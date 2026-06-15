@@ -4,6 +4,42 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.14.0] – 2026-06-15 — Geräteneutral, Bestzeiten/Critical Speed, Plan-Erfüllung, Race-aus-Tracking & Tracking-Redesign
+
+### Hinzugefügt
+- **Bestzeiten-Menü** (`/bests`, 🏅): persönliche Bestzeiten je Standarddistanz aus Stravas `best_efforts`
+  (Distanz · Zeit · Ø-Pace · Datum) plus ein **2-Parameter-Critical-Speed-Modell** (CS-Pace, D′, R²,
+  Prognosen 5k/10k/HM/M) mit Distanz-Zeit-Diagramm. Füllt sich über die Strava-Syncs.
+- **Plan-Erfüllung (%)**: je getrackter Einheit, wie gut die geplante Einheit umgesetzt wurde —
+  zusammengesetzt aus **TSS-Treffer + Zeit in der Ziel-Pace-Zone**. Anzeige je Einheit im Tracking,
+  als Balken-Graph im Wochenbericht und als Wochenmittel-Trend im Langzeit.
+- **Efficiency Factor je Wochentag** (DL/Longruns) im Wochenbericht (NGP-Tempo ÷ Ø-HF) — mit Markierung,
+  wenn am Vortag eine harte Einheit/ein Wettkampf war (Carry-over sichtbar).
+- **Race aus Tracking**: ein Lauf mit Typ „Wettkampf" legt automatisch einen verknüpften Race-Eintrag an;
+  die **km-Splits** werden beim „Details/Splits nachziehen" aus den Strava-Streams berechnet.
+- **Strava-Zonen-Import**: HF-/Power-Zonen + FTP aus Strava als neues Zonen-Set ab wählbarem Datum
+  (Profil → HF-Zonen → „Aus Strava holen"). Braucht einmaliges Neu-Verbinden (Scope `profile:read_all`).
+- **Tracking-Redesign**: Wochentag-Switcher oben (Farbpunkte je Tag: geplant in Typ-Farbe + grün wenn
+  getrackt), Tag/Woche-Umschalter, getrackte Kacheln mit Typ-Farbbalken + „% Plan". „+ Zusätzliche
+  Einheit" mit frei wählbarem Datum.
+- **Ziel-km direkt in der Wochenplanung** editierbar (gleiche Quelle wie Saisonplan).
+- **Automatische Wochen**: immer 2 Zukunftswochen vorhanden; ein neuer Wettkampf legt alle Wochen bis
+  zum Renntag an (leeres Gerüst).
+- **Strava-Extraktionszeitraum** als Einstellung („Daten ab"-Datum) + ehrliche Rate-Limit-Meldung
+  (unterscheidet 15-min- vs. Tageslimit) und Tages-Budget-Bremse (Sync/Enrich stoppen vor dem Tageslimit).
+- **Dauer als `hh:mm:ss`** in Tracking und Wochenplanung.
+
+### Geändert
+- **COROS-Training-Load entfernt** → die App ist geräteneutral (Garmin/Polar/COROS …): TSS kommt aus
+  NGP/NP bzw. Schätzung (manuell überschreibbar). Der COROS-Faktor + das Feld sind weg (DB-Spalte bleibt).
+- **Wochenbericht**: PMC + Saison-Progression enden jetzt **an der Berichtswoche** (nicht mehr bis heute+2);
+  rechts neben dem PMC ein kompakter Block mit **CTL/ATL/TSB + CTL-Ramp am Wochenende**. Reale Bewertungs-
+  Schilder stehen **nebeneinander** (gleich groß); **Commutes je Tag zusammengelegt** (spart Druckplatz).
+- **Race-Week-Warnung** bezieht sich jetzt auf die **7 Tage vor dem Renntag** (TSB am Renntag UND geplante
+  7-Tage-Last), nicht mehr auf die Kalenderwoche. Neue Schwelle „Race 7d-Last max %".
+- **Race-Splits-Eingabe**: Felder für km/Ø-HF/Max-HF verbreitert (3 Ziffern sichtbar).
+- **Buttons** app-weit einheitlicher (Hover/Fokus/disabled-Zustände), rein kosmetisch.
+
 ## [0.13.0] – 2026-06-14 — Planungs-Feinschliff, Daily-Kategorien & Strava-Details
 
 ### Hinzugefügt

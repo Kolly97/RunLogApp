@@ -30,8 +30,8 @@ export default function Settings() {
           <Num label="Z3-% max" v={settings.thresholds.z3_pct_max} on={(x) => saveThr(settings, "z3_pct_max", x, setSettings)} />
           <Num label="Longrun-% max" v={settings.thresholds.longrun_pct_max} on={(x) => saveThr(settings, "longrun_pct_max", x, setSettings)} />
           <Num label="TSB Race Week min" v={settings.thresholds.tsb_raceweek_min} on={(x) => saveThr(settings, "tsb_raceweek_min", x, setSettings)} />
+          <Num label="Race 7d-Last max % (Taper)" v={settings.thresholds.raceweek_tss_max_pct ?? 60} on={(x) => saveThr(settings, "raceweek_tss_max_pct", x, setSettings)} />
           <Num label="Rad→Run Faktor" v={settings.run_equiv_bike_factor} step="0.05" on={(x) => save1("run_equiv_bike_factor", x, setSettings)} />
-          <Num label="COROS→TSS Faktor" v={settings.coros_to_tss} step="0.05" on={(x) => save1("coros_to_tss", x, setSettings)} />
         </div>
         <h3 style={{ marginTop: 12 }}>Intensitäts-Einstufung (Donut & Wochen-Bewertung)</h3>
         <p className="tiny muted" style={{ marginTop: 0 }}>Vergleich mit dem Ø-TSS der letzten Wochen: ≤ Easy-% = easy, bis Hart-% = moderat, darüber = hart.</p>
@@ -53,8 +53,11 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean; athlete: string | null } | null>(null);
   const [cid, setCid] = useState<string>(settings.strava_client_id || "");
   const [secret, setSecret] = useState<string>(settings.strava_client_secret || "");
+  const [syncFrom, setSyncFrom] = useState<string>(settings.strava_sync_from || ""); // Extraktions-Startdatum (v0.14.0)
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
+
+  const saveSyncFrom = (v: string) => { setSyncFrom(v); api.saveSettings({ strava_sync_from: v }); };
 
   const loadStatus = () => fetch("/api/strava/status").then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
   useEffect(() => { loadStatus(); }, []);
@@ -122,8 +125,9 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
       <p className="tiny muted">
         Einmalig: auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">strava.com/settings/api</a> eine
         (kostenlose) API-App anlegen — „Autorisierungs-Callback-Domain": <code>localhost</code> — und Client-ID + Client-Secret hier eintragen.
-        Der Import holt Aktivitäts-Daten (km, Zeit, Ø-HF, Watt) und liest die COROS-Training-Load aus der Beschreibung (TSS = TL × Faktor);
-        Zeit-in-Zone bleibt manuell. Vorhandene/manuell bearbeitete Einheiten werden nie überschrieben.
+        Der Import holt Aktivitäts-Daten (km, Zeit, Ø-HF, Watt) und Streams (NGP/NP, Zeit-in-Zone) — die Last (TSS)
+        rechnet die App geräteneutral aus NGP/NP bzw. einer Schätzung (optional manuell überschreibbar).
+        Vorhandene/manuell bearbeitete Einheiten werden nie überschrieben.
       </p>
       <div className="row mb">
         <label className="field" style={{ margin: 0, width: 160 }}><span>Client-ID</span>
@@ -140,7 +144,9 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
         )}
         {status?.connected && (
           <>
-            <button className="primary" disabled={busy} onClick={() => sync(seasonStart, "Sync seit Saisonstart")}>⟳ Sync seit Saisonstart</button>
+            <label className="field" style={{ margin: 0, width: 150 }}><span>Daten ab</span>
+              <input type="date" value={syncFrom || seasonStart} onChange={(e) => saveSyncFrom(e.target.value)} title="Startdatum, ab dem Strava-Aktivitäten importiert werden" /></label>
+            <button className="primary" disabled={busy} onClick={() => sync(syncFrom || seasonStart, `Sync ab ${syncFrom || seasonStart}`)}>⟳ Sync ab Datum</button>
             <button disabled={busy} onClick={() => sync(yearStart, "Jahres-Import")}>📅 Ganzes Jahr importieren</button>
             <button className="ghost" disabled={busy} onClick={() => { window.location.href = "/api/strava/login"; }}>neu verbinden</button>
           </>
@@ -161,8 +167,8 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
       {result && <p className="tiny" style={{ marginTop: 8 }}>{result}</p>}
       {status?.connected && (
         <p className="tiny muted" style={{ marginTop: 6 }}>
-          Tipp: Jahres-Import ggf. 2–3× im Abstand von 15 min ausführen — die Detail-Anreicherung (COROS-TL/kcal)
-          arbeitet wegen des Strava-Rate-Limits in Häppchen von 50 Aktivitäten.
+          Tipp: Jahres-Import ggf. 2–3× im Abstand von 15 min ausführen — die Detail-/Stream-Anreicherung (Zonen, NGP/NP, kcal)
+          arbeitet wegen des Strava-Rate-Limits in Häppchen.
         </p>
       )}
     </div>

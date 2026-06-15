@@ -26,13 +26,14 @@ import {
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  sessionCompletion,
   type IntLevel,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
   type IntervalEffortStat,
 } from "./analysis.ts";
-import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich } from "./strava.ts";
+import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, fetchAthleteZonesAndFtp } from "./strava.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -41,6 +42,12 @@ app.use(express.json({ limit: "2mb" }));
 initSchema();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+/** YYYY-MM-DD um n Tage verschieben (UTC). */
+const addDaysIso = (iso: string, n: number): string => {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 // Aktives Profil (leichter Account-Wechsel, ToDo #9): alle Daten-Queries filtern darauf.
 const pid = () => activeProfile();
 
@@ -97,6 +104,7 @@ const THRESHOLD_DEFAULTS = {
   z3_pct_max: 15,
   longrun_pct_max: 35,
   tsb_raceweek_min: -5,
+  raceweek_tss_max_pct: 60, // 7-Tage-Last vor dem Rennen max. % vom Ø-Wochen-TSS (Taper, v0.14.0)
   easy_pct: 80, // Intensitäts-Klassifikation (ToDo #7)
   hard_pct: 105,
   intensity_window_weeks: 4,
@@ -142,10 +150,11 @@ app.get("/api/settings", (_req, res) => {
   res.json({
     thresholds: thresholds(),
     run_equiv_bike_factor: getSetting("run_equiv_bike_factor", 0.25),
-    coros_to_tss: getSetting("coros_to_tss", 0.6),
     athlete: getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }),
     strava_client_id: getSetting("strava_client_id", ""),
     strava_client_secret: getSetting("strava_client_secret", ""),
+    strava_sync_from: getSetting("strava_sync_from", ""), // Extraktions-Startdatum (v0.14.0); leer → Saisonstart
+
   });
 });
 
@@ -156,6 +165,47 @@ app.get("/api/strava/login", stravaLogin);
 app.get("/api/strava/callback", stravaCallback);
 app.post("/api/strava/sync", stravaSync);
 app.post("/api/strava/enrich", stravaEnrich);
+
+// HF-/Power-Zonen aus Strava importieren (v0.14.0, ToDo 10) → neues zone_set ab gewähltem Datum.
+app.post("/api/strava/import-zones", async (req, res) => {
+  const validFrom = String((req.body || {}).valid_from || todayIso());
+  try {
+    const z = await fetchAthleteZonesAndFtp();
+    // HF-Mapping: Strava-5 → App-Z1–Z5-Obergrenzen, Z6 oben drauf (offenes letztes max → min+12 schätzen).
+    const maxes: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const s = z.hr[i];
+      maxes[i] = s ? (s.max > 0 ? s.max : s.min + 12) : (i > 0 ? maxes[i - 1] + 12 : 150);
+    }
+    maxes[5] = 999; // Z6 = Anaerob bis max
+    const hr_zones = DEFAULT_HR_ZONES.map((dz, i) => ({ ...dz, max: maxes[i], min: i === 0 ? 0 : maxes[i - 1] + 1 }));
+    const power_zones = z.power.length ? z.power.map((p) => (p.max > 0 ? p.max : 0)) : null;
+
+    const base = effectiveZoneSet(validFrom); // LTHR/Schwellen-Pace/Pace-Zonen übernehmen (Strava liefert sie nicht)
+    db.prepare(
+      `INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, speed_zones, power_zones, lthr, ftp, threshold_pace, source, note, created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      pid(), validFrom,
+      JSON.stringify(hr_zones),
+      JSON.stringify(base.pace_zones || []),
+      JSON.stringify([]),
+      JSON.stringify(power_zones ?? base.power_zones ?? []),
+      base.lthr ?? 172,
+      z.ftp ?? base.ftp ?? 265,
+      base.threshold_pace ?? 230,
+      "Strava",
+      "aus Strava importiert (HF Z1–Z5; Z6 geschätzt — ggf. justieren)",
+      todayIso(),
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = /\b40[13]\b/.test(String(e))
+      ? "Strava-Berechtigung fehlt — bitte unter Einstellungen neu verbinden (Zonen-Zugriff)."
+      : `Strava-Zonen-Import fehlgeschlagen: ${String(e)}`;
+    res.status(/\b40[13]\b/.test(String(e)) ? 403 : 500).json({ error: msg });
+  }
+});
 
 app.put("/api/settings", (req, res) => {
   for (const [k, v] of Object.entries(req.body || {})) setSetting(k, v);
@@ -299,6 +349,8 @@ app.post("/api/races", (req, res) => {
      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
     JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.source || "manual");
+  // v0.14.0 (ToDo 3): neuer Wettkampf → fehlende Wochen bis zum Renntag herstellen (Wettkampf-Planung).
+  ensureSeasonWeeks(pid());
   res.json({ id: Number(r.lastInsertRowid) });
 });
 
@@ -346,6 +398,84 @@ app.post("/api/races/import-from-season", (_req, res) => {
   res.json({ created });
 });
 
+// ---- Bestzeiten + Critical Speed (v0.14.0, ToDo 8) ----------------------
+// PBs je Standarddistanz aus Stravas best_efforts; 2-Parameter-CS-Modell d = CS·t + D' (lineare
+// Regression über aerobe PBs 2–30 min, ≥1000 m) + Vorhersagen für 5k/10k/HM/M.
+const CS_PRED_DISTANCES = [5000, 10000, 21097, 42195];
+app.get("/api/bests", (_req, res) => {
+  const rows = db.prepare(
+    "SELECT date, name, best_efforts FROM activities WHERE profile_id=? AND sport='Run' AND best_efforts IS NOT NULL AND best_efforts<>'' AND best_efforts<>'{}'",
+  ).all(pid()) as { date: string; name: string; best_efforts: string }[];
+  const best = new Map<number, { distance_m: number; time_s: number; date: string; name: string }>();
+  for (const r of rows) {
+    const be = parseJson<Record<string, number>>(r.best_efforts, {});
+    for (const [d, t] of Object.entries(be)) {
+      const dist = Number(d), time = Number(t);
+      if (!(dist > 0 && time > 0)) continue;
+      const cur = best.get(dist);
+      if (!cur || time < cur.time_s) best.set(dist, { distance_m: dist, time_s: time, date: r.date, name: r.name });
+    }
+  }
+  const pbs = [...best.values()]
+    .map((p) => ({ ...p, pace_s: Math.round(p.time_s / (p.distance_m / 1000)) }))
+    .sort((a, b) => a.distance_m - b.distance_m);
+
+  const fit = pbs.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000);
+  let cs: { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number } | null = null;
+  const predictions: { distance_m: number; time_s: number }[] = [];
+  if (fit.length >= 2) {
+    const n = fit.length;
+    const sx = fit.reduce((s, p) => s + p.time_s, 0);
+    const sy = fit.reduce((s, p) => s + p.distance_m, 0);
+    const sxx = fit.reduce((s, p) => s + p.time_s * p.time_s, 0);
+    const sxy = fit.reduce((s, p) => s + p.time_s * p.distance_m, 0);
+    const denom = n * sxx - sx * sx;
+    const csMps = denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+    const dPrime = (sy - csMps * sx) / n;
+    if (csMps > 0) {
+      const meanY = sy / n;
+      const ssTot = fit.reduce((s, p) => s + (p.distance_m - meanY) ** 2, 0);
+      const ssRes = fit.reduce((s, p) => s + (p.distance_m - (csMps * p.time_s + dPrime)) ** 2, 0);
+      cs = {
+        cs_mps: Math.round(csMps * 1000) / 1000,
+        cs_pace_s: Math.round(1000 / csMps),
+        dPrime_m: Math.round(dPrime),
+        rSquared: ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 1000) / 1000 : null,
+        n,
+      };
+      for (const D of CS_PRED_DISTANCES) {
+        const t = (D - dPrime) / csMps;
+        if (t > 0) predictions.push({ distance_m: D, time_s: Math.round(t) });
+      }
+    }
+  }
+  res.json({ pbs, cs, predictions });
+});
+
+// Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12) — Wochenmittel für den Langzeit-Trend.
+app.get("/api/plan-adherence", (_req, res) => {
+  const weeks = db.prepare("SELECT week_no, start_date, end_date FROM season_weeks_v2 WHERE profile_id=? ORDER BY start_date").all(pid()) as { week_no: number; start_date: string; end_date: string }[];
+  const out = weeks.map((w) => {
+    const sessions = db.prepare("SELECT id, planned_tss, zone_alloc FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ?").all(pid(), w.start_date, w.end_date) as any[];
+    const acts = db.prepare("SELECT tss, pace_zone_min, matched_session_id FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").all(pid(), w.start_date, w.end_date) as any[];
+    const paceZones = effectiveZoneSet(w.start_date).pace_zones;
+    const pcts: number[] = [];
+    for (const s of sessions) {
+      const a = acts.find((x) => x.matched_session_id === s.id);
+      if (!a) continue;
+      const comp = sessionCompletion(
+        { planned_tss: s.planned_tss, zone_alloc: parseJson(s.zone_alloc, null) },
+        { tss: a.tss, pace_zone_min: parseJson<Record<number, number> | null>(a.pace_zone_min, null) },
+        paceZones,
+      );
+      if (comp) pcts.push(comp.pct);
+    }
+    const pct = pcts.length ? Math.round(pcts.reduce((s, x) => s + x, 0) / pcts.length) : null;
+    return { week_no: w.week_no, start: w.start_date, end: w.end_date, pct, n: pcts.length };
+  });
+  res.json(out);
+});
+
 // ---- options (konfigurierbare Auswahllisten: phase/sport/sessionType/...) ----
 
 app.get("/api/options", (req, res) => {
@@ -379,7 +509,37 @@ app.delete("/api/options/:id", (req, res) => {
 
 // ---- season ------------------------------------------------------------
 
+// v0.14.0 (ToDo 3): immer mind. 2 Wochen in die Zukunft vorhalten + bis zum spätesten Renntag auffüllen.
+// Hängt nur leere Kalenderwochen (Mo–So) ans Ende an — löscht/ändert nie Bestehendes. Idempotent.
+// Bootstrappt KEINE leere Saison (nur wenn schon ≥1 Woche existiert).
+function ensureSeasonWeeks(profile: number): number {
+  const weeks = db.prepare(
+    "SELECT week_no, end_date FROM season_weeks_v2 WHERE profile_id=? ORDER BY start_date",
+  ).all(profile) as { week_no: number; end_date: string }[];
+  if (!weeks.length) return 0;
+  let lastEnd = weeks[weeks.length - 1].end_date;
+  let maxNo = Math.max(...weeks.map((w) => w.week_no));
+  let targetEnd = addDaysIso(todayIso(), 14);
+  const raceMax = (db.prepare("SELECT MAX(date) m FROM races WHERE profile_id=?").get(profile) as { m: string | null }).m;
+  if (raceMax && raceMax > targetEnd) targetEnd = raceMax;
+  const ins = db.prepare(
+    `INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes)
+     VALUES(?,?,?,?,?,?,?,?,?)`,
+  );
+  let added = 0;
+  while (lastEnd < targetEnd && added < 120) {
+    const start = addDaysIso(lastEnd, 1);
+    const end = addDaysIso(start, 6);
+    ins.run(profile, ++maxNo, "", "", start, end, null, "", "");
+    lastEnd = end;
+    added++;
+  }
+  if (added) renumberWeeks();
+  return added;
+}
+
 app.get("/api/season", (_req, res) => {
+  ensureSeasonWeeks(pid()); // immer 2 Zukunftswochen + bis Renntag (v0.14.0)
   // Chronologisch, nicht nach week_no: Wochen können vorne angefügt werden (negative week_no, #71).
   res.json(db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? ORDER BY start_date").all(pid()));
 });
@@ -556,6 +716,32 @@ app.delete("/api/sessions/:id", (req, res) => {
 
 // ---- activities (actuals) ---------------------------------------------
 
+// v0.14.0 (ToDo 3): Lauf mit Typ „Wettkampf" → automatisch verknüpfter Race-Eintrag (source='tracking').
+// Shell-Felder (Datum/Name/Distanz/Zeit/HF/Hm) folgen der Aktivität; Splits kommen aus dem Enrich
+// (Strava-Streams). Wird der Typ wieder geändert, verschwindet der Auto-Race wieder.
+function syncRaceFromActivity(activityId: number, b: any): void {
+  const profile = pid();
+  const isRace = (b.sport || "Run") === "Run" && b.type === "Race";
+  const link = db.prepare("SELECT id FROM races WHERE profile_id=? AND activity_id=?").get(profile, activityId) as { id: number } | undefined;
+  if (isRace) {
+    const name = b.name || "Wettkampf";
+    if (link) {
+      db.prepare("UPDATE races SET date=?, name=?, distance_m=?, time_s=?, avg_hr=?, max_hr=?, elevation_m=? WHERE id=?")
+        .run(b.date, name, b.distance_m ?? null, b.moving_s ?? null, b.avg_hr ?? null, b.max_hr ?? null, b.elevation ?? null, link.id);
+    } else {
+      db.prepare(
+        `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, avg_hr, elevation_m, source, activity_id)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(profile, b.date, name, b.distance_m ?? null, b.moving_s ?? null, "", "", "[]", b.max_hr ?? null, b.avg_hr ?? null, b.elevation ?? null, "tracking", activityId);
+      ensureSeasonWeeks(profile); // Wochen bis zum Renntag herstellen
+      // Strava-Streams erneut anfordern → nächster „Details nachziehen" füllt die km-Splits (auch nachträglich).
+      db.prepare("UPDATE activities SET streams_fetched=0 WHERE id=? AND profile_id=? AND source='strava'").run(activityId, profile);
+    }
+  } else if (link) {
+    db.prepare("DELETE FROM races WHERE id=? AND source='tracking'").run(link.id);
+  }
+}
+
 app.get("/api/activities", (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const rows = (from && to
@@ -598,7 +784,9 @@ app.post("/api/activities", (req, res) => {
       b.matched_session_id ?? null,
       b.notes || "",
     );
-  res.json({ id: Number(r.lastInsertRowid) });
+  const newId = Number(r.lastInsertRowid);
+  syncRaceFromActivity(newId, b); // Race aus Tracking (v0.14.0)
+  res.json({ id: newId });
 });
 
 app.put("/api/activities/:id", (req, res) => {
@@ -633,6 +821,7 @@ app.put("/api/activities/:id", (req, res) => {
     b.sport === "General" ? 1 : 0,
     req.params.id,
   );
+  syncRaceFromActivity(Number(req.params.id), b); // Race aus Tracking (v0.14.0)
   res.json({ ok: true });
 });
 
@@ -821,6 +1010,11 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Projektion CTL-Ramp & Form über die Woche
   let projectedCtlRamp: number | null = null;
   let projectedTsb: number | null = null;
+  // Race-Taper (v0.14.0, ToDo 4): bezieht sich auf die 7 Tage VOR dem Renntag, nicht die Kalenderwoche.
+  let raceDate: string | null = null;
+  let raceTsb: number | null = null;
+  let racePre7Tss: number | null = null;
+  let raceAvgWeeklyTss: number | null = null;
   if (wk) {
     // Seeding aus der vollen Historie → korrekte CTL/ATL bis ins Wochenende (Projektion).
     const from = minIso(earliestDataDate() ?? "2026-01-01", "2026-01-01");
@@ -828,6 +1022,21 @@ app.get("/api/analyze/week/:no", (req, res) => {
     const pmc = computePmc(map, from, wk.end_date, todayIso());
     projectedCtlRamp = ctlRamp(pmc, 7);
     projectedTsb = pmc.length ? pmc[pmc.length - 1].tsb : null;
+
+    // Renntag in der Wochen-Spanne (Races-Tabelle bevorzugt, sonst goal_race → Wochenende).
+    const raceRow = db.prepare(
+      "SELECT date FROM races WHERE profile_id=? AND date BETWEEN ? AND ? ORDER BY date LIMIT 1",
+    ).get(pid(), wk.start_date, wk.end_date) as { date: string } | undefined;
+    raceDate = raceRow?.date ?? (wk.goal_race && String(wk.goal_race).trim() ? wk.end_date : null);
+    if (raceDate) {
+      const pmcR = computePmc(dailyTssMap(from, raceDate), from, raceDate, todayIso());
+      raceTsb = pmcR.length ? pmcR[pmcR.length - 1].tsb : null;
+      const pre7 = db.prepare(
+        "SELECT SUM(COALESCE(planned_tss,0)) s FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ?",
+      ).get(pid(), addDaysIso(raceDate, -6), raceDate) as { s: number };
+      racePre7Tss = Math.round(pre7.s || 0);
+      raceAvgWeeklyTss = avgPlannedWeeklyTss(raceDate, thresholds().intensity_window_weeks);
+    }
   }
 
   // Readiness aus letzten 7 Tagen daily_log
@@ -846,6 +1055,10 @@ app.get("/api/analyze/week/:no", (req, res) => {
     recentWeeksKm,
     projectedCtlRamp,
     projectedTsb,
+    raceDate,
+    raceTsb,
+    racePre7Tss,
+    raceAvgWeeklyTss,
     readiness,
     thresholds: thresholds(),
   });
@@ -877,9 +1090,11 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // `h` (Stunden) kommt zusätzlich dazu (Fix-Runde, Anzeige in km/h).
   const realByCategory: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } } =
     { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0 } };
+  // Plan-Erfüllung je gematchter Einheit (v0.14.0, ToDo 12)
+  let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null } = { perSession: [], weekPct: null };
   if (wk) {
     const acts = db
-      .prepare("SELECT sport, type, distance_m, moving_s, zones, zone_min, zone_km, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -941,6 +1156,23 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realByCategory.bike.h = r1(realByCategory.bike.min / 60);
     realByCategory.strength.min = r1(realByCategory.strength.min);
     realByCategory.strength.h = r1(realByCategory.strength.min / 60);
+
+    // Plan-Erfüllung je geplanter Einheit mit gematchter Aktivität (v0.14.0, ToDo 12).
+    const perSession = planned
+      .filter((p) => p.id != null)
+      .map((p) => {
+        const a = acts.find((x) => x.matched_session_id === p.id);
+        if (!a) return null;
+        const comp = sessionCompletion(
+          { planned_tss: p.planned_tss, zone_alloc: p.zone_alloc },
+          { tss: a.tss, pace_zone_min: parseJson<Record<number, number> | null>(a.pace_zone_min, null) },
+          zs.pace_zones,
+        );
+        return comp ? { session_id: p.id as number, date: p.date, type: p.type, pct: comp.pct, tssOnly: comp.tssOnly } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+    const weekPct = perSession.length ? Math.round(perSession.reduce((s, x) => s + x.pct, 0) / perSession.length) : null;
+    adherence = { perSession, weekPct };
   }
 
   // Intensität & Wochen-Last (ToDo v0.7.0): Donut nach Einheitstyp, Polarisierung über km-in-Zone.
@@ -990,7 +1222,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
-    realLoadFlag, realKmFlag,
+    realLoadFlag, realKmFlag, adherence,
   });
 });
 

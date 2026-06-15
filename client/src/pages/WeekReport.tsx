@@ -4,16 +4,17 @@
 // Seite 2: vollständige Tagesfaktoren-Tabelle · Wellness-Verläufe · Reflexion.
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 import {
   api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race,
 } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
-  fmtDur, weekLabel, phaseLabel, addDays, todayIso,
+  fmtDur, weekLabel, phaseLabel, addDays,
 } from "../lib/util.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
-import { useOptions } from "../lib/options.ts";
+import { useOptions, typeIntensity } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
@@ -103,9 +104,10 @@ export default function WeekReport() {
   }
   useEffect(() => {
     reload();
-    // PMC baut sich ab 1.1. des aktuellen Jahres auf, 2 Wochen Prognose über heute (ToDo #8).
+    // PMC baut sich ab 1.1. des aktuellen Jahres auf und endet exakt am Ende der Berichtswoche
+    // (v0.14.0): so spiegelt der Bericht rückwirkend genau den Stand „bis zu dieser Woche".
     if (week) {
-      api.pmc(yearStart, addDays(todayIso(), 14))
+      api.pmc(yearStart, week.end_date)
         .then((r) => setPmcWin(r.pmc)).catch(() => setPmcWin([]));
     }
     // eslint-disable-next-line
@@ -145,6 +147,44 @@ export default function WeekReport() {
   const runActs = acts.filter((a) => a.sport === "Run");
   const actualKm = round1(runActs.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
   const actualTss = round1(acts.reduce((s, a) => s + (a.tss || 0), 0));
+
+  // Saison-Progression nur bis einschl. der Berichtswoche (v0.14.0, ToDo 2) — Renderzeit-Filter,
+  // damit der Wochenwechsel greift (der seasonRows-Effekt ist auf [season] gekeyt).
+  const reportRows = seasonRows.filter((r) => !r.start || r.start <= week.start_date);
+
+  // PMC-Kennzahlen am Wochenende (v0.14.0, ToDo 2): CTL/ATL/TSB am letzten Tag der Woche + CTL-Ramp
+  // (Δ CTL ggü. 7 Tage davor). Aus dem (bereits auf die Woche beschnittenen) pmcWin abgeleitet.
+  const endPt = [...pmcWin].reverse().find((p) => p.date <= week.end_date) ?? null;
+  const prevCtl = endPt ? pmcWin.find((p) => p.date === addDays(endPt.date, -7))?.ctl ?? null : null;
+  const endRamp = endPt && prevCtl != null ? round1(endPt.ctl - prevCtl) : null;
+
+  // Efficiency Factor je Wochentag (DL/Longruns) — zeigt Carry-over harter Vortage (v0.14.0, ToDo 11).
+  const efByDay = days.map((d, i) => {
+    const runs = acts.filter((a) => a.date === d && isEasyRunType(a.type))
+      .map((a) => ({ ef: efOf(a), km: (a.distance_m || 0) / 1000 }))
+      .filter((x): x is { ef: number; km: number } => x.ef != null);
+    let ef: number | null = null;
+    if (runs.length) {
+      const wsum = runs.reduce((s, r) => s + r.km, 0);
+      ef = wsum > 0
+        ? Math.round((runs.reduce((s, r) => s + r.ef * r.km, 0) / wsum) * 100) / 100
+        : Math.round((runs.reduce((s, r) => s + r.ef, 0) / runs.length) * 100) / 100;
+    }
+    const prev = addDays(d, -1);
+    const hardPrev = acts.some((a) => a.date === prev && (a.type === "Race" || (!!a.type && typeIntensity(a.type) === "hard")));
+    return { day: DAY_NAMES[i], date: d, ef, hardPrev };
+  });
+  const efVals = efByDay.map((x) => x.ef).filter((v): v is number => v != null);
+  const efAvg = efVals.length ? Math.round((efVals.reduce((a, b) => a + b, 0) / efVals.length) * 100) / 100 : null;
+
+  // Plan-Erfüllung je Wochentag (v0.14.0, ToDo 12) — Ø der gematchten Einheiten des Tages.
+  const adh = (analyze as any)?.adherence as { perSession: { date: string; pct: number }[]; weekPct: number | null } | undefined;
+  const adhByDay = days.map((d, i) => {
+    const sess = adh?.perSession.filter((p) => p.date === d) ?? [];
+    const pct = sess.length ? Math.round(sess.reduce((s, x) => s + x.pct, 0) / sess.length) : null;
+    return { day: DAY_NAMES[i], pct };
+  });
+  const hasAdh = adhByDay.some((x) => x.pct != null);
 
   // ---- reale Zeit-in-Zone: bevorzugt vom Server (paralleler Agent), sonst clientseitig ----
   const anyAnalyze = analyze as any;
@@ -222,6 +262,11 @@ export default function WeekReport() {
                 const real = acts.filter((a) => a.date === d);
                 const dl = byDate.get(d);
                 const noted = real.filter((a) => (a.notes && a.notes.trim()) || (a.efforts && a.efforts.length));
+                // Commutes/Allgemein (sport General) je Tag zu einer Zeile bündeln — spart Druckplatz (v0.14.0, ToDo 9).
+                const general = real.filter((a) => a.sport === "General");
+                const mainActs = real.filter((a) => a.sport !== "General");
+                const genKm = round1(general.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0));
+                const genSec = general.reduce((s, a) => s + (a.moving_s || 0), 0);
                 return [
                   <tr key={d} className={noted.length ? "has-note" : ""}>
                     <td className="nowrap"><strong>{DAY_NAMES[i]}</strong> <span className="muted tiny">{fmtDate(d)}</span></td>
@@ -231,7 +276,7 @@ export default function WeekReport() {
                         <span className="muted tiny">{p.planned_km ? ` · ${p.planned_km} km` : p.planned_min ? ` · ${p.planned_min} min` : ""}</span>
                       </div>
                     ))}</td>
-                    <td>{real.map((a) => (
+                    <td>{mainActs.map((a) => (
                       <div key={a.id}>
                         {a.name || sportLabel(a.sport)}
                         <span className="muted tiny">
@@ -242,7 +287,15 @@ export default function WeekReport() {
                           {a.avg_hr ? ` · Ø${Math.round(a.avg_hr)}` : ""}
                         </span>
                       </div>
-                    ))}</td>
+                    ))}
+                    {general.length > 0 && (
+                      <div>
+                        Commute{general.length > 1 ? ` ×${general.length}` : ""}
+                        <span className="muted tiny">
+                          {genKm ? ` · ${genKm} km` : ""}{genSec ? ` · ${fmtDur(genSec)}` : ""}
+                        </span>
+                      </div>
+                    )}</td>
                     <td>{round1(real.reduce((s, a) => s + (a.distance_m || 0) / 1000, 0)) || ""}</td>
                     <td>{fmtIf(real.reduce((s, a) => s + (a.moving_s || 0), 0))}</td>
                     <td>{round1(real.reduce((s, a) => s + (a.tss || 0), 0)) || ""}</td>
@@ -264,6 +317,49 @@ export default function WeekReport() {
               })}
             </tbody>
           </table>
+
+          {/* Efficiency Factor je Wochentag (DL/Longruns) — v0.14.0, ToDo 11 */}
+          {efVals.length > 0 && (
+            <div className="card tight mt">
+              <div className="spread">
+                <h3 style={{ margin: 0 }}>Efficiency Factor — DL &amp; Longruns <span className="muted tiny">(NGP-Tempo / Ø-HF)</span></h3>
+                {efAvg != null && <span className="tiny muted">Ø Woche {efAvg}</span>}
+              </div>
+              <div className="ef-strip mt">
+                {efByDay.map((x) => (
+                  <div key={x.date} className={"ef-cell" + (x.hardPrev ? " hard-prev" : "")}>
+                    <div className="ef-day">{x.day}</div>
+                    <div className="ef-val">{x.ef != null ? x.ef.toFixed(2) : "–"}</div>
+                    {x.hardPrev && <div className="ef-mark" title="harte Einheit / Wettkampf am Vortag">⚡ hart davor</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Plan-Erfüllung je Wochentag (v0.14.0, ToDo 12) */}
+          {hasAdh && (
+            <div className="chart-card mt">
+              <div className="spread">
+                <h3 style={{ margin: 0 }}>Plan-Erfüllung <span className="muted tiny">(TSS-Treffer + Zeit in Ziel-Pace-Zone)</span></h3>
+                {adh?.weekPct != null && <span className="tiny muted">Ø Woche {adh.weekPct} %</span>}
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={adhByDay} margin={{ top: 10, right: 12, left: -8, bottom: 4 }}>
+                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={32} unit="%" />
+                  <Tooltip formatter={(v: any) => [`${v} %`, "Plan-Erfüllung"]} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
+                  {adh?.weekPct != null && <ReferenceLine y={adh.weekPct} stroke="var(--muted)" strokeDasharray="4 4" />}
+                  <Bar dataKey="pct" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                    {adhByDay.map((x, i) => (
+                      <Cell key={i} fill={x.pct == null ? "transparent" : x.pct >= 90 ? "var(--ok)" : x.pct >= 70 ? "var(--form)" : "var(--danger)"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Wettkämpfe der Woche (ToDo #24) — einzeln mit Splits */}
           {weekRaces.length > 0 && (
@@ -332,16 +428,29 @@ export default function WeekReport() {
           {analyze && (analyze.realLoadFlag || analyze.realKmFlag) && (
             <div className="chart-card mt">
               <h3>Bewertung der realen Woche</h3>
-              {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
-                <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
-              ))}
+              <div className="flag-row">
+                {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
+                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+                ))}
+              </div>
             </div>
           )}
           {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
           <div className="chart-card mt">
-            <h3>PMC — seit Jahresbeginn</h3>
-            <Pmc data={pmcWin} height={210} highlight={{ from: week.start_date, to: week.end_date }}
-              races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
+            <h3>PMC — bis {weekLabel(week)}</h3>
+            <div className="pmc-row">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Pmc data={pmcWin} height={210} highlight={{ from: week.start_date, to: week.end_date }}
+                  races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
+              </div>
+              {/* Last-Kennzahlen am Wochenende (v0.14.0, ToDo 2) */}
+              <div className="pmc-values">
+                <Mini label="Fitness (CTL)" v={endPt ? Math.round(endPt.ctl) : "–"} cls="fitness" />
+                <Mini label="Fatigue (ATL)" v={endPt ? Math.round(endPt.atl) : "–"} cls="fatigue" />
+                <Mini label="Form (TSB)" v={endPt ? signed(Math.round(endPt.tsb)) : "–"} cls="form" />
+                <Mini label="CTL-Ramp /Wo" v={endRamp != null ? signed(endRamp) : "–"} />
+              </div>
+            </div>
           </div>
           {/* Wochentags-Chart (1/3) neben der Saison-Progression (2/3) — ToDo Z.9 */}
           <div className="chart-grid mt" style={{ gridTemplateColumns: "1fr 2fr" }}>
@@ -351,7 +460,7 @@ export default function WeekReport() {
             </div>
             <div className="chart-card">
               <h3>Saison-Progression (geplant / real km)</h3>
-              <SeasonProgress rows={seasonRows} height={210} highlightLabel={weekLabel(week)}
+              <SeasonProgress rows={reportRows} height={210} highlightLabel={weekLabel(week)}
                 races={racesByWeek} sickLabels={sickLabels} showYears={false} />
             </div>
           </div>
@@ -421,8 +530,8 @@ export default function WeekReport() {
   );
 }
 
-function Mini({ label, v, sub }: { label: string; v: string | number; sub?: string }) {
-  return <div className="stat"><div className="label">{label}</div><div className="value" style={{ fontSize: 18 }}>{v === "" || v == null ? "–" : v}</div>{sub && <div className="sub">{sub}</div>}</div>;
+function Mini({ label, v, sub, cls }: { label: string; v: string | number; sub?: string; cls?: string }) {
+  return <div className="stat"><div className="label">{label}</div><div className={"value" + (cls ? ` ${cls}` : "")} style={{ fontSize: 18 }}>{v === "" || v == null ? "–" : v}</div>{sub && <div className="sub">{sub}</div>}</div>;
 }
 function CatBox({ label, main, sub }: { label: string; main: string; sub?: string }) {
   return (
@@ -439,6 +548,16 @@ function Refl({ label, v, on }: { label: string; v?: string; on: (x: string) => 
 
 // ---- Helfer ----
 function round1(n: number) { return Math.round(n * 10) / 10; }
+function signed(n: number): string { return n > 0 ? `+${n}` : `${n}`; }
+// Efficiency Factor (v0.14.0, ToDo 11): NGP-Tempo (m/min) / Ø-HF. ngp ist s/km → 60000/ngp = m/min.
+function efOf(a: Activity): number | null {
+  if (a.sport !== "Run" || !a.ngp || !a.avg_hr) return null;
+  return Math.round(((60000 / a.ngp) / a.avg_hr) * 100) / 100;
+}
+// „normale DL" + Longrun + untypisiert (moderate/harte Typen wie Steady/LT2/VO2 ausgeschlossen).
+function isEasyRunType(t?: string | null): boolean {
+  return !t || t === "Easy" || t === "Long";
+}
 function hours(min: number): string { return min > 0 ? fmtDur(min * 60) : "–"; }
 function fmtIf(sec: number): string { return sec > 0 ? fmtDur(sec) : ""; }
 function hasVal(v: unknown): boolean { return v != null && v !== "" && !(typeof v === "number" && isNaN(v)); }

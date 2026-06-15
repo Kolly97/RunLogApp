@@ -10,7 +10,7 @@ import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
@@ -95,6 +95,7 @@ export default function LongTerm() {
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
+  const [adherence, setAdherence] = useState<PlanAdherenceWeek[]>([]); // Plan-Erfüllung je Woche (v0.14.0)
   // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
   const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
 
@@ -122,6 +123,8 @@ export default function LongTerm() {
 
   // Wochen-Checks (manuell abgehakt) für die Heatmap (ToDo 7) — unabhängig vom Zeitraum, einmal laden.
   useEffect(() => { api.weeklogs().then(setWeeklogs).catch(() => setWeeklogs([])); }, []);
+  // Plan-Erfüllung je Woche — einmal laden, Anzeige per Zeitraum gefiltert (v0.14.0, ToDo 12).
+  useEffect(() => { api.planAdherence().then(setAdherence).catch(() => setAdherence([])); }, []);
 
   const navigate = useNavigate();
   const racesByDate = raceMarkersByDate(allSessions, allRaces);
@@ -188,6 +191,14 @@ export default function LongTerm() {
   const wellnessPhaseRuns = phaseRunsByDate(pointDates, season);
   const effYears = yearMarksByDateAll(effDates);
   const effPhaseRuns = phaseRunsByDate(effDates, season);
+  // Plan-Erfüllung (Wochenmittel) im Zeitraum (v0.14.0, ToDo 12).
+  const adhData = adherence
+    .filter((w) => !range || (w.end >= range.from && w.start <= range.to))
+    .map((w) => ({ date: w.start, pct: w.pct }));
+  const hasAdh = adhData.some((d) => d.pct != null);
+  const adhDates = adhData.map((d) => d.date);
+  const adhPhaseRuns = phaseRunsByDate(adhDates, season);
+  const adhYears = yearMarksByDateAll(adhDates);
   // Trainingsphase zu einem Datum (für die Chart-Tooltips, ToDo 4).
   const phaseAtDate = (d: string): string => {
     const w = season.find((x) => x.start_date <= d && d <= x.end_date);
@@ -356,6 +367,34 @@ export default function LongTerm() {
           </div>
         )}
       </div>
+
+      {/* (b3) Plan-Erfüllung (Wochenmittel) — v0.14.0, ToDo 12 */}
+      {hasAdh && (
+        <div className="card">
+          <div className="spread">
+            <h2>Plan-Erfüllung (Wochenmittel)</h2>
+            <span className="tiny muted">TSS-Treffer + Zeit in Ziel-Pace-Zone, je Woche</span>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={adhData} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+              <CartesianGrid stroke="#eef1f5" vertical={false} />
+              <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="%" />
+              <Tooltip
+                labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
+                formatter={(v: number) => [`${v} %`, "Plan-Erfüllung"]}
+                contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+              />
+              <Line type="monotone" dataKey="pct" name="Plan-Erfüllung" stroke="#0891b2" strokeWidth={1.8}
+                connectNulls dot={{ r: 3, fill: "#0891b2", strokeWidth: 0 }} />
+              <Customized component={(p: any) => <ChartDecor {...p} runs={adhPhaseRuns} years={adhYears} />} />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+            Wie konsequent die geplanten Einheiten umgesetzt wurden (gematchte Einheiten je Woche).
+          </p>
+        </div>
+      )}
 
       {/* (b2) Wochen-Check-Heatmap (ToDo 7) */}
       <div className="card">

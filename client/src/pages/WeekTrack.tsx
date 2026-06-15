@@ -4,7 +4,7 @@ import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet } 
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
-  paceOrSpeed, isBikeSport, speedKmh, paceStr,
+  paceOrSpeed, isBikeSport, speedKmh, paceStr, clockToSec, secToClock,
 } from "../lib/util.ts";
 import { useOptions, type Option } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
@@ -16,32 +16,44 @@ export default function WeekTrack() {
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [acts, setActs] = useState<Activity[]>([]);
   const [daily, setDaily] = useState<Record<string, DailyLog>>({});
-  const [coros, setCoros] = useState(0.6);
   const [zs, setZs] = useState<ZoneSet | null>(null);
+  const [extra, setExtra] = useState(false); // „Zusätzliche Einheit" mit freiem Datum (v0.14.0)
+  const [adh, setAdh] = useState<Record<number, { pct: number; tssOnly: boolean }>>({}); // Plan-Erfüllung je Einheit (v0.14.0)
+  const [view, setView] = useState<"day" | "week">("day"); // Tages-Switcher (Default) vs. ganze Woche (v0.14.0, ToDo 13)
+  const [selDate, setSelDate] = useState<string>(""); // gewählter Tag im Tag-Modus
 
   async function reload() {
     if (!week) return;
-    const [s, a, d, set, z] = await Promise.all([
+    const [s, a, d, z, an] = await Promise.all([
       api.sessions({ week: week.week_no }),
       api.activities({ from: week.start_date, to: week.end_date }),
       api.daily({ from: week.start_date, to: week.end_date }),
-      api.settings(),
       api.zoneset(week.start_date).catch(() => null),
+      api.analyzeWeek(week.week_no).catch(() => null),
     ]);
     setSessions(s); setActs(a);
     setDaily(Object.fromEntries(d.map((x) => [x.date, x])));
-    setCoros(set.coros_to_tss ?? 0.6);
     setZs(z);
+    const map: Record<number, { pct: number; tssOnly: boolean }> = {};
+    for (const p of an?.adherence?.perSession ?? []) map[p.session_id] = { pct: p.pct, tssOnly: p.tssOnly };
+    setAdh(map);
   }
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [week?.week_no]);
 
-  // Sprung aus dem PMC: ?date=YYYY-MM-DD wählt die zugehörige Woche.
+  // Gewählten Tag setzen, wenn die Woche wechselt: heute (falls in der Woche), sonst Wochenstart.
+  useEffect(() => {
+    if (!week) return;
+    const t = todayIso();
+    setSelDate(t >= week.start_date && t <= week.end_date ? t : week.start_date);
+  }, [week?.week_no]); // eslint-disable-line
+
+  // Sprung aus dem PMC: ?date=YYYY-MM-DD wählt die zugehörige Woche (und den Tag).
   const [params] = useSearchParams();
   useEffect(() => {
     const d = params.get("date");
     if (!d || !season.length) return;
     const w = season.find((x) => x.start_date <= d && d <= x.end_date);
-    if (w) setWeekNo(w.week_no);
+    if (w) { setWeekNo(w.week_no); setSelDate(d); }
     // eslint-disable-next-line
   }, [season, params]);
 
@@ -49,26 +61,81 @@ export default function WeekTrack() {
   if (!week) return <div className="empty">Keine Woche — erst Saison anlegen (Einstellungen).</div>;
 
   const days = daysOfWeek(week.start_date);
+  const extraAct: Activity = { date: todayIso(), source: "manual", sport: "Run", type: null };
+  // Gewählter Tag robust: gesetzter selDate, sonst heute (falls in Woche), sonst erster Tag.
+  const curDay = days.includes(selDate) ? selDate : (days.includes(todayIso()) ? todayIso() : days[0]);
+
+  const dayCard = (d: string) => (
+    <DayCard key={d} date={d} dayName={DAY_NAMES[days.indexOf(d)]}
+      planned={sessions.filter((s) => s.date === d)}
+      acts={acts.filter((a) => a.date === d)}
+      daily={daily[d]} zs={zs} adh={adh} onChange={reload} />
+  );
 
   return (
     <div>
-      <div className="spread"><h1>Tracking</h1><WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
-        jumpTo={week ? { href: `/report?date=${week.start_date}`, title: "Zur gleichen Woche im Wochenbericht", label: "→ Bericht" } : undefined} /></div>
+      <div className="spread"><h1>Tracking</h1>
+        <div className="row" style={{ width: "auto", gap: 8 }}>
+          <span className="seg" title="Einzelnen Tag oder die ganze Woche zeigen">
+            <button className={view === "day" ? "active" : ""} onClick={() => setView("day")}>Tag</button>
+            <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Woche</button>
+          </span>
+          <button className="sm" onClick={() => setExtra(true)} title="Eine getrackte Einheit mit frei wählbarem Datum eintragen (auch außerhalb dieser Woche)">+ Zusätzliche Einheit</button>
+          <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
+            jumpTo={week ? { href: `/report?date=${week.start_date}`, title: "Zur gleichen Woche im Wochenbericht", label: "→ Bericht" } : undefined} />
+        </div>
+      </div>
       <div className="card tight"><div className="row"><span className="pill phase">{week.phase}</span><strong>Woche {week.week_no}</strong><span className="muted tiny">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span></div></div>
 
-      {days.map((d, i) => (
-        <DayCard key={d} date={d} dayName={DAY_NAMES[i]}
-          planned={sessions.filter((s) => s.date === d)}
-          acts={acts.filter((a) => a.date === d)}
-          daily={daily[d]} coros={coros} zs={zs} onChange={reload} />
-      ))}
+      {extra && (
+        <div className="card tight" style={{ marginBottom: 10 }}>
+          <div className="tiny muted mb">Zusätzliche getrackte Einheit (Datum frei wählbar)</div>
+          <ActivityRow a={extraAct} zs={zs} isNew dateEditable onChange={() => { setExtra(false); reload(); }} />
+        </div>
+      )}
+
+      {view === "day" ? (
+        <>
+          <WeekdayTabs days={days} sessions={sessions} acts={acts} selDate={curDay} onSelect={setSelDate} />
+          {dayCard(curDay)}
+        </>
+      ) : (
+        days.map((d) => dayCard(d))
+      )}
     </div>
   );
 }
 
-function DayCard({ date, dayName, planned, acts, daily, coros, zs, onChange }: {
+// Wochentag-Switcher (v0.14.0, ToDo 13): Tabs Mo–So mit Farbpunkten je geplanter Einheit (Typ-Farbe)
+// + grünem Punkt, sobald an dem Tag eine Einheit getrackt ist.
+function WeekdayTabs({ days, sessions, acts, selDate, onSelect }: {
+  days: string[]; sessions: PlannedSession[]; acts: Activity[]; selDate: string; onSelect: (d: string) => void;
+}) {
+  const today = todayIso();
+  return (
+    <div className="wd-tabs">
+      {days.map((d, i) => {
+        const planned = sessions.filter((s) => s.date === d && s.type !== "Rest");
+        const hasActs = acts.some((a) => a.date === d);
+        return (
+          <button key={d} type="button" onClick={() => onSelect(d)}
+            className={"wd-tab" + (d === selDate ? " active" : "") + (d === today ? " today" : "")}>
+            <div className="wd-name">{DAY_NAMES[i]}</div>
+            <div className="wd-date">{fmtDate(d)}</div>
+            <div className="wd-dots">
+              {planned.map((p) => <span key={p.id} className="dot" style={{ background: typeColor(p.type) }} />)}
+              {hasActs && <span className="dot" style={{ background: "var(--ok)" }} title="getrackt" />}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DayCard({ date, dayName, planned, acts, daily, zs, adh, onChange }: {
   date: string; dayName: string; planned: PlannedSession[]; acts: Activity[];
-  daily?: DailyLog; coros: number; zs: ZoneSet | null; onChange: () => void;
+  daily?: DailyLog; zs: ZoneSet | null; adh: Record<number, { pct: number; tssOnly: boolean }>; onChange: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [quick, setQuick] = useState(false);
@@ -103,8 +170,8 @@ function DayCard({ date, dayName, planned, acts, daily, coros, zs, onChange }: {
 
       {quick && <QuickCommute date={date} onChange={() => { setQuick(false); onChange(); }} />}
 
-      {acts.map((a) => <ActivityRow key={a.id} a={a} coros={coros} zs={zs} onChange={onChange} />)}
-      {adding && <ActivityRow a={newAct} coros={coros} zs={zs} onChange={() => { setAdding(false); onChange(); }} isNew />}
+      {acts.map((a) => <ActivityRow key={a.id} a={a} zs={zs} adh={adh} onChange={onChange} />)}
+      {adding && <ActivityRow a={newAct} zs={zs} adh={adh} onChange={() => { setAdding(false); onChange(); }} isNew />}
 
       <DailyForm date={date} daily={daily} />
     </div>
@@ -147,8 +214,8 @@ function defaultZoneUnit(x: Activity): "km" | "min" {
   return isBikeSport(x.sport) || x.distance_m == null ? "min" : "km";
 }
 
-function ActivityRow({ a, coros, zs, onChange, isNew }: {
-  a: Activity; coros: number; zs: ZoneSet | null; onChange: () => void; isNew?: boolean;
+function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
+  a: Activity; zs: ZoneSet | null; adh?: Record<number, { pct: number; tssOnly: boolean }>; onChange: () => void; isNew?: boolean; dateEditable?: boolean;
 }) {
   const [e, setE] = useState<Activity>({ ...a });
   const [open, setOpen] = useState(!!isNew);
@@ -191,7 +258,7 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
     if (saving) return; // Doppel-Klick-Schutz
     setSaving(true);
     try {
-      const tss = e.tss ?? (e.training_load != null ? Math.round(e.training_load * coros * 10) / 10 : null);
+      const tss = e.tss ?? null;
       const body = { ...e, tss };
       if (e.id) await api.updateActivity(e.id, body);
       else await api.addActivity(body);
@@ -205,10 +272,13 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
   if (!open) {
     // Zugeklappt direkt aus den Props rendern — zeigt nach reload() immer den Server-Stand.
     const tempo = a.distance_m && a.moving_s ? paceOrSpeed(a.sport, a.distance_m, a.moving_s) : "";
+    const pa = a.matched_session_id != null ? adh?.[a.matched_session_id] : undefined; // Plan-Erfüllung (v0.14.0)
+    const paColor = pa ? (pa.pct >= 90 ? "var(--ok)" : pa.pct >= 70 ? "var(--form)" : "var(--danger)") : "";
     return (
-      <div className="sess" onClick={openForm} style={{ cursor: "pointer" }}>
+      <div className="sess" onClick={openForm} style={{ cursor: "pointer", borderLeft: `4px solid ${typeColor(a.type ?? "")}` }}>
         <span className="type-pill" style={{ background: a.source === "strava" ? "#fc5200" : "#64748b" }}>{a.source === "strava" ? "Strava" : "manuell"}</span>
         <span style={{ flex: 1 }}>{a.name || sportLabel(a.sport)}</span>
+        {pa && <span className="type-pill" style={{ background: paColor }} title={pa.tssOnly ? "nur TSS — Pace-Zonen noch nicht verfügbar (Details nachziehen)" : "Plan-Erfüllung: TSS-Treffer + Zeit in Ziel-Pace-Zone"}>{pa.pct}% Plan{pa.tssOnly ? "*" : ""}</span>}
         <span className="tiny muted nowrap">
           {a.distance_m ? (a.distance_m / 1000).toFixed(1) + " km" : ""}
           {a.sport === "Run" && a.ngp ? ` · GAP ${paceStr(a.ngp)}/km` : ""}
@@ -224,6 +294,11 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
 
   return (
     <div className="card tight" style={{ background: "#fafbfd", marginBottom: 8 }}>
+      {/* Zusätzliche Einheit mit frei wählbarem Datum (v0.14.0, ToDo 3) */}
+      {dateEditable && (
+        <label className="field" style={{ margin: "0 0 8px", maxWidth: 200 }}><span>Datum</span>
+          <input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
+      )}
       {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
       <div className="grid cols-3" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>Sport</span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
@@ -245,7 +320,7 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
       <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Leistung</div>
       <div className="grid cols-4" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>km</span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>Dauer (min)</span><input type="number" value={e.moving_s != null ? Math.round(e.moving_s / 60) : ""} onChange={(x) => set({ moving_s: num(x.target.value) != null ? Number(x.target.value) * 60 : null })} /></label>
+        <label className="field" style={{ margin: 0 }}><span>Dauer (h:mm:ss)</span><input key={`dur-${e.id ?? "new"}-${e.moving_s ?? ""}`} defaultValue={secToClock(e.moving_s)} placeholder="1:23:45" onBlur={(x) => set({ moving_s: clockToSec(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>{bike ? "Ø Geschwindigkeit" : "Ø Pace"}</span>
           <div style={{ padding: "6px 0", fontWeight: 600 }}>
             {paceOrSpeed(e.sport, e.distance_m, e.moving_s)}
@@ -256,12 +331,11 @@ function ActivityRow({ a, coros, zs, onChange, isNew }: {
       </div>
 
       <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Körper &amp; Last</div>
-      <div className="grid" style={{ gap: 8, gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="grid cols-4" style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>Ø HF</span><input type="number" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>Ø Power</span><input type="number" value={e.avg_power ?? ""} onChange={(x) => set({ avg_power: num(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>kcal</span><input type="number" value={e.kcal ?? ""} onChange={(x) => set({ kcal: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>COROS Load</span><input type="number" value={e.training_load ?? ""} onChange={(x) => set({ training_load: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>TSS (optional)</span><input type="number" value={e.tss ?? ""} placeholder={e.training_load != null ? `${Math.round(e.training_load * coros)}` : ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span>TSS (optional)</span><input type="number" value={e.tss ?? ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>
       </div>
 
       {/* km je Zone (einheitlich mit Planung, #77) — Umschalter auf Minuten für reine Zeit-Sportarten */}

@@ -57,6 +57,32 @@ export function fmtDur(sec?: number | null): string {
   return h ? `${h}:${m.toString().padStart(2, "0")} h` : `${m} min`;
 }
 
+/** Dauer-Eingabe → Sekunden. Akzeptiert „h:mm:ss" / „mm:ss"; eine reine Zahl ohne „:" gilt als
+ *  Minuten (rückwärtskompatibel zur alten Minuten-Eingabe). Leer/ungültig → null. */
+export function clockToSec(str?: string | null): number | null {
+  const t = (str ?? "").trim();
+  if (!t) return null;
+  if (!t.includes(":")) {
+    const min = Number(t);
+    return isNaN(min) ? null : Math.round(min * 60);
+  }
+  const m = t.match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})$/);
+  if (!m) return null;
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  return h * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+}
+
+/** Sekunden → „h:mm:ss" (mit führender Null bei m/s), sonst „m:ss". Leer/0 → "". */
+export function secToClock(sec?: number | null): string {
+  if (!sec || sec <= 0) return "";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  return h
+    ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+    : `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export function num(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);

@@ -198,6 +198,10 @@ function migrate(): void {
   addColumn("activities", "type", "TEXT");
   // v0.12.0 (ToDo 3): Marker, dass die Strava-Laps (→ automatische Intervall-Efforts) schon geholt wurden.
   addColumn("activities", "laps_fetched", "INTEGER DEFAULT 0");
+  // v0.14.0 (ToDo 8): Strava-Best-Efforts je Lauf (JSON {distance_m: time_s}) → Bestzeiten + Critical Speed.
+  addColumn("activities", "best_efforts", "TEXT");
+  // v0.14.0 (ToDo 12): Zeit je PACE-Zone (JSON {zone: Minuten}) → Plan-Erfüllung (Pace, nicht Puls).
+  addColumn("activities", "pace_zone_min", "TEXT");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
@@ -326,6 +330,8 @@ function migrate(): void {
   addColumn("races", "elevation_m", "REAL");
   addColumn("races", "source", "TEXT");
   addColumn("races", "avg_hr", "INTEGER");
+  // v0.14.0 (ToDo 3): Verknüpfung Race ↔ getrackte Aktivität (Race aus Tracking).
+  addColumn("races", "activity_id", "INTEGER");
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig
@@ -479,7 +485,6 @@ function seedDefaults() {
       intensity_window_weeks: 4, // Referenz-Fenster (Wochen) für Ø-TSS
     });
     setSetting("run_equiv_bike_factor", 0.25); // 1 Rad-km = 0.25 Run-km (editierbar)
-    setSetting("coros_to_tss", 0.6); // Kalibrierfaktor COROS TL -> TSS (grobe Startannahme)
     setSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 });
     setSetting("init", true);
   }

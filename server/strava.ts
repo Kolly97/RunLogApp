@@ -1,13 +1,12 @@
 // Strava-Anbindung (ToDo #10/#11): OAuth, Token-Refresh, Aktivitäten-Sync + Jahres-Import.
-// Bewusst OHNE HR-Stream-Massenabfragen (Rate-Limit 200 Req/15 min) — Zeit-in-Zone bleibt
-// manuell (zone_km) bzw. später nachrüstbar. TSS-Quelle je Aktivität:
-//   1. COROS Training Load aus der Beschreibung (Detail-Abruf, Budget je Sync) × coros_to_tss
-//   2. hrTSS-Näherung aus Ø-HF: (h × (HF/LTHR)² × 100)
-//   3. Dauer-Schätzung nach Sport (ohne HF, z.B. Commute)
+// TSS wird geräteneutral berechnet (kein COROS/Hersteller-Bezug):
+//   1. Lauf → rTSS aus NGP (Stream) bzw. Ø-Pace
+//   2. Rad → Power-TSS aus NP (Stream) bzw. Ø-Power, sonst Dauer-Schätzung nach Sport
+//   3. Zeit-/km-in-Zone aus den Streams (budgetiert je Sync)
 // Credentials (Client-ID/Secret der eigenen Strava-API-App) liegen in settings; Tokens ebenso.
 import type { Request, Response } from "express";
 import { db, getSetting, setSetting, activeProfile } from "./db.ts";
-import { parseCorosLoad, runTss, computeNgp, computeNp, streamZoneSplit, powerTss, bikeTssEstimate } from "./load.ts";
+import { runTss, computeNgp, computeNp, streamZoneSplit, paceZoneSplit, powerTss, bikeTssEstimate, computeKmSplits } from "./load.ts";
 import { effectiveZoneSet } from "./zones.ts";
 
 const API = "https://www.strava.com/api/v3";
@@ -43,10 +42,42 @@ async function accessToken(): Promise<string> {
   return next.access;
 }
 
+// Strava-Rate-Limit-Verbrauch der letzten Antwort (Read-spezifisch). Format der Header: „15min,Tag".
+// Strava hat ZWEI Limits: 100/15 min und ~1000/Tag (Reset 00:00 UTC). Wird für die ehrliche
+// Fehlermeldung UND die Tages-Budget-Bremse genutzt.
+let lastRate: { read15: number; read15Max: number; readDay: number; readDayMax: number } | null = null;
+const DAY_BUDGET_HEADROOM = 50; // Puffer unter dem Tageslimit, ab dem Sync/Enrich freiwillig stoppen.
+
+/** Tagesverbrauch nahe am Limit? → Sync/Enrich sollten stoppen (verteilt den Backfill über Tage). */
+function dayBudgetExhausted(): boolean {
+  return !!lastRate && lastRate.readDayMax > 0 && lastRate.readDay >= lastRate.readDayMax - DAY_BUDGET_HEADROOM;
+}
+
+/** Ehrliche Rate-Limit-Meldung: unterscheidet 15-min- vs. Tages-Limit aus den letzten Headern. */
+function rateLimitMessage(): string {
+  if (lastRate) {
+    const { read15, read15Max, readDay, readDayMax } = lastRate;
+    if (readDayMax > 0 && readDay >= readDayMax)
+      return `Strava-Tages-Limit erreicht (${readDay}/${readDayMax} Read-Requests) — frei ab 00:00 UTC.`;
+    if (read15Max > 0 && read15 >= read15Max)
+      return `Strava-15-Minuten-Limit erreicht (${read15}/${read15Max}) — in ~15 min erneut versuchen.`;
+    return `Strava-Rate-Limit erreicht (15 min ${read15}/${read15Max}, Tag ${readDay}/${readDayMax}).`;
+  }
+  return "Strava-Rate-Limit erreicht — bitte später erneut versuchen.";
+}
+
 async function api(path: string): Promise<any> {
   const token = await accessToken();
   const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (r.status === 429) throw new Error("Strava-Rate-Limit erreicht — in 15 min erneut versuchen");
+  // Rate-Limit-Header jeder Antwort mitführen (auch bei Erfolg) — Read-spezifisch bevorzugt.
+  const usage = r.headers.get("x-readratelimit-usage") || r.headers.get("x-ratelimit-usage");
+  const limit = r.headers.get("x-readratelimit-limit") || r.headers.get("x-ratelimit-limit");
+  if (usage && limit) {
+    const u = usage.split(",").map((n) => parseInt(n.trim(), 10) || 0);
+    const l = limit.split(",").map((n) => parseInt(n.trim(), 10) || 0);
+    lastRate = { read15: u[0] ?? 0, read15Max: l[0] ?? 0, readDay: u[1] ?? 0, readDayMax: l[1] ?? 0 };
+  }
+  if (r.status === 429) throw new Error(rateLimitMessage());
   if (!r.ok) throw new Error(`Strava ${path} → ${r.status}`);
   return r.json();
 }
@@ -107,6 +138,16 @@ function extractWorkLaps(
   return work.length ? JSON.stringify(work) : null;
 }
 
+// HF-/Power-Zonen + FTP aus Strava (v0.14.0, ToDo 10). Braucht Scope profile:read_all.
+// Wirft die `api()`-Exception (inkl. 401/403) nach oben — der Aufrufer mappt sie auf eine Meldung.
+export async function fetchAthleteZonesAndFtp(): Promise<{ hr: { min: number; max: number }[]; power: { min: number; max: number }[]; ftp: number | null }> {
+  const z = (await api("/athlete/zones")) as any;
+  const me = (await api("/athlete")) as any;
+  const hr = Array.isArray(z?.heart_rate?.zones) ? z.heart_rate.zones.map((x: any) => ({ min: Number(x?.min) || 0, max: Number(x?.max) || 0 })) : [];
+  const power = Array.isArray(z?.power?.zones) ? z.power.zones.map((x: any) => ({ min: Number(x?.min) || 0, max: Number(x?.max) || 0 })) : [];
+  return { hr, power, ftp: me?.ftp != null ? Number(me.ftp) : null };
+}
+
 // ---- Routen-Handler --------------------------------------------------------
 
 export function stravaStatus(_req: Request, res: Response): void {
@@ -121,7 +162,7 @@ export function stravaLogin(req: Request, res: Response): void {
   const redirect = `${req.protocol}://${req.get("host")}/api/strava/callback`;
   const url =
     `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(c.id)}` +
-    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=activity:read_all&approval_prompt=auto`;
+    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=activity:read_all,profile:read_all&approval_prompt=auto`;
   res.redirect(url);
 }
 
@@ -171,6 +212,7 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
     const newIds: number[] = [];
     // paginiert listen (100/Seite, Sicherheitslimit 12 Seiten = 1200 Aktivitäten)
     for (; page <= 12; page++) {
+      if (dayBudgetExhausted()) break; // Tages-Budget fast aufgebraucht → später weiter
       const list = (await api(`/athlete/activities?after=${afterEpoch}&per_page=100&page=${page}`)) as any[];
       if (!Array.isArray(list) || !list.length) break;
       for (const a of list) {
@@ -212,51 +254,70 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
   }
 }
 
+/** Strava-Detail `best_efforts` → { [distance_m]: moving_time_s } (defensiv; kleinste Zeit je Distanz). */
+function parseBestEfforts(arr: any): Record<number, number> {
+  const out: Record<number, number> = {};
+  if (!Array.isArray(arr)) return out;
+  for (const e of arr) {
+    const d = Math.round(Number(e?.distance));
+    const t = Number(e?.moving_time ?? e?.elapsed_time);
+    if (d > 0 && t > 0 && (out[d] == null || t < out[d])) out[d] = t;
+  }
+  return out;
+}
+
 /**
  * Anreicherung (budgetiert, neueste zuerst) für bestehende Strava-Aktivitäten — OHNE neue zu importieren:
- *  1) Detail (Beschreibung → COROS-TL, kcal), 2) Streams (HF/Pace/Höhe → min/Zone, km/Zone, NGP, rTSS),
+ *  1) Detail (Beschreibung → Notiz, kcal), 2) Streams (HF/Pace/Höhe → min/Zone, km/Zone, NGP, rTSS),
  *  3) Laps → automatische Work-Intervalle. Pro Aktivität bis zu 3 ratenlimitierte Abrufe (Request-Budget).
  */
 async function enrichBudgeted(profile: number, after: string): Promise<number> {
   const candidates = db
     .prepare(
-      `SELECT id, strava_id, sport, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts FROM activities
+      `SELECT id, strava_id, sport, type, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts, best_efforts FROM activities
        WHERE source='strava' AND profile_id=? AND date >= ?
          AND (desc_fetched=0
+              OR (sport='Run' AND best_efforts IS NULL)
               OR ((sport='Run' OR sport LIKE 'Bike%') AND streams_fetched=0)
               OR ((sport='Run' OR sport LIKE 'Bike%') AND laps_fetched=0
                   AND (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]')))
        ORDER BY date DESC LIMIT ?`,
     )
     .all(profile, after, DETAIL_BUDGET_PER_SYNC) as
-    { id: number; strava_id: string; sport: string; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null }[];
+    { id: number; strava_id: string; sport: string; type: string | null; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null; best_efforts: string | null }[];
 
   const updDesc = db.prepare(
-    "UPDATE activities SET training_load=?, kcal=COALESCE(?, kcal), " +
+    "UPDATE activities SET kcal=COALESCE(?, kcal), " +
       "notes=CASE WHEN (notes IS NULL OR notes='') THEN ? ELSE notes END, desc_fetched=1 WHERE id=?",
   );
   const updStream = db.prepare(
     "UPDATE activities SET " +
       "zone_min=CASE WHEN (zone_min IS NULL OR zone_min='' OR zone_min='null') THEN ? ELSE zone_min END, " +
       "zone_km=CASE WHEN (zone_km IS NULL OR zone_km='' OR zone_km='null') THEN ? ELSE zone_km END, " +
+      "pace_zone_min=CASE WHEN (pace_zone_min IS NULL OR pace_zone_min='' OR pace_zone_min='null') THEN ? ELSE pace_zone_min END, " +
       "ngp=?, np=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
   );
   const updLaps = db.prepare(
     "UPDATE activities SET efforts=CASE WHEN (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]') THEN ? ELSE efforts END, laps_fetched=1 WHERE id=?",
   );
+  const updBests = db.prepare("UPDATE activities SET best_efforts=? WHERE id=?");
 
   let enriched = 0, reqs = 0;
-  const MAX_REQ = 90; // Strava-Rate-Limit-Schutz (≈100/15min)
+  const MAX_REQ = 90; // 15-min-Schutz (≈100/15min)
   for (const c of candidates) {
+    if (dayBudgetExhausted()) break; // Tages-Budget fast aufgebraucht → Rest beim nächsten Sync/Tag
     try {
-      if (!c.desc_fetched) {
+      const isRun = c.sport === "Run", isBike = c.sport.startsWith("Bike");
+      // Detail-Abruf für Beschreibung/kcal (einmalig) UND für Lauf-Bestzeiten (Strava best_efforts, ggf.
+      // nachträglich für Altbestand). Ein Abruf deckt beides ab.
+      const needBests = isRun && !c.best_efforts;
+      if (!c.desc_fetched || needBests) {
         if (reqs >= MAX_REQ) break;
         const d = (await api(`/activities/${c.strava_id}`)) as any; reqs++;
-        const tl = parseCorosLoad(d.description);
-        updDesc.run(tl, d.calories ?? null, (d.description || "").slice(0, 500), c.id);
+        if (!c.desc_fetched) updDesc.run(d.calories ?? null, (d.description || "").slice(0, 500), c.id);
+        if (isRun) updBests.run(JSON.stringify(parseBestEfforts(d.best_efforts)), c.id);
         enriched++;
       }
-      const isRun = c.sport === "Run", isBike = c.sport.startsWith("Bike");
       if (!c.streams_fetched && (isRun || isBike)) {
         if (reqs >= MAX_REQ) break;
         const keys = isRun ? "time,heartrate,velocity_smooth,grade_smooth,distance" : "time,heartrate,watts";
@@ -277,18 +338,36 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
           zoneKmJson = Object.keys(zKm).length ? JSON.stringify(zKm) : null;
         }
         let ngp: number | null = null, np: number | null = null, tss: number | null = null;
+        let paceZoneMinJson: string | null = null;
         if (isRun) {
           const vel: number[] = s?.velocity_smooth?.data ?? [];
           const grade: number[] = s?.grade_smooth?.data ?? [];
           ngp = vel.length && grade.length && time.length ? computeNgp(vel, grade, time) : null;
           tss = runTss(c.distance_m ?? 0, c.moving_s ?? 0, zsA.threshold_pace, ngp);
+          // Zeit je Pace-Zone (für Plan-Erfüllung, v0.14.0) — aus demselben Velocity-Stream.
+          if (vel.length && time.length) {
+            const pzSec = paceZoneSplit(vel, time, zsA.pace_zones);
+            const pzMin: Record<number, number> = {};
+            for (const [z, sec] of Object.entries(pzSec)) if (sec > 0) pzMin[Number(z)] = Math.round((sec / 60) * 10) / 10;
+            paceZoneMinJson = Object.keys(pzMin).length ? JSON.stringify(pzMin) : null;
+          }
         } else {
           const watts: number[] = s?.watts?.data ?? [];
           np = watts.length && time.length ? computeNp(watts, time) : null;
           const power = np ?? c.avg_power ?? null;
           tss = power && zsA.ftp ? powerTss(c.moving_s ?? 0, power, zsA.ftp) : bikeTssEstimate((c.moving_s ?? 0) / 60, "Easy");
         }
-        updStream.run(zoneMinJson, zoneKmJson, ngp, np, tss || null, c.id);
+        updStream.run(zoneMinJson, zoneKmJson, paceZoneMinJson, ngp, np, tss || null, c.id);
+        // Race aus Tracking (v0.14.0): km-Splits aus den Streams berechnen und am verknüpften Race
+        // ablegen — nur in leere Splits (manuelle Edits bleiben erhalten).
+        if (c.type === "Race" && dist.length && time.length) {
+          const splits = computeKmSplits(dist, time, hr);
+          if (splits.length) {
+            db.prepare(
+              "UPDATE races SET splits=? WHERE activity_id=? AND profile_id=? AND (splits IS NULL OR splits='' OR splits='null' OR splits='[]')",
+            ).run(JSON.stringify(splits), c.id, profile);
+          }
+        }
         enriched++;
       }
       // Laps → automatische Work-Intervalle (v0.12.0, ToDo 3), nur wenn noch keine Efforts vorhanden.

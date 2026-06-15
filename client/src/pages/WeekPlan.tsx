@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type PlannedSession, type AnalyzeResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
-  DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel,
+  DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
 } from "../lib/util.ts";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityCard from "../charts/IntensityCard.tsx";
@@ -10,7 +10,7 @@ import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 
 export default function WeekPlan() {
-  const { season, week, weekNo, setWeekNo, loading } = useSeason();
+  const { season, week, weekNo, setWeekNo, loading, reload: reloadSeason } = useSeason();
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
@@ -41,6 +41,13 @@ export default function WeekPlan() {
   async function remove(id?: number) {
     if (id) { await api.deleteSession(id); reload(); }
   }
+  // Ziel-km direkt in der Wochenplanung pflegen (v0.14.0, ToDo 3) — gleiche Quelle wie der Saisonplan.
+  async function saveTargetKm(v: number | null) {
+    if (!week) return;
+    await api.saveWeek(week.week_no, { ...week, target_km: v });
+    await reloadSeason();
+    reload();
+  }
 
   const t = analyze?.totals;
   const target = week.target_km ?? 0;
@@ -61,7 +68,12 @@ export default function WeekPlan() {
             <span className="muted">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span>
             {week.goal_race && <span className="muted">· Ziel: {week.goal_race}</span>}
           </div>
-          <div className="muted tiny">Phasenziel {target || "–"} km</div>
+          <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
+            <span>Ziel km</span>
+            <input type="number" min="0" style={{ width: 72, padding: "4px 6px" }}
+              key={`tgt-${week.week_no}-${week.target_km ?? ""}`} defaultValue={week.target_km ?? ""}
+              onBlur={(e) => saveTargetKm(num(e.target.value))} title="Wochen-Ziel-km (wirkt auf den Volumen-Check; gleiche Quelle wie im Saisonplan)" />
+          </label>
         </div>
       </div>
 

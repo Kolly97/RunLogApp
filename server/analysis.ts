@@ -465,6 +465,11 @@ export interface AnalyzeContext {
   recentWeeksKm?: number[]; // letzte Wochen (real), neueste zuletzt
   projectedCtlRamp?: number | null; // CTL-Punkte/Woche der geplanten Woche
   projectedTsb?: number | null; // Form am Wochenende
+  // Race-Taper (v0.14.0): bezieht sich auf die 7 Tage vor dem Renntag, nicht die Kalenderwoche.
+  raceDate?: string | null; // Renntag in der Woche (falls vorhanden)
+  raceTsb?: number | null; // projizierte Form am Renntag
+  racePre7Tss?: number | null; // Σ geplante TSS der 7 Tage vor dem Rennen
+  raceAvgWeeklyTss?: number | null; // Ø geplante Wochen-TSS (Referenz fürs Tapering)
   readiness?: { recovery?: number; legsHardDays?: number; hrvTrend?: number } | null;
   thresholds: {
     volume_pct: number;
@@ -475,7 +480,44 @@ export interface AnalyzeContext {
     z3_pct_max: number;
     longrun_pct_max: number;
     tsb_raceweek_min: number;
+    raceweek_tss_max_pct: number;
   };
+}
+
+/** Plan-Erfüllung einer Einheit (v0.14.0, ToDo 12): zusammengesetzt aus TSS-Treffer + Zeit-in-Ziel-Pace-Zone.
+ *  `pct` = 100·(0.5·tssScore + 0.5·zoneScore); ohne Pace-Zonen-Daten nur TSS (`tssOnly`). Ohne geplantes TSS → null. */
+export function sessionCompletion(
+  planned: { planned_tss?: number | null; zone_alloc?: { byKm?: Record<number, number> } | null },
+  act: { tss?: number | null; pace_zone_min?: Record<number, number> | null },
+  paceZones: number[] | undefined,
+): { pct: number; tssScore: number; zoneScore: number | null; tssOnly: boolean } | null {
+  const plannedTss = planned.planned_tss ?? 0;
+  if (!(plannedTss > 0)) return null;
+  const tssScore = Math.max(0, Math.min(1, (act.tss ?? 0) / plannedTss));
+
+  let zoneScore: number | null = null;
+  const byKm = planned.zone_alloc?.byKm || null;
+  const aMin = act.pace_zone_min || null;
+  if (byKm && Object.keys(byKm).length && aMin && Object.keys(aMin).length) {
+    const pTime: Record<number, number> = {}; // geplante Zeit je Zone = km_z · pace_z
+    for (const [z, km] of Object.entries(byKm)) {
+      const zi = Number(z), kmv = Number(km) || 0;
+      if (kmv <= 0) continue;
+      pTime[zi] = kmv * (paceZones?.[zi - 1] || DEFAULT_ZONE_PACE[zi - 1] || 300);
+    }
+    const pSum = Object.values(pTime).reduce((s, x) => s + x, 0);
+    const aSum = Object.values(aMin).reduce((s, x) => s + (Number(x) || 0), 0);
+    if (pSum > 0 && aSum > 0) {
+      let overlap = 0;
+      for (const z of new Set([...Object.keys(pTime), ...Object.keys(aMin)].map(Number))) {
+        overlap += Math.min((pTime[z] || 0) / pSum, (Number(aMin[z]) || 0) / aSum);
+      }
+      zoneScore = overlap;
+    }
+  }
+  const tssOnly = zoneScore == null;
+  const pct = Math.round(100 * (tssOnly ? tssScore : 0.5 * tssScore + 0.5 * zoneScore!));
+  return { pct, tssScore, zoneScore, tssOnly };
 }
 
 export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
@@ -507,9 +549,20 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
   if (ctx.projectedCtlRamp != null && ctx.projectedCtlRamp > t.ctl_ramp_max)
     flags.push({ level: "warn", code: "ctl_ramp", message: `CTL-Ramp +${ctx.projectedCtlRamp}/Woche über Limit (${t.ctl_ramp_max}). Fitness-Aufbau zu schnell.` });
 
-  // 3. Form / Taper Richtung Race
-  if (ctx.phase && /race/i.test(ctx.phase) && ctx.projectedTsb != null && ctx.projectedTsb < t.tsb_raceweek_min)
-    flags.push({ level: "warn", code: "taper", message: `Race Week, aber projizierte Form (TSB ${ctx.projectedTsb}) zu negativ — mehr tapern.` });
+  // 3. Form / Taper Richtung Race (v0.14.0, ToDo 4): bezogen auf die 7 Tage VOR dem Renntag.
+  if (ctx.raceDate) {
+    const tooNeg = ctx.raceTsb != null && ctx.raceTsb < t.tsb_raceweek_min;
+    const tssCap = ctx.raceAvgWeeklyTss != null ? ctx.raceAvgWeeklyTss * (t.raceweek_tss_max_pct / 100) : null;
+    const tooHigh = ctx.racePre7Tss != null && tssCap != null && ctx.racePre7Tss > tssCap;
+    if (tooNeg || tooHigh) {
+      const parts: string[] = [];
+      if (tooNeg) parts.push(`Form am Renntag (TSB ${ctx.raceTsb}) zu negativ`);
+      if (tooHigh) parts.push(`geplante 7-Tage-Last (${ctx.racePre7Tss} TSS) zu hoch fürs Tapering (max ~${Math.round(tssCap!)})`);
+      flags.push({ level: "warn", code: "taper", message: `Wettkampf ${ctx.raceDate}: ${parts.join(" · ")} — mehr tapern.` });
+    } else if (ctx.raceTsb != null) {
+      flags.push({ level: "ok", code: "taper_ok", message: `Wettkampf ${ctx.raceDate}: Tapering passt (Form TSB ${ctx.raceTsb}).` });
+    }
+  }
 
   // 5. Polarisierung: bewusst NICHT mehr über Zeit-in-Zone (ToDo Z.24) — die km-in-Zone-Polarisierung
   // wird in der analyze-Route als `kmPolarizationFlag` angehängt (eine einzige, km-basierte Aussage).
