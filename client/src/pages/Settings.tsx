@@ -87,7 +87,7 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
     setBusy(true);
     setResult("Details/Splits werden nachgezogen…");
     try {
-      const r = await fetch("/api/strava/enrich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ after: yearStart }) });
+      const r = await fetch("/api/strava/enrich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ after: seasonStart }) });
       const j = await r.json();
       setResult(r.ok ? `✓ ${j.enriched} Aktivitäten angereichert (Details, Streams, Intervalle aus Laps).` : `Fehler: ${j.error || r.status}`);
     } catch (e) {
