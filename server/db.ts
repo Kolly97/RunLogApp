@@ -180,6 +180,9 @@ function migrate(): void {
   addColumn("activities", "zone_km", "TEXT");
   // ToDo 14: Sleep Performance bei den Tagesfaktoren
   addColumn("daily_log", "sleep_performance", "REAL");
+  // v0.15.5 (O6): Dirty-Bit — manuell bearbeitete/gelöschte Intervalle werden beim Re-Sync NICHT mehr
+  // aus Strava-Laps überschrieben/wieder hinzugefügt. Reset-Endpoint setzt es zurück.
+  addColumn("activities", "efforts_locked", "INTEGER DEFAULT 0");
 
   // ToDo Z.45: Marker „Strava-Beschreibung bereits abgerufen" — trennt das Detail-Fetch von den Notizen,
   // damit vom Nutzer geänderte/gelöschte Notizen beim Re-Sync NICHT mehr überschrieben werden.

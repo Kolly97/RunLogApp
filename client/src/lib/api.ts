@@ -126,6 +126,7 @@ export const api = {
   addActivity: (b: Activity) => j<{ id: number }>("/api/activities", { method: "POST", body: JSON.stringify(b) }),
   updateActivity: (id: number, b: Activity) => j(`/api/activities/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteActivity: (id: number) => j(`/api/activities/${id}`, { method: "DELETE" }),
+  relinkEfforts: (id: number) => j(`/api/activities/${id}/relink-efforts`, { method: "POST" }),
 
   daily: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();

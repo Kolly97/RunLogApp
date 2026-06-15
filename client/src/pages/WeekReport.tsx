@@ -4,7 +4,6 @@
 // Seite 2: vollständige Tagesfaktoren-Tabelle · Wellness-Verläufe · Reflexion.
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 import {
   api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race,
 } from "../lib/api.ts";
@@ -253,9 +252,14 @@ export default function WeekReport() {
           </div>
 
           {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
-          <h3 className="mt">Einheiten</h3>
+          <div className="spread mt">
+            <h3 style={{ margin: 0 }}>Einheiten</h3>
+            {hasAdh && adh?.weekPct != null && (
+              <span className="tiny muted">Plan-Erfüllung Ø Woche {adh.weekPct}% <span className="muted">(TSS-Treffer + Zeit in Ziel-Pace-Zone)</span></span>
+            )}
+          </div>
           <table className="units">
-            <thead><tr><th>Tag</th><th>Geplant</th><th>Real</th><th>km</th><th>Zeit</th><th>TSS</th><th>kcal</th><th>RPE/Beine</th></tr></thead>
+            <thead><tr><th>Tag</th><th>Plan-Erf.</th><th>Geplant</th><th>Real</th><th>km</th><th>Zeit</th><th>TSS</th><th>kcal</th><th>RPE/Beine</th></tr></thead>
             <tbody>
               {days.map((d, i) => {
                 const plan = sessions.filter((s) => s.date === d);
@@ -270,6 +274,16 @@ export default function WeekReport() {
                 return [
                   <tr key={d} className={noted.length ? "has-note" : ""}>
                     <td className="nowrap"><strong>{DAY_NAMES[i]}</strong> <span className="muted tiny">{fmtDate(d)}</span></td>
+                    <td style={{ textAlign: "center" }}>
+                      {adhByDay[i].pct != null && (
+                        <span title="Plan-Erfüllung (TSS-Treffer + Zeit in Ziel-Pace-Zone)"
+                          style={{
+                            display: "inline-block", minWidth: 34, padding: "2px 6px", borderRadius: 6,
+                            fontSize: 11, fontWeight: 700, color: "#fff",
+                            background: adhByDay[i].pct! >= 90 ? "var(--ok)" : adhByDay[i].pct! >= 70 ? "var(--form)" : "var(--danger)",
+                          }}>{adhByDay[i].pct}%</span>
+                      )}
+                    </td>
                     <td>{plan.map((p) => (
                       <div key={p.id}>
                         <span style={{ color: typeColor(p.type) }}>●</span> {p.description || typeLabel(p.type)}
@@ -305,7 +319,7 @@ export default function WeekReport() {
                   ...noted.map((a) => (
                     <tr key={`${a.id}-note`} className="note-row">
                       <td></td>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         {/* Einheiten-Name nur nennen, wenn mehrere Einheiten am Tag (sonst redundant) */}
                         {real.length > 1 && <span className="note-name">{a.name || sportLabel(a.sport)}: </span>}
                         {a.notes && a.notes.trim() ? a.notes.trim() : ""}
@@ -334,30 +348,6 @@ export default function WeekReport() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Plan-Erfüllung je Wochentag (v0.14.0, ToDo 12) */}
-          {hasAdh && (
-            <div className="chart-card mt">
-              <div className="spread">
-                <h3 style={{ margin: 0 }}>Plan-Erfüllung <span className="muted tiny">(TSS-Treffer + Zeit in Ziel-Pace-Zone)</span></h3>
-                {adh?.weekPct != null && <span className="tiny muted">Ø Woche {adh.weekPct} %</span>}
-              </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={adhByDay} margin={{ top: 10, right: 12, left: -8, bottom: 4 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#8a96a6" }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={32} unit="%" />
-                  <Tooltip formatter={(v: any) => [`${v} %`, "Plan-Erfüllung"]} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
-                  {adh?.weekPct != null && <ReferenceLine y={adh.weekPct} stroke="var(--muted)" strokeDasharray="4 4" />}
-                  <Bar dataKey="pct" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                    {adhByDay.map((x, i) => (
-                      <Cell key={i} fill={x.pct == null ? "transparent" : x.pct >= 90 ? "var(--ok)" : x.pct >= 70 ? "var(--form)" : "var(--danger)"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
             </div>
           )}
 

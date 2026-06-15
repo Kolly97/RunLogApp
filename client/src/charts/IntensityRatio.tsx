@@ -1,7 +1,7 @@
 // Intensity-Trend (v0.15.0, O3): Load Impact / Base Fitness = ATL/CTL × 100% (Acute:Chronic Workload Ratio).
 // Separater Graph (nicht im PMC). Bänder nach COROS-Logik; abgeleitet aus den vorhandenen PMC-Punkten.
 import {
-  Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ResponsiveContainer,
+  Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import type { PmcPoint } from "../lib/api.ts";
 import { fmtDate, todayIso } from "../lib/util.ts";
@@ -25,9 +25,10 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
 
   if (rows.length < 2) return <p className="muted tiny">Zu wenige Daten für den Intensity-Trend.</p>;
 
+  const bandFor = (v: number) => BANDS.find((b) => v >= b.lo && v < b.hi) ?? BANDS[BANDS.length - 1];
   const maxR = Math.max(160, ...rows.map((r) => r.ratio));
   const cur = rows[rows.length - 1].ratio;
-  const curBand = BANDS.find((b) => cur >= b.lo && cur < b.hi) ?? BANDS[BANDS.length - 1];
+  const curBand = bandFor(cur);
 
   return (
     <>
@@ -39,13 +40,18 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
         <ComposedChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="#eef1f5" vertical={false} />
           {BANDS.map((b) => (
-            <ReferenceArea key={b.label} y1={b.lo} y2={Math.min(b.hi, maxR)} fill={b.color} fillOpacity={0.1} ifOverflow="hidden" />
+            <ReferenceArea key={b.label} y1={b.lo} y2={Math.min(b.hi, maxR)} fill={b.color} fillOpacity={0.18} ifOverflow="hidden" />
           ))}
+          {/* Optimal-Korridor 80–149 % (Maintaining + Optimized) */}
+          <ReferenceLine y={80} stroke="#16a34a" strokeDasharray="5 4" strokeWidth={1.4}
+            label={{ value: "Optimal 80 %", fontSize: 9, fill: "#16a34a", position: "insideBottomLeft" }} />
+          <ReferenceLine y={149} stroke="#16a34a" strokeDasharray="5 4" strokeWidth={1.4}
+            label={{ value: "149 %", fontSize: 9, fill: "#16a34a", position: "insideTopLeft" }} />
           <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
           <YAxis domain={[0, maxR]} width={40} tick={{ fontSize: 11, fill: "#8a96a6" }} tickFormatter={(v: number) => `${v}%`} />
           <Tooltip
             labelFormatter={(d) => fmtDate(String(d))}
-            formatter={(v: number) => [`${v}%`, "Intensity"]}
+            formatter={(v: number) => [`${v}% · ${bandFor(v).label}`, "Intensity"]}
             contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
           />
           <Area type="monotone" dataKey="ratio" stroke="#334155" strokeWidth={1.8} fill="#334155" fillOpacity={0.06} dot={false} isAnimationActive={false} />

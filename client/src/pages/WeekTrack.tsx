@@ -387,6 +387,16 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
 
       {/* Strukturierte Belastungen (Intervalle real) — ToDo 1/20 */}
       <div style={{ marginTop: 10 }}>
+        <div className="spread" style={{ alignItems: "center", marginBottom: 2 }}>
+          <span />
+          {a.source === "strava" && a.id && (
+            <button className="sm ghost" title="Intervalle aus Strava neu laden (hebt deine manuelle Sperre auf)"
+              onClick={async () => {
+                if (!window.confirm("Intervalle dieser Einheit aus Strava neu laden? Deine manuellen Änderungen werden beim nächsten Sync ersetzt.")) return;
+                await api.relinkEfforts(a.id!); onChange();
+              }}>↻ Aus Strava neu laden</button>
+          )}
+        </div>
         <EffortBuilder value={e.efforts ?? null} onChange={(ef) => set({ efforts: ef })}
           sport={e.sport} zones={zs?.hr_zones} />
       </div>

@@ -4,6 +4,79 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [0.15.5] – 2026-06-16 — Dashboard-Umbau, Schlaffenster-Chart & Feinschliff
+
+### Hinzugefügt
+- **Schlaffenster-Chart (Whoop-Stil):** neues `SleepWindow.tsx` zeigt pro Tag einen Balken von
+  **Bettzeit → Aufwachzeit** (Recharts Floating Bar `[lo, hi]`); Y-Achse als Uhrzeit (Anker 18:00,
+  `reversed` → später = weiter unten), Tooltip mit Bett/Auf/Dauer. Ersetzt den alten
+  Bettzeit-Abweichungs-Linienplot in Langzeit + Wochenbericht.
+
+### Geändert
+- **Dashboard-Layout umgebaut:** Reihe 1 = **PMC (2fr) | Aktuelle Woche (1fr)** nebeneinander; Reihe 2 =
+  **Saison-Progression (1fr) | Intensity-Trend (1fr)** auf gleicher Höhe. Vorher: PMC + Intensity-Trend
+  full-width übereinander, Saison/Aktuelle Woche darunter.
+- **Plan-Erfüllungs-Balkendiagramm entfernt** aus dem Wochenbericht. Stattdessen inline: farbige %-Kachel
+  je Tag in der Einheitentabelle (≥ 90 % grün / ≥ 70 % gold / sonst rot) + „Ø Woche …%" in der Überschrift.
+- **Bettzeit-Y-Achse invertiert** in Langzeit-Charts und Wochenbericht-Wellness (`reversed: true`): späteres
+  Zubettgehen liegt nun unten (schlechter = tiefer — konsistent mit allen anderen Wellness-Trends).
+- **VO2max-Sparkline-Hover:** Tooltip zur Mini-Sparkline in `Vo2maxCard.tsx` zeigt Datum + VDOT-Wert.
+- **Intensity-Trend Bänder kräftiger:** `fillOpacity` 0.10 → 0.18; grüne gestrichelte `ReferenceLine` bei
+  80 % und 149 % (Optimal-Korridor); Tooltip zeigt Wert + Band-Bezeichnung.
+
+## [0.15.0] – 2026-06-15 — VO2max-Kachel, Race-Prediction, Intensity-Trend, TSS-Empfehlung, Fahrrad-Zonen & Bugfixes
+
+### Hinzugefügt
+- **VO2max-Kachel (Dashboard):** VDOT-Schätzung nach Daniels-Gilbert aus den besten Lauf-Bestzeiten
+  (Rolling-Window 90 Tage). Zeigt aktuelle VDOT-Zahl, Trend-Pfeil (↗/↘/→), farbiges Niveau-Badge
+  (Elite/Exzellent/Sehr gut/Durchschnitt/Unter Ø nach ACSM-Normen je Alter+Geschlecht) und eine
+  Mini-Sparkline über den Saisonverlauf. Geburtsjahr + Geschlecht im Athletenprofil (`Profile.tsx`,
+  wird in `athlete`-Setting gespeichert).
+- **Race-Prediction-Diagramm** (`/bests`): 4 Prognoselinien (5k/10k/HM/Marathon) aus dem Critical-Speed-Modell
+  über den Saisonverlauf; Y-Achse `reversed` (schneller = oben); Legende klickbar (Distanzen ein-/ausblenden).
+- **Intensity-Trend (ATL/CTL-Verhältnis):** neues `IntensityRatio.tsx` zeigt `ATL/CTL × 100 %` mit 5 farbigen
+  COROS-Bändern (Decreasing/Resuming/Maintaining/Optimized/Excessive) im Dashboard und der Langzeit-Seite.
+- **TSS-Wochenempfehlung:** Ampel-Badge in der Wochenplanung (WeekPlan-Header) mit empfohlenem TSS-Korridor
+  aus CTL-Start + Saisonplan-Phase (Aufbau / Erhalt / Entlastung / Race Week / Krank). Berechnet in
+  `tssRecommendation()` (`analysis.ts`), über den `/api/analyze/week`-Endpoint geliefert.
+- **Fahrrad-HF-Zonen** (ZoneSets): separater Zonen-Set-Abschnitt „HF-Zonen Fahrrad" in den Einstellungen
+  (Profil-Seite); „Von Lauf übernehmen"-Shortcut; DB-Spalte `zone_sets.hr_zones_bike` (additiv).
+  Strava-Interval-Extraktion nutzt bei Bike-Aktivitäten automatisch die Fahrrad-Zonen.
+- **Race aus WeekPlan:** wird eine geplante Einheit als Typ „Wettkampf" gespeichert, legt die App automatisch
+  einen verknüpften Race-Eintrag an (nutzt dieselbe `api.addRace`-Logik wie Tracking).
+- **Wochentyp-Pill editierbar:** Klick auf die Phase-Pille in der Wochenplanung öffnet ein Inline-`<select>`;
+  Phase wird direkt gespeichert.
+- **Intervall-Label-Dropdown:** beim Bearbeiten von Efforts ist der Label (LT1/LT2/VO2max) über ein Dropdown
+  wählbar statt Freitext.
+- **VO2max-Konsolidierung:** Einheitstypen „VO2short" und „VO2long" entfernt; Differenzierung jetzt über den
+  Effort-Label (LT2/VO2max). Vorhandene Labels werden beim Start automatisch nachgelabelt.
+- **Drag & Copy in der Wochenplanung:** geplante Einheiten lassen sich per Drag-and-Drop auf einen anderen Tag
+  verschieben oder per ⊕-Button kopieren.
+- **Einheits-Dots mit TSS-Größe:** Punkte im Wochentag-Switcher (Tracking) skalieren mit dem TSS der Einheit.
+- **8-Wochen-Mittel + Range:** gestrichelte Referenzlinie und Bereich (± 1σ) der letzten 8 Wochen in den
+  Wellness-Sparklines (LongTerm).
+- **Auto-Split-Label:** Läufe unter Z4-HF bekommen automatisch „GA1" als Label; Strava-Laps über der Z4-Grenze
+  behalten den feineren Label (LT1/LT2/VO2max).
+- **Schlaf in hh:mm:** Schlaf-Zeitfelder (Bettzeit, Aufwachzeit) in den Tagesfaktoren zeigen das Eingabeformat
+  `h:mm` statt rohe Minuten.
+- **Intervall-Trend-Legende togglebar:** Klick auf eine Kategorie (LT1/LT2/VO2) blendet die zugehörige Linie
+  im IntervalTrend-Chart ein/aus.
+- **PDF-Wasserzeichen:** beim Drucken erscheint „RunLog – Kolja Hildenbrand 2026 ©" unten rechts auf jedem Ausdruck.
+- **Neuer API-Endpoint `/api/fitness-trend`:** liefert VDOT + CS-Prognosen (5k/10k/HM/M) je Wochenpunkt über
+  einen wählbaren Zeitraum; wird von Vo2maxCard und Race-Prediction-Chart genutzt.
+
+### Geändert
+- **Strava-Interval-Overwrite-Schutz:** neue Spalte `activities.efforts_locked` (additiv, DEFAULT 0). Jede
+  manuelle Bearbeitung/Löschung von Intervallen setzt `efforts_locked=1`; Strava-Sync überschreibt diese
+  Einheiten nicht mehr. Reset-Knopf „↻ Aus Strava neu laden" (nur Strava-Aktivitäten) setzt die Sperre zurück
+  und zieht Laps beim nächsten Sync neu.
+- **TSS-Farbkodierung (Wochenbericht):** harte Einheitstypen (typeIntensity = „hard") weisen im Realen TSS-Donut
+  ihre gesamte TSS dem „hart"-Bucket zu statt zonen-anteilig. Easy- und Moderate-Einheiten bleiben zonen-anteilig.
+- **VDOT-Filter** (Bestzeiten): nur Efforts mit distance_m ≥ 1500 und time_s ≥ 180 s fließen in die VDOT-
+  Schätzung ein (verhindert Überabschätzung durch kurze Sprints).
+- **Athletenprofil-Seite** erweitert: `AthleteCard`-Komponente für Geburtsjahr, Geschlecht, Gewicht, Max-HF
+  (gespeichert im `athlete`-Setting, kein Schema-Change).
+
 ## [0.14.0] – 2026-06-15 — Geräteneutral, Bestzeiten/Critical Speed, Plan-Erfüllung, Race-aus-Tracking & Tracking-Redesign
 
 ### Hinzugefügt

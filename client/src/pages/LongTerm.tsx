@@ -21,18 +21,19 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
+import SleepWindow from "../charts/SleepWindow.tsx";
 import ChartDecor from "../charts/ChartDecor.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 
 // ---- Wellness-Metriken (kleine Multiples) ----
 type Fmt = (v: number) => string;
-const METRICS: { key: string; title: string; color: string; fmt?: Fmt; refY?: number; refLabel?: string }[] = [
+const METRICS: { key: string; title: string; color: string; fmt?: Fmt; refY?: number; refLabel?: string; reversed?: boolean }[] = [
   { key: "hrv", title: "HRV (ms)", color: "#2b6cb0" },
   { key: "resting_hr", title: "Ruhepuls (bpm)", color: "#d53f8c" },
   { key: "recovery", title: "Recovery (%)", color: "#16a34a" },
   { key: "strain", title: "Strain", color: "#f97316" },
   { key: "sleep_h", title: "Schlaf (h)", color: "#6366f1", fmt: (v) => v.toFixed(1) },
-  { key: "bed_dev", title: "Bettzeit (Uhrzeit)", color: "#0891b2", fmt: devToClock, refY: 0, refLabel: "23:30" },
+  { key: "bed_dev", title: "Schlaffenster (Bett → Auf)", color: "#0891b2", fmt: devToClock, refY: 0, refLabel: "23:30", reversed: true },
   { key: "sleep_performance", title: "Sleep-Performance (%)", color: "#8b5cf6" },
   { key: "weight", title: "Gewicht (kg)", color: "#64748b", fmt: (v) => v.toFixed(1) },
 ];
@@ -151,6 +152,8 @@ export default function LongTerm() {
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
     : rows;
   const points = wellnessPoints(daily);
+  // Schlaffenster-Daten (Bettzeit→Aufwachzeit je Tag) für den Whoop-Stil-Balken (v0.15.5).
+  const sleepRows = [...daily].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({ x: d.date, bedtime: d.bedtime, wake_time: d.wake_time }));
   const visibleMetrics = METRICS.filter((m) => points.some((p) => p[m.key] != null));
   // Krank-Wochen rot hinterlegen (ToDo Z.21): je Range auf die VORHANDENEN Punkt-Tage mappen
   // (die Wellness-X-Achse enthält nur Tage mit Daten → exakte Range-Grenzen existieren evtl. nicht).
@@ -284,6 +287,9 @@ export default function LongTerm() {
           {visibleMetrics.map((m) => (
             <div key={m.key} className="chart-card tight">
               <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
+              {m.key === "bed_dev" ? (
+                <SleepWindow data={sleepRows} xTickFormatter={fmtDate} height={135} />
+              ) : (
               <ResponsiveContainer width="100%" height={135}>
                 <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
@@ -292,7 +298,7 @@ export default function LongTerm() {
                   ))}
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]}
+                    tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]} reversed={m.reversed}
                     tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
                   />
                   <Tooltip
@@ -317,6 +323,7 @@ export default function LongTerm() {
                   <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} years={wellnessYears} />} />
                 </LineChart>
               </ResponsiveContainer>
+              )}
             </div>
           ))}
         </div>

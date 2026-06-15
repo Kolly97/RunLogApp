@@ -89,21 +89,11 @@ export default function Dashboard() {
         <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="ytd" />
       </div>
 
-      <div className="card">
-        <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
-        <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
-          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
-      </div>
-
-      <div className="card">
-        <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">Load Impact / Base Fitness = ATL/CTL — Trainingssteuerung</span></div>
-        <IntensityRatio data={pmc?.pmc ?? []} />
-      </div>
-
       <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "2fr 1fr" }}>
         <div className="card">
-          <h2>Saison-Progression</h2>
-          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
+          <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
+          <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
+            phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
         </div>
         <div className="card">
           <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
@@ -120,6 +110,17 @@ export default function Dashboard() {
               ))}
             </>
           )}
+        </div>
+      </div>
+
+      <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "1fr 1fr" }}>
+        <div className="card">
+          <h2>Saison-Progression</h2>
+          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
+        </div>
+        <div className="card">
+          <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">ATL/CTL</span></div>
+          <IntensityRatio data={pmc?.pmc ?? []} />
         </div>
       </div>
 

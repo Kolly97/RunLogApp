@@ -834,7 +834,8 @@ app.put("/api/activities/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
     // Commute (sport=General): desc_fetched=1 setzen, damit der Strava-Sync die geleerte Notiz nicht neu füllt (ToDo Z.14).
-    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?) WHERE id=?`,
+    // efforts_locked=1 (v0.15.5 O6): manuell bearbeitete/gelöschte Intervalle werden vom Re-Sync nicht mehr angefasst.
+    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?), efforts_locked=1 WHERE id=?`,
   ).run(
     b.date,
     b.sport || "Run",
@@ -868,6 +869,14 @@ app.put("/api/activities/:id", (req, res) => {
 
 app.delete("/api/activities/:id", (req, res) => {
   db.prepare("DELETE FROM activities WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// v0.15.5 (O6): Intervalle einer Aktivität bewusst aus Strava neu laden — Sperre lösen, Laps neu ziehen.
+app.post("/api/activities/:id/relink-efforts", (req, res) => {
+  db.prepare(
+    "UPDATE activities SET efforts=NULL, efforts_locked=0, laps_fetched=0 WHERE id=? AND profile_id=? AND source='strava'",
+  ).run(req.params.id, pid());
   res.json({ ok: true });
 });
 
@@ -1178,26 +1187,33 @@ app.get("/api/analyze/week/:no", (req, res) => {
       } else if (a.sport === "Strength" || a.sport === "Physio") {
         realByCategory.strength.min += min;
       }
-      // Hybrid: TSS dieser Aktivität auf easy/mod/hart verteilen (zonen-anteilig, sonst nach Plan-Typ).
+      // Hybrid: TSS dieser Aktivität auf easy/mod/hart verteilen.
+      // v0.15.5 (O7): Harte Einheiten (Typ=hard) zählen KOMPLETT als hart (volle TSS rot), nicht nur der
+      // Intervall-Anteil über Z3. Easy/Moderat bleiben zonen-anteilig (sonst Typ-Fallback).
       const t = a.tss || 0;
       realTotalTss += t;
       if (t > 0) {
-        const zw = hasZoneKm ? zKm
-          : (zMin && Object.values(zMin).some((v) => (v || 0) > 0)) ? zMin
-          : (zSec && Object.values(zSec).some((v) => (v || 0) > 0)) ? zSec
-          : null;
-        let e = 0, m = 0, h = 0;
-        if (zw) for (const [z, v] of Object.entries(zw)) { const zi = Number(z); const val = v || 0; if (zi <= 2) e += val; else if (zi === 3) m += val; else h += val; }
-        const tot = e + m + h;
-        if (tot > 0) {
-          realTssAcc.easy += (t * e) / tot;
-          realTssAcc.mod += (t * m) / tot;
-          realTssAcc.hard += (t * h) / tot;
+        const type = a.type || (a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined);
+        const typeCls = type ? typeIntensity(type) : null;
+        if (typeCls === "hard") {
+          realTssAcc.hard += t;
         } else {
-          // v0.11.0 (ToDo 10): eigener Aktivitäts-Typ hat Vorrang vor dem gematchten Plan-Typ.
-          const type = a.type || (a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined);
-          const cls = type ? typeIntensity(type) : "easy";
-          if (cls === "hard") realTssAcc.hard += t; else if (cls === "moderate") realTssAcc.mod += t; else realTssAcc.easy += t;
+          const zw = hasZoneKm ? zKm
+            : (zMin && Object.values(zMin).some((v) => (v || 0) > 0)) ? zMin
+            : (zSec && Object.values(zSec).some((v) => (v || 0) > 0)) ? zSec
+            : null;
+          let e = 0, m = 0, h = 0;
+          if (zw) for (const [z, v] of Object.entries(zw)) { const zi = Number(z); const val = v || 0; if (zi <= 2) e += val; else if (zi === 3) m += val; else h += val; }
+          const tot = e + m + h;
+          if (tot > 0) {
+            realTssAcc.easy += (t * e) / tot;
+            realTssAcc.mod += (t * m) / tot;
+            realTssAcc.hard += (t * h) / tot;
+          } else {
+            // v0.11.0 (ToDo 10): eigener Aktivitäts-Typ hat Vorrang vor dem gematchten Plan-Typ.
+            const cls = typeCls ?? "easy";
+            if (cls === "moderate") realTssAcc.mod += t; else realTssAcc.easy += t;
+          }
         }
       }
     }

@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import type { DailyLog } from "../lib/api.ts";
 import { DAY_NAMES } from "../lib/util.ts";
+import SleepWindow from "./SleepWindow.tsx";
 
 const BED_REF = 23 * 60 + 30; // Referenz-Bettzeit 23:30
 
@@ -34,6 +35,7 @@ interface MetricDef {
   fmt?: (v: number) => string;
   refY?: number;       // gestrichelte Referenzlinie (z.B. 23:30 bei Bettzeit)
   refLabel?: string;
+  reversed?: boolean;  // Y-Achse umdrehen (Bettzeit: spät = unten)
 }
 
 const METRICS: MetricDef[] = [
@@ -42,7 +44,7 @@ const METRICS: MetricDef[] = [
   { key: "recovery", title: "Recovery (%)", color: "#16a34a" },
   { key: "strain", title: "Strain", color: "#f97316" },
   { key: "sleep_h", title: "Schlaf (h)", color: "#6366f1", fmt: (v) => v.toFixed(1) },
-  { key: "bed_dev", title: "Bettzeit", color: "#0891b2", fmt: devToClock, refY: 0, refLabel: "23:30" },
+  { key: "bed_dev", title: "Schlaffenster", color: "#0891b2", fmt: devToClock, refY: 0, refLabel: "23:30", reversed: true },
 ];
 
 export default function WellnessTrends({ daily, days, height = 100 }: {
@@ -62,11 +64,20 @@ export default function WellnessTrends({ daily, days, height = 100 }: {
   const visible = METRICS.filter((m) => points.some((p) => p[m.key] != null));
   if (!visible.length) return <p className="tiny muted">Keine Tagesfaktoren für diese Woche eingetragen.</p>;
 
+  // Schlaffenster (Bett→Auf) je Wochentag für den Whoop-Stil-Balken (v0.15.5).
+  const sleepRows = days.map((d, i) => {
+    const dl = daily.find((x) => x.date === d);
+    return { x: DAY_NAMES[i] || d, bedtime: dl?.bedtime, wake_time: dl?.wake_time };
+  });
+
   return (
     <div className="wellness-grid">
       {visible.map((m) => (
         <div key={m.key} className="chart-card tight">
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
+          {m.key === "bed_dev" ? (
+            <SleepWindow data={sleepRows} height={height} />
+          ) : (
           <ResponsiveContainer width="100%" height={height}>
             <LineChart data={points} margin={{ top: 6, right: 8, left: -14, bottom: -4 }}>
               <CartesianGrid stroke="#eef1f5" vertical={false} />
@@ -75,6 +86,7 @@ export default function WellnessTrends({ daily, days, height = 100 }: {
                 tick={{ fontSize: 10, fill: "#8a96a6" }}
                 width={46}
                 domain={["auto", "auto"]}
+                reversed={m.reversed}
                 tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
               />
               <Tooltip
@@ -89,6 +101,7 @@ export default function WellnessTrends({ daily, days, height = 100 }: {
                 dot={{ r: 2.5, fill: m.color, strokeWidth: 0 }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </div>
       ))}
     </div>

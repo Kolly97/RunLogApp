@@ -286,17 +286,17 @@ function parseBestEfforts(arr: any): Record<number, number> {
 async function enrichBudgeted(profile: number, after: string): Promise<number> {
   const candidates = db
     .prepare(
-      `SELECT id, strava_id, sport, type, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts, best_efforts FROM activities
+      `SELECT id, strava_id, sport, type, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts, efforts_locked, best_efforts FROM activities
        WHERE source='strava' AND profile_id=? AND date >= ?
          AND (desc_fetched=0
               OR (sport='Run' AND best_efforts IS NULL)
               OR ((sport='Run' OR sport LIKE 'Bike%') AND streams_fetched=0)
-              OR ((sport='Run' OR sport LIKE 'Bike%') AND laps_fetched=0
+              OR ((sport='Run' OR sport LIKE 'Bike%') AND laps_fetched=0 AND COALESCE(efforts_locked,0)=0
                   AND (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]')))
        ORDER BY date DESC LIMIT ?`,
     )
     .all(profile, after, DETAIL_BUDGET_PER_SYNC) as
-    { id: number; strava_id: string; sport: string; type: string | null; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null; best_efforts: string | null }[];
+    { id: number; strava_id: string; sport: string; type: string | null; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null; efforts_locked: number | null; best_efforts: string | null }[];
 
   const updDesc = db.prepare(
     "UPDATE activities SET kcal=COALESCE(?, kcal), " +
@@ -310,7 +310,7 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
       "ngp=?, np=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
   );
   const updLaps = db.prepare(
-    "UPDATE activities SET efforts=CASE WHEN (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]') THEN ? ELSE efforts END, laps_fetched=1 WHERE id=?",
+    "UPDATE activities SET efforts=CASE WHEN (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]') THEN ? ELSE efforts END, laps_fetched=1 WHERE id=? AND COALESCE(efforts_locked,0)=0",
   );
   const updBests = db.prepare("UPDATE activities SET best_efforts=? WHERE id=?");
 
@@ -384,7 +384,7 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
       }
       // Laps → automatische Work-Intervalle (v0.12.0, ToDo 3), nur wenn noch keine Efforts vorhanden.
       const noEfforts = !c.efforts || c.efforts === "" || c.efforts === "null" || c.efforts === "[]";
-      if (!c.laps_fetched && (isRun || isBike) && noEfforts) {
+      if (!c.laps_fetched && !c.efforts_locked && (isRun || isBike) && noEfforts) {
         if (reqs >= MAX_REQ) break;
         const laps = (await api(`/activities/${c.strava_id}/laps`)) as any[]; reqs++;
         const zsL = effectiveZoneSet(c.date);
