@@ -17,7 +17,7 @@ export interface BestsResult { pbs: Pb[]; cs: CsModel | null; predictions: { dis
 export interface PlanAdherenceWeek { week_no: number; start: string; end: string; pct: number | null; n: number; }
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
-export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
+export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; hr_zones_bike?: HrZone[] | null; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
 export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; goal_race: string; notes: string; }
 export interface ZoneAlloc { byKm?: Record<number, number>; byMin?: Record<number, number>; }
 /** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20.

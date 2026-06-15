@@ -66,6 +66,7 @@ interface ZoneSetRow {
   id: number;
   valid_from: string;
   hr_zones: string;
+  hr_zones_bike: string | null;
   pace_zones: string;
   speed_zones: string;
   power_zones: string;
@@ -79,13 +80,14 @@ interface ZoneSetRow {
 function effectiveZoneSet(date: string) {
   const rows = db.prepare("SELECT * FROM zone_sets WHERE profile_id=? ORDER BY valid_from").all(pid()) as unknown as ZoneSetRow[];
   if (!rows.length) {
-    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
+    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], hr_zones_bike: null as HrZone[] | null, pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
   }
   let pick = rows[0];
   for (const r of rows) if (r.valid_from <= date) pick = r;
   return {
     id: pick.id,
     hr_zones: parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]),
+    hr_zones_bike: pick.hr_zones_bike ? parseJson<HrZone[]>(pick.hr_zones_bike, []) : null,
     pace_zones: parseJson<number[]>(pick.pace_zones, []),
     speed_zones: parseJson<number[]>(pick.speed_zones, []),
     power_zones: parseJson<number[]>(pick.power_zones, []),
@@ -214,7 +216,7 @@ app.put("/api/settings", (req, res) => {
 
 app.get("/api/zonesets", (_req, res) => {
   const rows = db.prepare("SELECT * FROM zone_sets WHERE profile_id=? ORDER BY valid_from DESC").all(pid()) as unknown as ZoneSetRow[];
-  res.json(rows.map((r) => ({ ...r, hr_zones: parseJson(r.hr_zones, []), pace_zones: parseJson(r.pace_zones, []), speed_zones: parseJson(r.speed_zones, []), power_zones: parseJson(r.power_zones, []) })));
+  res.json(rows.map((r) => ({ ...r, hr_zones: parseJson(r.hr_zones, []), hr_zones_bike: r.hr_zones_bike ? parseJson(r.hr_zones_bike, null) : null, pace_zones: parseJson(r.pace_zones, []), speed_zones: parseJson(r.speed_zones, []), power_zones: parseJson(r.power_zones, []) })));
 });
 
 app.get("/api/zoneset", (req, res) => {
@@ -225,13 +227,14 @@ app.post("/api/zonesets", (req, res) => {
   const b = req.body || {};
   const r = db
     .prepare(
-      `INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, speed_zones, power_zones, lthr, ftp, threshold_pace, source, note, created_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO zone_sets(profile_id, valid_from, hr_zones, hr_zones_bike, pace_zones, speed_zones, power_zones, lthr, ftp, threshold_pace, source, note, created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       pid(),
       b.valid_from || todayIso(),
       JSON.stringify(b.hr_zones || DEFAULT_HR_ZONES),
+      b.hr_zones_bike ? JSON.stringify(b.hr_zones_bike) : null,
       JSON.stringify(b.pace_zones || []),
       JSON.stringify(b.speed_zones || []),
       JSON.stringify(b.power_zones || []),
@@ -248,10 +251,11 @@ app.post("/api/zonesets", (req, res) => {
 app.put("/api/zonesets/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE zone_sets SET valid_from=?, hr_zones=?, pace_zones=?, speed_zones=?, power_zones=?, lthr=?, ftp=?, threshold_pace=?, source=?, note=? WHERE id=?`,
+    `UPDATE zone_sets SET valid_from=?, hr_zones=?, hr_zones_bike=?, pace_zones=?, speed_zones=?, power_zones=?, lthr=?, ftp=?, threshold_pace=?, source=?, note=? WHERE id=?`,
   ).run(
     b.valid_from,
     JSON.stringify(b.hr_zones || []),
+    b.hr_zones_bike ? JSON.stringify(b.hr_zones_bike) : null,
     JSON.stringify(b.pace_zones || []),
     JSON.stringify(b.speed_zones || []),
     JSON.stringify(b.power_zones || []),

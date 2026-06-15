@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type AnalyzeResult } from "../lib/api.ts";
+import { api, type PlannedSession, type AnalyzeResult, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
@@ -40,6 +40,13 @@ export default function WeekPlan() {
   async function save(s: PlannedSession) {
     if (s.id) await api.updateSession(s.id, s);
     else await api.addSession({ ...s, week_no: weekNo });
+    if (s.type === "Race") {
+      const name = s.description || "Wettkampf";
+      const existing = await api.races({ from: s.date, to: s.date });
+      if (!existing.some((r) => r.date === s.date && r.name === name)) {
+        await api.addRace({ date: s.date, name, source: "plan" } as Race);
+      }
+    }
     setEditing(null);
     reload();
   }

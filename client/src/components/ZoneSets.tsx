@@ -71,6 +71,12 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
     const hr = e.hr_zones.map((zn, j) => ({ ...zn, max: maxes[j], min: j === 0 ? 0 : (maxes[j - 1] || 0) + 1 }));
     saveZ({ ...e, hr_zones: hr });
   };
+  const setHrBikeMax = (i: number, v: number | null) => {
+    const base = e.hr_zones_bike ?? e.hr_zones;
+    const maxes = base.map((zn, j) => (j === i ? (v ?? 0) : zn.max));
+    const hr = base.map((zn, j) => ({ ...zn, max: maxes[j], min: j === 0 ? 0 : (maxes[j - 1] || 0) + 1 }));
+    saveZ({ ...e, hr_zones_bike: hr });
+  };
   const setPace = (i: number, v: number | null) => { const arr = [...(e.pace_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, pace_zones: arr }); };
   const setPower = (i: number, v: number | null) => { const arr = [...(e.power_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, power_zones: arr }); };
   return (
@@ -107,6 +113,33 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
           </div>
         ))}
       </div>
+      <div className="row" style={{ alignItems: "center", margin: "6px 0 2px", gap: 8 }}>
+        <span className="tiny muted">HF-Zonen Fahrrad (Obergrenze bpm je Zone — optional, separat von Lauf)</span>
+        {!e.hr_zones_bike && (
+          <button className="sm ghost" style={{ fontSize: 11 }}
+            onClick={() => saveZ({ ...e, hr_zones_bike: e.hr_zones.map((z) => ({ ...z })) })}>
+            + Von Lauf übernehmen
+          </button>
+        )}
+        {e.hr_zones_bike && (
+          <button className="sm ghost danger" style={{ fontSize: 11 }}
+            onClick={() => saveZ({ ...e, hr_zones_bike: null })}>
+            Rad-Zonen entfernen
+          </button>
+        )}
+      </div>
+      {e.hr_zones_bike && (
+        <div className="row" style={{ gap: 6 }}>
+          {(e.hr_zones_bike ?? e.hr_zones).map((zn, i) => (
+            <div key={i} style={{ flex: 1, textAlign: "center" }}>
+              <div className="tiny" style={{ color: zn.color, fontWeight: 700 }}>Z{zn.z}</div>
+              <input type="number" style={{ padding: "4px", textAlign: "center", width: "100%" }} value={zn.max}
+                onChange={(x) => setHrBikeMax(i, num(x.target.value))} />
+              <div className="tiny muted" style={{ marginTop: 2 }}>{zn.min}–{zn.max >= 990 ? "max" : zn.max}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Power-Zonen Rad (Watt, Obergrenze je Zone — optional)</div>
       <div className="row" style={{ gap: 6 }}>
         {e.hr_zones.map((_zn, i) => (

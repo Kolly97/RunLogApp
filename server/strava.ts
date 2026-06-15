@@ -108,15 +108,17 @@ function fallbackTss(sport: string, movingS: number): number {
  * Work-Intervalle aus Strava-Laps (v0.12.0, ToDo 3): „Work" = Lap schneller als die Z3-Obergrenze (Lauf)
  * ODER Ø-HF ≥ Z4-Untergrenze. Warmup/Cooldown/Erholungs-Laps fallen so raus. Liefert Effort[]-JSON oder null.
  */
+type HrZoneSimple = { z: number; min: number; max: number };
 function extractWorkLaps(
   laps: any[], sport: string,
-  zs: { pace_zones?: number[]; hr_zones: { z: number; min: number; max: number }[] },
+  zs: { pace_zones?: number[]; hr_zones: HrZoneSimple[]; hr_zones_bike?: HrZoneSimple[] | null },
 ): string | null {
   if (!Array.isArray(laps) || laps.length < 2) return null;
-  const z3Pace = zs.pace_zones?.[2]; // Z3-Obergrenze (s/km, schnellste erlaubte Z3-Pace)
-  const z4HrMin = zs.hr_zones.find((z) => z.z === 4)?.min;
-  const z5HrMin = zs.hr_zones.find((z) => z.z === 5)?.min;
   const isRun = sport === "Run";
+  const activeHrZones: HrZoneSimple[] = (!isRun && zs.hr_zones_bike?.length) ? zs.hr_zones_bike : zs.hr_zones;
+  const z3Pace = zs.pace_zones?.[2]; // Z3-Obergrenze (s/km, schnellste erlaubte Z3-Pace)
+  const z4HrMin = activeHrZones.find((z) => z.z === 4)?.min;
+  const z5HrMin = activeHrZones.find((z) => z.z === 5)?.min;
   const work: any[] = [];
   for (const lap of laps) {
     const dist = lap.distance ?? 0;

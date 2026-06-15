@@ -174,6 +174,8 @@ function migrate(): void {
   addColumn("zone_sets", "speed_zones", "TEXT");
   // Feedback 12.6.: Rad-Zonen in WATT statt km/h (speed_zones bleibt als Legacy bestehen)
   addColumn("zone_sets", "power_zones", "TEXT");
+  // v0.15.0: separate HF-Zonen fürs Fahrrad (Lauf-Zonen bleiben in hr_zones)
+  addColumn("zone_sets", "hr_zones_bike", "TEXT");
   // Feedback 12.6.: einheitlich km je Zone auch beim Tracking (zone_min bleibt als Legacy lesbar)
   addColumn("activities", "zone_km", "TEXT");
   // ToDo 14: Sleep Performance bei den Tagesfaktoren
