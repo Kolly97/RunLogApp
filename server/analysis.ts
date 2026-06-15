@@ -273,6 +273,26 @@ export function weekLoadFlag(rating: { level: IntLevel; weekTss: number; avg4: n
   return { level: "ok", code: "week_load_ok", message: `Wochen-Last moderat: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
 }
 
+/**
+ * TSS-Wochenempfehlung (v0.15.0, O4): Korridor aus aktueller Fitness (CTL) + Saisonplan-Phase.
+ * Erhalt ≈ CTL×7 (täglicher EWMA → wöchentliche Last zum Halten). Phase steuert den Faktor und
+ * setzt das 3:1-Prinzip um (Entlastung -40 %, Race Week Taper, Aufbau +5–7 CTL/Woche, krank reduziert).
+ */
+export type TssRec = { min: number; max: number; target: number; kind: string };
+export function tssRecommendation(ctl: number, phase: string | null | undefined): TssRec {
+  const base = Math.max(0, ctl) * 7; // Wochen-TSS zum Halten der CTL
+  const p = (phase || "").toLowerCase();
+  let lo: number, hi: number, kind: string;
+  if (p.includes("entlast")) { lo = base * 0.55; hi = base * 0.65; kind = "Entlastung"; }
+  else if (p.includes("race week") || p.includes("race-week") || p.includes("raceweek")) { lo = base * 0.45; hi = base * 0.55; kind = "Taper"; }
+  else if (p.includes("krank")) { lo = 0; hi = base * 0.4; kind = "Reduziert"; }
+  else if (p.includes("belast") || p.includes("base") || p.includes("specific") || p.includes("aufbau")) { lo = (Math.max(0, ctl) + 5) * 7; hi = (Math.max(0, ctl) + 7) * 7; kind = "Aufbau"; }
+  else { lo = base * 0.95; hi = base * 1.05; kind = "Erhalt"; }
+  const min = Math.round(lo / 5) * 5;
+  const max = Math.round(hi / 5) * 5;
+  return { min, max, target: Math.round((min + max) / 2), kind };
+}
+
 /** km-Polarisierung (Easy/Grey/Hart) als Flag für den Wochen-Check (ToDo Z.41). */
 export function kmPolarizationFlag(zk: { easy: number; mod: number; hard: number } | null): Flag | null {
   if (!zk) return null;

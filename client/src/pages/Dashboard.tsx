@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
@@ -8,6 +8,8 @@ import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
+import Vo2maxCard from "../charts/Vo2maxCard.tsx";
+import IntensityRatio from "../charts/IntensityRatio.tsx";
 
 export default function Dashboard() {
   const { season, week } = useSeason();
@@ -20,6 +22,7 @@ export default function Dashboard() {
   const [allRaces, setAllRaces] = useState<Race[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
+  const [fit, setFit] = useState<FitnessTrend | null>(null);
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, addDays(todayIso(), 21)) }
@@ -31,6 +34,7 @@ export default function Dashboard() {
     api.pmc(range.from, range.to).then(setPmc).catch(() => setPmc(null));
     // Endpoint entsteht parallel — bei 404/Fehler Chart ausblenden.
     api.intervalsTrend({ from: range.from, to: range.to }).then(setTrend).catch(() => setTrend(null));
+    api.fitnessTrend(range.from, range.to).then(setFit).catch(() => setFit(null));
   }, [range?.from, range?.to]);
 
   // Saison-Zeilen einmal über die ganze Saison bauen; Anzeige wird per Zeitraum gefiltert.
@@ -71,11 +75,12 @@ export default function Dashboard() {
         <span className="muted tiny">{fmtDate(todayIso())} · {todayIso().slice(0, 4)}</span>
       </div>
 
-      <div className="grid cols-4">
+      <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
         <StatCard label="Fitness (CTL)" value={last?.ctl ?? 0} cls="fitness" sub="42-Tage-Last" />
         <StatCard label="Fatigue (ATL)" value={last?.atl ?? 0} cls="fatigue" sub="7-Tage-Last" />
         <StatCard label="Form (TSB)" value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb)} />
         <StatCard label="CTL-Ramp" value={pmc?.ctlRamp7 ?? 0} sub="pro Woche (7d)" />
+        <Vo2maxCard data={fit} />
       </div>
 
       {/* Zeitraum gilt für die großen Übersichts-Charts (PMC, Saison-Progression, Intervall-Trend) */}
@@ -88,6 +93,11 @@ export default function Dashboard() {
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
         <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
           phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
+      </div>
+
+      <div className="card">
+        <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">Load Impact / Base Fitness = ATL/CTL — Trainingssteuerung</span></div>
+        <IntensityRatio data={pmc?.pmc ?? []} />
       </div>
 
       <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "2fr 1fr" }}>

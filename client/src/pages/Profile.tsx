@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type Profile } from "../lib/api.ts";
 import ZoneSets from "../components/ZoneSets.tsx";
+import AthleteCard from "../components/AthleteCard.tsx";
 
 const CONFIRM_CODE = "4397"; // Bestätigungscode für Umbenennen/Löschen/Zurücksetzen.
 
@@ -62,6 +63,9 @@ export default function ProfilePage() {
           </tbody>
         </table>
       </div>
+
+      {/* Athletendaten (Geburtsjahr/Geschlecht/Gewicht/Max-HF) — Grundlage für VO2max-Niveau & TSS */}
+      <AthleteCard />
 
       {/* HF-Zonen & Schwellen des aktiven Profils */}
       <ZoneSets />

@@ -14,6 +14,9 @@ export interface Race {
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; }
 export interface CsModel { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number; }
 export interface BestsResult { pbs: Pb[]; cs: CsModel | null; predictions: { distance_m: number; time_s: number }[]; }
+// VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
+export interface FitnessTrendPoint { date: string; vdot: number | null; p5000: number | null; p10000: number | null; p21097: number | null; p42195: number | null; }
+export interface FitnessTrend { points: FitnessTrendPoint[]; current: FitnessTrendPoint | null; age: number | null; level: string | null; }
 export interface PlanAdherenceWeek { week_no: number; start: string; end: string; pct: number | null; n: number; }
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
@@ -70,6 +73,8 @@ export interface AnalyzeResult {
   realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
   // v0.14.0 (ToDo 12) — Plan-Erfüllung je gematchter Einheit + Wochenmittel
   adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null };
+  // v0.15.0 (O4) — TSS-Wochenempfehlung (Korridor) aus CTL + Saisonplan-Phase, 3:1-Prinzip
+  tssRec?: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null;
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -160,6 +165,12 @@ export const api = {
 
   // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
   bests: () => j<BestsResult>("/api/bests"),
+  fitnessTrend: (from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return j<FitnessTrend>(`/api/fitness-trend${p.toString() ? `?${p}` : ""}`);
+  },
   // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12)
   planAdherence: () => j<PlanAdherenceWeek[]>("/api/plan-adherence"),
 

@@ -365,3 +365,51 @@ export function paceToSecPerKm(distanceM: number, movingS: number): number {
   if (!distanceM || !movingS) return 0;
   return movingS / (distanceM / 1000);
 }
+
+// ---- VO2max (VDOT) + Critical Speed (v0.15.0) --------------------------
+
+/** Jack-Daniels-/Gilbert-VDOT (≈ VO2max ml/kg/min) aus Distanz (m) + Zeit (s). */
+export function vdot(distanceM: number, timeS: number): number {
+  if (!(distanceM > 0 && timeS > 0)) return 0;
+  const tmin = timeS / 60;
+  const v = distanceM / tmin; // m/min
+  const vo2 = -4.6 + 0.182258 * v + 0.000104 * v * v;
+  const pct = 0.8 + 0.1894393 * Math.exp(-0.012778 * tmin) + 0.2989558 * Math.exp(-0.1932605 * tmin);
+  return pct > 0 ? vo2 / pct : 0;
+}
+
+export interface CsFit { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number; }
+
+/** 2-Parameter-CS-Modell d = CS·t + D′ per linearer Regression über (bereits gefilterte) Punkte. */
+export function fitCriticalSpeed(pts: { time_s: number; distance_m: number }[]): CsFit | null {
+  if (pts.length < 2) return null;
+  const n = pts.length;
+  const sx = pts.reduce((s, p) => s + p.time_s, 0);
+  const sy = pts.reduce((s, p) => s + p.distance_m, 0);
+  const sxx = pts.reduce((s, p) => s + p.time_s * p.time_s, 0);
+  const sxy = pts.reduce((s, p) => s + p.time_s * p.distance_m, 0);
+  const denom = n * sxx - sx * sx;
+  const csMps = denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+  if (!(csMps > 0)) return null;
+  const dPrime = (sy - csMps * sx) / n;
+  const meanY = sy / n;
+  const ssTot = pts.reduce((s, p) => s + (p.distance_m - meanY) ** 2, 0);
+  const ssRes = pts.reduce((s, p) => s + (p.distance_m - (csMps * p.time_s + dPrime)) ** 2, 0);
+  return {
+    cs_mps: Math.round(csMps * 1000) / 1000,
+    cs_pace_s: Math.round(1000 / csMps),
+    dPrime_m: Math.round(dPrime),
+    rSquared: ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 1000) / 1000 : null,
+    n,
+  };
+}
+
+/** Renn-Prognosen t = (d − D′)/CS für die gegebenen Distanzen (m). */
+export function predictFromCs(csMps: number, dPrimeM: number, distances: number[]): { distance_m: number; time_s: number }[] {
+  const out: { distance_m: number; time_s: number }[] = [];
+  for (const D of distances) {
+    const t = (D - dPrimeM) / csMps;
+    if (t > 0) out.push({ distance_m: D, time_s: Math.round(t) });
+  }
+  return out;
+}

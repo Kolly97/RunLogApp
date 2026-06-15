@@ -12,9 +12,13 @@ import {
   bikeTssEstimate,
   hrTssFromZones,
   round1,
+  vdot,
+  fitCriticalSpeed,
+  predictFromCs,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
+import { vo2maxLevel } from "./norms.ts";
 import {
   weekTotals,
   analyzeWeek,
@@ -26,6 +30,7 @@ import {
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  tssRecommendation,
   sessionCompletion,
   type IntLevel,
   type PlannedSession,
@@ -425,35 +430,67 @@ app.get("/api/bests", (_req, res) => {
     .sort((a, b) => a.distance_m - b.distance_m);
 
   const fit = pbs.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000);
-  let cs: { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number } | null = null;
-  const predictions: { distance_m: number; time_s: number }[] = [];
-  if (fit.length >= 2) {
-    const n = fit.length;
-    const sx = fit.reduce((s, p) => s + p.time_s, 0);
-    const sy = fit.reduce((s, p) => s + p.distance_m, 0);
-    const sxx = fit.reduce((s, p) => s + p.time_s * p.time_s, 0);
-    const sxy = fit.reduce((s, p) => s + p.time_s * p.distance_m, 0);
-    const denom = n * sxx - sx * sx;
-    const csMps = denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
-    const dPrime = (sy - csMps * sx) / n;
-    if (csMps > 0) {
-      const meanY = sy / n;
-      const ssTot = fit.reduce((s, p) => s + (p.distance_m - meanY) ** 2, 0);
-      const ssRes = fit.reduce((s, p) => s + (p.distance_m - (csMps * p.time_s + dPrime)) ** 2, 0);
-      cs = {
-        cs_mps: Math.round(csMps * 1000) / 1000,
-        cs_pace_s: Math.round(1000 / csMps),
-        dPrime_m: Math.round(dPrime),
-        rSquared: ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 1000) / 1000 : null,
-        n,
-      };
-      for (const D of CS_PRED_DISTANCES) {
-        const t = (D - dPrime) / csMps;
-        if (t > 0) predictions.push({ distance_m: D, time_s: Math.round(t) });
-      }
+  const cs = fitCriticalSpeed(fit);
+  const predictions = cs ? predictFromCs(cs.cs_mps, cs.dPrime_m, CS_PRED_DISTANCES) : [];
+  res.json({ pbs, cs, predictions });
+});
+
+// ---- Fitness-Trend: VO2max (VDOT) + Renn-Prognose über die Zeit (v0.15.0, O1+O2) ----
+// 90-Tage-Rolling-Window über die Strava-best_efforts: je Woche bestes VDOT + CS-Fit-Prognosen.
+const FITNESS_WINDOW_DAYS = 90;
+app.get("/api/fitness-trend", (req, res) => {
+  const today = todayIso();
+  const to = String(req.query.to || today);
+  const from = String(req.query.from || addDaysIso(to, -365));
+
+  const rows = db.prepare(
+    "SELECT date, best_efforts FROM activities WHERE profile_id=? AND sport='Run' AND best_efforts IS NOT NULL AND best_efforts<>'' AND best_efforts<>'{}'",
+  ).all(pid()) as { date: string; best_efforts: string }[];
+  const efforts: { date: string; distance_m: number; time_s: number }[] = [];
+  for (const r of rows) {
+    const be = parseJson<Record<string, number>>(r.best_efforts, {});
+    for (const [d, t] of Object.entries(be)) {
+      const dist = Number(d), time = Number(t);
+      if (dist > 0 && time > 0) efforts.push({ date: r.date, distance_m: dist, time_s: time });
     }
   }
-  res.json({ pbs, cs, predictions });
+
+  // Wochen-Stützstellen rückwärts ab `to` (letzter Punkt = heute), dann chronologisch.
+  const weekEnds: string[] = [];
+  for (let w = to; w >= from; w = addDaysIso(w, -7)) weekEnds.push(w);
+  weekEnds.reverse();
+
+  const points = weekEnds.map((w) => {
+    const lo = addDaysIso(w, -FITNESS_WINDOW_DAYS);
+    const inWin = efforts.filter((e) => e.date > lo && e.date <= w);
+    const bestPerDist = new Map<number, number>();
+    for (const e of inWin) {
+      const cur = bestPerDist.get(e.distance_m);
+      if (cur == null || e.time_s < cur) bestPerDist.set(e.distance_m, e.time_s);
+    }
+    const distPts = [...bestPerDist.entries()].map(([distance_m, time_s]) => ({ distance_m, time_s }));
+    // VDOT nur aus überwiegend aeroben Leistungen (≥1500 m, 3–30 min) — kurze Sprints überschätzen VO2max.
+    let bestVdot = 0;
+    for (const p of distPts) if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 1800) bestVdot = Math.max(bestVdot, vdot(p.distance_m, p.time_s));
+    const csFit = fitCriticalSpeed(distPts.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000));
+    const pmap = new Map((csFit ? predictFromCs(csFit.cs_mps, csFit.dPrime_m, CS_PRED_DISTANCES) : []).map((x) => [x.distance_m, x.time_s]));
+    return {
+      date: w,
+      vdot: bestVdot > 0 ? Math.round(bestVdot * 10) / 10 : null,
+      p5000: pmap.get(5000) ?? null,
+      p10000: pmap.get(10000) ?? null,
+      p21097: pmap.get(21097) ?? null,
+      p42195: pmap.get(42195) ?? null,
+    };
+  });
+
+  const current = [...points].reverse().find((p) => p.vdot != null) ?? null;
+  const athlete = getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
+  const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
+  const sex: "m" | "f" = athlete?.sex === "f" ? "f" : "m";
+  const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
+  const level = current?.vdot != null && age ? vo2maxLevel(current.vdot, age, sex) : null;
+  res.json({ points, current, age, level });
 });
 
 // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12) — Wochenmittel für den Langzeit-Trend.
@@ -1014,6 +1051,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Projektion CTL-Ramp & Form über die Woche
   let projectedCtlRamp: number | null = null;
   let projectedTsb: number | null = null;
+  // TSS-Wochenempfehlung (v0.15.0, O4) — Korridor aus CTL am Wochenstart + Phase.
+  let tssRec: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null = null;
   // Race-Taper (v0.14.0, ToDo 4): bezieht sich auf die 7 Tage VOR dem Renntag, nicht die Kalenderwoche.
   let raceDate: string | null = null;
   let raceTsb: number | null = null;
@@ -1026,6 +1065,18 @@ app.get("/api/analyze/week/:no", (req, res) => {
     const pmc = computePmc(map, from, wk.end_date, todayIso());
     projectedCtlRamp = ctlRamp(pmc, 7);
     projectedTsb = pmc.length ? pmc[pmc.length - 1].tsb : null;
+
+    // CTL am Wochenstart → TSS-Empfehlung (O4). level vergleicht den geplanten Wochen-TSS mit dem Korridor.
+    const startPt = pmc.find((p) => p.date === wk.start_date) ?? (pmc.length ? pmc[0] : null);
+    const ctlStart = startPt ? startPt.ctl : 0;
+    const rec = tssRecommendation(ctlStart, wk.phase);
+    const pTss = totals.tss;
+    const level: "under" | "ok" | "over" = pTss < rec.min ? "under" : pTss > rec.max ? "over" : "ok";
+    tssRec = {
+      min: rec.min, max: rec.max, target: rec.target, level,
+      phaseLabel: (wk.phase && String(wk.phase).trim()) ? String(wk.phase) : rec.kind,
+      basis: `CTL ${Math.round(ctlStart)} · ${rec.kind}`,
+    };
 
     // Renntag in der Wochen-Spanne (Races-Tabelle bevorzugt, sonst goal_race → Wochenende).
     const raceRow = db.prepare(
@@ -1226,7 +1277,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
-    realLoadFlag, realKmFlag, adherence,
+    realLoadFlag, realKmFlag, adherence, tssRec,
   });
 });
 

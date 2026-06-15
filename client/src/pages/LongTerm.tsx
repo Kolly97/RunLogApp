@@ -20,6 +20,7 @@ import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
+import IntensityRatio from "../charts/IntensityRatio.tsx";
 import ChartDecor from "../charts/ChartDecor.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 
@@ -258,6 +259,12 @@ export default function LongTerm() {
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
         <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate}
           phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} />
+      </div>
+
+      {/* Intensity-Trend (ATL/CTL) — separater Graph, v0.15.0 (O3) */}
+      <div className="card">
+        <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">Load Impact / Base Fitness = ATL/CTL</span></div>
+        <IntensityRatio data={pmc} />
       </div>
 
       {/* Saison-Progression (geplant vs. gelaufen) über den gewählten Zeitraum */}

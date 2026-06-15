@@ -2,10 +2,18 @@
 // dazu ein 2-Parameter-CS-Modell (d = CS·t + D') mit Vorhersagen und Distanz-Zeit-Diagramm.
 import { useEffect, useState } from "react";
 import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
+  ScatterChart, Scatter, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from "recharts";
-import { api, type BestsResult } from "../lib/api.ts";
-import { paceStr, secToClock, fmtDateY } from "../lib/util.ts";
+import { api, type BestsResult, type FitnessTrend } from "../lib/api.ts";
+import { useSeason } from "../lib/hooks.ts";
+import { paceStr, secToClock, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
+
+const PRED_LINES = [
+  { key: "p5000", label: "5 km", color: "#0ea5e9" },
+  { key: "p10000", label: "10 km", color: "#22c55e" },
+  { key: "p21097", label: "Halbmarathon", color: "#eab308" },
+  { key: "p42195", label: "Marathon", color: "#ef4444" },
+] as const;
 
 const DIST_NAMES: Record<number, string> = {
   400: "400 m", 805: "½ Meile", 1000: "1 km", 1609: "1 Meile", 3219: "2 Meilen",
@@ -17,9 +25,18 @@ function distLabel(m: number): string {
 }
 
 export default function Bests() {
+  const { season } = useSeason();
   const [data, setData] = useState<BestsResult | null>(null);
+  const [fit, setFit] = useState<FitnessTrend | null>(null);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [err, setErr] = useState(false);
   useEffect(() => { api.bests().then(setData).catch(() => setErr(true)); }, []);
+  useEffect(() => {
+    const from = season.length ? season[0].start_date : undefined;
+    api.fitnessTrend(from, todayIso()).then(setFit).catch(() => setFit(null));
+  }, [season]);
+  const toggleLine = (key: string) =>
+    setHidden((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   if (err) return <div className="empty">Bestzeiten konnten nicht geladen werden.</div>;
   if (!data) return <p className="muted">Lädt…</p>;
@@ -130,6 +147,38 @@ export default function Bests() {
           </div>
         </div>
       )}
+
+      {(() => {
+        const predPoints = (fit?.points ?? []).filter((p) => p.p5000 != null || p.p10000 != null || p.p21097 != null || p.p42195 != null);
+        if (predPoints.length < 2) return null;
+        return (
+          <div className="card">
+            <div className="spread">
+              <h2>Renn-Prognose im Verlauf</h2>
+              <span className="tiny muted">CS-Modell, 90-Tage-Fenster — schneller = oben · Legende klicken zum Aus-/Einblenden</span>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={predPoints} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+                <CartesianGrid stroke="#eef1f5" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                <YAxis reversed domain={["dataMin", "dataMax"]} width={52} tickFormatter={(s: number) => secToClock(s)}
+                  tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                <Tooltip
+                  labelFormatter={(d) => fmtDate(String(d))}
+                  formatter={(v: number, n: string) => [secToClock(v), n]}
+                  contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
+                  onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey)); }} />
+                {PRED_LINES.map((l) => (
+                  <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color}
+                    strokeWidth={1.8} connectNulls dot={false} hide={hidden.has(l.key)} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
     </div>
   );
 }

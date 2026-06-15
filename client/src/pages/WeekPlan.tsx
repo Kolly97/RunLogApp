@@ -110,6 +110,17 @@ export default function WeekPlan() {
             <strong>Woche {week.week_no}</strong>
             <span className="muted">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span>
             {week.goal_race && <span className="muted">· Ziel: {week.goal_race}</span>}
+            {analyze?.tssRec && (() => {
+              const r = analyze.tssRec;
+              const col = r.level === "ok" ? "var(--ok)" : r.level === "over" ? "var(--warn)" : "#3b82f6";
+              const hint = r.level === "ok" ? "im Zielkorridor" : r.level === "over" ? "über Empfehlung" : "unter Empfehlung";
+              return (
+                <span className="pill" style={{ background: col, color: "#fff" }}
+                  title={`Empfohlener Wochen-TSS-Korridor (${r.basis}) — geplant: ${Math.round(t?.tss ?? 0)} TSS · ${hint}. 3:1-Prinzip über die Saisonplan-Phase.`}>
+                  Empf. {r.min}–{r.max} TSS · {r.phaseLabel}
+                </span>
+              );
+            })()}
           </div>
           <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
             <span>Ziel km</span>
