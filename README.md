@@ -4,7 +4,7 @@ Lokale, in sich geschlossene Web-App für die wöchentliche Trainingsplanung im 
 Einheiten planen → sportwissenschaftlich prüfen (passt das zur Phase?) → reale Daten dagegen halten →
 druckfertiger Wochenbericht. Läuft komplett offline auf deinem Rechner, keine Cloud, kein Claude im Hintergrund.
 
-![RunLog_GitHub_Repo_Card](/Users/kollybook/Library/Mobile Documents/com~apple~CloudDocs/Kolja_Hildenbrand/Privates/Sport/RunLogApp/app_icon/RunLog_GitHub_Repo_Card.jpg)
+![RunLog_GitHub_Repo_Card](app_icon/RunLog_GitHub_Repo_Card.jpg)
 
 ## Voraussetzungen
 - Node.js ≥ 22 (nutzt das eingebaute `node:sqlite`, kein nativer Build nötig). Getestet mit Node 25.
