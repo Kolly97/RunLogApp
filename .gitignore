@@ -3,6 +3,7 @@ node_modules/
 dist/
 release/
 electron-dist/
+ToDo/
 
 # Persönliche Daten NICHT mitgeben (deine Trainingsdaten!) — beim Update nur data/ kopieren (Z.25)
 data/
