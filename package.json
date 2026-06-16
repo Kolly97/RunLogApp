@@ -64,6 +64,7 @@
       ],
       "category": "Utility",
       "icon": "build/icon.png",
+      "maintainer": "Kolja Hildenbrand <kolja.hildenbrand@gmail.com>",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   },
