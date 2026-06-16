@@ -20,6 +20,7 @@
     "electron:start": "npm run build && npm run electron:bundle && electron .",
     "electron:build": "npm run build && npm run electron:bundle && electron-builder --mac",
     "electron:build:win": "npm run build && npm run electron:bundle && electron-builder --win",
+    "electron:build:linux": "npm run build && npm run electron:bundle && electron-builder --linux",
     "app:import-data": "node scripts/import-data.mjs"
   },
   "build": {
@@ -55,6 +56,15 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   },
   "dependencies": {

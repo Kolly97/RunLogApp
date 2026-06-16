@@ -91,19 +91,23 @@ Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mi
 - **Windows:** `RunLog-Setup-<version>.exe` herunterladen und ausführen. Der Installations-Assistent führt durch
   Pfadwahl und legt Startmenü-Eintrag + Deinstaller an. Da der Installer nicht signiert ist, meldet sich beim
   ersten Start ggf. der Windows-SmartScreen („Unbekannter Herausgeber") → **Weitere Informationen → Trotzdem ausführen**.
+- **Linux / Ubuntu:** zwei Varianten —
+  - **`.deb`** (Ubuntu/Debian, normale Installation): `sudo apt install ./RunLog-<version>-amd64.deb` (oder per Doppelklick im Software-Center) → Eintrag im App-Menü + Deinstaller.
+  - **`.AppImage`** (portabel, jede Distro): herunterladen, ausführbar machen (`chmod +x RunLog-<version>-x86_64.AppImage`) und starten. Auf Ubuntu 24.04 ggf. `sudo apt install libfuse2` nötig.
 
 Deine Trainingsdaten liegen pro Betriebssystem im jeweiligen App-Datenordner
-(`~/Library/Application Support/RunLog` auf macOS, `%APPDATA%\RunLog` auf Windows) — getrennt von der App, bleiben
-bei Updates erhalten.
+(`~/Library/Application Support/RunLog` auf macOS, `%APPDATA%\RunLog` auf Windows, `~/.config/RunLog` auf Linux) —
+getrennt von der App, bleiben bei Updates erhalten.
 
 Wer lieber im Web-Modus arbeitet oder selbst baut: `npm run build && npm start` → [http://localhost:3000](http://localhost:3000) — alle Features sind auch im Browser vollständig verfügbar.
 
 ### Selbst bauen
 - **macOS:** `npm install && npm run electron:build` → `.dmg` in `release/`.
 - **Windows:** `npm install && npm run electron:build:win` → NSIS-`.exe` in `release/`.
+- **Linux:** `npm install && npm run electron:build:linux` → `.AppImage` + `.deb` in `release/`.
 - **Automatisch (CI):** Beim Pushen eines Tags `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut GitHub Actions
-  den Windows-Installer auf einem Windows-Runner und hängt ihn ans zugehörige Release
-  (siehe `.github/workflows/build-windows.yml`).
+  den Windows-Installer (`build-windows.yml`) und die Linux-Pakete (`build-linux.yml`) auf je eigenem Runner und
+  hängt sie ans zugehörige Release. (macOS wird lokal gebaut — kostenlose Runner können kein signiertes `.dmg` erzeugen.)
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 Readiness · Dashboard-Tagesvorschlag · Pace-/HF-Histogramm · v2.0-Redesign (GSAP/Three.js)
