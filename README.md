@@ -84,9 +84,14 @@ nicht mit — sie entstehen via `npm install` / `npm run build`.
 ## Änderungshistorie
 Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.15.5**.
 
+## Desktop-App (Electron)
+Für macOS steht eine fertig gebaute `.dmg` in den [GitHub Releases](../../releases) zur Verfügung —
+einfach herunterladen, öffnen, in den Programme-Ordner ziehen, fertig. Alle Features inklusive.
+
+Wer lieber im Web-Modus arbeitet oder selbst baut: `npm run build && npm start` → [http://localhost:3000](http://localhost:3000) — alle Features sind auch im Browser vollständig verfügbar.
+
 ## Ideen für später (siehe ToDo.md „In Zukunft")
-Desktop-App (Electron, Mac/Windows) als eigener Meilenstein · Readiness · Dashboard-Tagesvorschlag ·
-Pace-/HF-Histogramm · v2.0-Redesign (GSAP/Three.js)
+Readiness · Dashboard-Tagesvorschlag · Pace-/HF-Histogramm · v2.0-Redesign (GSAP/Three.js)
 
 ## Lizenz
 [MIT](LICENSE) © 2026 Kolja Hildenbrand
