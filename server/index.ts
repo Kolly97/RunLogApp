@@ -1339,14 +1339,30 @@ app.get("/api/intervals/trend", (req, res) => {
 });
 
 // ---- static (production) ----------------------------------------------
-
-const distDir = join(__dirname, "..", "dist");
+// Im Electron-Paket liegt das gebaute Frontend neben den Server-Bundles; sonst im Projekt-`dist/`.
+// RUNLOG_DIST erlaubt dem Electron-Main, den Pfad explizit zu setzen.
+const distDir = process.env.RUNLOG_DIST || join(__dirname, "..", "dist");
 if (existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(join(distDir, "index.html")));
 }
 
-const PORT = Number(process.env.PORT || 3000);
-app.listen(PORT, () => {
-  console.log(`RunLog server läuft auf http://localhost:${PORT}`);
-});
+/**
+ * Startet den HTTP-Server. Mit port=0 vergibt das OS einen freien Port (für Electron) —
+ * der tatsächlich genutzte Port wird zurückgeliefert. CLI-Start nutzt PORT bzw. 3000.
+ */
+export function startServer(port = Number(process.env.PORT || 3000)): Promise<{ port: number }> {
+  return new Promise((resolve) => {
+    const server = app.listen(port, () => {
+      const actual = (server.address() as { port: number }).port;
+      console.log(`RunLog server läuft auf http://localhost:${actual}`);
+      resolve({ port: actual });
+    });
+  });
+}
+
+// Direkter CLI-Start (`npm start` / `tsx server/index.ts`): sofort lauschen.
+// Im Electron-Main wird startServer() stattdessen explizit aufgerufen (RUNLOG_EMBED=1 unterdrückt Auto-Start).
+if (!process.env.RUNLOG_EMBED) {
+  startServer();
+}

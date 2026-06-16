@@ -1,0 +1,50 @@
+# Baut den Windows-Installer (NSIS-.exe) auf einem Windows-Runner und hängt ihn ans GitHub-Release.
+# Auslöser: Push eines Tags v* (z. B. `git tag v1.0.0 && git push origin v1.0.0`).
+# Manueller Start ebenfalls möglich (workflow_dispatch) — dann nur Artefakt, kein Release-Upload.
+name: Build Windows Installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write # nötig, um die .exe ans Release zu hängen
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # build + esbuild-Bundle + electron-builder --win (NSIS). Signierung bewusst aus (kein Zertifikat).
+      - name: Build Windows installer
+        run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RunLog-Windows-Installer
+          path: release/*.exe
+          if-no-files-found: error
+
+      # Nur bei Tag-Push: Installer ans zugehörige Release anhängen (Release wird bei Bedarf angelegt).
+      - name: Attach installer to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe

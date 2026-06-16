@@ -85,10 +85,25 @@ nicht mit — sie entstehen via `npm install` / `npm run build`.
 Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.15.5**.
 
 ## Desktop-App (Electron)
-Für macOS steht eine fertig gebaute `.dmg` in den [GitHub Releases](../../releases) zur Verfügung —
-einfach herunterladen, öffnen, in den Programme-Ordner ziehen, fertig. Alle Features inklusive.
+Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mit Desktop-Icon, ganz ohne Terminal:
+
+- **macOS:** `RunLog-<version>-arm64.dmg` herunterladen, öffnen, RunLog in den Programme-Ordner ziehen, fertig.
+- **Windows:** `RunLog-Setup-<version>.exe` herunterladen und ausführen. Der Installations-Assistent führt durch
+  Pfadwahl und legt Startmenü-Eintrag + Deinstaller an. Da der Installer nicht signiert ist, meldet sich beim
+  ersten Start ggf. der Windows-SmartScreen („Unbekannter Herausgeber") → **Weitere Informationen → Trotzdem ausführen**.
+
+Deine Trainingsdaten liegen pro Betriebssystem im jeweiligen App-Datenordner
+(`~/Library/Application Support/RunLog` auf macOS, `%APPDATA%\RunLog` auf Windows) — getrennt von der App, bleiben
+bei Updates erhalten.
 
 Wer lieber im Web-Modus arbeitet oder selbst baut: `npm run build && npm start` → [http://localhost:3000](http://localhost:3000) — alle Features sind auch im Browser vollständig verfügbar.
+
+### Selbst bauen
+- **macOS:** `npm install && npm run electron:build` → `.dmg` in `release/`.
+- **Windows:** `npm install && npm run electron:build:win` → NSIS-`.exe` in `release/`.
+- **Automatisch (CI):** Beim Pushen eines Tags `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut GitHub Actions
+  den Windows-Installer auf einem Windows-Runner und hängt ihn ans zugehörige Release
+  (siehe `.github/workflows/build-windows.yml`).
 
 ## Ideen für später (siehe ToDo.md „In Zukunft")
 Readiness · Dashboard-Tagesvorschlag · Pace-/HF-Histogramm · v2.0-Redesign (GSAP/Three.js)

@@ -1,11 +1,12 @@
 {
   "name": "runlog",
-  "version": "0.14.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",
   "author": "Kolja Hildenbrand",
   "license": "MIT",
+  "main": "electron-dist/main.cjs",
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "tsx watch server/index.ts",
@@ -13,7 +14,48 @@
     "build": "vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "db:template": "tsx server/reset-db.ts training.empty.db",
-    "db:reset": "tsx server/reset-db.ts data/training.db"
+    "db:reset": "tsx server/reset-db.ts data/training.db",
+    "electron:bundle": "node esbuild.electron.mjs",
+    "electron:dev": "npm run electron:bundle && concurrently -k -n server,client,electron -c blue,green,magenta \"cross-env PORT=3000 npm:dev:server\" \"npm:dev:client\" \"cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
+    "electron:start": "npm run build && npm run electron:bundle && electron .",
+    "electron:build": "npm run build && npm run electron:bundle && electron-builder --mac",
+    "electron:build:win": "npm run build && npm run electron:bundle && electron-builder --win",
+    "app:import-data": "node scripts/import-data.mjs"
+  },
+  "build": {
+    "appId": "de.koljahildenbrand.runlog",
+    "productName": "RunLog",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron-dist/**/*",
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "training.empty.db",
+        "to": "seed/training.db"
+      }
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.healthcare-fitness",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
   },
   "dependencies": {
     "express": "^4.21.2"
@@ -26,6 +68,9 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.1",
