@@ -1,8 +1,8 @@
 # RunLog — Trainingsplanung, Tracking & TrainingPeaks-Auswertung 
 
-Lokale, in sich geschlossene Web-App für die wöchentliche Trainingsplanung im Langstreckenlauf:
+Lokale, in sich geschlossene lokale Web-App für die wöchentliche Trainingsplanung im Langstreckenlauf:
 Einheiten planen → sportwissenschaftlich prüfen (passt das zur Phase?) → reale Daten dagegen halten →
-druckfertiger Wochenbericht. Läuft komplett offline auf deinem Rechner, keine Cloud, kein Claude im Hintergrund.
+druckfertiger Wochenbericht. Läuft komplett offline auf deinem Rechner, keine Cloud oder so im Hintergrund.
 
 ![RunLog_GitHub_Repo_Card](app_icon/RunLog_GitHub_Repo_Card.jpg)
 
