@@ -8,7 +8,6 @@ import WeekReport from "./pages/WeekReport.tsx";
 import LongTerm from "./pages/LongTerm.tsx";
 import Races from "./pages/Races.tsx";
 import Bests from "./pages/Bests.tsx";
-import SeasonPlan from "./pages/SeasonPlan.tsx";
 import Settings from "./pages/Settings.tsx";
 import ProfilePage from "./pages/Profile.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
@@ -25,13 +24,13 @@ const NAV = [
   { to: "/longterm", ico: "📈", label: "Langzeit" },
   { to: "/races", ico: "🏁", label: "Races" },
   { to: "/bests", ico: "🏅", label: "Bestzeiten" },
-  { to: "/season", ico: "🗓", label: "Saisonplan" },
   { to: "/profile", ico: "👤", label: "Profil" },
   { to: "/settings", ico: "⚙", label: "Einstellungen" },
   { to: "/options", ico: "🏷", label: "Auswahllisten" },
 ];
 
 export default function App() {
+  useEffect(() => { api.cleanupOrphans().catch(() => {}); }, []);
   return (
     <div className="app">
       <aside className="sidebar no-print">
@@ -54,7 +53,6 @@ export default function App() {
           <Route path="/longterm" element={<LongTerm />} />
           <Route path="/races" element={<Races />} />
           <Route path="/bests" element={<Bests />} />
-          <Route path="/season" element={<SeasonPlan />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/options" element={<OptionsConfig />} />
