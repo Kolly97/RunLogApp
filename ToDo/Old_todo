@@ -1,0 +1,397 @@
+## v0.15.0
+
+- [ ] Mache in Dashboard auch eine kachel für aktuelle abgeschätzte V02 Max. Nutze dafür wissenschaftliche quellen, wie das am besten geschätzt werden kann.
+
+- [ ] Race prediction diagramm einbauen, wie sich die Prediction für die unterschiedlichen distanzen ändert. interessant für mich sind 5, 10, HM und Marathon. Einbauen in Bastzeiten Menü
+
+\- [ ] Mache ein Wasserzeichen in die Ausgedruckten pdf Seiten mit RunLog - Kolja Hildenbrand 2026 (c). Es soll unten rechts sein und so, dass man es immer sieht. wie bei einem Arzt Brief, dass es klar ist woher es kommt. Später wenn die Stelle passt will ich, dass du es so rein codest, dass man es nicht mehr raus bekommt aus dem code.
+
+\- [ ] Intensity Trend hinzufügen Load Impact/Basefitness = Intensity. Neuer chart Dieser definiert dann auch in welchem bereich man ist ![Screenshot 2026-06-15 at 3.17.41 PM](/Users/kollybook/Downloads/Screenshot 2026-06-15 at 3.17.41 PM.png)
+
+\- [ ] Möglichkeit bei der Trainsplanung Einheiten in einen anderen tag zu schieben oder zu kopieren, oder als template zu speichern![image-20260615152550485](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615152550485.png)
+
+\- [ ] Label bei intervalle als dropdown zwischen LT1, LT2, VO2 max short, VO2 max long![image-20260615152737343](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615152737343.png)
+
+\- [ ] Ich hätte gern wie auch in der Trainingsplanung für die verschiedenen Einheitstypen verschiedene Tags um das gleich zu sehen und auch bei den Punkten unter den WOchentage soll ersichtlich werden anhand der farbe und durchmesser des Punktes was für ein Einheitstyp das war und der TSS der Einheit. Zudem sehe ich hier keine Prozentuale anzeige, die zeigt wie gut ich die Einheit geschafft habe. Manchmal sind die Prozente da, vllt braucht tracking noch ein Feld, wo man die richtige Trainingseinheit einer geplanten Einheit zuweist![image-20260615153344639](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615153344639.png)
+
+\- [ ] Ich will in der Wochenplanung eine TSS recommendation für die Woche anhand der letzen wochen und meiner Basefitness. Insgesammt soll es auch das 3:1 Prinzip verfolgen, dass es noch 3 belastungswochen mit hohen TSS eine Entlastungswoche gibt. 
+
+\- [ ] In wochenplanung auf wochentyp klicken um diesen anpassen zu können zudem passt farbe des tags nicht. Damit kann man Saisonplan dann auch weg tun.![image-20260615154407443](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615154407443.png)
+
+\- [ ] Ich will, dass man bei einheit nur Vo2 max auswählen kann und die differenzierung in long and short ist dann in den intervall labels![image-20260615154918013](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615154918013.png)
+
+\- [ ] Extra Herzfrequenz zonen für Fahrrad fahren![image-20260615160426486](/Users/kollybook/Library/Application Support/typora-user-images/image-20260615160426486.png)
+
+\- [ ] Wenn in Wochenplanung Wttkampf geplant wird auch gleich in Race menü integrieren. Später wenn in Tracking wird es davon abgelöst
+
+\- [ ] Manche details synch sind falsch und dann ändere ich sie. Allerdings werden glaube ich meine manuell geänderten oder gelöschten Intervalle bei neuem sync wieder hinzugefügt.
+
+\- [ ] Ich will auch bei Intervall trend durch drücken auf die Legende datentypen ein und ausblenden
+
+\- [ ] in den graphiken den wochen mittel mit gestrichelter linie markieren und mit einem Feld die typische Range errechnet aus den letzten 8 wochen (nicht eingetragene werte werden nicht einberechnet) Wie könnte man das am besten machen? ich will nicht alle Werte in die Range nehmen sondern so die optimale tendenz, was gut wäre?
+
+\- [ ] Können einfach vllt immer von allen Läufen die Splits übernommen werden als standard label dann GA1 und dann kann man für die belastungen das anpassen? oder man nimmt nur die interwalle mit Durchschnitt herzfrequenz über GA1
+
+\- [ ] Auch bei Tagesfaktoren bei Schlaf, REM, Deep Zeit in hh:mm angeben.
+
+\- [ ] Irgendwie ist das splits aus strava in die einheiten rüber ziehen und diese nicht nachdem ich sie angepasst oder vervollständigt hab noch nicht Konsequent. Erkläre mir wie es bissher genau gemacht wird und zusammen finden wir eine Methode, damit die richtigen splits synch werden
+
+\- [ ] TSS der realen Woche passt irgendwie nicht. kann es sein, dass du einfach auf die > Zone 3 intervalle geguckt wird, ich wollte da eigentlich, die Farbcodierung so machen, dass der TSS von einer harten einheit komplett Rot gezeigt wird. nicht nur der Intervall Anteil. Erkläre mir wie du das bisher machst.
+
+\## v0.15.5
+
+\- Bettzeit chart verkehrtherum machen, dass spät ins bettgehen weiter unten ist. also y-achse umdrehen  
+
+\- Anstatt die Planerfüllung so groß zu machen das wie heatmap kacheln neben den wochentage bei den Einheiten links daneben. Dort gut integrieren, dass das schön ins Bild passt und die notwendige information gibt![alt text](image-1.png)
+
+\- Ich will über VO2 max kachel hovern können um verlauf genuaer zu sehen mit wert und datum
+
+\- Beim drüber Hovern bei Intensity trend soll gleich die Bewertung da stehen. Zudem die Regionen etwas deutlicher machen. Optimal linie von 80 - 149 %![alt text](image-2.png)
+
+\- Dashboard anpassen Aktuelle WOche neben PMC und Saison Progression und intensity trend auf eine höhe hälfte hälfte
+
+\- Statt Bettzeit graph ein graph, der bettzeit und aufstehzeit zeigt als balken diagramme wie bei whoop. ![alt text](image-3.png)
+
+\---
+
+\- [ ] Readiness (in was für einem Zustand bin ich gerade)
+
+\- [ ] Dashbord. Was für eine Art des Trainings würde ich heute vorschlagen
+
+\- [ ] **Pace-/HF-Verteilungshistogramm** (Zeit je Pace-/Puls-Bucket) einbaue
+
+\- [ ] Möglichkeit finden, dass Programm über app auf dem Bildschirm gestartet werden kann (muss für mac und windows gehen)
+
+\- [ ] 
+
+
+
+# Archive
+
+## 06-12-2026
+
+\- [x] Ich kann immer noch keine Accounts anlegen. Ich will Accounts anlegen können, so dass ich von meinem PC nicht nur mein Training eingeben kann sondern auch zum Beispiel auf Isabels Account kann um da Training einzugeben.
+
+\- [x] Baue Strava-OAuth + Sync -> zines + TL/TSS + Matching ein
+
+\- [x] Ich hätte gerne, dass du bei Kalender Woche 0 anfängst und alle Trainingseinheiten aus strava rein Importierst. entweder entnehme aus dem Namen und beschriebung die EInheit oder ich muss diese dann halt noch manuell richtig einstellen. Somit habe ich ein Performance managment chart immerhin des ganzen jahres
+
+\- [x] Hier hätte ich gernem dass bei PMC nur die letzten 2 Wochen und die kommende zu sehen ist.![image-20260612005158375](/Users/kollybook/Library/Application Support/typora-user-images/image-20260612005158375.png)
+
+\- [x] Langzeit seite:![image-20260612005734136](/Users/kollybook/Library/Application Support/typora-user-images/image-20260612005734136.png)
+
+  \- [x] hätte ich gerne auch oben erstmal groß PMC und darunter die geplanten und gelaufenen km chart wie auch auf dem dashboard. Auch die kann ich den Zeitramen anpassen. 
+
+  \- [x] Die Langzeit seite will ich auch ausdrucken können auf den aktuellen zeit settings die ich gerade eingestellt habe.
+
+\- [x] Statt woche davor zu machen könnte man die Trainingswochen automatisch von den angegebenen Datum einsortieren lassen und die Wochen nummer (#) updaten, so dass die erste eingetragene woche immer 0 ist und es dann hoch zählt![image-20260612005711788](/Users/kollybook/Library/Application Support/typora-user-images/image-20260612005711788.png) 
+
+\---
+
+\## 06-13-2026
+
+\- [x] Accounts auch wieder löschen können und umbenennen in Einstellungen (muss man bestätigen mit dem Code 4397)
+
+\- [x] Bisher sind die Einheit Notizen nur die Strava beschriebung. ich will die gerne bearbeiten können in dem ein Notizen block auch bei der Aktivität ist. Dort wird die Beschreibung von strava (wenn da) rein kopiert aber ich will es bearbeiten können.
+
+\- [x] Gerade zerschießt eine krase einheit wegen dem hohen TSS wert die scale für die Fitness, ich möchte dass du das anpasst, so dass die Fitness über 80% der PMC y-axe range angezeigt wird![image-20260613023112703](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613023112703.png)
+
+\- [x] Ich will die races als goldenen strich und Beschriftung in meinen PMC und Wochenkilometer graph haben
+
+\- [x] Ich will, das Wochenende in denen ich Krank (Phase) war in allen Grafen leicht rot hinterlegt sind
+
+\- [x] Ich will bei Wochenbericht jeweils bei PMC und Saison Progression nur die Daten immer bis zum 1.1 des aktuellen Jahres haben. so dass sie sich immer mehr aufbauen. Bei PMC soll es noch 2 Wochen über heute drüber gehen![image-20260613021845622](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613021845622.png)
+
+\- [x] Chart linien rechts von "heute" linie bei PMC graph gestrichelt anzeigen lassen (Fitness, Fatigue, Form), damit man das nicht mit absoluten werten verwechselt sondern versteht, dass das eine prediction ist.
+
+\- [x] Wenn ich schon die TSS Auswertung mache würde ich gerne in dem Performance Management Chart auch den Verlauf der TSS über die Wochen sehen. Am besten in der PMC eine zusätzliche linie die immer den akkumulierten TSS Wert der Woche anzeigt. Da das dann recht viele verschiedene graphen elemente sind will ich die Möglcihkeit haben alle Elemente der Legende an oder aus zu schalten indem ich unten auf den Name bei der Legende drücke. Wenn dann zum beispiel "Form" nicht angezeigt wird ist "Form" auch in Legende leicht transparent.
+
+\- [x] für Langzeitbericht will ich noch kacheln haben, wo es mir sagt, wie viel ich in dem Zeitabschnitt, den ich angegeben habe gelaufen bin, fahrrad gefahren bin und Kraft/mobility gemacht habe
+
+\- [x] Update README und HANDOFF.md für version 0.4.0
+
+\---
+
+\## 06-13-2026
+
+\- [x] PMC änderungen ![image-20260613032538633](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613032538633.png)
+
+  \- [x] Das mit den Haifischzähnen war missverstanden. ich will einfach nur pro woche den summierten TSS wert haben. TSS Balken der Einheiten können etwas größer sein, so dass der höchste in dem Zeitabschnitt bis ganz oben geht.!
+
+  \- [x] Das mit den Races etwas schöner machen. und auch die will ich an und ausschalten können
+
+\- [x] Saison Progression![image-20260613032724330](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613032724330.png)
+
+  \- [x] Hier auch die Race markierungen schönen machen und einheitlich zu dem im PMC. hier will ich diese auch ausschalten können. gerne auch noch bei PMC und auch bei Sasion progression (wochen km) unten die Phase in der ich bin Farbcodieren zugewiesen. Hier will ich einfach, dass die x-achse für die jeweiligen zeitabschnitte die farbe der Phase hat und wenn man drüber hovert sieht man auch den name der Phase.
+
+  \- [x] Wochenplaner
+
+​    ![image-20260613033523697](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613033523697.png)
+
+​    \- [x] Hier muss was geändert werden. dass ist unübersichtlich mit 3 mal immer andere prozentangaben. Generell will ich das beim donut die TSS angeschaut werden (es irritiert start, dass ich nur blau und grün da sehe aber dann da hart steht). Daneben will ich dann wie bisher die km-Anteil pro Zone.
+
+​    \- [x] Darunter noch 2 solche Bewertungsfelder. eins wie im bild hinsichtlich der TSS in den letzten x Wochen und darunter bewertung hinsichtlich der Polarisierung.
+
+​    \- [x] Wenn es ums laufen geht will ich nur von km in welcher Zone sprechen. nicht in min in welcher Zone damit es einheitlicher wird
+
+  \- [x] Ich will links noch ein Menu mit Races wo ich dann auch noch was dazu schreiben kann wie notizen, Zeit etc. Diese sollen dann im WOchenbericht nochmal einzeln dagestellt werden mit Zeit, Splits, Puls pro km, Platzierung, Notizen
+
+  \- [x] Jahresmarkierung bei Progression, PMC und Wochenkilometern Charts![image-20260613034927421](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613034927421.png)
+
+​    \- [x] Die Markierung ist inkosistenz und nur manchmal da
+
+​    \- [x] darf subtiler sein und die Jahreszahl unter dem chart, eventuell muss die legende etwas nach unten gerutscht werden
+
+​    \- [x] strich nicht ganz durch den Graphen durch
+
+​    \- [x] In Progression, PMC und Wochenkilometern Charts (Im wochenbericht muss es diese markierung nicht geben, da hier der Graph ja eh am 1.1. beginnt)
+
+  \- [x] Kann man es so machen, dass wenn ich über die PMC drüberhover oben links der name der Einheit steht über der ich gerade bin und wenn ich drauf klicke gehe ich direkt bei Tracking menu zu der Einheit. Beim früber hovern soll man aber immer noch wie bisherr am mauszeiger die verschiedenen Werte sehen das finde ich sehr gut.
+
+  \---
+
+  \---
+
+  
+
+  \- [x] Mit den ganzen änderungen teste noch ob du als UX/UI experte das so designen würdest oder was man noch für Ästehtik aber vor allem Nutzerfreundlichkeit anpassen sollte
+
+  \- [x] Farbbande für trainingsphase muss entweder weiter unten sein oder im Vordergrund. die TSS balken verdecken die Farben. Zudem sagt es mir noch nicht welche Phase das was wenn ich drüber gehe. unten lcinks soll der name in der farbe der phase stehen
+
+  \- [x] ![image-20260613043423604](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613043423604.png) 
+
+  \- [ ] Ich habe jetzt 4 prozent anteile. nur ein donut mit TSS hier guckst du dir in den letzten 4 Wochen die einheiten an und errechnest den durchschnitt TSS pro einheit. Ich stelle dann die prozentualle werte für die thresholds so ein, das easy dauerläufe easy sind, steady run medium und schwelle, VO2 max eher hart. ein dicken balken mit den prozent KM in den jeweiligen Zonen. Die bewertung hinsichtlch wochen TSS im vergleich der letzten x wochen kommt so wie die km polarisuerung und der rest unten in den WOchen Check
+
+  \- [x] Ich fande es besser den Racenamen so vertikal an der markierung zu haben
+
+  \- [x] Entnehme aus Saisonplan Race liste die Wettkämpfe und füge sie automatisch schon als Race in "Races" menu an. man soll aber weiterhin auch manuell welche hinzufügen können
+
+  \- [x] Wenn die Einheit schon von Strava hochgeladen wurde und ich dann die Notes davon ändere oder lösche will ich nicht, dass diese dann wieder geändert werden, sobald ich wieder mit Strava synchronisiere
+
+  \- [x] Jahresmarkierung etwas zu unauffällig und nicht vor KW1 sondern zwischen 1 und 2. in schwarz und zahl etwas weiter unten. Bisher sieht man sie nur bei 6 monaten und YTD aber nicht bei 1J oder saison (bei PMC komischerweise stabil, bei wochen kilometern aber nicht)![image-20260613045036955](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613045036955.png)
+
+  \- [x] Auch bei wochenbericht PMC und saison Progression über die ganze Seitenbreite machen
+
+  
+
+  \- [x] PMC und Wochenkm graphen layout<img src="/Users/kollybook/Library/Application Support/typora-user-images/image-20260613113347173.png" alt="image-20260613113347173" style="zoom:80%;" />
+
+​    \- [x] Etwas mehr abstand zischen Graph und der phase beschriftung (hier Race week) und das will ich gerne auch beim Wochenkm chart einfügen
+
+​    \- [x] Den Abstand zwischen legende und graph etwas verringern
+
+​    \- [x] vllt graphen höher machen 
+
+  \- [x] Die rothinterlegung bei krank hätte ich auch gerne bei Wellness verlauf im Langzeitbericht![image-20260613120122964](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613120122964.png)
+
+  \- [x] Bei Races kann ich keine Zeit in das Feld eintragen. Kann da nicht tippen und ich hätte gerne noch pro split die max herz Frequenz außerdem will ich bei der overview, dass es automatisch die Pace ausrechnet.
+
+  \- [x] Bei Reace overview fehlt durchschnitt HF vor Max-HF
+
+  \- [x] bei wochen polarisierung nur auf km in zone polarisierung schauen (als easy, moderat, hart aufteilen)
+
+  \- [x] mache die personalisierten files in einen extra ordner, damit wenn andere das programm nutzen und von mir ein neues update bekommen einfach ihren Ordner mit persönlichen Daten rein kopieren können
+
+  \- [x] mach die Jahres markierung bei PMC und wochen kilometer zum Dreieck 
+
+  \- [x] PMC und wochen kilometer charts 20 % höher machen, damit es nicht so ganz gequetscht wird vor allem mit den race Beschriftungen. Diese race beschriftungen sollen im vordergrund stehen und von nichts überlappt werden
+
+  \- [ ] Races button neben die restlcihe legende und abstand nach unten verringern![image-20260613124205907](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613124205907.png)
+
+  
+
+  \---
+
+  
+
+  \## v0.8.0
+
+  
+
+  \- [x] In dem Wochenbericht nebeneinander geplante TSS pro Zone und daneben Absolvierte TSS in zone. Beide mit Donut und der tSS Zahl in der mitte und die auflistung drunter.![image-20260613141052712](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613141052712.png)
+
+  \- [ ] Ich will auch bei Zonen Effizienz, dass Krankheit phasen im hintergrund rot markiert sind![image-20260613144530118](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613144530118.png)
+
+  \- [x] Mache die Jahresmakierung bei Saison Progression/wochen km chart, dass die Markierung immer VOR der KW 1 ist. also zwischen KW 52 und KW 1
+
+  \- [x] Das sieht noch sehr hässlich aus. Rechts: mache 2 donuts nebeneinander und beides TSS basiert. Einmal geplant und einmal real von dem getrackten training. mache den unteren km Donut weg. Rechts: mache die balken breiter, so dass nicht so viel weiße Fläche vornhanden ist und mache die ticks in 20% abständen.![image-20260613150306105](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613150306105.png)
+
+  
+
+  \- [x] Ich habe sowohl bei Saisonplan als auch Races ven 10k Supreme Race entfernt. trotzdem ist dieser noch als goldene race markierung in meinen charts. ![image-20260613163746496](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613163746496.png)
+
+  \- [x] "Diese Woche" sollte eher bei Saison Progression eine markierung der woche sein und keine gestrichelte linie ![image-20260613163915199](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613163915199.png)
+
+  \- [x] Wenn Sport "Rennrad" ist. mache ein schalter hin, den ich drücken kann, damit Fahrt als Commute markiert ist. Bei commutes gibt es keine notizen, und die notiz wird sofort gelöscht. Der name der Einheit wird gleich auf Commute geändert. Somit wird verändert, dass die kurzen Fahrten den WOchenbericht vollstopfen.![image-20260613164108664](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613164108664.png)
+
+  
+
+  \- [x] Bei Races log KM fenster doppelt so breit und noch Höhenmeter pro split Fenster machen![image-20260613043810592](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613043810592.png)
+
+  
+
+  \---
+
+  
+
+  \## v0.9.0
+
+  
+
+  \- [x] kannst du mit der Formel von Trainingspeaks die running TSS für meine belastungen ausrechnen und auch für die geplanten workouts. Somit wird es nicht so geschätzt und hängt auch nicht von COROS load ab. Somit ist die Funktion auch nutzbar für Leute mit Garmin uhren etc.![image-20260613180731589](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613180731589.png)
+
+  
+
+  \- [x] Lese dir die seiten von https://www.trainingpeaks.com/learn/articles/ durch um wissenschaftliche auswertung bei mir auch zu sichern
+
+  
+
+  \---
+
+  
+
+  \## v0.10.0
+
+  
+
+  \- [ ] In Zonen Effizienz charts immer noch keine Krank markierung![image-20260613183750774](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613183750774.png)
+
+  \- [x] Mache die bar graphs so hoch, damit es die kachel von der höhe aus ausfüllt. Darunter noch eine legende, was die verschiedenen Farben sagen![image-20260613211232817](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613211232817.png)
+
+  \- [x] Ich möchte bei dem Wochenbericht das ein neuer chart neben die saison progression hinkommt. 1/3 der Seitenbreite von links aus ist ein neuer graph, der die 7 wochentage anzeigt. Pro tag sind zwei barplot 1. der die km pro tag plottet (lauf km + Rad km umgerechnet in lauf km), 2. die rTSS pro Tag. 2/3 der seite auf der rechten Seite sind weiterhin die Saison Progression![image-20260613211511628](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613211511628.png)
+
+  \- [x] Errechne für Rad fahrten, rollen einheiten und commutes die TSS wie trainingspeaks. Die formel ist TSS = (Dauer in Sekunden × NP × IF) / (FTP × 3600) × 100.
+
+  \- [x] Ich möchte, dass du bei den Trainingseinheiten die Höhenmeter bei der Einheit (Lauf, Rad) angibst und lings neben Pace ist noch platz und da die grade adjusted pace hinschreibst, die du ausgerechnet hast für die Einheit. ![image-20260613220516326](/Users/kollybook/Library/Application Support/typora-user-images/image-20260613220516326.png)
+
+  
+
+  
+
+  
+
+  \---
+
+  
+
+  \---
+
+  
+
+  \## V0.11.0
+
+  
+
+  \- [x] Jahres dreieck auch bei anderen graphen (Wellness-Verläufe und Zonen-Effizienz)![image-20260614020920045](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614020920045.png)
+
+  \- [x] Bewertung wegen polarisierung in Wochenbericht über die reale woche bisher zeigt es als schild die warnung wegen der geplanten woche an. In Wochenplanung will ich die Schilder auf die geplante Woche reflektiert. Sowohl für wochen km polarisierung als wochen durchschnitt TSS vergleich. Bei Wochenbericht will ich es mit den realen werten verglichen haben. Wochenbericht behält aber die 2 donuts einmal für geplant und einmal für real![image-20260614021219699](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614021219699.png)
+
+  \- [x] Effizient graph Legende klickbar zum ein und ausschalten. Ich will da wie bei PMC durchschnitt Pace und durch. HF ein und ausblenden können![image-20260614021302141](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614021302141.png)
+
+  \- [x] Höhenmeter und GAP in training session bei wochenbericht steht das inzwischen aber nicht bei den Tracking der EInheiten![image-20260614021443623](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614021443623.png)
+
+  \- [x] bei wochenbericht button um zu "Tracking" gleich in die richtige woche zu kommen. anders herum genau so
+
+  \- [x] Bessere Farbwahl und bessere legenden Struktur bei KM &TSS Wochentag in Wochenbericht![image-20260614013430564](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614013430564.png)
+
+  \- [x] In Einstellungen eingeben können, was für checks man haben will in Wochenbericht. Diese werden dann auch in Langzeit analyse getrackt![image-20260614021600292](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614021600292.png)
+
+  \- [x] Das ist mit vielen Wochen zu unübersichtlich. Ich will pro Jahr ein Dropdown haben. So das ich hier jetzt 2019,2020,2021,2022,2023,2024,2025,2026 untereinander habe und mit einer coolen animation ich die Jahre einzeln öffnen kann und dann da die KW sehe.![image-20260614014949095](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614014949095.png)
+
+  \- [x] Hier auch irgendwie mit Jahres dropdowns arbeiten![image-20260614015742940](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614015742940.png)
+
+  \- [x] Beim tracking der Einheit will ich auswählen können was es war. LT1, LT2, Longrun, Vo2max kurz, Vo2max lang etc![image-20260614020101505](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614020101505.png)
+
+  \- [x] TSS für Sonstiges anpassen. Wanderungen zb werden extrem überschätzt
+
+  
+
+  \---
+
+  
+
+  \## V0.12.0
+
+  
+
+  \- [x] Fix. Ich hatte ausversehen die Beispiel saison importieren gedrückt. Lösche diese möglichkeit und den Code der dazu gehört. Dadurch hatte ich viele wochen mehrfach. Ich habe diese einzel gelöscht aber deren geplante km sind noch im system, daher passt das gar nicht. Ich will, dass nur die Daten, der Wochen, welche in Saisonplan stehen gespeichert werden. Allgemein will ich die Saisonplan darstellung ändern. Ich will einfach nur die KW haben die man noch manuell ändern kann, falls man eine ausversehen löscht aber das Datum zeigt es immer automatisch an ohne dass man es Ändern kann. Die woche geht immer von Montag bis Sonntag.![image-20260614110850895](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614110850895.png)
+
+  \- [x] Trainingplanung ändern. Nicht nur Intervalle sondern auch auch wiederholungen, damit man einstellen kann, dass die Intervalle zb 3x(1000-200) sind und man nicht 1000,200,1000,200,1000,200 eingeben muss. Wie bei Coros ![image-20260614104947416](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614104947416.png)
+
+  
+
+  \- [x] Großes Update ich will, dass die Intervalle automatisch aus strava extrahiert werden. Zb wenn die einheit 8x1000 war stehen danach drunter bei tracking schon die 8x1000 intervalle untereinander mit den einzel intervall werte wie Zeit, Distanz, durch. HF, max HF. Bei 3x(1000-1000-200-200) würde dann dort 1000, 1000, 200, 200,1000, 1000, 200, 200,1000, 1000, 200, 200 stehen mit den Werten.
+
+  
+
+  \- [x] Bei Zonen Effizienz und Wellness Verläufe will ich, dass wenn man mit der Maus drüber hovert auch der Name der trainingsphase gesagt wird.![image-20260614025210687](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614025210687.png)
+
+  
+
+  \- [x] Wochen verschwinden in Saisonplan oft nicht wenn man sie löscht. erst bei reload
+
+  
+
+  \- [x] Möglcihkeit haben ein Profil zu reseten. Zudem extra Profil Menu, wo man mehr als nur Name rein schreiben kann. Passe das an an andere Profil seiten von trainingspeaks oder strava. Ich will zb die HF-Zonen & Schwellen hier haben.
+
+  
+
+  \- [x] Darunter eine bewertung, wie viel man geschafft hat gold = 100%, grün >= 90%, gelb >= 75%, orange >= 50%, rot <50%. und bei scrollen entlang der heatmap bleiben die namen der kategorien fixiert.![image-20260614030854053](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614030854053.png) 
+
+  
+
+  \- [x] Ich würde gerne, dass der balken graph und die donuts jeweils ein eigene karte haben und darunter kommt eine breite karte, wo die ganzen analyse Schilder stehen![image-20260614094153621](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614094153621.png) 
+
+  
+
+​    
+
+  
+
+  \- [x] Unten neu einzugebene Schriftboxen umtauschen, damit es die selbe Orientierung hat, wie oben die anderen tags![image-20260614095337640](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614095337640.png)
+
+  
+
+  \- [x] HF Zonen eingabe ähnlich machen wie pace drunter. immer nur die Hohe grenze angeben müssen. Die niedrige ist dann immer ein Puls über der höchsten HR der Zone davor![image-20260614095629427](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614095629427.png)
+
+  
+
+  \- [x] Auch die Daily Abgefragte werte Manuell angepasst machen. Ich will wie bei weekly checker in Auswahlliste eine Rubrik, wo ich diese Manuell anpassen kann. Es gibt paar, die immer vorhanden sind wie (Gewicht, Schlaf (h), Bettzeit, Aufwachzeit, Energie, Stimmung, Stress, Krank (zum abhaken) und natürlich notizen)![image-20260614105228152](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614105228152.png)
+
+  
+
+  \- [x] Ich möchte das Layout für activity tracking besser, so dass es übersichtlicher ist und die anordnung sinn ergibt. Oben auf jeden fall nur Sport, Typ und Name![image-20260614105614258](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614105614258.png)
+
+  
+
+  \- [x] Update Anleitung und alle Dokumentation
+
+  
+
+  
+
+  
+
+  \---
+
+  
+
+  \## v0.13.0
+
+  
+
+  \- [x] Bei Trainingsplanung brauch ich noch kein durchschnitt HF oder max HF. Das weiß ich da nocch gar nicht. Zone reicht voll
+
+  \- [x] Die Daily checker in logische Kategorien einteilen, die man bei Auswahllisten dann auch modifizieren kann![image-20260614115813213](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614115813213.png)
+
+  \- [x] Für Wochenplanung, tracking und wochenbericht neben dem Wochen Dropdown 2 Pfeile um zur woche davor und danach zu springen![image-20260614121136436](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614121136436.png)
+
+  \- [x] Mach das in Wochenplanung geplante KM sich immer an den geplanten einheiten orientiert. das ist hier bei dem Bild eindeutig nicht der Fall![image-20260614121637094](/Users/kollybook/Library/Application Support/typora-user-images/image-20260614121637094.png)
+
+  \- [x] Bei Einstellungen ein Knopf haben um nur Details wie splits von Trainingseinheiten zu extrahieren von Strava daten. 
+
+  
+
+  \---
+
+  
