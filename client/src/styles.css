@@ -96,6 +96,7 @@ button.danger { color: var(--danger); }
 button.ghost.danger:hover { background: #fdf0f0; color: var(--danger); }
 
 /* Tables */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
 th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
@@ -326,6 +327,20 @@ table.units .note-efforts { color: var(--muted); }
   margin-top: 28px; padding: 12px 4px; border-top: 1px solid var(--line);
   color: var(--muted); font-size: 12px; text-align: center;
 }
+
+/* Wochenplanung: Vorlagen-Schnellauswahl am Tag (▾) */
+.tpl-menu {
+  position: absolute; z-index: 60; top: calc(100% + 4px); right: 0; min-width: 220px;
+  max-height: 50vh; overflow-y: auto; background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(20,28,44,0.16); padding: 4px;
+}
+.tpl-menu .tpl-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
+  font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; padding: 7px 9px;
+  border-radius: 6px; text-align: left;
+}
+.tpl-menu .tpl-item:hover { background: #f5f7fa; }
+.tpl-menu .tpl-sep { height: 1px; background: var(--line); margin: 4px 0; }
 
 /* Print */
 @media print {

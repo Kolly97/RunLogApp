@@ -4,7 +4,7 @@ import {
   Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import type { PmcPoint } from "../lib/api.ts";
-import { fmtDate, todayIso } from "../lib/util.ts";
+import { fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
 
 // Bänder: [Untergrenze, Obergrenze) — Reihenfolge wie im Screenshot.
 const BANDS = [
@@ -50,7 +50,7 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
           <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
           <YAxis domain={[0, maxR]} width={40} tick={{ fontSize: 11, fill: "#8a96a6" }} tickFormatter={(v: number) => `${v}%`} />
           <Tooltip
-            labelFormatter={(d) => fmtDate(String(d))}
+            labelFormatter={(d) => fmtDateY(String(d))}
             formatter={(v: number) => [`${v}% · ${bandFor(v).label}`, "Intensity"]}
             contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
           />

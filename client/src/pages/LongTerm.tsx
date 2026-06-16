@@ -302,7 +302,7 @@ export default function LongTerm() {
                     tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
                   />
                   <Tooltip
-                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return p ? `${fmtDate(String(d))} · ${p}` : fmtDate(String(d)); }}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return p ? `${fmtDateY(String(d))} · ${p}` : fmtDateY(String(d)); }}
                     formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -351,7 +351,7 @@ export default function LongTerm() {
                   <YAxis yAxisId="hr" orientation="right" domain={["auto", "auto"]} width={34}
                     tick={{ fontSize: 11, fill: "#d53f8c" }} />
                   <Tooltip
-                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => (n === "Ø-Pace" ? [`${paceStr(v)} /km`, n] : [Math.round(v), n])}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -386,7 +386,7 @@ export default function LongTerm() {
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={44} />
                   <Tooltip
-                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number) => [v, "EF"]}
                     contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                   />
@@ -416,7 +416,7 @@ export default function LongTerm() {
               <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
               <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="%" />
               <Tooltip
-                labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDate(String(d))}${p ? ` · ${p}` : ""}`; }}
+                labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                 formatter={(v: number) => [`${v} %`, "Plan-Erfüllung"]}
                 contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
               />

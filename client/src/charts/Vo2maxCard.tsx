@@ -2,7 +2,7 @@
 // Quelle: /api/fitness-trend (90-Tage-Rolling-Window, Daniels-VDOT aus Bestzeiten).
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FitnessTrend } from "../lib/api.ts";
-import { fmtDate } from "../lib/util.ts";
+import { fmtDate, fmtDateY } from "../lib/util.ts";
 
 const LEVEL_COLOR: Record<string, string> = {
   "Elite": "#d4af37", "Exzellent": "#22c55e", "Sehr gut": "#0ea5e9",
@@ -38,7 +38,7 @@ export default function Vo2maxCard({ data }: { data: FitnessTrend | null }) {
                   <XAxis dataKey="date" hide />
                   <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
                   <Tooltip
-                    labelFormatter={(d) => fmtDate(String(d))}
+                    labelFormatter={(d) => fmtDateY(String(d))}
                     formatter={(v: number) => [`${(v as number).toFixed(1)} VO₂max`, ""]}
                     separator="" contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }}
                   />

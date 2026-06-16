@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type AnalyzeResult, type Race } from "../lib/api.ts";
+import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
@@ -9,6 +9,7 @@ import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityCard from "../charts/IntensityCard.tsx";
 import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
+import TemplateManager from "../components/TemplateManager.tsx";
 
 export default function WeekPlan() {
   const { season, week, weekNo, setWeekNo, loading, reload: reloadSeason } = useSeason();
@@ -19,6 +20,10 @@ export default function WeekPlan() {
   const [editingPhase, setEditingPhase] = useState(false);
   const [dragId, setDragId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Vorlagen-Schnellauswahl je Tag + Verwalten-Modal.
+  const [templates, setTemplates] = useState<SessionTemplate[]>([]);
+  const [openTplDay, setOpenTplDay] = useState<string | null>(null);
+  const [showManager, setShowManager] = useState(false);
 
   async function reload() {
     if (weekNo == null) return;
@@ -26,7 +31,16 @@ export default function WeekPlan() {
     setSessions(s);
     setAnalyze(await api.analyzeWeek(weekNo));
   }
+  const reloadTemplates = () => api.templates().then(setTemplates).catch(() => setTemplates([]));
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [weekNo]);
+  useEffect(() => { reloadTemplates(); }, []);
+  // Schnellauswahl-Dropdown bei Klick außerhalb schließen.
+  useEffect(() => {
+    if (!openTplDay) return;
+    const close = () => setOpenTplDay(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [openTplDay]);
 
   if (loading) return <p className="muted">Lädt…</p>;
   if (!season.length)
@@ -62,6 +76,23 @@ export default function WeekPlan() {
   async function copySession(s: PlannedSession) {
     const { id: _id, ...rest } = s;
     await api.addSession({ ...rest, week_no: weekNo });
+    reload();
+  }
+  // Vorlage per Klick direkt in einen Tag einsetzen (kein Dialog). TSS wird serverseitig neu berechnet.
+  async function quickAdd(t: SessionTemplate, date: string) {
+    setOpenTplDay(null);
+    await api.addSession({
+      date, week_no: weekNo, sport: t.sport, type: t.type,
+      planned_km: t.planned_km ?? null, planned_min: t.planned_min ?? null,
+      zone_alloc: t.zone_alloc ?? null, description: t.description ?? "", efforts: t.efforts ?? null,
+    });
+    if (t.type === "Race") {
+      const name = t.description || "Wettkampf";
+      const existing = await api.races({ from: date, to: date });
+      if (!existing.some((r) => r.date === date && r.name === name)) {
+        await api.addRace({ date, name, source: "plan" } as Race);
+      }
+    }
     reload();
   }
   // Ziel-km direkt in der Wochenplanung pflegen (v0.14.0, ToDo 3) — gleiche Quelle wie der Saisonplan.
@@ -145,7 +176,25 @@ export default function WeekPlan() {
                 style={isDrop ? { outline: "2px dashed var(--primary)", outlineOffset: -2 } : undefined}>
                 <div className="day-head">
                   <span><span className="day-name">{DAY_NAMES[i]}</span> <span className="muted tiny">{fmtDate(d)}</span></span>
-                  <button className="sm ghost" onClick={() => setEditing({ date: d, sport: "Run", type: "Easy" })}>+ Einheit</button>
+                  <div className="row" style={{ gap: 2, width: "auto", position: "relative" }}>
+                    <button className="sm ghost" onClick={() => setEditing({ date: d, sport: "Run", type: "Easy" })}>+ Einheit</button>
+                    <button className="sm ghost" title="Aus Vorlage einsetzen" style={{ padding: "2px 6px" }}
+                      onClick={(e) => { e.stopPropagation(); setOpenTplDay(openTplDay === d ? null : d); }}>▾</button>
+                    {openTplDay === d && (
+                      <div className="tpl-menu" onClick={(e) => e.stopPropagation()}>
+                        {!templates.length && <div className="tiny muted" style={{ padding: "6px 10px" }}>Noch keine Vorlagen.</div>}
+                        {templates.map((t) => (
+                          <button key={t.id} className="tpl-item" onClick={() => quickAdd(t, d)}>
+                            <span style={{ width: 8, height: 8, borderRadius: 999, background: typeColor(t.type), flexShrink: 0 }} />
+                            <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                            <span className="tiny muted">{t.planned_km ? `${t.planned_km} km` : t.planned_min ? `${t.planned_min} min` : typeLabel(t.type)}</span>
+                          </button>
+                        ))}
+                        <div className="tpl-sep" />
+                        <button className="tpl-item" onClick={() => { setOpenTplDay(null); setShowManager(true); }}>✎ Verwalten…</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {list.length === 0 && <div className="tiny muted" style={{ padding: "2px 4px" }}>—</div>}
                 {list.map((s) => (
@@ -205,6 +254,9 @@ export default function WeekPlan() {
 
       {editing && (
         <SessionModal session={editing} onClose={() => setEditing(null)} onSave={save} />
+      )}
+      {showManager && (
+        <TemplateManager templates={templates} onClose={() => setShowManager(false)} onChange={reloadTemplates} />
       )}
     </div>
   );

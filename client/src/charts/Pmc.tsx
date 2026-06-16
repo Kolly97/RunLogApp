@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, ReferenceLine, ReferenceArea, Bar, Customized,
 } from "recharts";
 import type { PmcPoint } from "../lib/api.ts";
-import { todayIso, fmtDate } from "../lib/util.ts";
+import { todayIso, fmtDate, fmtDateY } from "../lib/util.ts";
 import { phaseColor, phaseLabel } from "../lib/options.ts";
 import ChartDecor, { vRefLabel, type PhaseRun, type YearMark } from "./ChartDecor.tsx";
 
@@ -81,7 +81,7 @@ export default function Pmc({
     <div className="pmc-wrap" style={{ position: "relative" }}>
       {hoverName && (
         <div className="pmc-hover">
-          <b>{fmtDate(hoverDate!)}</b> · {hoverName}{onPick ? <span className="muted"> · klicken → Tracking</span> : null}
+          <b>{fmtDateY(hoverDate!)}</b> · {hoverName}{onPick ? <span className="muted"> · klicken → Tracking</span> : null}
         </div>
       )}
       <ResponsiveContainer width="100%" height={height}>
@@ -154,7 +154,7 @@ function PmcTooltip({ active, payload }: any) {
   );
   return (
     <div style={{ background: "#fff", border: "1px solid #e3e8ef", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
-      <div style={{ fontWeight: 100, marginBottom: 4 }}>{fmtDate(p.date)}</div>
+      <div style={{ fontWeight: 100, marginBottom: 4 }}>{fmtDateY(p.date)}</div>
       {row("Fitness", p.ctl, "#2b6cb0")}
       {row("Fatigue", p.atl, "#d53f8c")}
       {row("Form", p.tsb, "#e0a300")}

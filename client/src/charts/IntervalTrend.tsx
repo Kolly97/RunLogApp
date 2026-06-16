@@ -7,7 +7,7 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import type { IntervalEffortStat } from "../lib/api.ts";
-import { fmtDate, paceStr } from "../lib/util.ts";
+import { fmtDate, fmtDateY, paceStr } from "../lib/util.ts";
 
 const CATS = [
   { key: "LT1", label: "LT1", color: "#0ea5e9" },
@@ -67,7 +67,7 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
         <YAxis reversed domain={[min, max]} tickFormatter={(v: number) => paceStr(v)} width={44}
           tick={{ fontSize: 11, fill: "#8a96a6" }} />
         <Tooltip
-          labelFormatter={(d) => fmtDate(String(d))}
+          labelFormatter={(d) => fmtDateY(String(d))}
           formatter={(v: number, n: string) => [`${paceStr(v)} /km`, n]}
           contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
         />

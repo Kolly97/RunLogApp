@@ -67,6 +67,22 @@ export function initSchema() {
       sort_order  INTEGER DEFAULT 0
     );
 
+    -- Wiederverwendbare Einheiten-Vorlagen (häufige Einheiten 1× speichern, per Klick einsetzen).
+    -- Rein additiv, profil-scoped; Inhalt entspricht den Inhalts-Feldern einer planned_session ohne Datum.
+    CREATE TABLE IF NOT EXISTS session_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      name        TEXT NOT NULL,
+      sport       TEXT NOT NULL DEFAULT 'Run',
+      type        TEXT NOT NULL DEFAULT 'Easy',
+      planned_km  REAL,
+      planned_min REAL,
+      zone_alloc  TEXT,
+      description TEXT,
+      efforts     TEXT,
+      sort_order  INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS activities (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       strava_id     TEXT UNIQUE,

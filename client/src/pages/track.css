@@ -57,7 +57,7 @@
 .wd-tab.today .wd-name { color: var(--accent); }
 .wd-tab .wd-name { font-weight: 700; font-size: 12px; line-height: 1.1; }
 .wd-tab .wd-date { font-size: 10px; color: var(--muted); }
-.wd-dots { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; min-height: 9px; margin-top: 4px; }
+.wd-dots { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; min-height: 9px; margin-top: 4px; align-items: center; }
 .wd-dots .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
 /* ---- Quick-Add Commute/Allgemein ---- */

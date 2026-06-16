@@ -122,7 +122,7 @@ function WeekdayTabs({ days, sessions, acts, adh, selDate, onSelect }: {
     <div className="wd-tabs">
       {days.map((d, i) => {
         const planned = sessions.filter((s) => s.date === d && s.type !== "Rest");
-        const hasActs = acts.some((a) => a.date === d);
+        const dayActs = acts.filter((a) => a.date === d);
         return (
           <button key={d} type="button" onClick={() => onSelect(d)}
             className={"wd-tab" + (d === selDate ? " active" : "") + (d === today ? " today" : "")}>
@@ -138,7 +138,15 @@ function WeekdayTabs({ days, sessions, acts, adh, selDate, onSelect }: {
                     style={{ background: typeColor(p.type), width: sz, height: sz, minWidth: sz }} />
                 );
               })}
-              {hasActs && <span className="dot" style={{ background: "var(--ok)" }} title="getrackt" />}
+              {dayActs.map((a, ai) => {
+                const sz = dotSize(a.tss);
+                const col = typeColor(a.type ?? "");
+                return (
+                  <span key={`act-${ai}`} className="dot"
+                    title={[a.name || sportLabel(a.sport), a.tss ? `${Math.round(a.tss)} TSS (absolviert)` : "absolviert"].filter(Boolean).join(" · ")}
+                    style={{ background: col, width: sz, height: sz, minWidth: sz, boxShadow: `0 0 0 2px #fff, 0 0 0 3.5px ${col}` }} />
+                );
+              })}
             </div>
           </button>
         );
@@ -240,6 +248,7 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
   const bike = isBikeSport(e.sport);
   // Commute (ToDo Z.14): Sportart → „Allgemein/Commute" (General), Name „Commute", keine Notizen.
   const commute = e.sport === "General";
+  const showTyp = e.sport === "Run" || e.sport === "BikeRoad";
   const setCommute = (on: boolean) =>
     on ? set({ sport: "General", name: "Commute", notes: "" })
        : set({ sport: "BikeRoad", name: e.name === "Commute" ? "" : e.name });
@@ -314,14 +323,14 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
           <input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
       )}
       {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
-      <div className="grid cols-3" style={{ gap: 8 }}>
+      <div className={`grid ${showTyp ? "cols-3" : "cols-2"}`} style={{ gap: 8 }}>
         <label className="field" style={{ margin: 0 }}><span>Sport</span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
-        <label className="field" style={{ margin: 0 }}><span>Typ</span>
+        {showTyp && <label className="field" style={{ margin: 0 }}><span>Typ</span>
           <select value={e.type ?? ""} onChange={(x) => set({ type: x.target.value || null })} title="Einheitstyp (z.B. LT2, VO2max kurz) — steuert den Real-Donut & Intervall-Trend">
             <option value="">—</option>
             {sessionTypes.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-        </label>
+        </label>}
         <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
       </div>
       {(bike || commute) && (

@@ -164,7 +164,7 @@ export default function Bests() {
                 <YAxis reversed domain={["dataMin", "dataMax"]} width={52} tickFormatter={(s: number) => secToClock(s)}
                   tick={{ fontSize: 11, fill: "#8a96a6" }} />
                 <Tooltip
-                  labelFormatter={(d) => fmtDate(String(d))}
+                  labelFormatter={(d) => fmtDateY(String(d))}
                   formatter={(v: number, n: string) => [secToClock(v), n]}
                   contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                 />

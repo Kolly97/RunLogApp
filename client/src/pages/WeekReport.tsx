@@ -258,7 +258,7 @@ export default function WeekReport() {
               <span className="tiny muted">Plan-Erfüllung Ø Woche {adh.weekPct}% <span className="muted">(TSS-Treffer + Zeit in Ziel-Pace-Zone)</span></span>
             )}
           </div>
-          <table className="units">
+          <div className="table-scroll"><table className="units">
             <thead><tr><th>Tag</th><th>Plan-Erf.</th><th>Geplant</th><th>Real</th><th>km</th><th>Zeit</th><th>TSS</th><th>kcal</th><th>RPE/Beine</th></tr></thead>
             <tbody>
               {days.map((d, i) => {
@@ -330,7 +330,7 @@ export default function WeekReport() {
                 ];
               })}
             </tbody>
-          </table>
+          </table></div>
 
           {/* Efficiency Factor je Wochentag (DL/Longruns) — v0.14.0, ToDo 11 */}
           {efVals.length > 0 && (
@@ -480,7 +480,7 @@ export default function WeekReport() {
             <div className="muted tiny">{fmtDateY(week.start_date)} – {fmtDateY(week.end_date)}</div>
           </div>
 
-          <table className="daily-table mt">
+          <div className="table-scroll"><table className="daily-table mt">
             <thead>
               <tr>
                 <th>Faktor</th>
@@ -502,7 +502,7 @@ export default function WeekReport() {
               })}
               {!visibleMetrics.length && <tr><td colSpan={9} className="muted center">Keine Tagesfaktoren eingetragen.</td></tr>}
             </tbody>
-          </table>
+          </table></div>
 
           <h3 className="mt">Wellness-Verläufe (HRV · Ruhepuls · Recovery · Strain · Schlaf · Bettzeit)</h3>
           <WellnessTrends daily={daily} days={days} />

@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { api, type PlannedSession, type ZoneSet } from "../lib/api.ts";
-import { num, clockToSec, secToClock } from "../lib/util.ts";
+import { api, type PlannedSession, type SessionTemplate, type ZoneSet } from "../lib/api.ts";
+import { num, clockToSec, secToClock, typeColor, typeLabel } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "./EffortBuilder.tsx";
 
@@ -16,6 +16,36 @@ export default function SessionModal({
   const [zs, setZs] = useState<ZoneSet | null>(null);
   useEffect(() => { api.zoneset(session.date).then(setZs).catch(() => setZs(null)); }, [session.date]);
 
+  // Vorlagen: laden, oben als Chips anbieten (nur bei neuer Einheit) + unten als Vorlage speichern.
+  const [templates, setTemplates] = useState<SessionTemplate[]>([]);
+  const reloadTemplates = () => api.templates().then(setTemplates).catch(() => setTemplates([]));
+  useEffect(() => { reloadTemplates(); }, []);
+  const [saving, setSaving] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [savedMsg, setSavedMsg] = useState("");
+
+  const applyTemplate = (t: SessionTemplate) =>
+    setS((p) => ({
+      ...p,
+      sport: t.sport, type: t.type,
+      planned_km: t.planned_km ?? null, planned_min: t.planned_min ?? null,
+      zone_alloc: t.zone_alloc ?? null, description: t.description ?? "",
+      efforts: t.efforts ?? null,
+    }));
+
+  async function saveAsTemplate() {
+    const name = tplName.trim() || s.description?.trim() || typeLabel(s.type);
+    await api.addTemplate({
+      name, sport: s.sport, type: s.type,
+      planned_km: s.planned_km ?? null, planned_min: s.planned_min ?? null,
+      zone_alloc: s.zone_alloc ?? null, description: s.description ?? "", efforts: s.efforts ?? null,
+    });
+    setSaving(false); setTplName("");
+    setSavedMsg(`Vorlage „${name}" gespeichert.`);
+    await reloadTemplates();
+  }
+
+  const showTyp = s.sport === "Run" || s.sport === "BikeRoad";
   const km = s.zone_alloc?.byKm || {};
   const set = (patch: Partial<PlannedSession>) => setS((p) => ({ ...p, ...patch }));
   const setZone = (z: number, v: number | null) => {
@@ -33,17 +63,40 @@ export default function SessionModal({
           <button className="ghost" onClick={onClose}>✕</button>
         </div>
 
+        {!s.id && templates.length > 0 && (
+          <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10, alignItems: "center" }}>
+            <span className="tiny muted">Aus Vorlage:</span>
+            {templates.map((t) => (
+              <button key={t.id} className="pill" title="Vorlage übernehmen" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                onClick={() => applyTemplate(t)}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: typeColor(t.type) }} />
+                {t.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid cols-2">
-          <label className="field"><span>Sportart</span>
-            <select value={s.sport} onChange={(e) => set({ sport: e.target.value })}>
-              {sports.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-            </select>
-          </label>
-          <label className="field"><span>Typ</span>
-            <select value={s.type} onChange={(e) => set({ type: e.target.value })}>
-              {sessionTypes.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-            </select>
-          </label>
+          {showTyp ? (
+            <>
+              <label className="field"><span>Sportart</span>
+                <select value={s.sport} onChange={(e) => set({ sport: e.target.value })}>
+                  {sports.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                </select>
+              </label>
+              <label className="field"><span>Typ</span>
+                <select value={s.type} onChange={(e) => set({ type: e.target.value })}>
+                  {sessionTypes.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                </select>
+              </label>
+            </>
+          ) : (
+            <label className="field" style={{ gridColumn: "1 / -1" }}><span>Sportart</span>
+              <select value={s.sport} onChange={(e) => set({ sport: e.target.value })}>
+                {sports.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </select>
+            </label>
+          )}
           <label className="field"><span>Distanz (km)</span>
             <input type="number" step="0.1" value={s.planned_km ?? ""} onChange={(e) => set({ planned_km: num(e.target.value) })} />
           </label>
@@ -82,9 +135,27 @@ export default function SessionModal({
           <div className="tiny muted" style={{ marginTop: 4 }}>Leer lassen, wenn du keine Zonen-Vorgabe machst — dann schätzt die App nach Typ.</div>
         </div>
 
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-          <button className="ghost" onClick={onClose}>Abbrechen</button>
-          <button className="primary" onClick={() => onSave(s)}>Speichern</button>
+        {savedMsg && <div className="flag ok" style={{ marginTop: 12 }}><span className="dot" /><span>{savedMsg}</span></div>}
+
+        <div className="spread" style={{ marginTop: 12 }}>
+          {saving ? (
+            <div className="row" style={{ gap: 6, width: "auto" }}>
+              <input autoFocus value={tplName} placeholder="Name der Vorlage" style={{ width: 200 }}
+                onChange={(e) => setTplName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveAsTemplate(); if (e.key === "Escape") setSaving(false); }} />
+              <button className="sm primary" onClick={saveAsTemplate}>Speichern</button>
+              <button className="sm ghost" onClick={() => setSaving(false)}>✕</button>
+            </div>
+          ) : (
+            <button className="ghost" title="Diese Einheit als wiederverwendbare Vorlage sichern"
+              onClick={() => { setSavedMsg(""); setTplName(s.description?.trim() || typeLabel(s.type)); setSaving(true); }}>
+              ☆ Als Vorlage speichern
+            </button>
+          )}
+          <div className="row" style={{ justifyContent: "flex-end", gap: 8, width: "auto" }}>
+            <button className="ghost" onClick={onClose}>Abbrechen</button>
+            <button className="primary" onClick={() => onSave(s)}>Speichern</button>
+          </div>
         </div>
       </div>
     </div>

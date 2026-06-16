@@ -36,6 +36,12 @@ export interface PlannedSession {
   planned_km?: number | null; planned_min?: number | null; zone_alloc?: ZoneAlloc | null;
   description?: string; structured?: unknown; efforts?: Effort[] | null; planned_tss?: number | null; sort_order?: number;
 }
+// Einheiten-Vorlage = Inhalt einer PlannedSession ohne Datum/Woche (per Klick in einen Tag einsetzbar).
+export interface SessionTemplate {
+  id?: number; name: string; sport: string; type: string;
+  planned_km?: number | null; planned_min?: number | null; zone_alloc?: ZoneAlloc | null;
+  description?: string; efforts?: Effort[] | null; sort_order?: number;
+}
 export interface Activity {
   id?: number; strava_id?: string | null; date: string; sport: string; type?: string | null; source: string; name?: string;
   distance_m?: number | null; moving_s?: number | null; elapsed_s?: number | null; avg_hr?: number | null;
@@ -180,4 +186,10 @@ export const api = {
   addOption: (b: Partial<Option>) => j<{ id: number }>("/api/options", { method: "POST", body: JSON.stringify(b) }),
   updateOption: (id: number, b: Partial<Option>) => j(`/api/options/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteOption: (id: number) => j(`/api/options/${id}`, { method: "DELETE" }),
+
+  // wiederverwendbare Einheiten-Vorlagen (häufige Einheiten 1× speichern, per Klick einsetzen)
+  templates: () => j<SessionTemplate[]>("/api/templates"),
+  addTemplate: (b: SessionTemplate) => j<{ id: number }>("/api/templates", { method: "POST", body: JSON.stringify(b) }),
+  updateTemplate: (id: number, b: SessionTemplate) => j(`/api/templates/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteTemplate: (id: number) => j(`/api/templates/${id}`, { method: "DELETE" }),
 };

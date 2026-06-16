@@ -548,6 +548,60 @@ app.delete("/api/options/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- session templates (wiederverwendbare Einheiten-Vorlagen, profil-scoped) ----------------
+
+app.get("/api/templates", (_req, res) => {
+  const rows = db.prepare("SELECT * FROM session_templates WHERE profile_id=? ORDER BY sort_order, name").all(pid());
+  res.json((rows as any[]).map((r) => ({ ...r, zone_alloc: parseJson(r.zone_alloc, null), efforts: parseJson(r.efforts, null) })));
+});
+
+app.post("/api/templates", (req, res) => {
+  const b = req.body || {};
+  const r = db
+    .prepare(
+      `INSERT INTO session_templates(profile_id, name, sport, type, planned_km, planned_min, zone_alloc, description, efforts, sort_order)
+       VALUES(?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      pid(),
+      b.name || "Vorlage",
+      b.sport || "Run",
+      b.type || "Easy",
+      b.planned_km ?? null,
+      b.planned_min ?? null,
+      JSON.stringify(b.zone_alloc || null),
+      b.description || "",
+      JSON.stringify(b.efforts || null),
+      b.sort_order ?? 0,
+    );
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+app.put("/api/templates/:id", (req, res) => {
+  const b = req.body || {};
+  db.prepare(
+    `UPDATE session_templates SET name=?, sport=?, type=?, planned_km=?, planned_min=?, zone_alloc=?, description=?, efforts=?, sort_order=? WHERE id=? AND profile_id=?`,
+  ).run(
+    b.name || "Vorlage",
+    b.sport || "Run",
+    b.type || "Easy",
+    b.planned_km ?? null,
+    b.planned_min ?? null,
+    JSON.stringify(b.zone_alloc || null),
+    b.description || "",
+    JSON.stringify(b.efforts || null),
+    b.sort_order ?? 0,
+    req.params.id,
+    pid(),
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/templates/:id", (req, res) => {
+  db.prepare("DELETE FROM session_templates WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
+});
+
 // ---- season ------------------------------------------------------------
 
 // v0.14.0 (ToDo 3): immer mind. 2 Wochen in die Zukunft vorhalten + bis zum spätesten Renntag auffüllen.
