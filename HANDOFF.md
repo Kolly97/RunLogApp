@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v0.15.5** (16.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v1.1.0** (17.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -124,7 +124,32 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v0.15.5 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v1.1.0 (Ist-Stand, nicht Historie)
+
+**Neu in v1.1.0 (Kurz):**
+- **EditableGrid (react-grid-layout v1.5.3):** Wochenbericht + Langzeit als freies Drag-Resize-Kachel-Layout
+  (paged A4-WYSIWYG). Dashboard bleibt kontinuierlich. Layout pro Seite+Profil in `settings` (`GET/PUT
+  /api/layout/:page`). `EgItem` + `EgBlock` mit `reserve?: number` (Kachel-Chrome-px, Default 116) für
+  Chart-Höhenberechnung. `P_MIN_H=2` (Kacheln sehr klein skalierbar). React.StrictMode entfernt (RGL-
+  Kompatibilität). `textPct` (60/70/85/100 %) pro Seite in `localStorage`; `K=1/textPct` vergößert Canvas.
+- **WYSIWYG A4-Druck:** A4-Canvas 794×1123 px @ 96 dpi; Outer-Scale `editorScale = stageW/Wd`, Inner-Scale
+  `--sp = printScale` auf `.eg-sheet-scale`. Print CSS: `@page{size:A4; margin:0}` + `break-after:page`.
+  Toolbar als `position:absolute` Overlay (volles Tile-Höhe im Editor = Print). Legenden-Button-Fix:
+  `.pmc-legend button { display: inline-flex !important }`.
+- **Manuelle PBs (`pb_overrides`):** additiv via `ALTER TABLE IF NOT EXISTS`, `PUT/DELETE /api/bests/override`.
+  Distanz-Zeit-Graph (ScatterChart) aus Bests.tsx entfernt.
+- **EffortTable:** Intervall-Mini-Tabelle im Wochenbericht (Nr., Länge, Zeit, Pace, Ø-HF, max-HF); ≥ 6 Einträge
+  → 2 Tabellen nebeneinander.
+- **Wellness-Tiles (LongTerm):** je Metrik eigenes EgItem mit `reserve={42}`; individuelle Position + Größe.
+- **Motion-System (T11):** `--dur-fast/--dur/--dur-slow`, `--ease/--ease-out` in `:root`. `route-enter`
+  (Fade+Rise), `modal-pop`, Nav-Gleitstrich, Button-Press. `prefers-reduced-motion` + Print deaktivieren alles.
+  `.eg-sheet .card` + `.eg-block .card` von Karten-Staffelung ausgenommen (RGL/Druck).
+- **Auswahllisten Master-Detail:** links Kategorie-Nav (Badge), rechts aktive Liste (Cross-Fade); Filter ab >4;
+  Drag-and-Drop-Sortierung (⠿), kein Sort-Zahlenfeld mehr.
+- **T1:** Plan-% aus `SeasonProgress.tsx` entfernt; neue Heatmap-Zeile „Plan-Erf. %" in Langzeit.
+- **T2:** Wochentag-Switcher: 2 Dots (geplant=Typ-Farbe, getrackt=grün) übereinander.
+- **T3:** `General`/`Other` TSS ×0.6 (Wandern-Dämpfung). **T4:** Typ-Dropdown nur Run/BikeRoad.
+- **T5:** `fmtDateY` in allen Recharts-Tooltips. **T10:** Tabellen-Container `overflow-x: auto`.
 
 **Neu in v0.15.5 (Kurz):**
 - **Dashboard-Layout v2:** Reihe 1 PMC (2fr) + Aktuelle Woche (1fr); Reihe 2 Saison-Progression (1fr) +
@@ -276,9 +301,11 @@ Reset-Knopf öffnet Sperre für einzelne Aktivität (`POST /api/activities/:id/r
 
 ## 5. Offen / nächste Schritte
 
-- **v0.15.5 inhaltlich abgeschlossen.** Nächster großer Meilenstein: **Electron-Desktop-App** (App per Icon
+- **v1.1.0 inhaltlich abgeschlossen.** Nächster großer Meilenstein: **Electron-Desktop-App** (App per Icon
   auf Mac/Windows) → bewusst eigener Meilenstein (Packaging/Icons/Sidecar; node:sqlite braucht Node 22+).
   Plan + Entscheidungen lagen in `~/.claude/plans/polished-sparking-russell.md`.
+- **T7 (Prognose-Divergenz):** Prognose-Panels vs. PMC-Graph zeigen unterschiedliche Werte — noch offen,
+  braucht Reproduktions-Info von Kolja (welche Seite, welche Werte).
 - **Zurückgestellt aus v0.15:** S4 **Template-Speicherung** für geplante Einheiten (explizit aufgeschoben);
   O5 **Strava-Splits-Sync-Konsistenz** (Architektur-Untersuchung offen).
 - **Strava-Backfill (budgetiert):** `best_efforts` (Bestzeiten), `pace_zone_min` (Plan-% Pace-Anteil),

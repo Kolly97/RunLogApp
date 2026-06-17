@@ -4,6 +4,48 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.1.0] – 2026-06-17 — Editierbares Layout, WYSIWYG-Druck, Motion-System & Auswahllisten-Redesign
+
+### Hinzugefügt
+- **Editierbares Grid-Layout (EditableGrid):** Wochenbericht und Langzeit nutzen jetzt `react-grid-layout`
+  (v1.5.3) — Kacheln per Drag-and-Drop verschieben und an den Ecken skalieren, Kacheln ausblenden (Auge-Icon).
+  Layout pro Seite + Profil in `settings` gespeichert (`GET/PUT /api/layout/:page`).
+  Dashboard bleibt weiterhin im kontinuierlichen Modus (kein Paging).
+- **WYSIWYG A4-Druck (T9):** Wochenbericht und Langzeit rendern in einem festen A4-Canvas (794 px @ 96 dpi,
+  CSS-`transform: scale` für Editor und `@media print`). Was im Editor zu sehen ist, entspricht exakt dem PDF.
+  Textgröße einstellbar (60/70/85/100 % als Prozenttaste im Toolbar); pro Seite in `localStorage` gespeichert.
+  Overlay-Toolbar (absolute Position) belegt keine Kachelhöhe → kein Clip im Druck.
+- **Manuelle Bestzeiten editierbar:** `pb_overrides`-Tabelle (additiv). Neue Taste „+ Manuell" und Inline-
+  Bearbeitungszeile; manuelle PBs überschreiben Strava-PBs; löschbar mit ✕. Distanz-Zeit-Diagramm entfernt
+  (war redundant neben Race-Prediction-Chart).
+- **Intervall-Mini-Tabelle (EffortTable):** Wochenbericht zeigt strukturierte Intervalle als Tabelle
+  (Nr., Länge, Zeit, Pace, Ø-HF, max-HF); ab ≥ 6 Intervallen automatisch 2-spaltig nebeneinander.
+- **Wellness-Sparklines einzeln verschiebbar (LongTerm):** jede Wellness-Metrik ist ein eigenes EditableGrid-
+  Tile → separat positionierbar, größenveränderbar und ausblendbar.
+- **Motion-System (T11):** globale CSS Motion-Tokens (`--dur-fast: 250 ms`, `--dur: 500 ms`, `--dur-slow: 1 s`,
+  `--ease`, `--ease-out`) in `:root`. Animationen: Seiten-Eintritt Fade+Rise (`route-enter`), Modal Pop-In
+  (`modal-pop`), Nav-Aktiv-Gleitstrich (`.nav a::before`), Button-Press (`:active translateY+scale`),
+  Input-Border-Transition. `@media (prefers-reduced-motion)` schaltet alles ab; `@media print` deaktiviert
+  Route-Animationen.
+
+### Geändert
+- **Auswahllisten — Master-Detail-Layout (T11):** Statt 6 gestapelter immer offener Karten jetzt eine
+  zweigeteilte Ansicht: **links** eine vertikale Kategorie-Navigation (mit Anzahl-Badge), **rechts** nur die
+  aktive Liste mit Cross-Fade beim Kategorienwechsel. Filter-Feld erscheint ab > 4 Einträgen. **Sortierung**
+  per Drag-and-Drop (Anfasser ⠿) statt Sort-Zahlenfeld.
+- **Plan-% aus SeasonProgress entfernt (T1):** Adherence-Linie/Y-Achse aus dem Saison-Progressions-Chart
+  entfernt; Plan-Erfüllung erscheint stattdessen als eigene Zeile „Plan-Erf. %" in der Langzeit-Heatmap.
+- **Zwei Dots im Wochentag-Switcher (T2):** Je Tag zwei übereinander — geplanter Dot (Typ-Farbe) und
+  getrickter Dot (grün); sofortiger Überblick geplant vs. tatsächlich.
+- **Wandern/Allgemein TSS ×0.6 (T3):** Sport `General`/`Other` mit Bewegungszeit bekommen einen
+  Dämpfungsfaktor 0.6 auf den berechneten TSS — Hiking ist kein Lauf-/Rad-Stress.
+- **Typ-Dropdown nur bei Lauf/Rennrad (T4):** SessionModal zeigt das Typ-Feld nur bei Sport `Run` oder
+  `BikeRoad`; andere Sportarten brauchen keinen Einheitstyp.
+- **Jahr in Chart-Tooltips (T5):** `fmtDateY` (TT.MM.JJJJ) statt `fmtDate` (TT.MM.) in allen
+  Recharts-Tooltips — kein versehentliches Jahres-Verwechseln mehr.
+- **Tabellen-Overflow (T10):** Alle Tabellen-Container haben `overflow-x: auto` → kein Layout-Bruch bei
+  engen Kacheln.
+
 ## [0.15.5] – 2026-06-16 — Dashboard-Umbau, Schlaffenster-Chart & Feinschliff
 
 ### Hinzugefügt

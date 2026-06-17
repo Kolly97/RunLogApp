@@ -33,7 +33,7 @@ In der App führt der Footer-Link **„Anleitung"** zu einer Schritt-für-Schrit
 - **Saisonplan** (eigene Seite) — Wochen anlegen/bearbeiten; automatisch nach Datum sortiert und ab 0 nummeriert.
 - **Profil** — Athletenprofil (Geburtsjahr, Geschlecht, Gewicht, Max-HF für VO2max-Norm), HF-Zonen Lauf + **Fahrrad** separat, Pace- und Power-Zonen. Profile umbenennen/löschen/zurücksetzen.
 - **Einstellungen** — Zonen-Sets mit Gültig-ab-Datum, Analyse-Schwellen, Strava-Verbindung.
-- **Auswahllisten** — Phasen, Sportarten und Einheitstypen ohne Code-Änderung hinzufügen/umbenennen/umfärben.
+- **Auswahllisten** — Phasen, Sportarten, Einheitstypen, Wochen-Checks und Tagesfaktoren ohne Code-Änderung hinzufügen/umbenennen/umfärben/sortieren (Drag &amp; Drop). **Master-Detail-Layout:** links Kategorie-Navigation, rechts aktive Liste mit Filter.
 
 ## Profile (mehrere Personen, ein PC)
 Oben in der Sidebar sitzt der Profil-Wechsler („+ Neues Profil…" z. B. für Isabel). Jedes Profil hat
@@ -82,7 +82,7 @@ leere DB an) oder `training.empty.db` als `data/training.db` mitkopieren. `node_
 nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v0.15.5**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v1.1.0**.
 
 ## Desktop-App (Electron)
 Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mit Desktop-Icon, ganz ohne Terminal:

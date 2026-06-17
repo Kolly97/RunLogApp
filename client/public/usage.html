@@ -247,24 +247,32 @@
       <div class="page" id="bericht">
         <p class="crumbs">Die Seiten › Wochenbericht</p>
         <h1>🖨 Wochenbericht</h1>
-        <p class="lead">Druckfertige Auswertung der Woche auf zwei Seiten.</p>
+        <p class="lead">Druckfertige Auswertung der Woche — frei anordnbar, WYSIWYG.</p>
+        <section class="card">
+          <h2>Layout anpassen</h2>
+          <p>Oben rechts den <strong>✎ Edit-Modus</strong> einschalten. Dann lassen sich alle Kacheln
+            per <strong>Drag &amp; Drop</strong> frei verschieben und an den Ecken in der Größe ändern.
+            Über das <strong>Auge-Symbol</strong> kann eine Kachel ausgeblendet werden. Das Layout wird
+            pro Profil gespeichert und bleibt nach dem Schließen erhalten.</p>
+          <div class="note"><strong>WYSIWYG:</strong> Der Editor zeigt exakt das A4-Format, das später
+            gedruckt wird — was du siehst, ist was du bekommst. Die <strong>Textgröße</strong> (60/70/85/100 %)
+            lässt sich im Toolbar anpassen, falls Beschriftungen im Druck zu groß oder zu klein wirken.</div>
+        </section>
         <section class="card">
           <h2>Inhalt</h2>
           <ul>
-            <li><strong>Seite 1:</strong> Kategorie-Summen (Lauf / Rad / Kraft; Commutes je Tag zusammengelegt),
-              Einheiten geplant vs. real (mit Notizen), Zonenverteilung (geplant vs. real), <strong>zwei TSS-Donuts</strong>
-              (geplant &amp; real), <strong>Plan-Erfüllungs-Balken</strong> je Wochentag, <strong>Efficiency Factor</strong>
-              je Wochentag, <strong>PMC bis zu dieser Woche</strong> (mit Werte-Block rechts), Saison-Progression bis hierhin,
-              reale Bewertungs-Schilder nebeneinander, Wellness-Ø, Wochen-Checks und einzelne Wettkämpfe.</li>
-            <li><strong>Seite 2:</strong> vollständige Tagesfaktoren-Tabelle, Wellness-Verläufe und Reflexion.</li>
+            <li>Kategorie-Summen (Lauf / Rad / Kraft; Commutes je Tag zusammengelegt)</li>
+            <li>Einheiten geplant vs. real (mit Notizen + Plan-Erfüllung als Farb-Kachel je Tag)</li>
+            <li>Zonenverteilung (geplant vs. real), <strong>zwei TSS-Donuts</strong> (geplant &amp; real)</li>
+            <li><strong>Intervall-Tabelle</strong> — Nr., Länge, Zeit, Pace, Ø-/Max-HF (ab ≥ 6 Einträgen 2-spaltig)</li>
+            <li><strong>Efficiency Factor</strong> je Wochentag, <strong>PMC bis zu dieser Woche</strong></li>
+            <li>Saison-Progression, reale Bewertungs-Schilder, Wellness-Ø, Wochen-Checks, Reflexion</li>
+            <li>Wellness-Verläufe (je Metrik eine eigene Kachel)</li>
           </ul>
-          <p>Über <strong>„Drucken / PDF"</strong> als PDF sichern (Layout ist auf 2 Seiten optimiert).</p>
+          <p>Über <strong>„Drucken / PDF"</strong> als PDF sichern.</p>
           <div class="note"><strong>PMC + Saison-Progression enden an der Berichtswoche</strong> (nicht bei „heute") —
             so spiegelt der Bericht rückwirkend genau den Stand bis zu dieser Woche. Rechts neben dem PMC ein kompakter
             Block mit <strong>Fitness (CTL), Fatigue (ATL), Form (TSB) und CTL-Ramp am Wochenende</strong>.</div>
-          <div class="note"><strong>Efficiency Factor je Wochentag</strong> (NGP-Tempo ÷ Ø-HF, nur DL/Longruns): zeigt mit
-            einem „⚡ hart davor"-Marker, wie eine harte Einheit/ein Wettkampf am Vortag die Ökonomie beeinflusst.
-            Der „Real"-Donut nutzt die Intensität <em>hybrid</em> (zonen-anteilig, sonst nach Plan-Typ).</div>
         </section>
       </div>
 
@@ -272,17 +280,27 @@
       <div class="page" id="langzeit">
         <p class="crumbs">Die Seiten › Langzeit</p>
         <h1>📈 Langzeit</h1>
-        <p class="lead">Entwicklung über Monate statt einer Woche.</p>
+        <p class="lead">Entwicklung über Monate — frei anordnbar, druckbar.</p>
+        <section class="card">
+          <h2>Layout anpassen</h2>
+          <p>Genauso wie im Wochenbericht: <strong>✎ Edit-Modus</strong> einschalten, Kacheln per
+            Drag &amp; Drop verschieben und skalieren, Kacheln über das Auge-Symbol aus- oder einblenden.
+            Auch hier ist der Editor WYSIWYG — das A4-Format im Editor entspricht dem Ausdruck.</p>
+          <p>Jede Wellness-Metrik ist eine <strong>eigene Kachel</strong> und lässt sich damit
+            separat positionieren oder weglassen.</p>
+        </section>
         <section class="card">
           <h2>Was du hier siehst</h2>
           <dl>
-            <dt>Wellness-Verläufe</dt><dd>HRV, Ruhepuls, Recovery, Strain, Schlaf, Bettzeit, Sleep-Performance, Gewicht.
-              Krank-Phasen sind rot hinterlegt.</dd>
+            <dt>Wellness-Verläufe</dt><dd>HRV, Ruhepuls, Recovery, Strain, Schlaf, Schlaffenster (Bett→Auf),
+              Sleep-Performance, Gewicht — je als eigene Kachel. Krank-Phasen rot hinterlegt.</dd>
             <dt>Zonen-Effizienz (Easy-Läufe)</dt><dd><strong>Ø-Pace vs. Ø-HF</strong> und der <strong>Effizienz-Faktor</strong>
               (m/min je Herzschlag) im Wochenmittel. Sinkende Pace bei gleichem Puls bzw. steigender EF = bessere Ökonomie.</dd>
-            <dt>Plan-Erfüllung (Wochenmittel)</dt><dd>Wie konsequent die geplanten Einheiten je Woche umgesetzt wurden
-              (% — TSS-Treffer + Zeit in der Ziel-Pace-Zone), als Trend über den Zeitraum.</dd>
-            <dt>Intervall-Trend</dt><dd>Ø-Pace der Belastungen nach Kategorie (LT1 / LT2 / VO2 kurz/lang).</dd>
+            <dt>Plan-Erfüllung (Heatmap)</dt><dd>Als eigene Zeile in der Wochen-Checks-Heatmap: wie konsequent die
+              geplanten Einheiten je Woche umgesetzt wurden (% — TSS-Treffer + Zeit in Ziel-Pace-Zone).</dd>
+            <dt>Intervall-Trend</dt><dd>Ø-Pace der Belastungen nach Kategorie (LT1 / LT2 / VO2).</dd>
+            <dt>Intensity-Trend</dt><dd>ATL/CTL × 100 % — zeigt ob du gerade aufbaust, erhältst oder überlastest
+              (5 Bänder von Decreasing bis Excessive).</dd>
           </dl>
           <p>Zeitraum frei wählbar (Standard 6 Monate), druckbar.</p>
         </section>
@@ -401,10 +419,18 @@
       <div class="page" id="optionen">
         <p class="crumbs">Die Seiten › Auswahllisten</p>
         <h1>🏷 Auswahllisten</h1>
-        <p class="lead">Eigene Listen ohne Code-Änderung.</p>
+        <p class="lead">Eigene Listen ohne Code-Änderung — jetzt als Master-Detail-Ansicht.</p>
+        <section class="card">
+          <h2>Navigation &amp; Bedienung</h2>
+          <p>Die Seite ist in zwei Bereiche aufgeteilt: <strong>links</strong> eine vertikale Kategorie-Navigation
+            (mit Anzahl-Badge je Liste) und <strong>rechts</strong> die aktive Liste — Wechsel mit sanftem
+            Cross-Fade. Bei langen Listen erscheint automatisch ein <strong>Filter-Feld</strong>.
+            Die Reihenfolge der Einträge lässt sich per <strong>Drag &amp; Drop</strong> am ⠿-Anfasser ändern
+            (während ein Filter aktiv ist, ist Drag &amp; Drop deaktiviert).</p>
+        </section>
         <section class="card">
           <h2>Phasen, Sportarten, Einheitstypen, Wochen-Checks, Tagesfaktoren</h2>
-          <p>Hinzufügen, umbenennen, umfärben, sortieren. Bestehende Daten mit alten Werten bleiben gültig.
+          <p>Hinzufügen, umbenennen, umfärben, sortieren, löschen. Bestehende Daten mit alten Werten bleiben gültig.
             <strong>Wochen-Checks</strong> sind die manuellen Häkchen im Wochenbericht (und die Langzeit-Heatmap);
             <strong>Tagesfaktoren</strong> bestimmen die täglichen Eingabefelder im Tracking samt Feldtyp
             (Zahl/Zeit/Text/Haken/Skala) und <strong>Kategorie</strong> — die <strong>Tagesfaktor-Kategorien</strong>
@@ -557,7 +583,7 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
         </section>
 
         <footer>
-          RunLog v0.14.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+          RunLog v1.1.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
         </footer>
       </div>
     </main>
