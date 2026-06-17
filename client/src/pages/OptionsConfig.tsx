@@ -15,6 +15,7 @@ const DAILY_TYPES = [["number", "Zahl"], ["time", "Zeit"], ["text", "Text"], ["c
 
 export default function OptionsConfig() {
   const [opts, setOpts] = useState<Option[]>([]);
+  const [active, setActive] = useState(KINDS[0].kind);
 
   async function reload() {
     setOpts(await api.options());
@@ -22,17 +23,28 @@ export default function OptionsConfig() {
   }
   useEffect(() => { reload(); }, []);
 
+  const cur = KINDS.find((k) => k.kind === active) ?? KINDS[0];
   return (
     <div>
       <h1>Auswahlmöglichkeiten</h1>
-      <p className="muted tiny">
-        Hier kannst du Phasen, Sportarten und Einheitstypen hinzufügen, umbenennen, umfärben oder entfernen —
-        ohne in den Code zu gehen. Bestehende Daten mit alten Werten bleiben gültig.
+      <p className="muted tiny" style={{ marginTop: -4 }}>
+        Phasen, Sportarten, Einheitstypen &amp; Co. hinzufügen, umbenennen, umfärben, sortieren (ziehen am ⠿) oder
+        entfernen — ohne Code. Bestehende Daten mit alten Werten bleiben gültig.
       </p>
-      {KINDS.map((k) => (
-        <OptionGroup key={k.kind} kind={k.kind} title={k.title} hint={k.hint}
-          rows={opts.filter((o) => o.kind === k.kind)} onChange={reload} />
-      ))}
+      <div className="opt-layout">
+        <nav className="opt-nav">
+          {KINDS.map((k) => (
+            <button key={k.kind} className={active === k.kind ? "active" : ""} onClick={() => setActive(k.kind)}>
+              <span>{k.title}</span>
+              <span className="badge">{opts.filter((o) => o.kind === k.kind).length}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="opt-panel" key={active}>
+          <OptionGroup kind={cur.kind} title={cur.title} hint={cur.hint}
+            rows={opts.filter((o) => o.kind === cur.kind)} onChange={reload} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -42,22 +54,58 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
 }) {
   const [nv, setNv] = useState("");
   const [nl, setNl] = useState("");
+  const [filter, setFilter] = useState("");
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [overId, setOverId] = useState<number | null>(null);
+
+  const sorted = [...rows].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  const q = filter.trim().toLowerCase();
+  const shown = q ? sorted.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)) : sorted;
+  const canDrag = !q; // Reorder nur auf der vollständigen, ungefilterten Liste
+
   async function add() {
     if (!nv.trim()) return;
-    // Neue Tagesfaktoren bekommen als Default den Feldtyp „Zahl".
     await api.addOption({ kind, value: nv.trim(), label: nl.trim() || nv.trim(), sort: rows.length, intensity: kind === "daily" ? "number" : null });
     setNv(""); setNl(""); onChange();
   }
+
+  async function drop(targetId: number) {
+    if (dragId == null || dragId === targetId) { setDragId(null); setOverId(null); return; }
+    const order = sorted.map((r) => r.id!);
+    order.splice(order.indexOf(dragId), 1);
+    const at = order.indexOf(targetId);
+    order.splice(at < 0 ? order.length : at, 0, dragId);
+    setDragId(null); setOverId(null);
+    // Sortwerte fortlaufend neu vergeben (nur geänderte speichern), dann einmal neu laden.
+    await Promise.all(order.map((id, i) => {
+      const row = rows.find((r) => r.id === id)!;
+      return row.sort === i ? null : api.updateOption(id, { ...row, sort: i });
+    }).filter(Boolean));
+    onChange();
+  }
+
   return (
     <div className="card">
       <div className="spread"><h2>{title}</h2><span className="tiny muted">{hint}</span></div>
-      {rows.length > 0 && (
-        <table>
-          <thead><tr><th>Label (Anzeige)</th><th>Wert (intern)</th><th>{kind === "daily" ? "Kategorie" : "Farbe"}</th><th>Sort</th>{kind === "sessionType" && <th>Intensität</th>}{kind === "daily" && <th>Typ</th>}<th></th></tr></thead>
-          <tbody>{rows.map((o) => <OptRow key={o.id} o={o} onChange={onChange} />)}</tbody>
+      {rows.length > 4 && (
+        <input className="mt" placeholder="Filtern …" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 260 }} />
+      )}
+      {shown.length > 0 && (
+        <table className="mt">
+          <thead><tr><th style={{ width: 24 }}></th><th>Label (Anzeige)</th><th>Wert (intern)</th><th>{kind === "daily" ? "Kategorie" : "Farbe"}</th>{kind === "sessionType" && <th>Intensität</th>}{kind === "daily" && <th>Typ</th>}<th></th></tr></thead>
+          <tbody>
+            {shown.map((o) => (
+              <OptRow key={o.id} o={o} onChange={onChange}
+                canDrag={canDrag} dragging={dragId === o.id} over={overId === o.id}
+                onDragStart={() => setDragId(o.id!)}
+                onDragOver={() => setOverId(o.id!)}
+                onDrop={() => drop(o.id!)} onDragEnd={() => { setDragId(null); setOverId(null); }} />
+            ))}
+          </tbody>
         </table>
       )}
-      {/* Eingabe-Reihenfolge wie die Zeilen darüber: Label (Anzeige) → Wert (intern), v0.12.0 (ToDo 10) */}
+      {q && !shown.length && <p className="tiny muted mt">Kein Treffer für „{filter}".</p>}
+      {/* Eingabe-Reihenfolge wie die Zeilen: Label (Anzeige) → Wert (intern) */}
       <div className="row mt">
         <input placeholder="Label (Anzeige)" value={nl} onChange={(e) => setNl(e.target.value)} style={{ maxWidth: 220 }} />
         <input placeholder="Wert (intern, z.B. Tempo)" value={nv} onChange={(e) => setNv(e.target.value)} style={{ maxWidth: 220 }} />
@@ -67,12 +115,21 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
   );
 }
 
-function OptRow({ o, onChange }: { o: Option; onChange: () => void }) {
+function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver, onDrop, onDragEnd }: {
+  o: Option; onChange: () => void; canDrag: boolean; dragging: boolean; over: boolean;
+  onDragStart: () => void; onDragOver: () => void; onDrop: () => void; onDragEnd: () => void;
+}) {
   const [e, setE] = useState(o);
   const { dailyCats } = useOptions();
   const save = (patch: Partial<Option>) => { const n = { ...e, ...patch }; setE(n); api.updateOption(o.id!, n).then(onChange); };
   return (
-    <tr>
+    <tr className={"opt-row" + (dragging ? " dragging" : "") + (over ? " drag-over" : "")}
+      onDragOver={canDrag ? (ev) => { ev.preventDefault(); onDragOver(); } : undefined}
+      onDrop={canDrag ? onDrop : undefined}>
+      <td>
+        <span className="opt-handle" draggable={canDrag} title={canDrag ? "Ziehen zum Sortieren" : "Filter leeren zum Sortieren"}
+          onDragStart={(ev) => { ev.dataTransfer.effectAllowed = "move"; onDragStart(); }} onDragEnd={onDragEnd}>⠿</span>
+      </td>
       <td><input value={e.label} onChange={(x) => setE({ ...e, label: x.target.value })} onBlur={() => save({ label: e.label })} /></td>
       <td className="tiny muted">{e.value}</td>
       {o.kind === "daily" ? (
@@ -85,7 +142,6 @@ function OptRow({ o, onChange }: { o: Option; onChange: () => void }) {
       ) : (
         <td><input type="color" value={e.color || "#94a3b8"} onChange={(x) => save({ color: x.target.value })} style={{ width: 42, height: 28, padding: 0 }} /></td>
       )}
-      <td style={{ width: 64 }}><input type="number" value={e.sort ?? 0} onChange={(x) => setE({ ...e, sort: Number(x.target.value) })} onBlur={() => save({ sort: e.sort })} /></td>
       {o.kind === "sessionType" && (
         <td>
           <select value={e.intensity ?? ""} onChange={(x) => save({ intensity: x.target.value || null })} title="Intensität für den TSS-Donut">

@@ -56,8 +56,8 @@ export default function SessionModal({
   const zoneSum = Object.values(km).reduce((a, b) => a + (b || 0), 0);
 
   return (
-    <div onClick={onClose} style={overlay}>
-      <div onClick={(e) => e.stopPropagation()} style={modal} className="card">
+    <div onClick={onClose} style={overlay} className="modal-overlay">
+      <div onClick={(e) => e.stopPropagation()} style={modal} className="card modal-pop">
         <div className="spread mb">
           <h2>{s.id ? "Einheit bearbeiten" : "Neue Einheit"}</h2>
           <button className="ghost" onClick={onClose}>✕</button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api, type Profile } from "./lib/api.ts";
 import Dashboard from "./pages/Dashboard.tsx";
 import WeekPlan from "./pages/WeekPlan.tsx";
@@ -31,6 +31,7 @@ const NAV = [
 
 export default function App() {
   useEffect(() => { api.cleanupOrphans().catch(() => {}); }, []);
+  const location = useLocation();
   return (
     <div className="app">
       <aside className="sidebar no-print">
@@ -45,18 +46,20 @@ export default function App() {
         </nav>
       </aside>
       <main className="main">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/plan" element={<WeekPlan />} />
-          <Route path="/track" element={<WeekTrack />} />
-          <Route path="/report" element={<WeekReport />} />
-          <Route path="/longterm" element={<LongTerm />} />
-          <Route path="/races" element={<Races />} />
-          <Route path="/bests" element={<Bests />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/options" element={<OptionsConfig />} />
-        </Routes>
+        <div key={location.pathname} className="route-enter">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/plan" element={<WeekPlan />} />
+            <Route path="/track" element={<WeekTrack />} />
+            <Route path="/report" element={<WeekReport />} />
+            <Route path="/longterm" element={<LongTerm />} />
+            <Route path="/races" element={<Races />} />
+            <Route path="/bests" element={<Bests />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/options" element={<OptionsConfig />} />
+          </Routes>
+        </div>
         <footer className="footer no-print">
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
           <a href="/usage.html" target="_blank" rel="noreferrer">Anleitung</a>

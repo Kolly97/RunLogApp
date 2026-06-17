@@ -14,6 +14,13 @@
   --info: #0891b2;
   --radius: 12px;
   --shadow: 0 1px 3px rgba(20, 30, 50, 0.06), 0 1px 2px rgba(20, 30, 50, 0.04);
+  --shadow-lift: 0 6px 18px rgba(20, 30, 50, 0.10), 0 2px 6px rgba(20, 30, 50, 0.06);
+  /* Motion (T11): zentrale Tokens — ruhig/clinical, nicht verspielt. */
+  --dur-fast: 250ms;
+  --dur: 500ms;
+  --dur-slow: 1s;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -34,11 +41,19 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 .brand { font-size: 19px; font-weight: 750; color: #fff; padding: 6px 10px 18px; letter-spacing: -0.01em; }
 .brand span { color: #6ea8e6; }
 .nav a {
-  display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
+  position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
   color: #aeb9cc; font-weight: 550; margin-bottom: 2px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+/* gleitende Aktiv-Markierung: Akzentband links, faded/skaliert ein */
+.nav a::before {
+  content: ""; position: absolute; left: 4px; top: 50%; width: 3px; height: 0; border-radius: 2px;
+  background: #fff; transform: translateY(-50%); opacity: 0;
+  transition: height var(--dur) var(--ease-out), opacity var(--dur) var(--ease);
 }
 .nav a:hover { background: #1c2740; color: #fff; }
 .nav a.active { background: var(--accent); color: #fff; }
+.nav a.active::before { height: 56%; opacity: 1; }
 .nav .ico { width: 18px; text-align: center; opacity: 0.9; }
 .main { flex: 1; padding: 24px 30px; max-width: 1180px; }
 
@@ -73,6 +88,7 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 input, select, textarea {
   font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
   background: #fff; color: var(--ink); width: 100%;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid #bcd4f0; border-color: var(--accent); }
 label.field { display: block; margin-bottom: 8px; }
@@ -80,9 +96,11 @@ label.field > span { display: block; font-size: 12px; color: var(--muted); margi
 button {
   font: inherit; font-weight: 600; padding: 8px 14px; border: 1px solid var(--line);
   border-radius: 8px; background: #fff; color: var(--ink); cursor: pointer;
-  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, color .12s ease;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 button:hover { background: #f0f4f8; border-color: #cbd5e1; }
+button:active:not(:disabled) { transform: translateY(1px) scale(.99); }
 button:focus-visible { outline: 2px solid #bcd4f0; outline-offset: 1px; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button:disabled:hover { background: #fff; border-color: var(--line); filter: none; }
@@ -163,7 +181,7 @@ textarea { resize: vertical; min-height: 38px; }
 
 /* Segment-Buttons (RangeSelector) */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
-.seg button { border: none; border-radius: 0; padding: 5px 11px; font-size: 12px; background: #fff; }
+.seg button { border: none; border-radius: 0; padding: 5px 11px; font-size: 12px; background: #fff; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.active { background: var(--accent); color: #fff; }
 
@@ -437,8 +455,58 @@ table.units .note-efforts { color: var(--muted); }
 .effort-mini th { background: #f5f7fa; color: var(--muted); font-weight: 600; }
 .effort-mini th:first-child, .effort-mini td.lbl { text-align: left; }
 
+/* Motion (T11): Seiten-Eintritt, Karten-Staffelung, Modal-Pop */
+@keyframes egFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes egFadeRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes egPop { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+.route-enter { animation: egFadeRise var(--dur-slow) var(--ease-out) both; }
+.route-enter .card { animation: egFadeRise var(--dur-slow) var(--ease-out) both; }
+.route-enter .card:nth-of-type(1) { animation-delay: 30ms; }
+.route-enter .card:nth-of-type(2) { animation-delay: 60ms; }
+.route-enter .card:nth-of-type(3) { animation-delay: 90ms; }
+.route-enter .card:nth-of-type(4) { animation-delay: 120ms; }
+.route-enter .card:nth-of-type(n+5) { animation-delay: 150ms; }
+/* Editable-Grid-Kacheln NICHT extra animieren (RGL-Positionierung / WYSIWYG-Druck). */
+.route-enter .eg-sheet .card, .route-enter .eg-block .card { animation: none !important; }
+.modal-overlay { animation: egFade var(--dur) var(--ease) both; }
+.modal-pop { animation: egPop var(--dur) var(--ease-out) both !important; }
+
+/* Auswahllisten: Master-Detail (T11) */
+.opt-layout { display: grid; grid-template-columns: 212px 1fr; gap: 18px; align-items: start; }
+.opt-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 16px; }
+.opt-nav button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left;
+  border: 1px solid transparent; background: transparent; padding: 9px 11px; border-radius: 9px;
+  color: var(--ink); font-weight: 600;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.opt-nav button:hover { background: #eef2f7; }
+.opt-nav button.active { background: var(--accent); color: #fff; }
+.opt-nav .badge { font-size: 11px; font-weight: 700; color: var(--muted); background: #eef2f7; border-radius: 999px; padding: 1px 8px; }
+.opt-nav button.active .badge { color: #fff; background: rgba(255, 255, 255, 0.22); }
+.opt-panel { animation: egFade var(--dur) var(--ease) both; }
+@media (max-width: 760px) {
+  .opt-layout { grid-template-columns: 1fr; }
+  .opt-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+/* Drag-Reorder der Listen-Zeilen */
+tr.opt-row.dragging { opacity: 0.4; }
+tr.opt-row.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
+.opt-handle { cursor: grab; color: var(--muted); user-select: none; font-size: 15px; }
+.opt-handle:active { cursor: grabbing; }
+
+/* Barrierefreiheit / „nicht überanimiert": Bewegung auf Wunsch des Systems aus. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+  }
+}
+
 /* Print */
 @media print {
+  /* Motion im Druck deaktivieren (kein Fade/Versatz im PDF) */
+  .route-enter, .route-enter .card { animation: none !important; opacity: 1 !important; transform: none !important; }
   .no-print, .sidebar { display: none !important; }
   .app { display: block; }
   .main { padding: 0; max-width: 100%; }
