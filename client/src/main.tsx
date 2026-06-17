@@ -1,6 +1,7 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.tsx";
+import { LangProvider } from "./lib/i18n.tsx";
 import { loadOptions } from "./lib/options.ts";
 import "./styles.css";
 
@@ -11,7 +12,9 @@ void loadOptions();
 // Drag-/Resize-Verdrahtung (findDOMNode in react-draggable). StrictMode ist in Production ohnehin
 // ein No-op; das Dev-Doppelrendering machte den Edit-Modus unbedienbar.
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <BrowserRouter>
-    <App />
-  </BrowserRouter>,
+  <LangProvider>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </LangProvider>,
 );

@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type SeasonWeek } from "../lib/api.ts";
+import { useLang, useT } from "../lib/i18n.tsx";
+import T from "../components/T.tsx";
 
 export default function Settings() {
   const [season, setSeason] = useState<SeasonWeek[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [msg] = useState("");
+  const t = useT();
+  const { lang, setLang } = useLang();
 
   async function reload() {
     setSeason(await api.season());
@@ -16,29 +20,39 @@ export default function Settings() {
 
   return (
     <div>
-      <h1>Einstellungen</h1>
+      <h1><T k="settings.title">Einstellungen</T></h1>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
-      <p className="tiny muted" style={{ marginTop: -4 }}>Profile und HF-Zonen/Schwellen findest du jetzt unter <a href="/profile">Profil</a>.</p>
+      <p className="tiny muted" style={{ marginTop: -4 }}><T k="settings.profileHint.pre">Profile und HF-Zonen/Schwellen findest du jetzt unter </T><a href="/profile"><T k="settings.profileHint.link">Profil</T></a>.</p>
+
+      {/* Sprache / Language */}
+      <div className="card">
+        <h2><T k="settings.lang.label">Sprache / Language</T></h2>
+        <div className="lang-switch" role="group" aria-label="Sprache">
+          {(["de", "en"] as const).map((l) => (
+            <button key={l} type="button" className={lang === l ? "active" : ""} onClick={() => setLang(l)}>{l.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
 
       {/* Schwellen */}
       <div className="card">
-        <h2>Analyse-Schwellen</h2>
+        <h2><T k="settings.thresholds.title">Analyse-Schwellen</T></h2>
         <div className="grid cols-4">
-          <Num label="Volumen ± %" v={settings.thresholds.volume_pct} on={(x) => saveThr(settings, "volume_pct", x, setSettings)} />
-          <Num label="CTL-Ramp max/Wo" v={settings.thresholds.ctl_ramp_max} on={(x) => saveThr(settings, "ctl_ramp_max", x, setSettings)} />
-          <Num label="Hart-% max" v={settings.thresholds.hard_pct_max} on={(x) => saveThr(settings, "hard_pct_max", x, setSettings)} />
-          <Num label="Z3-% max" v={settings.thresholds.z3_pct_max} on={(x) => saveThr(settings, "z3_pct_max", x, setSettings)} />
-          <Num label="Longrun-% max" v={settings.thresholds.longrun_pct_max} on={(x) => saveThr(settings, "longrun_pct_max", x, setSettings)} />
-          <Num label="TSB Race Week min" v={settings.thresholds.tsb_raceweek_min} on={(x) => saveThr(settings, "tsb_raceweek_min", x, setSettings)} />
-          <Num label="Race 7d-Last max % (Taper)" v={settings.thresholds.raceweek_tss_max_pct ?? 60} on={(x) => saveThr(settings, "raceweek_tss_max_pct", x, setSettings)} />
-          <Num label="Rad→Run Faktor" v={settings.run_equiv_bike_factor} step="0.05" on={(x) => save1("run_equiv_bike_factor", x, setSettings)} />
+          <Num label={t("settings.thr.volume_pct", "Volumen ± %")} v={settings.thresholds.volume_pct} on={(x) => saveThr(settings, "volume_pct", x, setSettings)} />
+          <Num label={t("settings.thr.ctl_ramp_max", "CTL-Ramp max/Wo")} v={settings.thresholds.ctl_ramp_max} on={(x) => saveThr(settings, "ctl_ramp_max", x, setSettings)} />
+          <Num label={t("settings.thr.hard_pct_max", "Hart-% max")} v={settings.thresholds.hard_pct_max} on={(x) => saveThr(settings, "hard_pct_max", x, setSettings)} />
+          <Num label={t("settings.thr.z3_pct_max", "Z3-% max")} v={settings.thresholds.z3_pct_max} on={(x) => saveThr(settings, "z3_pct_max", x, setSettings)} />
+          <Num label={t("settings.thr.longrun_pct_max", "Longrun-% max")} v={settings.thresholds.longrun_pct_max} on={(x) => saveThr(settings, "longrun_pct_max", x, setSettings)} />
+          <Num label={t("settings.thr.tsb_raceweek_min", "TSB Race Week min")} v={settings.thresholds.tsb_raceweek_min} on={(x) => saveThr(settings, "tsb_raceweek_min", x, setSettings)} />
+          <Num label={t("settings.thr.raceweek_tss_max_pct", "Race 7d-Last max % (Taper)")} v={settings.thresholds.raceweek_tss_max_pct ?? 60} on={(x) => saveThr(settings, "raceweek_tss_max_pct", x, setSettings)} />
+          <Num label={t("settings.thr.run_equiv_bike_factor", "Rad→Run Faktor")} v={settings.run_equiv_bike_factor} step="0.05" on={(x) => save1("run_equiv_bike_factor", x, setSettings)} />
         </div>
-        <h3 style={{ marginTop: 12 }}>Intensitäts-Einstufung (Donut & Wochen-Bewertung)</h3>
-        <p className="tiny muted" style={{ marginTop: 0 }}>Vergleich mit dem Ø-TSS der letzten Wochen: ≤ Easy-% = easy, bis Hart-% = moderat, darüber = hart.</p>
+        <h3 style={{ marginTop: 12 }}><T k="settings.intensity.title">Intensitäts-Einstufung (Donut & Wochen-Bewertung)</T></h3>
+        <p className="tiny muted" style={{ marginTop: 0 }}><T k="settings.intensity.hint">Vergleich mit dem Ø-TSS der letzten Wochen: ≤ Easy-% = easy, bis Hart-% = moderat, darüber = hart.</T></p>
         <div className="grid cols-4">
-          <Num label="Easy ≤ % vom Ø-TSS" v={settings.thresholds.easy_pct ?? 80} on={(x) => saveThr(settings, "easy_pct", x, setSettings)} />
-          <Num label="Hart ≥ % vom Ø-TSS" v={settings.thresholds.hard_pct ?? 105} on={(x) => saveThr(settings, "hard_pct", x, setSettings)} />
-          <Num label="Referenz-Fenster (Wochen)" v={settings.thresholds.intensity_window_weeks ?? 4} on={(x) => saveThr(settings, "intensity_window_weeks", x, setSettings)} />
+          <Num label={t("settings.thr.easy_pct", "Easy ≤ % vom Ø-TSS")} v={settings.thresholds.easy_pct ?? 80} on={(x) => saveThr(settings, "easy_pct", x, setSettings)} />
+          <Num label={t("settings.thr.hard_pct", "Hart ≥ % vom Ø-TSS")} v={settings.thresholds.hard_pct ?? 105} on={(x) => saveThr(settings, "hard_pct", x, setSettings)} />
+          <Num label={t("settings.thr.intensity_window_weeks", "Referenz-Fenster (Wochen)")} v={settings.thresholds.intensity_window_weeks ?? 4} on={(x) => saveThr(settings, "intensity_window_weeks", x, setSettings)} />
         </div>
       </div>
 

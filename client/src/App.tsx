@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api, type Profile } from "./lib/api.ts";
+import { useLang } from "./lib/i18n.tsx";
+import T from "./components/T.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import WeekPlan from "./pages/WeekPlan.tsx";
 import WeekTrack from "./pages/WeekTrack.tsx";
@@ -17,16 +19,16 @@ import pkg from "../../package.json";
 const BUILD_DATE = "17.06.2026";
 
 const NAV = [
-  { to: "/", ico: "▣", label: "Dashboard", end: true },
-  { to: "/plan", ico: "✎", label: "Wochenplanung" },
-  { to: "/track", ico: "✓", label: "Tracking" },
-  { to: "/report", ico: "🖨", label: "Wochenbericht" },
-  { to: "/longterm", ico: "📈", label: "Langzeit" },
-  { to: "/races", ico: "🏁", label: "Races" },
-  { to: "/bests", ico: "🏅", label: "Bestzeiten" },
-  { to: "/profile", ico: "👤", label: "Profil" },
-  { to: "/settings", ico: "⚙", label: "Einstellungen" },
-  { to: "/options", ico: "🏷", label: "Auswahllisten" },
+  { to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true },
+  { to: "/plan", ico: "✎", tk: "nav.plan", label: "Wochenplanung" },
+  { to: "/track", ico: "✓", tk: "nav.track", label: "Tracking" },
+  { to: "/report", ico: "🖨", tk: "nav.report", label: "Wochenbericht" },
+  { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
+  { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
+  { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
+  { to: "/profile", ico: "👤", tk: "nav.profile", label: "Profil" },
+  { to: "/settings", ico: "⚙", tk: "nav.settings", label: "Einstellungen" },
+  { to: "/options", ico: "🏷", tk: "nav.options", label: "Auswahllisten" },
 ];
 
 export default function App() {
@@ -37,10 +39,11 @@ export default function App() {
       <aside className="sidebar no-print">
         <div className="brand">Run<span>Log</span></div>
         <ProfileSwitcher />
+        <LangSwitcher />
         <nav className="nav">
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? "active" : "")}>
-              <span className="ico">{n.ico}</span> {n.label}
+              <span className="ico">{n.ico}</span> <T k={n.tk}>{n.label}</T>
             </NavLink>
           ))}
         </nav>
@@ -62,9 +65,28 @@ export default function App() {
         </div>
         <footer className="footer no-print">
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
-          <a href="/usage.html" target="_blank" rel="noreferrer">Anleitung</a>
+          <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a>
         </footer>
       </main>
+    </div>
+  );
+}
+
+// Sprachumschalter DE/EN (i18n). Auswahl in localStorage, kein Reload nötig.
+function LangSwitcher() {
+  const { lang, setLang } = useLang();
+  return (
+    <div className="lang-switch" role="group" aria-label="Sprache">
+      {(["de", "en"] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          className={lang === l ? "active" : ""}
+          onClick={() => setLang(l)}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { db, initSchema, getSetting, setSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
 import {
   plannedTss,
@@ -1420,6 +1420,35 @@ app.get("/api/intervals/trend", (req, res) => {
   }
   res.json(out);
 });
+
+// ---- Dev-only: Übersetzungen aus dem Web-UI bearbeiten (Alt+Klick) -----
+// Schreibt einen Key in client/src/translations/{de,en}.json zurück. Nur im Dev-Modus aktiv
+// (tsx watch setzt NODE_ENV nicht; `npm start`/Electron setzen production → Endpoint deaktiviert).
+if (process.env.NODE_ENV !== "production") {
+  const i18nDir = join(__dirname, "..", "client", "src", "translations");
+  const readDict = (lang: string): Record<string, string> => {
+    try {
+      return JSON.parse(readFileSync(join(i18nDir, `${lang}.json`), "utf8"));
+    } catch {
+      return {};
+    }
+  };
+  const writeDict = (lang: string, dict: Record<string, string>) => {
+    const sorted = Object.fromEntries(Object.keys(dict).sort().map((k) => [k, dict[k]]));
+    writeFileSync(join(i18nDir, `${lang}.json`), JSON.stringify(sorted, null, 2) + "\n");
+  };
+  app.post("/api/dev/i18n", (req, res) => {
+    const { key, de, en } = (req.body || {}) as { key?: string; de?: string; en?: string };
+    if (!key || typeof key !== "string") return res.status(400).json({ error: "key fehlt" });
+    const dDe = readDict("de");
+    const dEn = readDict("en");
+    dDe[key] = String(de ?? "");
+    dEn[key] = String(en ?? "");
+    writeDict("de", dDe);
+    writeDict("en", dEn);
+    res.json({ ok: true });
+  });
+}
 
 // ---- static (production) ----------------------------------------------
 // Im Electron-Paket liegt das gebaute Frontend neben den Server-Bundles; sonst im Projekt-`dist/`.

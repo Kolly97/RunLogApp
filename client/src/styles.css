@@ -574,3 +574,26 @@ tr.opt-row.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
   }
 }
 
+
+/* --- i18n: Sprachumschalter (Sidebar + Settings) --- */
+.lang-switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.lang-switch button { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.lang-switch button.active { background: var(--accent); color: #fff; }
+.sidebar .lang-switch { margin: 8px 0 4px; }
+
+/* --- i18n Dev-Editor (nur Dev-Build) --- */
+.i18n-dev { position: relative; }
+.i18n-pop {
+  position: absolute; top: 100%; left: 0; z-index: 1000; margin-top: 4px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 240px;
+  padding: 10px; background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lift);
+  font-weight: 400; text-transform: none; letter-spacing: normal; cursor: auto;
+}
+.i18n-pop-key { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+.i18n-pop-row { display: flex; align-items: center; gap: 6px; }
+.i18n-pop-row > span { width: 22px; font-size: 11px; color: var(--muted); font-weight: 700; }
+.i18n-pop-row input { flex: 1; padding: 5px 7px; font-size: 13px; }
+.i18n-pop-err { font-size: 11px; color: #c0392b; }
+.i18n-pop-actions { display: flex; gap: 6px; }
+.i18n-pop-actions button { padding: 5px 10px; font-size: 12px; }
