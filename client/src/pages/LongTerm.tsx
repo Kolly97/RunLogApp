@@ -24,6 +24,7 @@ import IntensityRatio from "../charts/IntensityRatio.tsx";
 import SleepWindow from "../charts/SleepWindow.tsx";
 import ChartDecor from "../charts/ChartDecor.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
+import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
 
 // ---- Wellness-Metriken (kleine Multiples) ----
 type Fmt = (v: number) => string;
@@ -228,6 +229,16 @@ export default function LongTerm() {
   const heatWeeks = [...season]
     .filter((w) => !range || (w.end_date >= range.from && w.start_date <= range.to))
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  // Plan-Erfüllung je Woche (TSS-basiert, aus /api/plan-adherence).
+  const adhByWeek = new Map(adherence.map((w) => [w.week_no, w.pct]));
+  const adhCellColor = (pct: number | null): string | undefined => {
+    if (pct == null) return undefined;
+    if (pct >= 110) return "#d4af37";
+    if (pct >= 90) return "#22c55e";
+    if (pct >= 75) return "#eab308";
+    if (pct >= 50) return "#f97316";
+    return "#ef4444";
+  };
   // Wochen-Score (v0.12.0, ToDo 7): % erfüllter Checks → Farbskala gold/grün/gelb/orange/rot.
   const weekScore = (weekNo: number): number | null => {
     if (!checks.length || !checkByWeek.has(weekNo)) return null;
@@ -239,53 +250,57 @@ export default function LongTerm() {
 
   return (
     <div>
-      <div className="spread">
+      <div className="spread no-print">
         <div>
           <h1 className="lt-title" style={{ marginBottom: 2 }}>Langzeit-Übersicht</h1>
           {range && <span className="tiny muted">Zeitraum: {fmtDateY(range.from)} – {fmtDateY(range.to)}</span>}
         </div>
-        <div className="row no-print" style={{ width: "auto", gap: 8 }}>
+        <div className="row" style={{ width: "auto", gap: 8 }}>
           <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="6m" />
           <button onClick={() => window.print()}>🖨 Drucken / PDF</button>
         </div>
       </div>
 
-      {/* Summen-Kacheln für den gewählten Zeitraum (#17) */}
-      <div className="grid cols-3" style={{ marginBottom: 14 }}>
+      <EditableGrid page="longterm" paged>
+      {/* Summen-Kacheln (#17) — als Tiles auf den Seiten */}
+      <EgItem id="sum-run" title="Lauf" defaultSpan={4} defaultHeight={60}>{() => (
         <div className="card stat"><div className="label">Lauf</div><div className="value fitness">{Math.round(cat.run.km)} km</div><div className="sub">{fmtDur(cat.run.s)}</div></div>
+      )}</EgItem>
+      <EgItem id="sum-bike" title="Rad" defaultSpan={4} defaultHeight={60}>{() => (
         <div className="card stat"><div className="label">Rad (indoor + outdoor + Commute)</div><div className="value">{Math.round(cat.bike.km)} km</div><div className="sub">{fmtDur(cat.bike.s)}</div></div>
+      )}</EgItem>
+      <EgItem id="sum-str" title="Kraft / Mobility" defaultSpan={4} defaultHeight={60}>{() => (
         <div className="card stat"><div className="label">Kraft / Mobility</div><div className="value">{fmtDur(cat.str.s)}</div><div className="sub">nur Zeit</div></div>
-      </div>
-
+      )}</EgItem>
       {/* PMC über den gewählten Zeitraum */}
+      <EgItem id="pmc" title="Performance Management Chart" defaultSpan={12} defaultHeight={360}>{(h) => (
       <div className="card">
         <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form (geplant rechts von „heute")</span></div>
         <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate}
-          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} />
+          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} height={h ?? 360} />
       </div>
+      )}</EgItem>
 
       {/* Intensity-Trend (ATL/CTL) — separater Graph, v0.15.0 (O3) */}
+      <EgItem id="intensity" title="Intensity-Trend" defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
       <div className="card">
         <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">Load Impact / Base Fitness = ATL/CTL</span></div>
-        <IntensityRatio data={pmc} />
+        <IntensityRatio data={pmc} height={h ?? 240} />
       </div>
+      )}</EgItem>
 
       {/* Saison-Progression (geplant vs. gelaufen) über den gewählten Zeitraum */}
+      <EgItem id="season" title="Saison-Progression" defaultSpan={12} defaultHeight={336}>{(h) => (
       <div className="card">
         <div className="spread"><h2>Saison-Progression</h2><span className="tiny muted">Ziel · geplant · gelaufen (km je Woche)</span></div>
-        <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
+        <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} height={h ?? 336} />
       </div>
+      )}</EgItem>
 
-      {/* (a) Wellness-Verläufe */}
-      <div className="card">
-        <div className="spread">
-          <h2>Wellness-Verläufe</h2>
-          <span className="tiny muted">Tageswerte aus dem Tracking — HRV · Ruhepuls · Recovery · Strain · Schlaf · Bettzeit · Sleep-Performance · Gewicht</span>
-        </div>
-        {!visibleMetrics.length && <p className="muted tiny">Keine Tagesfaktoren im gewählten Zeitraum.</p>}
-        <div className="wellness-grid">
-          {visibleMetrics.map((m) => (
-            <div key={m.key} className="chart-card tight">
+      {/* (a) Wellness-Verläufe — jede Kennzahl als eigene, einzeln wählbare/anordenbare Kachel */}
+      {visibleMetrics.map((m) => (
+        <EgItem key={m.key} id={`wellness-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={150}>{() => (
+            <div className="card chart-card tight">
               <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
               {m.key === "bed_dev" ? (
                 <SleepWindow data={sleepRows} xTickFormatter={fmtDate} height={135} />
@@ -325,21 +340,15 @@ export default function LongTerm() {
               </ResponsiveContainer>
               )}
             </div>
-          ))}
-        </div>
-      </div>
+        )}</EgItem>
+      ))}
 
-      {/* (b) Zonen-Effizienz */}
-      <div className="card">
-        <div className="spread">
-          <h2>Zonen-Effizienz (Easy-Läufe)</h2>
-        </div>
-        {!eff.length && <p className="muted tiny">Keine Lauf-Aktivitäten im gewählten Zeitraum.</p>}
-        {eff.length > 0 && (
-          <div className="grid cols-2" style={{ alignItems: "start" }}>
-            <div className="chart-card">
+      {/* (b) Zonen-Effizienz — zwei unabhängige Kacheln (Pace/HF und Effizienz-Faktor) */}
+      {eff.length > 0 && (
+      <EgItem id="eff-pace" title="Ø-Pace vs. Ø-HF" defaultSpan={6} defaultHeight={240} reserve={150}>{(h) => (
+            <div className="card chart-card">
               <h3>Ø-Pace vs. Ø-Herzfrequenz</h3>
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={h ?? 240}>
                 <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
                   {effSickSegments.map((s, i) => (
@@ -375,9 +384,13 @@ export default function LongTerm() {
                 Wochenmittel aller lockeren Läufe (ohne Intervall-Belastungen) sinkende Pace bei gleichem Puls = bessere Ökonomie
               </p>
             </div>
-            <div className="chart-card">
+      )}</EgItem>
+      )}
+      {eff.length > 0 && (
+      <EgItem id="eff-ef" title="Effizienz-Faktor" defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+            <div className="card chart-card">
               <h3>Effizienz-Faktor (m/min je Herzschlag)</h3>
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={h ?? 240}>
                 <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
                   <CartesianGrid stroke="#eef1f5" vertical={false} />
                   {effSickSegments.map((s, i) => (
@@ -399,18 +412,18 @@ export default function LongTerm() {
                 Steigender EF bei gleicher Belastung = Herz-Kreislauf-System wird ökonomischer.
               </p>
             </div>
-          </div>
-        )}
-      </div>
+      )}</EgItem>
+      )}
 
       {/* (b3) Plan-Erfüllung (Wochenmittel) — v0.14.0, ToDo 12 */}
       {hasAdh && (
+        <EgItem id="planadh" title="Plan-Erfüllung (Wochenmittel)" defaultSpan={12} defaultHeight={200} reserve={130}>{(h) => (
         <div className="card">
           <div className="spread">
             <h2>Plan-Erfüllung (Wochenmittel)</h2>
             <span className="tiny muted">TSS-Treffer + Zeit in Ziel-Pace-Zone, je Woche</span>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={h ?? 200}>
             <LineChart data={adhData} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
               <CartesianGrid stroke="#eef1f5" vertical={false} />
               <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
@@ -429,9 +442,11 @@ export default function LongTerm() {
             Wie konsequent die geplanten Einheiten umgesetzt wurden (gematchte Einheiten je Woche).
           </p>
         </div>
+        )}</EgItem>
       )}
 
       {/* (b2) Wochen-Check-Heatmap (ToDo 7) */}
+      <EgItem id="heatmap" title="Wochen-Checks" defaultSpan={12} defaultHeight={300}>{() => (
       <div className="card">
         <div className="spread">
           <h2>Wochen-Checks</h2>
@@ -460,6 +475,19 @@ export default function LongTerm() {
                   })}
                 </Fragment>
               ))}
+              {/* Plan-Erfüllung % je Woche (TSS-basiert, automatisch). */}
+              <div className="ch-score-head" title="Plan-Erfüllung % (TSS-basiert)">Plan-Erf. %</div>
+              {heatWeeks.map((w) => {
+                const pct = adhByWeek.get(w.week_no) ?? null;
+                const bg = adhCellColor(pct);
+                return (
+                  <div key={`adh-${w.week_no}`} className="ch-score-cell"
+                    style={bg ? { background: bg, color: "#fff" } : undefined}
+                    title={pct != null ? `${weekLabel(w)}: ${pct}% Planerfüllung (TSS)` : `${weekLabel(w)}: keine Daten`}>
+                    {pct != null ? pct : ""}
+                  </div>
+                );
+              })}
               {/* Score-Zeile: % erfüllter Checks je Woche, eingefärbt (gold/grün/gelb/orange/rot). */}
               <div className="ch-score-head">Erfüllt %</div>
               {heatWeeks.map((w) => {
@@ -476,17 +504,21 @@ export default function LongTerm() {
           </div>
         )}
       </div>
+      )}</EgItem>
 
       {/* (c) Intervall-Trend */}
       {hasRunTrend(trend) && (
+        <EgItem id="intervall" title="Intervall-Trend nach Kategorie" defaultSpan={12} defaultHeight={260}>{(h) => (
         <div className="card">
           <div className="spread">
             <h2>Intervall-Trend nach Kategorie</h2>
             <span className="tiny muted">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 kurz · VO2 lang (schneller = oben)</span>
           </div>
-          <IntervalTrend data={trend ?? []} />
+          <IntervalTrend data={trend ?? []} height={h ?? 260} />
         </div>
+        )}</EgItem>
       )}
+      </EditableGrid>
     </div>
   );
 }

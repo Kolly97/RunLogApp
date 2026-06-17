@@ -1,12 +1,12 @@
 // Bestzeiten + Critical Speed (v0.14.0, ToDo 8): PBs je Standarddistanz aus Stravas best_efforts,
-// dazu ein 2-Parameter-CS-Modell (d = CS·t + D') mit Vorhersagen und Distanz-Zeit-Diagramm.
+// dazu ein 2-Parameter-CS-Modell (d = CS·t + D') mit Vorhersagen.
 import { useEffect, useState } from "react";
 import {
-  ScatterChart, Scatter, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
+  LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { api, type BestsResult, type FitnessTrend } from "../lib/api.ts";
+import { api, type BestsResult, type FitnessTrend, type Pb } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { paceStr, secToClock, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
+import { paceStr, secToClock, clockToSec, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
 
 const PRED_LINES = [
   { key: "p5000", label: "5 km", color: "#0ea5e9" },
@@ -24,13 +24,20 @@ function distLabel(m: number): string {
   return DIST_NAMES[m] || (m >= 1000 ? `${Math.round(m / 100) / 10} km` : `${m} m`);
 }
 
+type EditState = { distance_m: number; timeStr: string; date: string } | null;
+type NewState = { distance_m: string; timeStr: string; date: string } | null;
+
 export default function Bests() {
   const { season } = useSeason();
   const [data, setData] = useState<BestsResult | null>(null);
   const [fit, setFit] = useState<FitnessTrend | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [err, setErr] = useState(false);
-  useEffect(() => { api.bests().then(setData).catch(() => setErr(true)); }, []);
+  const [edit, setEdit] = useState<EditState>(null);
+  const [newPb, setNewPb] = useState<NewState>(null);
+  const [saving, setSaving] = useState(false);
+  const reload = () => api.bests().then(setData).catch(() => setErr(true));
+  useEffect(() => { reload(); }, []);
   useEffect(() => {
     const from = season.length ? season[0].start_date : undefined;
     api.fitnessTrend(from, todayIso()).then(setFit).catch(() => setFit(null));
@@ -38,25 +45,37 @@ export default function Bests() {
   const toggleLine = (key: string) =>
     setHidden((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
+  const saveEdit = async () => {
+    if (!edit) return;
+    const t = clockToSec(edit.timeStr);
+    if (!t || t <= 0 || !edit.date) return;
+    setSaving(true);
+    await api.setBestOverride(edit.distance_m, t, edit.date).catch(() => null);
+    setSaving(false);
+    setEdit(null);
+    reload();
+  };
+  const deleteOverride = async (p: Pb) => {
+    await api.deleteBestOverride(p.distance_m).catch(() => null);
+    reload();
+  };
+  const saveNew = async () => {
+    if (!newPb) return;
+    const dist = Number(newPb.distance_m);
+    const t = clockToSec(newPb.timeStr);
+    if (!(dist > 0) || !t || t <= 0 || !newPb.date) return;
+    setSaving(true);
+    await api.setBestOverride(dist, t, newPb.date).catch(() => null);
+    setSaving(false);
+    setNewPb(null);
+    reload();
+  };
+
   if (err) return <div className="empty">Bestzeiten konnten nicht geladen werden.</div>;
   if (!data) return <p className="muted">Lädt…</p>;
 
   const { pbs, cs, predictions } = data;
   const predByDist = new Map(predictions.map((p) => [p.distance_m, p.time_s]));
-
-  // Diagramm: Datenpunkte (Zeit s / Distanz m) + CS-Gerade als Segment über den genutzten Bereich.
-  const pts = pbs.map((p) => ({ t: p.time_s, d: p.distance_m, label: distLabel(p.distance_m) }));
-  const fitPts = pbs.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000);
-  const seg = cs && fitPts.length >= 2
-    ? (() => {
-        const x0 = Math.min(...fitPts.map((p) => p.time_s));
-        const x1 = Math.max(...fitPts.map((p) => p.time_s));
-        return [
-          { x: x0, y: cs.cs_mps * x0 + cs.dPrime_m },
-          { x: x1, y: cs.cs_mps * x1 + cs.dPrime_m },
-        ];
-      })()
-    : null;
 
   return (
     <div>
@@ -77,18 +96,57 @@ export default function Bests() {
         <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", alignItems: "start" }}>
           {/* PB-Tabelle */}
           <div className="card">
-            <h2>Persönliche Bestzeiten</h2>
+            <div className="spread">
+              <h2>Persönliche Bestzeiten</h2>
+              <button className="tiny" onClick={() => setNewPb({ distance_m: "", timeStr: "", date: todayIso() })}>+ Manuell</button>
+            </div>
             <table>
-              <thead><tr><th>Distanz</th><th>Zeit</th><th>Ø-Pace</th><th>Datum</th></tr></thead>
+              <thead><tr><th>Distanz</th><th>Zeit</th><th>Ø-Pace</th><th>Datum</th><th /></tr></thead>
               <tbody>
                 {pbs.map((p) => (
                   <tr key={p.distance_m}>
-                    <td><strong>{distLabel(p.distance_m)}</strong></td>
-                    <td>{secToClock(p.time_s)}</td>
-                    <td className="muted">{paceStr(p.pace_s)}/km</td>
-                    <td className="tiny muted nowrap">{fmtDateY(p.date)}</td>
+                    {edit?.distance_m === p.distance_m ? (
+                      <>
+                        <td><strong>{distLabel(p.distance_m)}</strong></td>
+                        <td><input value={edit.timeStr} onChange={(e) => setEdit({ ...edit, timeStr: e.target.value })}
+                          placeholder="z.B. 28:30" style={{ width: 80 }} /></td>
+                        <td />
+                        <td><input type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })}
+                          style={{ width: 130 }} /></td>
+                        <td className="nowrap">
+                          <button onClick={saveEdit} disabled={saving}>✓</button>{" "}
+                          <button onClick={() => setEdit(null)}>✕</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td><strong>{distLabel(p.distance_m)}</strong>{p.manual && <span className="tiny muted"> manuell</span>}</td>
+                        <td>{secToClock(p.time_s)}</td>
+                        <td className="muted">{paceStr(p.pace_s)}/km</td>
+                        <td className="tiny muted nowrap">{fmtDateY(p.date)}</td>
+                        <td className="nowrap">
+                          <button className="tiny" onClick={() => setEdit({ distance_m: p.distance_m, timeStr: secToClock(p.time_s), date: p.date })}>✎</button>
+                          {p.manual && <>{" "}<button className="tiny" onClick={() => deleteOverride(p)}>✕</button></>}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
+                {newPb && (
+                  <tr>
+                    <td><input value={newPb.distance_m} onChange={(e) => setNewPb({ ...newPb, distance_m: e.target.value })}
+                      placeholder="m (z.B. 5000)" style={{ width: 90 }} /></td>
+                    <td><input value={newPb.timeStr} onChange={(e) => setNewPb({ ...newPb, timeStr: e.target.value })}
+                      placeholder="z.B. 28:30" style={{ width: 80 }} /></td>
+                    <td />
+                    <td><input type="date" value={newPb.date} onChange={(e) => setNewPb({ ...newPb, date: e.target.value })}
+                      style={{ width: 130 }} /></td>
+                    <td className="nowrap">
+                      <button onClick={saveNew} disabled={saving}>✓</button>{" "}
+                      <button onClick={() => setNewPb(null)}>✕</button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -125,26 +183,6 @@ export default function Bests() {
             )}
           </div>
 
-          {/* Distanz-Zeit-Diagramm + CS-Gerade */}
-          <div className="card" style={{ gridColumn: "1 / -1" }}>
-            <h3>Distanz vs. Zeit (Critical-Speed-Gerade)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <ScatterChart margin={{ top: 12, right: 16, left: 4, bottom: 16 }}>
-                <CartesianGrid stroke="#eef1f5" />
-                <XAxis type="number" dataKey="t" name="Zeit" tick={{ fontSize: 11, fill: "#8a96a6" }}
-                  domain={["dataMin", "dataMax"]} tickFormatter={(s) => secToClock(s)} />
-                <YAxis type="number" dataKey="d" name="Distanz" tick={{ fontSize: 11, fill: "#8a96a6" }}
-                  tickFormatter={(m) => `${Math.round(m / 100) / 10}k`} width={42} />
-                <Tooltip content={<BestTooltip />} />
-                {seg && <ReferenceLine ifOverflow="extendDomain" stroke="var(--form)" strokeWidth={2} strokeDasharray="5 4"
-                  segment={seg as { x: number; y: number }[]} />}
-                <Scatter data={pts} fill="var(--accent)" />
-              </ScatterChart>
-            </ResponsiveContainer>
-            <p className="tiny muted" style={{ marginTop: 4 }}>
-              Punkte = Bestzeiten; gestrichelte Linie = CS-Modell (Steigung = Critical Speed, y-Achsenabschnitt = D′).
-            </p>
-          </div>
         </div>
       )}
 
@@ -183,13 +221,3 @@ export default function Bests() {
   );
 }
 
-function BestTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0].payload as { t: number; d: number; label: string };
-  return (
-    <div style={{ background: "#fff", border: "1px solid #e3e8ef", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
-      <div style={{ fontWeight: 700 }}>{p.label}</div>
-      <div>{secToClock(p.t)} · {paceStr(Math.round(p.t / (p.d / 1000)))}/km</div>
-    </div>
-  );
-}

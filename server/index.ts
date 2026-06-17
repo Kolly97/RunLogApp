@@ -219,6 +219,17 @@ app.put("/api/settings", (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Seiten-Layout (T8): anpassbares Chart-Raster je Seite + Profil ----
+// Override-Map { [blockId]: { hidden?, span?, height?, order? } }; profil-scoped über Key-Namespace.
+const layoutKey = (page: string) => `layout:${page.replace(/[^a-z0-9_-]/gi, "")}:${pid()}`;
+app.get("/api/layout/:page", (req, res) => {
+  res.json(getSetting<Record<string, unknown>>(layoutKey(req.params.page), {}));
+});
+app.put("/api/layout/:page", (req, res) => {
+  setSetting(layoutKey(req.params.page), req.body && typeof req.body === "object" ? req.body : {});
+  res.json({ ok: true });
+});
+
 app.get("/api/zonesets", (_req, res) => {
   const rows = db.prepare("SELECT * FROM zone_sets WHERE profile_id=? ORDER BY valid_from DESC").all(pid()) as unknown as ZoneSetRow[];
   res.json(rows.map((r) => ({ ...r, hr_zones: parseJson(r.hr_zones, []), hr_zones_bike: r.hr_zones_bike ? parseJson(r.hr_zones_bike, null) : null, pace_zones: parseJson(r.pace_zones, []), speed_zones: parseJson(r.speed_zones, []), power_zones: parseJson(r.power_zones, []) })));
@@ -415,15 +426,20 @@ app.get("/api/bests", (_req, res) => {
   const rows = db.prepare(
     "SELECT date, name, best_efforts FROM activities WHERE profile_id=? AND sport='Run' AND best_efforts IS NOT NULL AND best_efforts<>'' AND best_efforts<>'{}'",
   ).all(pid()) as { date: string; name: string; best_efforts: string }[];
-  const best = new Map<number, { distance_m: number; time_s: number; date: string; name: string }>();
+  const best = new Map<number, { distance_m: number; time_s: number; date: string; name: string; manual: boolean }>();
   for (const r of rows) {
     const be = parseJson<Record<string, number>>(r.best_efforts, {});
     for (const [d, t] of Object.entries(be)) {
       const dist = Number(d), time = Number(t);
       if (!(dist > 0 && time > 0)) continue;
       const cur = best.get(dist);
-      if (!cur || time < cur.time_s) best.set(dist, { distance_m: dist, time_s: time, date: r.date, name: r.name });
+      if (!cur || time < cur.time_s) best.set(dist, { distance_m: dist, time_s: time, date: r.date, name: r.name, manual: false });
     }
+  }
+  // Manuelle Overrides überschreiben Strava-PBs für die jeweilige Distanz.
+  const overrides = db.prepare("SELECT distance_m, time_s, date FROM pb_overrides WHERE profile_id=?").all(pid()) as { distance_m: number; time_s: number; date: string }[];
+  for (const o of overrides) {
+    best.set(o.distance_m, { distance_m: o.distance_m, time_s: o.time_s, date: o.date, name: "manuell", manual: true });
   }
   const pbs = [...best.values()]
     .map((p) => ({ ...p, pace_s: Math.round(p.time_s / (p.distance_m / 1000)) }))
@@ -433,6 +449,19 @@ app.get("/api/bests", (_req, res) => {
   const cs = fitCriticalSpeed(fit);
   const predictions = cs ? predictFromCs(cs.cs_mps, cs.dPrime_m, CS_PRED_DISTANCES) : [];
   res.json({ pbs, cs, predictions });
+});
+
+app.put("/api/bests/override", (req, res) => {
+  const { distance_m, time_s, date } = req.body as { distance_m: number; time_s: number; date: string };
+  if (!(distance_m > 0 && time_s > 0 && date)) return res.status(400).json({ error: "invalid" });
+  db.prepare("INSERT INTO pb_overrides (profile_id, distance_m, time_s, date) VALUES (?,?,?,?) ON CONFLICT(profile_id, distance_m) DO UPDATE SET time_s=excluded.time_s, date=excluded.date")
+    .run(pid(), distance_m, time_s, date);
+  res.json({ ok: true });
+});
+
+app.delete("/api/bests/override/:distance_m", (req, res) => {
+  db.prepare("DELETE FROM pb_overrides WHERE profile_id=? AND distance_m=?").run(pid(), Number(req.params.distance_m));
+  res.json({ ok: true });
 });
 
 // ---- Fitness-Trend: VO2max (VDOT) + Renn-Prognose über die Zeit (v0.15.0, O1+O2) ----
@@ -730,12 +759,12 @@ function activityTssToStore(b: any): number | null {
     const est = bikeTssEstimate(b.moving_s / 60, b.type || "Easy");
     if (est > 0) return est;
   }
-  // Allgemein/Commute/Sonstiges → Power-TSS falls Leistung (Bike-Commute), sonst HR-basiert (Wandern).
+  // Allgemein/Commute/Sonstiges → Power-TSS falls Leistung (Bike-Commute), sonst HR-basiert gedämpft (Wandern ×0.6).
   if ((b.sport === "General" || b.sport === "Other") && b.moving_s) {
     const power = b.np ?? b.avg_power ?? null;
     if (power && zs.ftp) { const t = powerTss(b.moving_s, power, zs.ftp); if (t > 0) return t; }
     const t = otherTssEstimate(b, zs.hr_zones, zs.lthr);
-    if (t > 0) return t;
+    if (t > 0) return round1(t * 0.6);
   }
   return b.tss ?? null;
 }

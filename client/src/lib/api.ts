@@ -11,13 +11,17 @@ export interface Race {
 }
 
 // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
-export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; }
+export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
 export interface CsModel { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number; }
 export interface BestsResult { pbs: Pb[]; cs: CsModel | null; predictions: { distance_m: number; time_s: number }[]; }
 // VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
 export interface FitnessTrendPoint { date: string; vdot: number | null; p5000: number | null; p10000: number | null; p21097: number | null; p42195: number | null; }
 export interface FitnessTrend { points: FitnessTrendPoint[]; current: FitnessTrendPoint | null; age: number | null; level: string | null; }
 export interface PlanAdherenceWeek { week_no: number; start: string; end: string; pct: number | null; n: number; }
+// Seiten-Layout (T8): freies Raster (react-grid-layout-Koordinaten) je Chart-Block.
+// x/y/w/h in Rastereinheiten (12 Spalten); fehlende Felder → Default des Blocks.
+export interface BlockOverride { x?: number; y?: number; w?: number; h?: number; hidden?: boolean; page?: number; }
+export type LayoutMap = Record<string, BlockOverride>;
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
 export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; hr_zones_bike?: HrZone[] | null; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
@@ -172,6 +176,10 @@ export const api = {
 
   // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
   bests: () => j<BestsResult>("/api/bests"),
+  setBestOverride: (distance_m: number, time_s: number, date: string) =>
+    j<{ ok: boolean }>("/api/bests/override", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ distance_m, time_s, date }) }),
+  deleteBestOverride: (distance_m: number) =>
+    j<{ ok: boolean }>(`/api/bests/override/${distance_m}`, { method: "DELETE" }),
   fitnessTrend: (from?: string, to?: string) => {
     const p = new URLSearchParams();
     if (from) p.set("from", from);
@@ -180,6 +188,11 @@ export const api = {
   },
   // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12)
   planAdherence: () => j<PlanAdherenceWeek[]>("/api/plan-adherence"),
+
+  // Seiten-Layout (T8): anpassbares Chart-Raster je Seite + Profil
+  getLayout: (page: string) => j<LayoutMap>(`/api/layout/${page}`),
+  setLayout: (page: string, map: LayoutMap) =>
+    j<{ ok: boolean }>(`/api/layout/${page}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(map) }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

@@ -20,7 +20,8 @@ import IntensityDonut from "../charts/IntensityDonut.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WeekdayBars from "../charts/WeekdayBars.tsx";
-import WellnessTrends from "../charts/WellnessTrends.tsx";
+import { wellnessTrendData, WellnessTrendChart } from "../charts/WellnessTrends.tsx";
+import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
 
 const REFLECT: [string, string][] = [
   ["adherence", "Plan-Treue (% umgesetzt)"], ["progress", "Fortschritt ggü. Vorwoche"],
@@ -204,6 +205,7 @@ export default function WeekReport() {
   const realCat: Cat = serverRealCat ?? catsFromActs(acts);
 
   const wellness = avgWellness(daily);
+  const wtrend = wellnessTrendData(daily, days);
   const saveW = (patch: Record<string, unknown>) => { const n = { ...wlog, ...patch }; setWlog(n); api.saveWeeklog(week.week_no, n); };
   const saveCheck = (k: string, val: boolean) => saveW({ checks: { ...(wlog.checks || {}), [k]: val } });
   const saveRefl = (k: string, val: string) => saveW({ refl_extra: { ...(wlog.refl_extra || {}), [k]: val } });
@@ -222,11 +224,10 @@ export default function WeekReport() {
         </div>
       </div>
 
-      <div className="report">
-        {/* ============ SEITE 1 ============ */}
-        <section className="card report-page">
-          {/* Kopf */}
-          <div className="spread report-head">
+      <EditableGrid page="weekreport" paged>
+        {/* Kopf */}
+        <EgItem id="head" title="Kopf" defaultSpan={12} defaultHeight={68} reserve={100}>{() => (
+          <div className="card spread report-head">
             <div>
               <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
               <div className="muted tiny">
@@ -240,9 +241,11 @@ export default function WeekReport() {
               <Mini label="Form (TSB)" v={`${analyze?.projectedTsb ?? "–"}`} />
             </div>
           </div>
+        )}</EgItem>
 
-          {/* Kategorie-Summen: Lauf / Rad gesamt / Kraft & Mobility */}
-          <div className="cat-row mt">
+        {/* Kategorie-Summen: Lauf / Rad gesamt / Kraft & Mobility */}
+        <EgItem id="cats" title="Kategorie-Summen" defaultSpan={12} defaultHeight={86}>{() => (
+          <div className="card cat-row mt">
             <CatBox label="Lauf" main={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
               sub={`geplant ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`} />
             <CatBox label="Rad gesamt (indoor + outdoor + Commute)" main={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
@@ -250,8 +253,11 @@ export default function WeekReport() {
             <CatBox label="Kraft / Mobility" main={hours(realCat.strength.min)}
               sub={`geplant ${hours(plannedCat.strength.min)}`} />
           </div>
+        )}</EgItem>
 
-          {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
+        {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
+        <EgItem id="units" title="Einheiten" defaultSpan={12} defaultHeight={420}>{() => (
+          <div className="card">
           <div className="spread mt">
             <h3 style={{ margin: 0 }}>Einheiten</h3>
             {hasAdh && adh?.weekPct != null && (
@@ -323,7 +329,7 @@ export default function WeekReport() {
                         {/* Einheiten-Name nur nennen, wenn mehrere Einheiten am Tag (sonst redundant) */}
                         {real.length > 1 && <span className="note-name">{a.name || sportLabel(a.sport)}: </span>}
                         {a.notes && a.notes.trim() ? a.notes.trim() : ""}
-                        {a.efforts?.length ? <span className="note-efforts">{a.notes?.trim() ? " — " : ""}{a.efforts.map(fmtEffort).join(" | ")}</span> : ""}
+                        {a.efforts?.length ? <EffortTable efforts={a.efforts} /> : null}
                       </td>
                     </tr>
                   )),
@@ -331,9 +337,12 @@ export default function WeekReport() {
               })}
             </tbody>
           </table></div>
+          </div>
+        )}</EgItem>
 
-          {/* Efficiency Factor je Wochentag (DL/Longruns) — v0.14.0, ToDo 11 */}
-          {efVals.length > 0 && (
+        {/* Efficiency Factor je Wochentag (DL/Longruns) — v0.14.0, ToDo 11 */}
+        {efVals.length > 0 && (
+          <EgItem id="ef" title="Efficiency Factor" defaultSpan={12} defaultHeight={150} reserve={100}>{() => (
             <div className="card tight mt">
               <div className="spread">
                 <h3 style={{ margin: 0 }}>Efficiency Factor — DL &amp; Longruns <span className="muted tiny">(NGP-Tempo / Ø-HF)</span></h3>
@@ -349,11 +358,13 @@ export default function WeekReport() {
                 ))}
               </div>
             </div>
-          )}
+          )}</EgItem>
+        )}
 
-          {/* Wettkämpfe der Woche (ToDo #24) — einzeln mit Splits */}
-          {weekRaces.length > 0 && (
-            <div className="mt">
+        {/* Wettkämpfe der Woche (ToDo #24) — einzeln mit Splits */}
+        {weekRaces.length > 0 && (
+          <EgItem id="races" title="Wettkämpfe" defaultSpan={12} defaultHeight={96}>{() => (
+            <div className="card mt">
               <h3>Wettkämpfe</h3>
               {weekRaces.map((r) => {
                 const km = (r.distance_m || 0) / 1000;
@@ -379,11 +390,12 @@ export default function WeekReport() {
                 );
               })}
             </div>
-          )}
+          )}</EgItem>
+        )}
 
-          {/* Kern-Visualisierung — Balken & Donuts je eigene Karte, Schilder breit darunter (ToDo 8, v0.12.0) */}
-          <div className="chart-grid mt">
-            <div className="chart-card">
+        {/* Kern-Visualisierung — Balken & Donuts je eigene Karte, Schilder breit darunter (ToDo 8, v0.12.0) */}
+        <EgItem id="zonedist" title="Zonenverteilung" defaultSpan={6} defaultHeight={220}>{() => (
+            <div className="card chart-card">
               <h3 style={{ textAlign: "center" }}>
                 Zonenverteilung geplant vs. real
               </h3>
@@ -393,7 +405,11 @@ export default function WeekReport() {
               ]} />}
               {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
             </div>
-            <div className="chart-card">
+        )}</EgItem>
+
+        {/* Intensität (TSS) geplant vs. real */}
+        <EgItem id="tssdist" title="Intensität (TSS)" defaultSpan={6} defaultHeight={220}>{() => (
+            <div className="card chart-card">
               <h3 style={{ textAlign: "center" }}>
                 Intensität (TSS) — geplant vs. real
               </h3>
@@ -412,10 +428,11 @@ export default function WeekReport() {
                 </div>
               )}
             </div>
-          </div>
+        )}</EgItem>
 
-          {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
-          {analyze && (analyze.realLoadFlag || analyze.realKmFlag) && (
+        {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
+        {analyze && (analyze.realLoadFlag || analyze.realKmFlag) && (
+          <EgItem id="realflags" title="Bewertung der realen Woche" defaultSpan={12} defaultHeight={96}>{() => (
             <div className="chart-card mt">
               <h3>Bewertung der realen Woche</h3>
               <div className="flag-row">
@@ -424,13 +441,16 @@ export default function WeekReport() {
                 ))}
               </div>
             </div>
-          )}
-          {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
+          )}</EgItem>
+        )}
+
+        {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
+        <EgItem id="pmc" title="PMC" defaultSpan={12} defaultHeight={210}>{(h) => (
           <div className="chart-card mt">
             <h3>PMC — bis {weekLabel(week)}</h3>
             <div className="pmc-row">
               <div style={{ flex: 1, minWidth: 0 }}>
-                <Pmc data={pmcWin} height={210} highlight={{ from: week.start_date, to: week.end_date }}
+                <Pmc data={pmcWin} height={h ?? 210} highlight={{ from: week.start_date, to: week.end_date }}
                   races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
               </div>
               {/* Last-Kennzahlen am Wochenende (v0.14.0, ToDo 2) */}
@@ -442,26 +462,38 @@ export default function WeekReport() {
               </div>
             </div>
           </div>
-          {/* Wochentags-Chart (1/3) neben der Saison-Progression (2/3) — ToDo Z.9 */}
-          <div className="chart-grid mt" style={{ gridTemplateColumns: "1fr 2fr" }}>
-            <div className="chart-card">
+        )}</EgItem>
+
+        {/* km & rTSS je Wochentag — eigene Kachel */}
+        <EgItem id="weekday" title="km & rTSS je Wochentag" defaultSpan={4} defaultHeight={210} reserve={80}>{(h) => (
+            <div className="card chart-card">
               <h3>km &amp; rTSS je Wochentag</h3>
-              <WeekdayBars days={days} acts={acts} bikeFactor={bikeFactor} height={210} />
+              <WeekdayBars days={days} acts={acts} bikeFactor={bikeFactor} height={h ?? 210} />
             </div>
-            <div className="chart-card">
+        )}</EgItem>
+
+        {/* Saison-Progression — eigene Kachel */}
+        <EgItem id="season" title="Saison-Progression" defaultSpan={8} defaultHeight={210} reserve={65}>{(h) => (
+            <div className="card chart-card">
               <h3>Saison-Progression (geplant / real km)</h3>
-              <SeasonProgress rows={reportRows} height={210} highlightLabel={weekLabel(week)}
+              <SeasonProgress rows={reportRows} height={h ?? 210} highlightLabel={weekLabel(week)}
                 races={racesByWeek} sickLabels={sickLabels} showYears={false} />
             </div>
-          </div>
+        )}</EgItem>
 
-          {/* Whoop / Wellness Summary */}
+        {/* Whoop / Wellness Summary */}
+        <EgItem id="wellness" title="Whoop / Wellness" defaultSpan={12} defaultHeight={80} reserve={80}>{() => (
+          <div className="card">
           <h3 className="mt">Whoop / Wellness (Ø Woche)</h3>
           <div className="row tiny" style={{ gap: 16, flexWrap: "wrap" }}>
             {WELLNESS_KEYS.map(([k, label]) => <Mini key={k} label={label} v={wellness[k] ?? ""} />)}
           </div>
+          </div>
+        )}</EgItem>
 
-          {/* Wochen-Check — konfigurierbar in den Auswahllisten (ToDo 7) */}
+        {/* Wochen-Check — konfigurierbar in den Auswahllisten (ToDo 7) */}
+        <EgItem id="check" title="Wochen-Check" defaultSpan={12} defaultHeight={80} reserve={42}>{() => (
+          <div className="card">
           <h3 className="mt">Wochen-Check</h3>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             {checks.length === 0 && <span className="tiny muted">Keine Checks definiert — in „Auswahllisten" anlegen.</span>}
@@ -471,10 +503,12 @@ export default function WeekReport() {
               </label>
             ))}
           </div>
-        </section>
+          </div>
+        )}</EgItem>
 
-        {/* ============ SEITE 2 ============ */}
-        <section className="card report-page page-break">
+        {/* ============ SEITE 2: Tagesfaktoren ============ */}
+        <EgItem id="daily" title="Tagesfaktoren" defaultSpan={12} defaultHeight={360}>{() => (
+          <div className="card">
           <div className="report-head">
             <h2 style={{ margin: 0 }}>Tagesfaktoren — {weekLabel(week)}</h2>
             <div className="muted tiny">{fmtDateY(week.start_date)} – {fmtDateY(week.end_date)}</div>
@@ -503,10 +537,22 @@ export default function WeekReport() {
               {!visibleMetrics.length && <tr><td colSpan={9} className="muted center">Keine Tagesfaktoren eingetragen.</td></tr>}
             </tbody>
           </table></div>
+          </div>
+        )}</EgItem>
 
-          <h3 className="mt">Wellness-Verläufe (HRV · Ruhepuls · Recovery · Strain · Schlaf · Bettzeit)</h3>
-          <WellnessTrends daily={daily} days={days} />
+        {/* Wellness-Verläufe — jede Kennzahl als eigene, einzeln wählbare/anordenbare Kachel */}
+        {wtrend.visible.map((m) => (
+          <EgItem key={m.key} id={`wtrend-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={120} reserve={42}>{(h) => (
+            <div className="card chart-card tight">
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
+              <WellnessTrendChart metric={m} points={wtrend.points} sleepRows={wtrend.sleepRows} height={h ?? 110} />
+            </div>
+          )}</EgItem>
+        ))}
 
+        {/* Reflexion */}
+        <EgItem id="reflexion" title="Reflexion" defaultSpan={12} defaultHeight={170}>{() => (
+          <div className="card">
           <h3 className="mt">Reflexion</h3>
           <div className="grid cols-2">
             <Refl label="Was lief gut?" v={wlog.refl_good} on={(x) => saveW({ refl_good: x })} />
@@ -514,8 +560,9 @@ export default function WeekReport() {
             <Refl label="Was ändere ich nächste Woche?" v={wlog.refl_change} on={(x) => saveW({ refl_change: x })} />
             {REFLECT.map(([k, label]) => <Refl key={k} label={label} v={wlog.refl_extra?.[k]} on={(x) => saveRefl(k, x)} />)}
           </div>
-        </section>
-      </div>
+          </div>
+        )}</EgItem>
+      </EditableGrid>
     </div>
   );
 }
@@ -563,15 +610,6 @@ function fmtClock(s?: number | null): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-function intensityOf(zm: Record<number, number>): { easy: number; mod: number; hard: number } {
-  const tot = Object.values(zm).reduce((a, b) => a + (b || 0), 0) || 1;
-  return {
-    easy: (((zm[1] || 0) + (zm[2] || 0)) / tot) * 100,
-    mod: ((zm[3] || 0) / tot) * 100,
-    hard: (((zm[4] || 0) + (zm[5] || 0) + (zm[6] || 0)) / tot) * 100,
-  };
-}
-
 function isBikeCat(sport?: string | null): boolean {
   return !!sport && (sport.startsWith("Bike") || sport === "General");
 }
@@ -598,23 +636,55 @@ function catsFromPlan(sessions: PlannedSession[]): Cat {
   return out;
 }
 
-/** Kompakte Darstellung einer Belastung: „4× 8:00 min @ 3:45/km · Ø172/max181".
- *  v0.12.0: Wiederholungs-Gruppen werden als „3×(1000 m + 200 m)" gerendert. */
-function fmtEffort(e: Effort): string {
-  if (e.group) return `${e.reps ?? 1}×(${(e.children ?? []).map(fmtEffort).join(" + ")})`;
-  let core = "";
-  if (e.sec) core = clock(e.sec);
-  else if (e.dist_m) core = e.dist_m >= 1000 ? `${round1(e.dist_m / 1000)} km` : `${e.dist_m} m`;
-  let s = (e.reps && e.reps > 1 ? `${e.reps}× ` : "") + core;
-  if (e.pace_s) s += ` @ ${paceStr(e.pace_s)}/km`;
-  if (e.avg_hr) s += ` · Ø${Math.round(e.avg_hr)}`;
-  if (e.max_hr) s += `/max${Math.round(e.max_hr)}`;
-  if (e.label) s = `${e.label}: ${s}`;
-  return s.trim();
+/** Belastungen (Intervalle) zu Tabellen-Zeilen flach machen: Länge · Zeit · Pace · Ø-HF · max-HF.
+ *  Gruppen (z. B. 3×(1000m + 200m)) werden rekursiv expandiert, der Gruppen-Faktor als Präfix vererbt. */
+interface EffRow { label: string; len: string; time: string; pace: string; avg: string; max: string; }
+function effortRows(efforts: Effort[], prefix = ""): EffRow[] {
+  const out: EffRow[] = [];
+  for (const e of efforts) {
+    const reps = e.reps && e.reps > 1 ? `${e.reps}× ` : "";
+    if (e.group) { out.push(...effortRows(e.children ?? [], `${prefix}${reps}`)); continue; }
+    const label = `${prefix}${reps}${e.label ?? ""}`.trim();
+    out.push({
+      label,
+      len: e.dist_m ? (e.dist_m >= 1000 ? `${round1(e.dist_m / 1000)} km` : `${e.dist_m} m`) : "",
+      time: e.sec ? fmtClock(e.sec) : "",
+      pace: e.pace_s ? `${paceStr(e.pace_s)}/km` : "",
+      avg: e.avg_hr ? `${Math.round(e.avg_hr)}` : "",
+      max: e.max_hr ? `${Math.round(e.max_hr)}` : "",
+    });
+  }
+  return out;
 }
-function clock(sec: number): string {
-  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-  return s ? `${m}:${String(s).padStart(2, "0")} min` : `${m} min`;
+
+/** Mini-Tabelle der Intervall-Splits (im Wochenbericht unter der jeweiligen Einheit).
+ *  Spalte „#" = fortlaufende Nummer; ab 6 Intervallen zwei Tabellen nebeneinander (Platz sparen). */
+function EffortTable({ efforts }: { efforts: Effort[] }) {
+  const rows = effortRows(efforts);
+  if (!rows.length) return null;
+  const split = rows.length >= 4;
+  const mid = split ? Math.ceil(rows.length / 2) : rows.length;
+  const groups = split ? [rows.slice(0, mid), rows.slice(mid)] : [rows];
+  return (
+    <div className="effort-wrap">
+      {groups.map((g, gi) => (
+        <table className="effort-mini" key={gi}>
+          <thead><tr><th>#</th><th>Länge</th><th>Zeit</th><th>Pace</th><th>Ø-HF</th><th>max-HF</th></tr></thead>
+          <tbody>
+            {g.map((r, i) => {
+              const n = (gi === 0 ? 0 : mid) + i + 1;
+              return (
+                <tr key={n}>
+                  <td className="lbl">{n}</td><td>{r.len || "–"}</td><td>{r.time || "–"}</td>
+                  <td>{r.pace || "–"}</td><td>{r.avg || "–"}</td><td>{r.max || "–"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ))}
+    </div>
+  );
 }
 
 function avgWellness(daily: DailyLog[]): Record<string, number | ""> {

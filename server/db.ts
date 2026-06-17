@@ -353,6 +353,15 @@ function migrate(): void {
   addColumn("races", "avg_hr", "INTEGER");
   // v0.14.0 (ToDo 3): Verknüpfung Race ↔ getrackte Aktivität (Race aus Tracking).
   addColumn("races", "activity_id", "INTEGER");
+  // v1.0.1: Manuelle PB-Overrides (eigene Bestzeiten editierbar).
+  db.exec(`CREATE TABLE IF NOT EXISTS pb_overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    distance_m INTEGER NOT NULL,
+    time_s INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    UNIQUE(profile_id, distance_m)
+  )`);
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

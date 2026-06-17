@@ -26,9 +26,9 @@ export function devToClock(dev: number): string {
   return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
 }
 
-interface Point { label: string; [k: string]: number | string | null; }
+export interface Point { label: string; [k: string]: number | string | null; }
 
-interface MetricDef {
+export interface MetricDef {
   key: string;
   title: string;
   color: string;
@@ -36,6 +36,60 @@ interface MetricDef {
   refY?: number;       // gestrichelte Referenzlinie (z.B. 23:30 bei Bettzeit)
   refLabel?: string;
   reversed?: boolean;  // Y-Achse umdrehen (Bettzeit: spät = unten)
+}
+
+interface SleepRow { x: string; bedtime?: unknown; wake_time?: unknown; }
+
+/** Datengrundlage der Wochen-Wellness-Verläufe — für Einzel-Charts wiederverwendbar (EditableGrid). */
+export function wellnessTrendData(daily: DailyLog[], days: string[]): { points: Point[]; visible: MetricDef[]; sleepRows: SleepRow[] } {
+  const points: Point[] = days.map((d, i) => {
+    const dl = daily.find((x) => x.date === d);
+    const p: Point = { label: DAY_NAMES[i] || d };
+    for (const m of METRICS) {
+      if (m.key === "bed_dev") { p.bed_dev = dl ? bedDeviation(dl.bedtime) : null; continue; }
+      const v = dl?.[m.key];
+      p[m.key] = typeof v === "number" && isFinite(v) ? v : null;
+    }
+    return p;
+  });
+  const visible = METRICS.filter((m) => points.some((p) => p[m.key] != null));
+  const sleepRows: SleepRow[] = days.map((d, i) => {
+    const dl = daily.find((x) => x.date === d);
+    return { x: DAY_NAMES[i] || d, bedtime: dl?.bedtime, wake_time: dl?.wake_time };
+  });
+  return { points, visible, sleepRows };
+}
+
+/** Ein einzelner Wellness-Verlaufs-Chart (eine Kennzahl). */
+export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100 }: {
+  metric: MetricDef; points: Point[]; sleepRows: SleepRow[]; height?: number;
+}) {
+  if (m.key === "bed_dev") return <SleepWindow data={sleepRows} height={height} />;
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={points} margin={{ top: 6, right: 8, left: -14, bottom: -4 }}>
+        <CartesianGrid stroke="#eef1f5" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#8a96a6" }} interval={0} />
+        <YAxis
+          tick={{ fontSize: 10, fill: "#8a96a6" }}
+          width={46}
+          domain={["auto", "auto"]}
+          reversed={m.reversed}
+          tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
+        />
+        <Tooltip
+          formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
+          contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+        />
+        {m.refY != null && (
+          <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"
+            label={{ value: m.refLabel, fontSize: 9, fill: "#94a3b8", position: "right" }} />
+        )}
+        <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.8}
+          dot={{ r: 2.5, fill: m.color, strokeWidth: 0 }} connectNulls />
+      </LineChart>
+    </ResponsiveContainer>
+  );
 }
 
 const METRICS: MetricDef[] = [
@@ -50,58 +104,14 @@ const METRICS: MetricDef[] = [
 export default function WellnessTrends({ daily, days, height = 100 }: {
   daily: DailyLog[]; days: string[]; height?: number;
 }) {
-  const points: Point[] = days.map((d, i) => {
-    const dl = daily.find((x) => x.date === d);
-    const p: Point = { label: DAY_NAMES[i] || d };
-    for (const m of METRICS) {
-      if (m.key === "bed_dev") { p.bed_dev = dl ? bedDeviation(dl.bedtime) : null; continue; }
-      const v = dl?.[m.key];
-      p[m.key] = typeof v === "number" && isFinite(v) ? v : null;
-    }
-    return p;
-  });
-
-  const visible = METRICS.filter((m) => points.some((p) => p[m.key] != null));
+  const { points, visible, sleepRows } = wellnessTrendData(daily, days);
   if (!visible.length) return <p className="tiny muted">Keine Tagesfaktoren für diese Woche eingetragen.</p>;
-
-  // Schlaffenster (Bett→Auf) je Wochentag für den Whoop-Stil-Balken (v0.15.5).
-  const sleepRows = days.map((d, i) => {
-    const dl = daily.find((x) => x.date === d);
-    return { x: DAY_NAMES[i] || d, bedtime: dl?.bedtime, wake_time: dl?.wake_time };
-  });
-
   return (
     <div className="wellness-grid">
       {visible.map((m) => (
         <div key={m.key} className="chart-card tight">
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
-          {m.key === "bed_dev" ? (
-            <SleepWindow data={sleepRows} height={height} />
-          ) : (
-          <ResponsiveContainer width="100%" height={height}>
-            <LineChart data={points} margin={{ top: 6, right: 8, left: -14, bottom: -4 }}>
-              <CartesianGrid stroke="#eef1f5" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#8a96a6" }} interval={0} />
-              <YAxis
-                tick={{ fontSize: 10, fill: "#8a96a6" }}
-                width={46}
-                domain={["auto", "auto"]}
-                reversed={m.reversed}
-                tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
-              />
-              <Tooltip
-                formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
-                contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
-              />
-              {m.refY != null && (
-                <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"
-                  label={{ value: m.refLabel, fontSize: 9, fill: "#94a3b8", position: "right" }} />
-              )}
-              <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.8}
-                dot={{ r: 2.5, fill: m.color, strokeWidth: 0 }} connectNulls />
-            </LineChart>
-          </ResponsiveContainer>
-          )}
+          <WellnessTrendChart metric={m} points={points} sleepRows={sleepRows} height={height} />
         </div>
       ))}
     </div>

@@ -10,6 +10,7 @@ import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
+import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
 
 export default function Dashboard() {
   const { season, week } = useSeason();
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const visibleRows = range
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
     : rows;
+  const dashBlocks = blockCards();
 
   return (
     <div>
@@ -89,52 +91,78 @@ export default function Dashboard() {
         <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="ytd" />
       </div>
 
-      <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "2fr 1fr" }}>
-        <div className="card">
-          <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
-          <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
-            phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} />
-        </div>
-        <div className="card">
-          <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
-          {!week && <p className="muted">Keine aktuelle Woche.</p>}
-          {week && analyze && (
-            <>
-              <div className="row mb">
-                <span className="pill phase">{week.phase}</span>
-                <span className="muted tiny">{weekLabel(week)} · {analyze.totals.km} / {week.target_km ?? "–"} km · {Math.round(analyze.totals.tss)} TSS</span>
-              </div>
-              {!analyze.flags.length && <p className="tiny muted">Keine Hinweise.</p>}
-              {analyze.flags.slice(0, 6).map((f, i) => (
-                <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="grid cols-2" style={{ alignItems: "start", gridTemplateColumns: "1fr 1fr" }}>
-        <div className="card">
-          <h2>Saison-Progression</h2>
-          <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} />
-        </div>
-        <div className="card">
-          <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">ATL/CTL</span></div>
-          <IntensityRatio data={pmc?.pmc ?? []} />
-        </div>
-      </div>
-
-      {hasRunTrend(trend) && (
-        <div className="card">
-          <div className="spread">
-            <h2>Intervall-Trend</h2>
-            <span className="tiny muted">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 (schneller = oben)</span>
-          </div>
-          <IntervalTrend data={trend ?? []} />
-        </div>
-      )}
+      <EditableGrid page="dashboard" blocks={dashBlocks} />
     </div>
   );
+
+  function blockCards(): EgBlock[] {
+    const list: EgBlock[] = [
+      {
+        id: "pmc", title: "Performance Management Chart", defaultSpan: 8, defaultHeight: 360,
+        render: (h) => (
+          <div className="card">
+            <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
+            <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
+              phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
+          </div>
+        ),
+      },
+      {
+        id: "week", title: "Aktuelle Woche", defaultSpan: 4,
+        render: () => (
+          <div className="card">
+            <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
+            {!week && <p className="muted">Keine aktuelle Woche.</p>}
+            {week && analyze && (
+              <>
+                <div className="row mb">
+                  <span className="pill phase">{week.phase}</span>
+                  <span className="muted tiny">{weekLabel(week)} · {analyze.totals.km} / {week.target_km ?? "–"} km · {Math.round(analyze.totals.tss)} TSS</span>
+                </div>
+                {!analyze.flags.length && <p className="tiny muted">Keine Hinweise.</p>}
+                {analyze.flags.slice(0, 6).map((f, i) => (
+                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+                ))}
+              </>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "season", title: "Saison-Progression", defaultSpan: 6, defaultHeight: 336,
+        render: (h) => (
+          <div className="card">
+            <h2>Saison-Progression</h2>
+            <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} height={h ?? 336} />
+          </div>
+        ),
+      },
+      {
+        id: "intensity", title: "Intensity-Trend", defaultSpan: 6, defaultHeight: 240,
+        render: (h) => (
+          <div className="card">
+            <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">ATL/CTL</span></div>
+            <IntensityRatio data={pmc?.pmc ?? []} height={h ?? 240} />
+          </div>
+        ),
+      },
+    ];
+    if (hasRunTrend(trend)) {
+      list.push({
+        id: "intervall", title: "Intervall-Trend", defaultSpan: 12, defaultHeight: 260,
+        render: (h) => (
+          <div className="card">
+            <div className="spread">
+              <h2>Intervall-Trend</h2>
+              <span className="tiny muted">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 (schneller = oben)</span>
+            </div>
+            <IntervalTrend data={trend ?? []} height={h ?? 260} />
+          </div>
+        ),
+      });
+    }
+    return list;
+  }
 }
 
 function StatCard({ label, value, cls, sub }: { label: string; value: number; cls?: string; sub?: string }) {

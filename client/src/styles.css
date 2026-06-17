@@ -342,12 +342,107 @@ table.units .note-efforts { color: var(--muted); }
 .tpl-menu .tpl-item:hover { background: #f5f7fa; }
 .tpl-menu .tpl-sep { height: 1px; background: var(--line); margin: 4px 0; }
 
+/* Anpassbares Chart-Raster (T8) — freies Raster via react-grid-layout. */
+.eg-stage { position: relative; }
+.editable-grid { position: relative; }
+/* Seitenumbruch-Hinweis (nur Edit-Modus): wo der Druck eine neue A4-Seite beginnt. */
+.eg-pagebreak {
+  position: absolute; left: 0; right: 0; height: 0; z-index: 6;
+  border-top: 1px dashed rgba(37, 99, 235, 0.45); pointer-events: none;
+}
+.eg-pagebreak span {
+  position: absolute; right: 4px; top: -8px; background: var(--bg, #f4f6f9);
+  padding: 0 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+  color: rgba(37, 99, 235, 0.75);
+}
+.eg-block { display: flex; flex-direction: column; box-sizing: border-box; position: relative; }
+/* paged: Toolbar als Overlay → Inhalt bekommt die volle Tile-Höhe (Editor == Druck, Legende clippt nicht). */
+.eg-toolbar.eg-overlay {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  background: rgba(255, 255, 255, 0.86); border-radius: 12px 12px 0 0;
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.eg-block.editing { outline: 1px dashed var(--line); outline-offset: -1px; border-radius: 12px; cursor: grab; }
+.eg-block.editing:active { cursor: grabbing; }
+/* Inhalt füllt die Tile; bei manuellem Verkleinern scrollt er statt zu clippen. */
+.eg-content { flex: 1; min-height: 0; overflow: auto; }
+.eg-measure { width: 100%; }
+.eg-measure > .card { margin: 0; box-sizing: border-box; }
+/* Im Edit-Modus: Chart fängt keine Maus-Events ab und nichts wird markiert → sauberes Drag/Resize. */
+.eg-content.locked, .eg-content.locked * { pointer-events: none !important; }
+.editable-grid.editing, .editable-grid.editing * { user-select: none; -webkit-user-select: none; }
+.eg-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 4px 4px 6px; font-size: 12px; cursor: grab;
+  user-select: none; -webkit-user-select: none;
+}
+.eg-toolbar:active { cursor: grabbing; }
+.eg-handle { color: var(--muted); font-size: 15px; user-select: none; }
+.eg-toolbar .eg-title { font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eg-toolbar .eg-spacer { flex: 1; }
+.eg-eye { border: 1px solid var(--line); border-radius: 7px; background: #fff; cursor: pointer; padding: 2px 7px; font-size: 13px; }
+.eg-tray { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.eg-tray button { border: 1px dashed var(--line); border-radius: 8px; background: #fff; cursor: pointer; padding: 3px 9px; }
+.eg-editbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+/* Kachel-Button-Gruppe (z. B. Seitenwechsel ← S / S →) */
+.eg-grp { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.eg-grp button {
+  border: 0; border-radius: 0; background: #fff; color: var(--muted);
+  font: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer; line-height: 1.4; white-space: nowrap;
+}
+.eg-grp button + button { border-left: 1px solid var(--line); }
+.eg-grp button:hover:not(:disabled) { background: #f5f7fa; }
+.eg-grp button:disabled { opacity: 0.35; cursor: default; }
+.eg-grp button.on { background: var(--accent, #2563eb); color: #fff; }
+
+/* RGL: Platzhalter beim Ziehen + sichtbare Resize-Griffe an allen vier Ecken (beide Modi). */
+.editable-grid .react-grid-placeholder, .eg-pagegrid .react-grid-placeholder { background: var(--accent, #2563eb); opacity: 0.16; border-radius: 12px; }
+.react-grid-item.react-grid-item--resizing { opacity: 0.9; }
+.editable-grid .react-resizable-handle, .eg-pagegrid .react-resizable-handle {
+  z-index: 4; width: 16px; height: 16px; padding: 0;
+  background: var(--accent, #2563eb); background-image: none;
+  border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.react-resizable-handle-se { bottom: -6px; right: -6px; transform: none; cursor: se-resize; }
+.react-resizable-handle-sw { bottom: -6px; left: -6px; transform: none; cursor: sw-resize; }
+.react-resizable-handle-ne { top: -6px; right: -6px; transform: none; cursor: ne-resize; }
+.react-resizable-handle-nw { top: -6px; left: -6px; transform: none; cursor: nw-resize; }
+
+/* A4-Seiten-Editor (paged) — feste Blätter, im Editor skaliert, im Druck 1:1. */
+.eg-pages { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.eg-sheet-wrap { position: relative; width: 100%; }
+.eg-sheet-label {
+  position: absolute; top: -2px; left: 0; font-size: 11px; font-weight: 700;
+  color: var(--muted); letter-spacing: 0.03em; z-index: 7;
+}
+.eg-sheet {
+  position: absolute; top: 14px; left: 0;
+  background: #fff; border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 6px 24px rgba(20, 28, 44, 0.12); overflow: hidden;
+}
+.eg-sheet-scale { position: absolute; top: 0; left: 0; transform-origin: top left; }
+/* paged: Tile-Inhalt clippt (wie im Druck) statt Scrollbar → Editor == PDF. */
+.eg-sheet .eg-content { overflow: hidden !important; }
+.eg-textctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.eg-addpage {
+  border: 1px dashed var(--line); border-radius: 10px; background: #fff; cursor: pointer;
+  padding: 8px 16px; color: var(--muted); font: inherit; font-size: 13px;
+}
+.eg-addpage:hover { background: #f5f7fa; }
+
+/* Intervall-Splits als Mini-Tabelle (Wochenbericht: unter der Einheit) */
+.effort-wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.effort-mini { width: auto; margin: 5px 0 3px; border-collapse: collapse; font-size: 11px; }
+.effort-mini th, .effort-mini td { border: 1px solid var(--line); padding: 2px 9px; text-align: right; white-space: nowrap; }
+.effort-mini th { background: #f5f7fa; color: var(--muted); font-weight: 600; }
+.effort-mini th:first-child, .effort-mini td.lbl { text-align: left; }
+
 /* Print */
 @media print {
   .no-print, .sidebar { display: none !important; }
   .app { display: block; }
   .main { padding: 0; max-width: 100%; }
-  body { background: #fff; font-size: 11px; }
+  body { background: #fff; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .card { box-shadow: none; border: 1px solid #ccc; margin-bottom: 10px; break-inside: avoid; }
   .report .card, .report { border: none; }
   table { font-size: 10px; }
@@ -355,7 +450,8 @@ table.units .note-efforts { color: var(--muted); }
   h1 { display: none; }
   .grid.cols-2 { grid-template-columns: 1fr 1fr; }
   textarea { border: none; min-height: 30px; }
-  @page { margin: 12mm; size: A4; }
+  /* A4-Seiten-Editor bringt sein eigenes Innen-Padding mit → Seitenrand 0. */
+  @page { margin: 0; size: A4; }
 
   /* Wochenbericht: 2 Seiten, kompakte Chart-Karten */
   .page-break { break-before: page; page-break-before: always; }
@@ -370,6 +466,28 @@ table.units .note-efforts { color: var(--muted); }
   table.units tr.note-row > td { color: #333; font-size: 10px; }
   .donut-value { font-size: 14px; }
   .footer { display: none; }
+
+  /* A4-Seiten-Editor (paged): jede Seite = genau ein A4-Blatt. Die Clamp-Box .eg-sheet ist A4 (eine
+     Druckseite), die innere .eg-sheet-scale wird auf A4 herunterskaliert (--sp) → 1:1 wie im Editor. */
+  .eg-pages { display: block !important; gap: 0 !important; }
+  .eg-sheet-wrap { height: auto !important; margin: 0 !important; }
+  .eg-sheet-label, .eg-addpage, .eg-textctl { display: none !important; }
+  .eg-sheet {
+    position: static !important;
+    width: 794px !important; height: 1123px !important; overflow: hidden !important;
+    box-shadow: none !important; border: none !important; border-radius: 0 !important; margin: 0 !important;
+    break-after: page; break-inside: avoid;
+  }
+  .eg-sheet-scale { transform: scale(var(--sp, 1)) !important; }
+  .eg-pages > :last-child .eg-sheet, .eg-sheet:last-of-type { break-after: auto; }
+  .eg-content { overflow: hidden !important; }
+
+  /* Recharts: SVG füllt Containerbreite, Labels/Marker werden nicht abgeschnitten */
+  svg.recharts-surface { width: 100% !important; overflow: visible !important; }
+  .recharts-wrapper { overflow: visible !important; }
+  /* Recharts-Legenden sichtbar halten — auch die klickbaren Einträge (Serien-/Races-Toggle) als Label. */
+  .pmc-legend, .weekday-legend { display: flex !important; }
+  .pmc-legend button { display: inline-flex !important; }
 
   /* Langzeit-Seite druckbar: Titel + Zeitraum bleiben sichtbar */
   h1.lt-title { display: block; font-size: 16px; margin: 0 0 2px; }
