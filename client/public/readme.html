@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RunLog — Über die App</title>
+  <style>
+    :root {
+      --bg: #f4f6f8; --card: #fff; --ink: #1a2230; --muted: #6b7888;
+      --line: #e3e8ef; --accent: #2b6cb0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 14px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap { max-width: 800px; margin: 0 auto; padding: 32px 18px 60px; }
+    header { margin-bottom: 28px; }
+    header .brand { font-size: 20px; font-weight: 750; color: var(--ink); text-decoration: none; }
+    header .brand span { color: var(--accent); }
+    header nav { margin-top: 6px; font-size: 13px; }
+    header nav a { color: var(--accent); text-decoration: none; margin-right: 14px; }
+    header nav a:hover { text-decoration: underline; }
+    h1 { font-size: 26px; font-weight: 750; margin: 0 0 4px; }
+    h1 span { color: var(--accent); }
+    .lead { color: var(--muted); margin: 0 0 28px; font-size: 15px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(20,30,50,.06);
+    }
+    h2 { font-size: 16px; font-weight: 650; margin: 0 0 10px; }
+    h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+      margin: 16px 0 6px; font-weight: 700; }
+    ul { margin: 0; padding-left: 18px; }
+    li { margin-bottom: 5px; }
+    strong { font-weight: 650; }
+    code { background: #eef2f7; border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+    .formula { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 10px 14px;
+      font: 13px/1.5 "SFMono-Regular", Menlo, Consolas, monospace; margin: 8px 0; }
+    .formula b { color: #93c5fd; }
+    .stack { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .pill { display: inline-block; background: #eef2f7; color: #3a475a; border-radius: 999px;
+      padding: 3px 12px; font-size: 13px; font-weight: 600; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 32px; text-align: center; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="/">Run<span>Log</span></a>
+      <nav>
+        <a href="/usage.html">Anleitung</a>
+        <a href="/changelog.html">Changelog</a>
+        <a href="/">App öffnen</a>
+      </nav>
+    </header>
+
+    <h1>Run<span>Log</span></h1>
+    <p class="lead">Lokale Trainingsplanung und Analytics für Langstreckenläufer — im TrainingPeaks-Stil, komplett offline.</p>
+
+    <div class="card">
+      <h2>Was ist RunLog?</h2>
+      <p>RunLog ist eine lokale Desktop-Web-App für wöchentliche Trainingsplanung, Tracking und sportwissenschaftliche
+        Auswertung. Keine Cloud, keine Abos, keine fremden Server — alle Daten liegen in einer SQLite-Datenbank auf
+        deinem Rechner.</p>
+      <p>Kern-Workflow: Woche planen → Einheiten tracken → Wochenbericht drucken → Langzeitentwicklung analysieren.</p>
+    </div>
+
+    <div class="card">
+      <h2>Seiten</h2>
+      <ul>
+        <li><strong>Dashboard</strong> — PMC (CTL/ATL/TSB), Aktuelle Woche, Saison-Progression, Intensity-Trend, VO2max-Kachel.</li>
+        <li><strong>Wochenplanung</strong> — Einheiten je Tag mit km/min/Zonen/Intervallen; TSS-Empfehlung, Drag &amp; Copy.</li>
+        <li><strong>Tracking</strong> — Wellness-Eingabe + Strava-Aktivitäten; Plan-Erfüllung je Einheit.</li>
+        <li><strong>Wochenbericht</strong> — Druckfertiger A4-Bericht; Kacheln frei verschiebbar (WYSIWYG-Druck).</li>
+        <li><strong>Langzeit</strong> — PMC, Wellness-Verläufe, Effizienz, Intervall-Trend; ebenfalls frei layoutbar.</li>
+        <li><strong>Races</strong> — Wettkämpfe mit Splits, automatisch aus Tracking und Planung übernommen.</li>
+        <li><strong>Bestzeiten</strong> — PBs aus Strava + manuell editierbar; Critical-Speed-Modell + Race-Prediction.</li>
+        <li><strong>Saisonplan, Profil, Einstellungen, Auswahllisten</strong> — Konfiguration ohne Code.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Auswertungsmodell</h2>
+      <div class="formula">
+        <b>rTSS</b> = (Dauer_h) × (NGP / FTP)² × 100 &nbsp;&nbsp;— Lauf<br>
+        <b>Power-TSS</b> = (Dauer_h) × (NP / FTP)² × 100 &nbsp;&nbsp;— Rad<br>
+        <b>CTL</b> = 42-Tage-EWMA(TSS) &nbsp;&nbsp;|&nbsp;&nbsp; <b>ATL</b> = 7-Tage-EWMA(TSS)<br>
+        <b>TSB</b> = CTL<sub>gestern</sub> − ATL<sub>gestern</sub>
+      </div>
+      <ul>
+        <li><strong>VO2max</strong> — VDOT-Schätzung nach Daniels-Gilbert aus Bestzeiten (Rolling 90 d).</li>
+        <li><strong>Race-Prediction</strong> — 2-Parameter-Critical-Speed-Modell (CS + D′) aus aeroben PBs.</li>
+        <li><strong>Plan-Erfüllung</strong> — TSS-Treffer + Pace-Zonen-Overlap je Einheit.</li>
+        <li><strong>Intensity-Trend</strong> — ATL/CTL × 100 % mit 5 COROS-Belastungsbändern.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Technischer Stack</h2>
+      <div class="stack">
+        <span class="pill">Node.js ≥ 22</span>
+        <span class="pill">Express</span>
+        <span class="pill">SQLite (node:sqlite)</span>
+        <span class="pill">Vite + React</span>
+        <span class="pill">TypeScript</span>
+        <span class="pill">Recharts</span>
+        <span class="pill">react-grid-layout</span>
+      </div>
+      <h3>Starten</h3>
+      <p><code>npm install</code> (einmalig), dann <code>npm run dev</code> → <a href="http://localhost:5173">localhost:5173</a><br>
+        Für den Alltag: <code>npm run build &amp;&amp; npm start</code> → <a href="http://localhost:3000">localhost:3000</a></p>
+      <h3>Daten</h3>
+      <p>Liegen in <code>data/training.db</code> (gitignored). Beim Update einfach den <code>data/</code>-Ordner kopieren.
+        Migrationen sind immer additiv — keine Bestandsdaten gehen verloren.</p>
+    </div>
+
+    <div class="card">
+      <h2>Version</h2>
+      <p><strong>v1.1.0</strong> — 17.06.2026 · Erstellt von Kolja Hildenbrand · <a href="/changelog.html">Alle Änderungen</a></p>
+    </div>
+
+    <footer>
+      RunLog v1.1.0 · <a href="/usage.html">Anleitung</a> · <a href="/changelog.html">Changelog</a> · <a href="/">zurück zur App</a>
+    </footer>
+  </div>
+</body>
+</html>
