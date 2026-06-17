@@ -1,21 +1,24 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { loadOptions, useOptions, BASE_DAILY, type Option } from "../lib/options.ts";
-
-const KINDS: { kind: string; title: string; hint: string }[] = [
-  { kind: "phase", title: "Trainingsphasen", hint: "Wochen-Phasen (Base, Belastung, Entlastung …)" },
-  { kind: "sport", title: "Sportarten", hint: "Lauf, Rennrad, Rolle, Kraft, Commute …" },
-  { kind: "sessionType", title: "Einheitstypen", hint: "Easy, LT1, LT2, VO2max kurz/lang, Berg …" },
-  { kind: "check", title: "Wochen-Checks", hint: "Manuelle Häkchen im Wochenbericht (z.B. Longrun, 2× Schwelle, Physio/KG)" },
-  { kind: "dailyCat", title: "Tagesfaktor-Kategorien", hint: "Logische Gruppen der Tagesfaktoren (Morgens, Schlaf, Subjektiv …)" },
-  { kind: "daily", title: "Tagesfaktoren", hint: "Tägliche Eingabefelder im Tracking (Kategorie + Typ: Zahl, Zeit, Text, Haken, Skala). Basis-Felder sind fest." },
-];
+import T from "../components/T.tsx";
+import { useT } from "../lib/i18n.tsx";
 
 const DAILY_TYPES = [["number", "Zahl"], ["time", "Zeit"], ["text", "Text"], ["checkbox", "Haken"], ["scale", "Skala 1-10"]];
 
 export default function OptionsConfig() {
   const [opts, setOpts] = useState<Option[]>([]);
-  const [active, setActive] = useState(KINDS[0].kind);
+  const [active, setActive] = useState("phase");
+  const t = useT();
+
+  const KINDS = [
+    { kind: "phase", title: t("opts.kind.phase.title", "Trainingsphasen"), hint: t("opts.kind.phase.hint", "Wochen-Phasen (Base, Belastung, Entlastung …)") },
+    { kind: "sport", title: t("opts.kind.sport.title", "Sportarten"), hint: t("opts.kind.sport.hint", "Lauf, Rennrad, Rolle, Kraft, Commute …") },
+    { kind: "sessionType", title: t("opts.kind.sessionType.title", "Einheitstypen"), hint: t("opts.kind.sessionType.hint", "Easy, LT1, LT2, VO2max kurz/lang, Berg …") },
+    { kind: "check", title: t("opts.kind.check.title", "Wochen-Checks"), hint: t("opts.kind.check.hint", "Manuelle Häkchen im Wochenbericht (z.B. Longrun, 2× Schwelle, Physio/KG)") },
+    { kind: "dailyCat", title: t("opts.kind.dailyCat.title", "Tagesfaktor-Kategorien"), hint: t("opts.kind.dailyCat.hint", "Logische Gruppen der Tagesfaktoren (Morgens, Schlaf, Subjektiv …)") },
+    { kind: "daily", title: t("opts.kind.daily.title", "Tagesfaktoren"), hint: t("opts.kind.daily.hint", "Tägliche Eingabefelder im Tracking (Kategorie + Typ: Zahl, Zeit, Text, Haken, Skala). Basis-Felder sind fest.") },
+  ];
 
   async function reload() {
     setOpts(await api.options());
@@ -26,10 +29,9 @@ export default function OptionsConfig() {
   const cur = KINDS.find((k) => k.kind === active) ?? KINDS[0];
   return (
     <div>
-      <h1>Auswahlmöglichkeiten</h1>
+      <h1><T k="opts.title">Auswahlmöglichkeiten</T></h1>
       <p className="muted tiny" style={{ marginTop: -4 }}>
-        Phasen, Sportarten, Einheitstypen &amp; Co. hinzufügen, umbenennen, umfärben, sortieren (ziehen am ⠿) oder
-        entfernen — ohne Code. Bestehende Daten mit alten Werten bleiben gültig.
+        <T k="opts.hint">Phasen, Sportarten, Einheitstypen &amp; Co. hinzufügen, umbenennen, umfärben, sortieren (ziehen am ⠿) oder entfernen — ohne Code. Bestehende Daten mit alten Werten bleiben gültig.</T>
       </p>
       <div className="opt-layout">
         <nav className="opt-nav">
@@ -57,6 +59,7 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
   const [filter, setFilter] = useState("");
   const [dragId, setDragId] = useState<number | null>(null);
   const [overId, setOverId] = useState<number | null>(null);
+  const t = useT();
 
   const sorted = [...rows].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
   const q = filter.trim().toLowerCase();
@@ -88,11 +91,19 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
     <div className="card">
       <div className="spread"><h2>{title}</h2><span className="tiny muted">{hint}</span></div>
       {rows.length > 4 && (
-        <input className="mt" placeholder="Filtern …" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 260 }} />
+        <input className="mt" placeholder={t("opts.filter", "Filtern …")} value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 260 }} />
       )}
       {shown.length > 0 && (
         <table className="mt">
-          <thead><tr><th style={{ width: 24 }}></th><th>Label (Anzeige)</th><th>Wert (intern)</th><th>{kind === "daily" ? "Kategorie" : "Farbe"}</th>{kind === "sessionType" && <th>Intensität</th>}{kind === "daily" && <th>Typ</th>}<th></th></tr></thead>
+          <thead><tr>
+            <th style={{ width: 24 }}></th>
+            <th><T k="opts.col.label">Label (Anzeige)</T></th>
+            <th><T k="opts.col.value">Wert (intern)</T></th>
+            <th>{kind === "daily" ? <T k="opts.col.cat">Kategorie</T> : <T k="opts.col.color">Farbe</T>}</th>
+            {kind === "sessionType" && <th><T k="opts.col.intensity">Intensität</T></th>}
+            {kind === "daily" && <th><T k="opts.col.type">Typ</T></th>}
+            <th></th>
+          </tr></thead>
           <tbody>
             {shown.map((o) => (
               <OptRow key={o.id} o={o} onChange={onChange}
@@ -107,9 +118,9 @@ function OptionGroup({ kind, title, hint, rows, onChange }: {
       {q && !shown.length && <p className="tiny muted mt">Kein Treffer für „{filter}".</p>}
       {/* Eingabe-Reihenfolge wie die Zeilen: Label (Anzeige) → Wert (intern) */}
       <div className="row mt">
-        <input placeholder="Label (Anzeige)" value={nl} onChange={(e) => setNl(e.target.value)} style={{ maxWidth: 220 }} />
-        <input placeholder="Wert (intern, z.B. Tempo)" value={nv} onChange={(e) => setNv(e.target.value)} style={{ maxWidth: 220 }} />
-        <button className="primary" onClick={add}>+ Hinzufügen</button>
+        <input placeholder={t("opts.input.label", "Label (Anzeige)")} value={nl} onChange={(e) => setNl(e.target.value)} style={{ maxWidth: 220 }} />
+        <input placeholder={t("opts.input.value", "Wert (intern, z.B. Tempo)")} value={nv} onChange={(e) => setNv(e.target.value)} style={{ maxWidth: 220 }} />
+        <button className="primary" onClick={add}><T k="opts.btn.add">+ Hinzufügen</T></button>
       </div>
     </div>
   );
@@ -121,6 +132,7 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
 }) {
   const [e, setE] = useState(o);
   const { dailyCats } = useOptions();
+  const t = useT();
   const save = (patch: Partial<Option>) => { const n = { ...e, ...patch }; setE(n); api.updateOption(o.id!, n).then(onChange); };
   return (
     <tr className={"opt-row" + (dragging ? " dragging" : "") + (over ? " drag-over" : "")}
@@ -134,7 +146,7 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
       <td className="tiny muted">{e.value}</td>
       {o.kind === "daily" ? (
         <td>
-          <select value={e.color ?? ""} onChange={(x) => save({ color: x.target.value || null })} title="Kategorie">
+          <select value={e.color ?? ""} onChange={(x) => save({ color: x.target.value || null })} title={t("opts.col.cat", "Kategorie")}>
             <option value="">—</option>
             {dailyCats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
@@ -144,7 +156,7 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
       )}
       {o.kind === "sessionType" && (
         <td>
-          <select value={e.intensity ?? ""} onChange={(x) => save({ intensity: x.target.value || null })} title="Intensität für den TSS-Donut">
+          <select value={e.intensity ?? ""} onChange={(x) => save({ intensity: x.target.value || null })} title={t("opts.col.intensity", "Intensität")}>
             <option value="">—</option>
             <option value="easy">easy</option>
             <option value="moderate">moderat</option>
@@ -154,14 +166,14 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
       )}
       {o.kind === "daily" && (
         <td>
-          <select value={e.intensity ?? "number"} onChange={(x) => save({ intensity: x.target.value })} title="Feldtyp">
+          <select value={e.intensity ?? "number"} onChange={(x) => save({ intensity: x.target.value })} title={t("opts.col.type", "Typ")}>
             {DAILY_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </td>
       )}
       <td>
         {o.kind === "daily" && BASE_DAILY.has(o.value)
-          ? <span className="tiny muted" title="Basis-Feld (fest)">fest</span>
+          ? <span className="tiny muted" title={t("opts.fixed", "fest")}><T k="opts.fixed">fest</T></span>
           : <button className="sm ghost danger" title="Entfernen" onClick={() => api.deleteOption(o.id!).then(onChange)}>✕</button>}
       </td>
     </tr>

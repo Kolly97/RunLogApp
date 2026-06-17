@@ -16,7 +16,7 @@ export default function Settings() {
   }
   useEffect(() => { reload(); }, []);
 
-  if (!settings) return <p className="muted">Lädt…</p>;
+  if (!settings) return <p className="muted"><T k="settings.loading">Lädt…</T></p>;
 
   return (
     <div>
@@ -64,6 +64,7 @@ export default function Settings() {
 
 // ---- Strava-Karte --------------------------------------------------------
 function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] }) {
+  const t = useT();
   const [status, setStatus] = useState<{ configured: boolean; connected: boolean; athlete: string | null } | null>(null);
   const [cid, setCid] = useState<string>(settings.strava_client_id || "");
   const [secret, setSecret] = useState<string>(settings.strava_client_secret || "");
@@ -133,56 +134,59 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
   return (
     <div className="card">
       <div className="spread">
-        <h2>Strava-Verbindung</h2>
-        {status?.connected && <span className="pill phase">verbunden{status.athlete ? ` als ${status.athlete}` : ""}</span>}
+        <h2><T k="settings.strava.title">Strava-Verbindung</T></h2>
+        {status?.connected && (
+          <span className="pill phase">
+            <T k="settings.strava.connected">verbunden</T>{status.athlete ? <> <T k="settings.strava.connectedAs">als</T> {status.athlete}</> : ""}
+          </span>
+        )}
       </div>
       <p className="tiny muted">
-        Einmalig: auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">strava.com/settings/api</a> eine
-        (kostenlose) API-App anlegen — „Autorisierungs-Callback-Domain": <code>localhost</code> — und Client-ID + Client-Secret hier eintragen.
-        Der Import holt Aktivitäts-Daten (km, Zeit, Ø-HF, Watt) und Streams (NGP/NP, Zeit-in-Zone) — die Last (TSS)
-        rechnet die App geräteneutral aus NGP/NP bzw. einer Schätzung (optional manuell überschreibbar).
-        Vorhandene/manuell bearbeitete Einheiten werden nie überschrieben.
+        <T k="settings.strava.help.pre">Einmalig: auf </T>
+        <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">strava.com/settings/api</a>
+        <T k="settings.strava.help.mid"> eine (kostenlose) API-App anlegen — „Autorisierungs-Callback-Domain": </T>
+        <code>localhost</code>
+        <T k="settings.strava.help.post"> — und Client-ID + Client-Secret hier eintragen. Der Import holt Aktivitäts-Daten (km, Zeit, Ø-HF, Watt) und Streams (NGP/NP, Zeit-in-Zone) — die Last (TSS) rechnet die App geräteneutral aus NGP/NP bzw. einer Schätzung (optional manuell überschreibbar). Vorhandene/manuell bearbeitete Einheiten werden nie überschrieben.</T>
       </p>
       <div className="row mb">
-        <label className="field" style={{ margin: 0, width: 160 }}><span>Client-ID</span>
-          <input value={cid} onChange={(e) => setCid(e.target.value)} onBlur={saveCreds} placeholder="z.B. 123456" /></label>
-        <label className="field" style={{ margin: 0, flex: 1 }}><span>Client-Secret</span>
+        <label className="field" style={{ margin: 0, width: 160 }}><span><T k="settings.strava.clientId">Client-ID</T></span>
+          <input value={cid} onChange={(e) => setCid(e.target.value)} onBlur={saveCreds} placeholder={t("settings.strava.cidPlaceholder", "z.B. 123456")} /></label>
+        <label className="field" style={{ margin: 0, flex: 1 }}><span><T k="settings.strava.clientSecret">Client-Secret</T></span>
           <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} onBlur={saveCreds} placeholder="••••••••" /></label>
       </div>
       <div className="row">
         {!status?.connected && (
           <button className="primary" disabled={!status?.configured && !(cid && secret)}
             onClick={() => { saveCreds().then(() => { window.location.href = "/api/strava/login"; }); }}>
-            Mit Strava verbinden
+            <T k="settings.strava.connect">Mit Strava verbinden</T>
           </button>
         )}
         {status?.connected && (
           <>
-            <label className="field" style={{ margin: 0, width: 150 }}><span>Daten ab</span>
-              <input type="date" value={syncFrom || seasonStart} onChange={(e) => saveSyncFrom(e.target.value)} title="Startdatum, ab dem Strava-Aktivitäten importiert werden" /></label>
-            <button className="primary" disabled={busy} onClick={() => sync(syncFrom || seasonStart, `Sync ab ${syncFrom || seasonStart}`)}>⟳ Sync ab Datum</button>
-            <button disabled={busy} onClick={() => sync(yearStart, "Jahres-Import")}>📅 Ganzes Jahr importieren</button>
-            <button className="ghost" disabled={busy} onClick={() => { window.location.href = "/api/strava/login"; }}>neu verbinden</button>
+            <label className="field" style={{ margin: 0, width: 150 }}><span><T k="settings.strava.dataFrom">Daten ab</T></span>
+              <input type="date" value={syncFrom || seasonStart} onChange={(e) => saveSyncFrom(e.target.value)} title={t("settings.strava.dataFromTitle", "Startdatum, ab dem Strava-Aktivitäten importiert werden")} /></label>
+            <button className="primary" disabled={busy} onClick={() => sync(syncFrom || seasonStart, `Sync ab ${syncFrom || seasonStart}`)}>⟳ <T k="settings.strava.syncFromDate">Sync ab Datum</T></button>
+            <button disabled={busy} onClick={() => sync(yearStart, "Jahres-Import")}>📅 <T k="settings.strava.importYear">Ganzes Jahr importieren</T></button>
+            <button className="ghost" disabled={busy} onClick={() => { window.location.href = "/api/strava/login"; }}><T k="settings.strava.reconnect">neu verbinden</T></button>
           </>
         )}
       </div>
       <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
         {status?.connected && (
           <button className="ghost" disabled={busy} onClick={enrich}
-            title="Nur Details, Streams (Zonen/NGP) und Intervalle (aus den Laps) für bestehende Aktivitäten nachziehen — ohne neue zu importieren. Budgetiert, ggf. mehrfach.">
-            📥 Details/Splits nachziehen
+            title={t("settings.strava.enrichTitle", "Nur Details, Streams (Zonen/NGP) und Intervalle (aus den Laps) für bestehende Aktivitäten nachziehen — ohne neue zu importieren. Budgetiert, ggf. mehrfach.")}>
+            📥 <T k="settings.strava.enrichBtn">Details/Splits nachziehen</T>
           </button>
         )}
         <button className="ghost" disabled={busy} onClick={recompute}
-          title="TSS aller Lauf- (rTSS/NGP) und Rad-/Commute-Aktivitäten (Power-TSS/NP) + geplanten Einheiten nach TrainingPeaks neu berechnen — mit DB-Backup">
-          🧮 TSS neu berechnen (Lauf + Rad)
+          title={t("settings.strava.recomputeTitle", "TSS aller Lauf- (rTSS/NGP) und Rad-/Commute-Aktivitäten (Power-TSS/NP) + geplanten Einheiten nach TrainingPeaks neu berechnen — mit DB-Backup")}>
+          🧮 <T k="settings.strava.recomputeBtn">TSS neu berechnen (Lauf + Rad)</T>
         </button>
       </div>
       {result && <p className="tiny" style={{ marginTop: 8 }}>{result}</p>}
       {status?.connected && (
         <p className="tiny muted" style={{ marginTop: 6 }}>
-          Tipp: Jahres-Import ggf. 2–3× im Abstand von 15 min ausführen — die Detail-/Stream-Anreicherung (Zonen, NGP/NP, kcal)
-          arbeitet wegen des Strava-Rate-Limits in Häppchen.
+          <T k="settings.strava.tip">Tipp: Jahres-Import ggf. 2–3× im Abstand von 15 min ausführen — die Detail-/Stream-Anreicherung (Zonen, NGP/NP, kcal) arbeitet wegen des Strava-Rate-Limits in Häppchen.</T>
         </p>
       )}
     </div>

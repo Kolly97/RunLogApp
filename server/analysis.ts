@@ -20,6 +20,7 @@ export interface Flag {
   level: "ok" | "info" | "warn" | "danger";
   code: string;
   message: string;
+  params?: Record<string, string | number | null>;
 }
 
 export interface CategoryTotals {
@@ -268,9 +269,9 @@ export function weekRatingLevel(weekTss: number, refWeekly: number, easyPct: num
 export function weekLoadFlag(rating: { level: IntLevel; weekTss: number; avg4: number } | null): Flag | null {
   if (!rating) return null;
   const w = Math.round(rating.weekTss), a = Math.round(rating.avg4);
-  if (rating.level === "hard") return { level: "warn", code: "week_load_high", message: `Wochen-Last hoch: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
-  if (rating.level === "easy") return { level: "info", code: "week_load_low", message: `Wochen-Last niedrig: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
-  return { level: "ok", code: "week_load_ok", message: `Wochen-Last moderat: ${w} TSS vs. Ø ${a} (letzte 4 Wo).` };
+  if (rating.level === "hard") return { level: "warn", code: "week_load_high", message: `Wochen-Last hoch: ${w} TSS vs. Ø ${a} (letzte 4 Wo).`, params: { w, a } };
+  if (rating.level === "easy") return { level: "info", code: "week_load_low", message: `Wochen-Last niedrig: ${w} TSS vs. Ø ${a} (letzte 4 Wo).`, params: { w, a } };
+  return { level: "ok", code: "week_load_ok", message: `Wochen-Last moderat: ${w} TSS vs. Ø ${a} (letzte 4 Wo).`, params: { w, a } };
 }
 
 /**
@@ -298,10 +299,10 @@ export function kmPolarizationFlag(zk: { easy: number; mod: number; hard: number
   if (!zk) return null;
   const e = Math.round(zk.easy), m = Math.round(zk.mod), h = Math.round(zk.hard);
   const note = `${e}/${m}/${h}% easy/grey/hart`;
-  if (zk.mod >= 18) return { level: "info", code: "km_grey", message: `km-Polarisierung: viel Grey-Zone (${m}% Z3) — ${note}.` };
-  if (zk.hard >= 25) return { level: "warn", code: "km_hard", message: `km-Polarisierung: sehr hart (${h}% > Z3) — ${note}.` };
-  if (zk.easy >= 78 && zk.hard <= 22) return { level: "ok", code: "km_polarized", message: `km-Polarisierung: polarisiert — ${note}.` };
-  return { level: "info", code: "km_balanced", message: `km-Polarisierung: ausgewogen — ${note}.` };
+  if (zk.mod >= 18) return { level: "info", code: "km_grey", message: `km-Polarisierung: viel Grey-Zone (${m}% Z3) — ${note}.`, params: { e, m, h } };
+  if (zk.hard >= 25) return { level: "warn", code: "km_hard", message: `km-Polarisierung: sehr hart (${h}% > Z3) — ${note}.`, params: { e, m, h } };
+  if (zk.easy >= 78 && zk.hard <= 22) return { level: "ok", code: "km_polarized", message: `km-Polarisierung: polarisiert — ${note}.`, params: { e, m, h } };
+  return { level: "info", code: "km_balanced", message: `km-Polarisierung: ausgewogen — ${note}.`, params: { e, m, h } };
 }
 
 /** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */
@@ -548,10 +549,10 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
   if (ctx.targetKm && ctx.targetKm > 0) {
     const diff = ((totals.km - ctx.targetKm) / ctx.targetKm) * 100;
     if (diff > t.volume_pct)
-      flags.push({ level: "warn", code: "volume_high", message: `Volumen ${totals.km} km liegt ${r0(diff)}% über dem Phasenziel (${ctx.targetKm} km).` });
+      flags.push({ level: "warn", code: "volume_high", message: `Volumen ${totals.km} km liegt ${r0(diff)}% über dem Phasenziel (${ctx.targetKm} km).`, params: { km: totals.km, diff: r0(diff), targetKm: ctx.targetKm } });
     else if (diff < -t.volume_pct)
-      flags.push({ level: "info", code: "volume_low", message: `Volumen ${totals.km} km liegt ${r0(-diff)}% unter dem Phasenziel (${ctx.targetKm} km).` });
-    else flags.push({ level: "ok", code: "volume_ok", message: `Volumen ${totals.km} km passt zum Phasenziel (${ctx.targetKm} km).` });
+      flags.push({ level: "info", code: "volume_low", message: `Volumen ${totals.km} km liegt ${r0(-diff)}% unter dem Phasenziel (${ctx.targetKm} km).`, params: { km: totals.km, diff: r0(-diff), targetKm: ctx.targetKm } });
+    else flags.push({ level: "ok", code: "volume_ok", message: `Volumen ${totals.km} km passt zum Phasenziel (${ctx.targetKm} km).`, params: { km: totals.km, targetKm: ctx.targetKm } });
   }
 
   // 2. Ramp-Rate (km Woche-zu-Woche)
@@ -561,13 +562,13 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
     if (avg > 0) {
       const jump = ((totals.km - avg) / avg) * 100;
       if (jump > 12)
-        flags.push({ level: "warn", code: "ramp_fast", message: `Sprung +${r0(jump)}% ggü. Schnitt der Vorwochen (${r0(avg)} km) — Verletzungsrisiko, max. ~10%/Woche empfohlen.` });
+        flags.push({ level: "warn", code: "ramp_fast", message: `Sprung +${r0(jump)}% ggü. Schnitt der Vorwochen (${r0(avg)} km) — Verletzungsrisiko, max. ~10%/Woche empfohlen.`, params: { jump: r0(jump), avg: r0(avg) } });
     }
   }
 
   // 2b. CTL-Ramp
   if (ctx.projectedCtlRamp != null && ctx.projectedCtlRamp > t.ctl_ramp_max)
-    flags.push({ level: "warn", code: "ctl_ramp", message: `CTL-Ramp +${ctx.projectedCtlRamp}/Woche über Limit (${t.ctl_ramp_max}). Fitness-Aufbau zu schnell.` });
+    flags.push({ level: "warn", code: "ctl_ramp", message: `CTL-Ramp +${ctx.projectedCtlRamp}/Woche über Limit (${t.ctl_ramp_max}). Fitness-Aufbau zu schnell.`, params: { ramp: ctx.projectedCtlRamp, max: t.ctl_ramp_max } });
 
   // 3. Form / Taper Richtung Race (v0.14.0, ToDo 4): bezogen auf die 7 Tage VOR dem Renntag.
   if (ctx.raceDate) {
@@ -578,9 +579,9 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
       const parts: string[] = [];
       if (tooNeg) parts.push(`Form am Renntag (TSB ${ctx.raceTsb}) zu negativ`);
       if (tooHigh) parts.push(`geplante 7-Tage-Last (${ctx.racePre7Tss} TSS) zu hoch fürs Tapering (max ~${Math.round(tssCap!)})`);
-      flags.push({ level: "warn", code: "taper", message: `Wettkampf ${ctx.raceDate}: ${parts.join(" · ")} — mehr tapern.` });
+      flags.push({ level: "warn", code: "taper", message: `Wettkampf ${ctx.raceDate}: ${parts.join(" · ")} — mehr tapern.`, params: { raceDate: ctx.raceDate ?? null, tooNeg: tooNeg ? 1 : 0, raceTsb: ctx.raceTsb ?? null, tooHigh: tooHigh ? 1 : 0, pre7tss: ctx.racePre7Tss ?? null, tssCap: tssCap != null ? Math.round(tssCap) : null } });
     } else if (ctx.raceTsb != null) {
-      flags.push({ level: "ok", code: "taper_ok", message: `Wettkampf ${ctx.raceDate}: Tapering passt (Form TSB ${ctx.raceTsb}).` });
+      flags.push({ level: "ok", code: "taper_ok", message: `Wettkampf ${ctx.raceDate}: Tapering passt (Form TSB ${ctx.raceTsb}).`, params: { raceDate: ctx.raceDate ?? null, tsb: ctx.raceTsb } });
     }
   }
 
@@ -589,25 +590,25 @@ export function analyzeWeek(totals: WeekTotals, ctx: AnalyzeContext): Flag[] {
 
   // 6. Quality-Spacing
   if (totals.hardSessions > 3)
-    flags.push({ level: "warn", code: "too_many_quality", message: `${totals.hardSessions} harte Einheiten — meist max. 2–3/Woche tragbar.` });
+    flags.push({ level: "warn", code: "too_many_quality", message: `${totals.hardSessions} harte Einheiten — meist max. 2–3/Woche tragbar.`, params: { count: totals.hardSessions } });
 
   // 7. Longrun-Anteil
   if (totals.km > 0) {
     const lrShare = (totals.longestKm / totals.km) * 100;
     if (lrShare > t.longrun_pct_max)
-      flags.push({ level: "info", code: "longrun_share", message: `Longrun ${totals.longestKm} km = ${r0(lrShare)}% der Wochen-km (> ${t.longrun_pct_max}%).` });
+      flags.push({ level: "info", code: "longrun_share", message: `Longrun ${totals.longestKm} km = ${r0(lrShare)}% der Wochen-km (> ${t.longrun_pct_max}%).`, params: { km: totals.longestKm, pct: r0(lrShare), max: t.longrun_pct_max } });
   }
 
   // 8. Readiness
   if (ctx.readiness) {
     const { recovery, legsHardDays, hrvTrend } = ctx.readiness;
     if ((recovery != null && recovery < 40) || (legsHardDays ?? 0) >= 3 || (hrvTrend != null && hrvTrend < -10))
-      flags.push({ level: "warn", code: "readiness", message: `Letzte Tage Erholung niedrig (Recov/HRV/Beine) — geplante Last evtl. zu hoch, ggf. reduzieren.` });
+      flags.push({ level: "warn", code: "readiness", message: `Letzte Tage Erholung niedrig (Recov/HRV/Beine) — geplante Last evtl. zu hoch, ggf. reduzieren.`, params: {} });
   }
 
   // 9. Phasen-Stimmigkeit
   if (ctx.phase && /entlast|deload|gesund/i.test(ctx.phase) && ctx.targetKm && totals.km > ctx.targetKm * 1.05)
-    flags.push({ level: "warn", code: "deload_mismatch", message: `Phase „${ctx.phase}" sollte entlasten, geplante km aber über Ziel.` });
+    flags.push({ level: "warn", code: "deload_mismatch", message: `Phase „${ctx.phase}" sollte entlasten, geplante km aber über Ziel.`, params: { phase: ctx.phase ?? "" } });
 
   return flags;
 }

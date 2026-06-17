@@ -58,7 +58,7 @@ export interface Activity {
 }
 export interface DailyLog { date: string; [k: string]: unknown; }
 export interface PmcPoint { date: string; tss: number; ctl: number; atl: number; tsb: number; planned?: boolean; }
-export interface Flag { level: "ok" | "info" | "warn" | "danger"; code: string; message: string; }
+export interface Flag { level: "ok" | "info" | "warn" | "danger"; code: string; message: string; params?: Record<string, string | number | null>; }
 export interface WeekTotals {
   km: number; bike_km: number; min: number; tss: number; sessions: number; runSessions: number;
   hardSessions: number; longestKm: number; zoneMin: Record<number, number>;

@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { api, type ZoneSet } from "../lib/api.ts";
 import { todayIso, num } from "../lib/util.ts";
+import T from "./T.tsx";
+import { useT } from "../lib/i18n.tsx";
 
 export default function ZoneSets() {
   const [zonesets, setZonesets] = useState<ZoneSet[]>([]);
   const [importDate, setImportDate] = useState(todayIso()); // Gültig-ab für den Strava-Import (v0.14.0, ToDo 10)
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const t = useT();
   const reload = async () => setZonesets(await api.zonesets());
   useEffect(() => { reload(); }, []);
 
@@ -27,15 +30,15 @@ export default function ZoneSets() {
 
   return (
     <div className="card">
-      <div className="spread"><h2>HF-Zonen & Schwellen</h2>
+      <div className="spread"><h2><T k="zones.title">HF-Zonen & Schwellen</T></h2>
         <div className="row" style={{ width: "auto", gap: 8 }}>
-          <label className="field" style={{ margin: 0, width: 140 }}><span>Strava-Import ab</span>
+          <label className="field" style={{ margin: 0, width: 140 }}><span><T k="zones.field.importFrom">Strava-Import ab</T></span>
             <input type="date" value={importDate} onChange={(e) => setImportDate(e.target.value)} /></label>
-          <button disabled={busy} onClick={importStrava} title="Aktuelle HF-/Power-Zonen + FTP aus Strava als neues Set ab dem gewählten Datum übernehmen">↧ Aus Strava holen</button>
-          <button onClick={() => newZoneset(zonesets, reload)}>+ Neues Set (Leistungsdiagnostik)</button>
+          <button disabled={busy} onClick={importStrava} title={t("zones.btn.fromStrava", "↧ Aus Strava holen")}><T k="zones.btn.fromStrava">↧ Aus Strava holen</T></button>
+          <button onClick={() => newZoneset(zonesets, reload)}><T k="zones.btn.newSet">+ Neues Set (Leistungsdiagnostik)</T></button>
         </div>
       </div>
-      <p className="tiny muted">Bei neuer Diagnostik ein neues Set mit Gültig-ab-Datum anlegen — ältere Wochen werden weiter mit dem damals gültigen Set ausgewertet. Der Strava-Import übernimmt nur die <em>aktuellen</em> Zonen (HF Z1–Z5, Z6 geschätzt) + FTP; ggf. einmal „neu verbinden", damit der Zonen-Zugriff greift.</p>
+      <p className="tiny muted"><T k="zones.hint">Bei neuer Diagnostik ein neues Set mit Gültig-ab-Datum anlegen — ältere Wochen werden weiter mit dem damals gültigen Set ausgewertet. Der Strava-Import übernimmt nur die aktuellen Zonen (HF Z1–Z5, Z6 geschätzt) + FTP; ggf. einmal „neu verbinden", damit der Zonen-Zugriff greift.</T></p>
       {msg && <div className="flag info"><span className="dot" /><span>{msg}</span></div>}
       {zonesets.map((z) => <ZoneSetEditor key={z.id} z={z} onChange={reload} canDelete={zonesets.length > 1} />)}
     </div>
@@ -64,6 +67,7 @@ function parsePaceInput(t: string): number | null {
 
 function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () => void; canDelete: boolean }) {
   const [e, setE] = useState(z);
+  const t = useT();
   const saveZ = (next: ZoneSet) => { setE(next); api.updateZoneset(z.id, next).then(onChange); };
   // v0.12.0 (ToDo 11): nur die Obergrenze je Zone eingeben — Untergrenzen automatisch = Vorzone + 1 (Z1 ab 0).
   const setHrMax = (i: number, v: number | null) => {
@@ -82,17 +86,17 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
   return (
     <div className="card tight" style={{ background: "#fafbfd" }}>
       <div className="row mb">
-        <label className="field" style={{ margin: 0 }}><span>Gültig ab</span><input type="date" value={e.valid_from} onChange={(x) => saveZ({ ...e, valid_from: x.target.value })} /></label>
-        <label className="field" style={{ margin: 0, width: 80 }}><span>LTHR</span><input type="number" value={e.lthr} onChange={(x) => saveZ({ ...e, lthr: Number(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0, width: 80 }}><span>FTP</span><input type="number" value={e.ftp} onChange={(x) => saveZ({ ...e, ftp: Number(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0, width: 130 }}><span>Schwellen-Pace (mm:ss /km)</span>
+        <label className="field" style={{ margin: 0 }}><span><T k="zones.field.validFrom">Gültig ab</T></span><input type="date" value={e.valid_from} onChange={(x) => saveZ({ ...e, valid_from: x.target.value })} /></label>
+        <label className="field" style={{ margin: 0, width: 80 }}><span><T k="zones.field.lthr">LTHR</T></span><input type="number" value={e.lthr} onChange={(x) => saveZ({ ...e, lthr: Number(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0, width: 80 }}><span><T k="zones.field.ftp">FTP</T></span><input type="number" value={e.ftp} onChange={(x) => saveZ({ ...e, ftp: Number(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0, width: 130 }}><span><T k="zones.field.threshPace">Schwellen-Pace (mm:ss /km)</T></span>
           <input key={`tp-${e.threshold_pace}`} placeholder="4:45" defaultValue={paceMmSs(e.threshold_pace)}
             onBlur={(x) => { const v = parsePaceInput(x.target.value); if (v != null && v !== e.threshold_pace) saveZ({ ...e, threshold_pace: v }); }} />
         </label>
-        <label className="field" style={{ margin: 0, flex: 1 }}><span>Quelle/Notiz</span><input value={e.note ?? ""} onChange={(x) => saveZ({ ...e, note: x.target.value })} /></label>
-        {canDelete && <button className="sm ghost danger" onClick={() => api.deleteZoneset(z.id).then(onChange)}>Set löschen</button>}
+        <label className="field" style={{ margin: 0, flex: 1 }}><span><T k="zones.field.note">Quelle/Notiz</T></span><input value={e.note ?? ""} onChange={(x) => saveZ({ ...e, note: x.target.value })} /></label>
+        {canDelete && <button className="sm ghost danger" onClick={() => api.deleteZoneset(z.id).then(onChange)}><T k="zones.btn.deleteSet">Set löschen</T></button>}
       </div>
-      <div className="tiny muted" style={{ marginBottom: 2 }}>HF-Zonen (Obergrenze bpm je Zone — Untergrenze automatisch = Vorzone + 1)</div>
+      <div className="tiny muted" style={{ marginBottom: 2 }}><T k="zones.hr.hint">HF-Zonen (Obergrenze bpm je Zone — Untergrenze automatisch = Vorzone + 1)</T></div>
       <div className="row" style={{ gap: 6 }}>
         {e.hr_zones.map((zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
@@ -103,7 +107,7 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
           </div>
         ))}
       </div>
-      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Pace-Zonen Lauf (mm:ss /km, Obergrenze je Zone — aus Diagnostik)</div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}><T k="zones.pace.hint">Pace-Zonen Lauf (mm:ss /km, Obergrenze je Zone — aus Diagnostik)</T></div>
       <div className="row" style={{ gap: 6 }}>
         {e.hr_zones.map((_zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>
@@ -114,17 +118,17 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
         ))}
       </div>
       <div className="row" style={{ alignItems: "center", margin: "6px 0 2px", gap: 8 }}>
-        <span className="tiny muted">HF-Zonen Fahrrad (Obergrenze bpm je Zone — optional, separat von Lauf)</span>
+        <span className="tiny muted"><T k="zones.bikeHr.hint">HF-Zonen Fahrrad (Obergrenze bpm je Zone — optional, separat von Lauf)</T></span>
         {!e.hr_zones_bike && (
           <button className="sm ghost" style={{ fontSize: 11 }}
             onClick={() => saveZ({ ...e, hr_zones_bike: e.hr_zones.map((z) => ({ ...z })) })}>
-            + Von Lauf übernehmen
+            <T k="zones.btn.copyFromRun">+ Von Lauf übernehmen</T>
           </button>
         )}
         {e.hr_zones_bike && (
           <button className="sm ghost danger" style={{ fontSize: 11 }}
             onClick={() => saveZ({ ...e, hr_zones_bike: null })}>
-            Rad-Zonen entfernen
+            <T k="zones.btn.removeBike">Rad-Zonen entfernen</T>
           </button>
         )}
       </div>
@@ -140,7 +144,7 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
           ))}
         </div>
       )}
-      <div className="tiny muted" style={{ margin: "6px 0 2px" }}>Power-Zonen Rad (Watt, Obergrenze je Zone — optional)</div>
+      <div className="tiny muted" style={{ margin: "6px 0 2px" }}><T k="zones.power.hint">Power-Zonen Rad (Watt, Obergrenze je Zone — optional)</T></div>
       <div className="row" style={{ gap: 6 }}>
         {e.hr_zones.map((_zn, i) => (
           <div key={i} style={{ flex: 1, textAlign: "center" }}>

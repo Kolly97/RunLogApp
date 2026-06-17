@@ -7,6 +7,8 @@ import {
 import { api, type BestsResult, type FitnessTrend, type Pb } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { paceStr, secToClock, clockToSec, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
+import T from "../components/T.tsx";
+import { useT } from "../lib/i18n.tsx";
 
 const PRED_LINES = [
   { key: "p5000", label: "5 km", color: "#0ea5e9" },
@@ -36,6 +38,7 @@ export default function Bests() {
   const [edit, setEdit] = useState<EditState>(null);
   const [newPb, setNewPb] = useState<NewState>(null);
   const [saving, setSaving] = useState(false);
+  const t = useT();
   const reload = () => api.bests().then(setData).catch(() => setErr(true));
   useEffect(() => { reload(); }, []);
   useEffect(() => {
@@ -71,24 +74,22 @@ export default function Bests() {
     reload();
   };
 
-  if (err) return <div className="empty">Bestzeiten konnten nicht geladen werden.</div>;
-  if (!data) return <p className="muted">Lädt…</p>;
+  if (err) return <div className="empty"><T k="bests.err">Bestzeiten konnten nicht geladen werden.</T></div>;
+  if (!data) return <p className="muted"><T k="bests.loading">Lädt…</T></p>;
 
   const { pbs, cs, predictions } = data;
   const predByDist = new Map(predictions.map((p) => [p.distance_m, p.time_s]));
 
   return (
     <div>
-      <h1>Bestzeiten</h1>
+      <h1><T k="bests.title">Bestzeiten</T></h1>
       <p className="tiny muted" style={{ marginTop: -4 }}>
-        Persönliche Bestzeiten je Standarddistanz aus den Strava-Daten und ein Critical-Speed-Modell daraus.
-        Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").
+        <T k="bests.hint">Persönliche Bestzeiten je Standarddistanz aus den Strava-Daten und ein Critical-Speed-Modell daraus. Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").</T>
       </p>
 
       {!pbs.length && (
         <div className="empty">
-          Noch keine Bestzeiten. In den Einstellungen Strava verbinden und „Details/Splits nachziehen"
-          ausführen — die Bestzeiten werden dann (budgetiert über mehrere Durchläufe) ergänzt.
+          <T k="bests.empty">Noch keine Bestzeiten. In den Einstellungen Strava verbinden und „Details/Splits nachziehen" ausführen — die Bestzeiten werden dann (budgetiert über mehrere Durchläufe) ergänzt.</T>
         </div>
       )}
 
@@ -97,11 +98,11 @@ export default function Bests() {
           {/* PB-Tabelle */}
           <div className="card">
             <div className="spread">
-              <h2>Persönliche Bestzeiten</h2>
-              <button className="tiny" onClick={() => setNewPb({ distance_m: "", timeStr: "", date: todayIso() })}>+ Manuell</button>
+              <h2><T k="bests.pb.title">Persönliche Bestzeiten</T></h2>
+              <button className="tiny" onClick={() => setNewPb({ distance_m: "", timeStr: "", date: todayIso() })}><T k="bests.pb.addManual">+ Manuell</T></button>
             </div>
             <table>
-              <thead><tr><th>Distanz</th><th>Zeit</th><th>Ø-Pace</th><th>Datum</th><th /></tr></thead>
+              <thead><tr><th><T k="bests.col.dist">Distanz</T></th><th><T k="bests.col.time">Zeit</T></th><th><T k="bests.col.pace">Ø-Pace</T></th><th><T k="bests.col.date">Datum</T></th><th /></tr></thead>
               <tbody>
                 {pbs.map((p) => (
                   <tr key={p.distance_m}>
@@ -120,7 +121,7 @@ export default function Bests() {
                       </>
                     ) : (
                       <>
-                        <td><strong>{distLabel(p.distance_m)}</strong>{p.manual && <span className="tiny muted"> manuell</span>}</td>
+                        <td><strong>{distLabel(p.distance_m)}</strong>{p.manual && <span className="tiny muted"> {t("bests.manual", "manuell")}</span>}</td>
                         <td>{secToClock(p.time_s)}</td>
                         <td className="muted">{paceStr(p.pace_s)}/km</td>
                         <td className="tiny muted nowrap">{fmtDateY(p.date)}</td>
@@ -153,18 +154,18 @@ export default function Bests() {
 
           {/* Critical-Speed-Modell */}
           <div className="card">
-            <h2>Critical Speed</h2>
-            {!cs && <p className="tiny muted">Zu wenige Bestzeiten im aeroben Bereich (2–30 min) für ein Modell — kommt mit mehr Syncs.</p>}
+            <h2><T k="bests.cs.title">Critical Speed</T></h2>
+            {!cs && <p className="tiny muted"><T k="bests.cs.empty">Zu wenige Bestzeiten im aeroben Bereich (2–30 min) für ein Modell — kommt mit mehr Syncs.</T></p>}
             {cs && (
               <>
                 <div className="grid cols-3" style={{ gap: 8 }}>
-                  <div className="stat"><div className="label">Critical Speed</div><div className="value" style={{ fontSize: 22 }}>{paceStr(cs.cs_pace_s)}<span className="tiny muted"> /km</span></div></div>
-                  <div className="stat"><div className="label">D′ (anaerob)</div><div className="value" style={{ fontSize: 22 }}>{cs.dPrime_m}<span className="tiny muted"> m</span></div></div>
-                  <div className="stat"><div className="label">Fit-Güte R²</div><div className="value" style={{ fontSize: 22 }}>{cs.rSquared ?? "–"}<span className="tiny muted"> · n={cs.n}</span></div></div>
+                  <div className="stat"><div className="label"><T k="bests.cs.label.cs">Critical Speed</T></div><div className="value" style={{ fontSize: 22 }}>{paceStr(cs.cs_pace_s)}<span className="tiny muted"> /km</span></div></div>
+                  <div className="stat"><div className="label"><T k="bests.cs.label.dp">D′ (anaerob)</T></div><div className="value" style={{ fontSize: 22 }}>{cs.dPrime_m}<span className="tiny muted"> m</span></div></div>
+                  <div className="stat"><div className="label"><T k="bests.cs.label.r2">Fit-Güte R²</T></div><div className="value" style={{ fontSize: 22 }}>{cs.rSquared ?? "–"}<span className="tiny muted"> · n={cs.n}</span></div></div>
                 </div>
-                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}>Modell-Vorhersage</div>
+                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}><T k="bests.cs.model">Modell-Vorhersage</T></div>
                 <table>
-                  <thead><tr><th>Distanz</th><th>Prognose</th><th>PB</th></tr></thead>
+                  <thead><tr><th><T k="bests.cs.col.dist">Distanz</T></th><th><T k="bests.cs.col.pred">Prognose</T></th><th><T k="bests.cs.col.pb">PB</T></th></tr></thead>
                   <tbody>
                     {[5000, 10000, 21097, 42195].map((d) => {
                       const pred = predByDist.get(d);
@@ -192,8 +193,8 @@ export default function Bests() {
         return (
           <div className="card">
             <div className="spread">
-              <h2>Renn-Prognose im Verlauf</h2>
-              <span className="tiny muted">CS-Modell, 90-Tage-Fenster — schneller = oben · Legende klicken zum Aus-/Einblenden</span>
+              <h2><T k="bests.pred.title">Renn-Prognose im Verlauf</T></h2>
+              <span className="tiny muted"><T k="bests.pred.sub">CS-Modell, 90-Tage-Fenster — schneller = oben · Legende klicken zum Aus-/Einblenden</T></span>
             </div>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={predPoints} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>

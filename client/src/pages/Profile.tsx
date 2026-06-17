@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { api, type Profile } from "../lib/api.ts";
 import ZoneSets from "../components/ZoneSets.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
+import T from "../components/T.tsx";
+import { useT } from "../lib/i18n.tsx";
 
 const CONFIRM_CODE = "4397"; // Bestätigungscode für Umbenennen/Löschen/Zurücksetzen.
 
@@ -11,6 +13,7 @@ export default function ProfilePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [active, setActive] = useState(1);
   const [msg, setMsg] = useState("");
+  const t = useT();
   const reload = () => api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
   useEffect(() => { reload(); }, []);
 
@@ -41,22 +44,22 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <h1>Profil</h1>
+      <h1><T k="profile.title">Profil</T></h1>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
 
       <div className="card">
-        <h2>Profile / Accounts</h2>
-        <p className="tiny muted">Wechseln oben in der Seitenleiste. Umbenennen, Löschen und Zurücksetzen erfordern den Bestätigungscode. „Kolja" (Bestandsdaten) ist vor dem Löschen geschützt.</p>
+        <h2><T k="profile.accounts.title">Profile / Accounts</T></h2>
+        <p className="tiny muted"><T k="profile.accounts.hint">Wechseln oben in der Seitenleiste. Umbenennen, Löschen und Zurücksetzen erfordern den Bestätigungscode. „Kolja" (Bestandsdaten) ist vor dem Löschen geschützt.</T></p>
         <table>
-          <thead><tr><th>Profil</th><th></th></tr></thead>
+          <thead><tr><th><T k="profile.table.col">Profil</T></th><th></th></tr></thead>
           <tbody>
             {profiles.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}{p.id === active ? " · aktiv" : ""}{p.id === 1 ? " · Bestandsdaten" : ""}</td>
+                <td>{p.name}{p.id === active ? ` · ${t("profile.active", "aktiv")}` : ""}{p.id === 1 ? ` · ${t("profile.legacy", "Bestandsdaten")}` : ""}</td>
                 <td style={{ textAlign: "right" }}>
-                  <button className="sm ghost" onClick={() => rename(p)}>Umbenennen</button>
-                  <button className="sm ghost danger" onClick={() => reset(p)} title="Alle Trainings- & Plandaten löschen (Aktivitäten, Einheiten, Saisonplan, Races), nur Zonen behalten">Zurücksetzen</button>
-                  {p.id !== 1 && <button className="sm ghost danger" onClick={() => remove(p)}>Löschen</button>}
+                  <button className="sm ghost" onClick={() => rename(p)}><T k="profile.btn.rename">Umbenennen</T></button>
+                  <button className="sm ghost danger" onClick={() => reset(p)} title={t("profile.btn.reset.title", "Alle Trainings- & Plandaten löschen (Aktivitäten, Einheiten, Saisonplan, Races), nur Zonen behalten")}><T k="profile.btn.reset">Zurücksetzen</T></button>
+                  {p.id !== 1 && <button className="sm ghost danger" onClick={() => remove(p)}><T k="profile.btn.delete">Löschen</T></button>}
                 </td>
               </tr>
             ))}

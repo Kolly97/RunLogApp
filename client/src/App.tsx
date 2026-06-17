@@ -73,8 +73,9 @@ export default function App() {
 }
 
 // Sprachumschalter DE/EN (i18n). Auswahl in localStorage, kein Reload nötig.
+// Im Dev-Build zusätzlich ein ✎-Schalter für den Inline-Übersetzungs-Edit-Modus.
 function LangSwitcher() {
-  const { lang, setLang } = useLang();
+  const { lang, setLang, editMode, setEditMode } = useLang();
   return (
     <div className="lang-switch" role="group" aria-label="Sprache">
       {(["de", "en"] as const).map((l) => (
@@ -87,6 +88,16 @@ function LangSwitcher() {
           {l.toUpperCase()}
         </button>
       ))}
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          className={editMode ? "active edit" : "edit"}
+          title="Übersetzungs-Edit-Modus: Texte direkt anklicken und überschreiben"
+          onClick={() => setEditMode(!editMode)}
+        >
+          ✎
+        </button>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api, type SeasonWeek } from "../lib/api.ts";
 import { todayIso, num, phaseLabel, groupByYear, isoWeek, mondayOfIsoWeek, fmtDate, addDays } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
+import T from "../components/T.tsx";
 
 export default function SeasonPlan() {
   const [season, setSeason] = useState<SeasonWeek[]>([]);
@@ -26,22 +27,21 @@ export default function SeasonPlan() {
   return (
     <div>
       <div className="spread">
-        <h1>Saisonplan</h1>
+        <h1><T k="season.title">Saisonplan</T></h1>
         <div className="row" style={{ width: "auto" }}>
-          {season.length > 0 && <button onClick={() => addWeekBefore(season)}>+ Woche davor</button>}
-          <button className="primary" onClick={() => addWeek(season)}>+ Woche</button>
+          {season.length > 0 && <button onClick={() => addWeekBefore(season)}><T k="season.btn.addBefore">+ Woche davor</T></button>}
+          <button className="primary" onClick={() => addWeek(season)}><T k="season.btn.add">+ Woche</T></button>
         </div>
       </div>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
       <p className="tiny muted" style={{ marginTop: 2 }}>
-        Eine Woche = Kalenderwoche (Mo–So). Nur die <strong>KW</strong> ist editierbar; das Datum wird
-        automatisch berechnet. Wochen werden nach Startdatum sortiert und ab 0 durchnummeriert.
+        <T k="season.hint.pre">Eine Woche = Kalenderwoche (Mo–So). Nur die </T><strong><T k="season.hint.kw">KW</T></strong><T k="season.hint.post"> ist editierbar; das Datum wird automatisch berechnet. Wochen werden nach Startdatum sortiert und ab 0 durchnummeriert.</T>
       </p>
       <div className="card">
-        {!season.length && <p className="muted">Noch keine Wochen. Lege mit „+ Woche" eine an.</p>}
+        {!season.length && <p className="muted"><T k="season.empty">Noch keine Wochen. Lege mit „+ Woche" eine an.</T></p>}
         {season.length > 0 && (
           <table>
-            <thead><tr><th>Phase</th><th>KW</th><th>Jahr</th><th>Datum (Mo–So)</th><th>Ziel km</th><th>Race</th><th></th></tr></thead>
+            <thead><tr><th><T k="season.col.phase">Phase</T></th><th><T k="season.col.kw">KW</T></th><th><T k="season.col.year">Jahr</T></th><th><T k="season.col.date">Datum (Mo–So)</T></th><th><T k="season.col.targetKm">Ziel km</T></th><th><T k="season.col.race">Race</T></th><th></th></tr></thead>
             {groupByYear(season).map(({ year, items }) => {
               const isOpen = openYears.has(year);
               const sumKm = items.reduce((s, w) => s + (w.target_km || 0), 0);

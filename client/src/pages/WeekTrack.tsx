@@ -9,6 +9,8 @@ import {
 import { useOptions, type Option } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "../components/EffortBuilder.tsx";
+import T from "../components/T.tsx";
+import { useT } from "../lib/i18n.tsx";
 import "./track.css";
 
 export default function WeekTrack() {
@@ -43,8 +45,8 @@ export default function WeekTrack() {
   // Gewählten Tag setzen, wenn die Woche wechselt: heute (falls in der Woche), sonst Wochenstart.
   useEffect(() => {
     if (!week) return;
-    const t = todayIso();
-    setSelDate(t >= week.start_date && t <= week.end_date ? t : week.start_date);
+    const td = todayIso();
+    setSelDate(td >= week.start_date && td <= week.end_date ? td : week.start_date);
   }, [week?.week_no]); // eslint-disable-line
 
   // Sprung aus dem PMC: ?date=YYYY-MM-DD wählt die zugehörige Woche (und den Tag).
@@ -57,8 +59,9 @@ export default function WeekTrack() {
     // eslint-disable-next-line
   }, [season, params]);
 
-  if (loading) return <p className="muted">Lädt…</p>;
-  if (!week) return <div className="empty">Keine Woche — erst Saison anlegen (Einstellungen).</div>;
+  const t = useT();
+  if (loading) return <p className="muted"><T k="track.loading">Lädt…</T></p>;
+  if (!week) return <div className="empty"><T k="track.noWeek">Keine Woche — erst Saison anlegen (Einstellungen).</T></div>;
 
   const days = daysOfWeek(week.start_date);
   const extraAct: Activity = { date: todayIso(), source: "manual", sport: "Run", type: null };
@@ -74,13 +77,13 @@ export default function WeekTrack() {
 
   return (
     <div>
-      <div className="spread"><h1>Tracking</h1>
+      <div className="spread"><h1><T k="track.title">Tracking</T></h1>
         <div className="row" style={{ width: "auto", gap: 8 }}>
-          <span className="seg" title="Einzelnen Tag oder die ganze Woche zeigen">
-            <button className={view === "day" ? "active" : ""} onClick={() => setView("day")}>Tag</button>
-            <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Woche</button>
+          <span className="seg" title={t("track.view.toggle", "Einzelnen Tag oder die ganze Woche zeigen")}>
+            <button className={view === "day" ? "active" : ""} onClick={() => setView("day")}><T k="track.view.day">Tag</T></button>
+            <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><T k="track.view.week">Woche</T></button>
           </span>
-          <button className="sm" onClick={() => setExtra(true)} title="Eine getrackte Einheit mit frei wählbarem Datum eintragen (auch außerhalb dieser Woche)">+ Zusätzliche Einheit</button>
+          <button className="sm" onClick={() => setExtra(true)} title={t("track.btn.extraSession.title", "Eine getrackte Einheit mit frei wählbarem Datum eintragen (auch außerhalb dieser Woche)")}><T k="track.btn.extraSession">+ Zusätzliche Einheit</T></button>
           <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
             jumpTo={week ? { href: `/report?date=${week.start_date}`, title: "Zur gleichen Woche im Wochenbericht", label: "→ Bericht" } : undefined} />
         </div>
@@ -89,7 +92,7 @@ export default function WeekTrack() {
 
       {extra && (
         <div className="card tight" style={{ marginBottom: 10 }}>
-          <div className="tiny muted mb">Zusätzliche getrackte Einheit (Datum frei wählbar)</div>
+          <div className="tiny muted mb"><T k="track.extra.hint">Zusätzliche getrackte Einheit (Datum frei wählbar)</T></div>
           <ActivityRow a={extraAct} zs={zs} isNew dateEditable onChange={() => { setExtra(false); reload(); }} />
         </div>
       )}
@@ -161,6 +164,7 @@ function DayCard({ date, dayName, planned, acts, daily, zs, adh, onChange }: {
 }) {
   const [adding, setAdding] = useState(false);
   const [quick, setQuick] = useState(false);
+  const t = useT();
   const today = date === todayIso();
 
   // ToDo: Neue Aktivität mit der (noch nicht abgehakten) geplanten Einheit vorbefüllen.
@@ -179,13 +183,13 @@ function DayCard({ date, dayName, planned, acts, daily, zs, adh, onChange }: {
       <div className="day-head">
         <span><span className="day-name">{dayName}</span> <span className="muted tiny">{fmtDate(date)}</span></span>
         <span className="row" style={{ gap: 4 }}>
-          <button className="sm ghost" onClick={() => setQuick(!quick)}>+ Commute</button>
-          <button className="sm ghost" onClick={() => setAdding(true)}>+ Aktivität</button>
+          <button className="sm ghost" onClick={() => setQuick(!quick)}><T k="track.btn.commute">+ Commute</T></button>
+          <button className="sm ghost" onClick={() => setAdding(true)}><T k="track.btn.addActivity">+ Aktivität</T></button>
         </span>
       </div>
 
       {planned.length > 0 && (
-        <div className="tiny muted mb">Geplant: {planned.map((p) => (
+        <div className="tiny muted mb"><T k="track.planned">Geplant:</T> {planned.map((p) => (
           <span key={p.id} style={{ marginRight: 8 }}><span style={{ color: typeColor(p.type), fontWeight: 700 }}>●</span> {p.description || typeLabel(p.type)}</span>
         ))}</div>
       )}
@@ -244,6 +248,7 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
   const [zoneUnit, setZoneUnit] = useState<"km" | "min">(() => defaultZoneUnit(a));
   const [saving, setSaving] = useState(false);
   const { sports, sessionTypes } = useOptions();
+  const tr = useT();
   const set = (patch: Partial<Activity>) => setE((p) => ({ ...p, ...patch }));
   const bike = isBikeSport(e.sport);
   // Commute (ToDo Z.14): Sportart → „Allgemein/Commute" (General), Name „Commute", keine Notizen.
@@ -319,46 +324,46 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
     <div className="card tight" style={{ background: "#fafbfd", marginBottom: 8 }}>
       {/* Zusätzliche Einheit mit frei wählbarem Datum (v0.14.0, ToDo 3) */}
       {dateEditable && (
-        <label className="field" style={{ margin: "0 0 8px", maxWidth: 200 }}><span>Datum</span>
+        <label className="field" style={{ margin: "0 0 8px", maxWidth: 200 }}><span><T k="track.field.date">Datum</T></span>
           <input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
       )}
       {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
       <div className={`grid ${showTyp ? "cols-3" : "cols-2"}`} style={{ gap: 8 }}>
-        <label className="field" style={{ margin: 0 }}><span>Sport</span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
-        {showTyp && <label className="field" style={{ margin: 0 }}><span>Typ</span>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.sport">Sport</T></span><select value={e.sport} onChange={(x) => set({ sport: x.target.value })}>{sports.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
+        {showTyp && <label className="field" style={{ margin: 0 }}><span><T k="track.field.type">Typ</T></span>
           <select value={e.type ?? ""} onChange={(x) => set({ type: x.target.value || null })} title="Einheitstyp (z.B. LT2, VO2max kurz) — steuert den Real-Donut & Intervall-Trend">
             <option value="">—</option>
             {sessionTypes.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>}
-        <label className="field" style={{ margin: 0 }}><span>Name</span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.name">Name</T></span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} disabled={commute} /></label>
       </div>
       {(bike || commute) && (
         <label className="row tiny" style={{ gap: 6, width: "auto", margin: "6px 0 0" }}>
           <input type="checkbox" checked={commute} onChange={(x) => setCommute(x.target.checked)} style={{ width: "auto" }}
-            title="Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)" /> Als Commute markieren
+            title={tr("track.commute.title", "Kurze Fahrt als Commute markieren (keine Notizen, raus aus dem Wochenbericht)")} /> <T k="track.commute.check">Als Commute markieren</T>
         </label>
       )}
 
-      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Leistung</div>
+      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}><T k="track.section.performance">Leistung</T></div>
       <div className="grid cols-4" style={{ gap: 8 }}>
-        <label className="field" style={{ margin: 0 }}><span>km</span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>Dauer (h:mm:ss)</span><input key={`dur-${e.id ?? "new"}-${e.moving_s ?? ""}`} defaultValue={secToClock(e.moving_s)} placeholder="1:23:45" onBlur={(x) => set({ moving_s: clockToSec(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.km">km</T></span><input type="number" step="0.1" value={e.distance_m != null ? e.distance_m / 1000 : ""} onChange={(x) => set({ distance_m: num(x.target.value) != null ? Number(x.target.value) * 1000 : null })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.duration">Dauer (h:mm:ss)</T></span><input key={`dur-${e.id ?? "new"}-${e.moving_s ?? ""}`} defaultValue={secToClock(e.moving_s)} placeholder="1:23:45" onBlur={(x) => set({ moving_s: clockToSec(x.target.value) })} /></label>
         <label className="field" style={{ margin: 0 }}><span>{bike ? "Ø Geschwindigkeit" : "Ø Pace"}</span>
           <div style={{ padding: "6px 0", fontWeight: 600 }}>
             {paceOrSpeed(e.sport, e.distance_m, e.moving_s)}
             {e.sport === "Run" && e.ngp ? <span className="tiny muted" style={{ fontWeight: 400, marginLeft: 6 }}>· GAP {paceStr(e.ngp)}/km</span> : null}
           </div>
         </label>
-        <label className="field" style={{ margin: 0 }}><span>Höhenmeter (hm)</span><input type="number" value={e.elevation ?? ""} onChange={(x) => set({ elevation: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.elevation">Höhenmeter (hm)</T></span><input type="number" value={e.elevation ?? ""} onChange={(x) => set({ elevation: num(x.target.value) })} /></label>
       </div>
 
-      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}>Körper &amp; Last</div>
+      <div className="tiny muted" style={{ margin: "10px 0 3px", fontWeight: 600 }}><T k="track.section.body">Körper &amp; Last</T></div>
       <div className="grid cols-4" style={{ gap: 8 }}>
-        <label className="field" style={{ margin: 0 }}><span>Ø HF</span><input type="number" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>Ø Power</span><input type="number" value={e.avg_power ?? ""} onChange={(x) => set({ avg_power: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>kcal</span><input type="number" value={e.kcal ?? ""} onChange={(x) => set({ kcal: num(x.target.value) })} /></label>
-        <label className="field" style={{ margin: 0 }}><span>TSS (optional)</span><input type="number" value={e.tss ?? ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.hr">Ø HF</T></span><input type="number" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.power">Ø Power</T></span><input type="number" value={e.avg_power ?? ""} onChange={(x) => set({ avg_power: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.kcal">kcal</T></span><input type="number" value={e.kcal ?? ""} onChange={(x) => set({ kcal: num(x.target.value) })} /></label>
+        <label className="field" style={{ margin: 0 }}><span><T k="track.field.tss">TSS (optional)</T></span><input type="number" value={e.tss ?? ""} onChange={(x) => set({ tss: num(x.target.value) })} /></label>
       </div>
 
       {/* km je Zone (einheitlich mit Planung, #77) — Umschalter auf Minuten für reine Zeit-Sportarten */}
@@ -366,8 +371,8 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
         <div className="row" style={{ gap: 8, marginBottom: 3, alignItems: "center" }}>
           <div className="tiny muted">
             {zoneUnit === "km"
-              ? <>km je Zone <span className="tiny">(wie in der Planung · Summe {Math.round(zkSum * 10) / 10} km)</span></>
-              : <>Zeit in Zone (Minuten)</>}
+              ? <><T k="track.zone.km">km je Zone</T> <span className="tiny">({tr("track.zone.kmSub", "wie in der Planung · Summe")} {Math.round(zkSum * 10) / 10} km)</span></>
+              : <T k="track.zone.min">Zeit in Zone (Minuten)</T>}
           </div>
           <span className="zone-unit-toggle" title="Eingabe je Zone in km oder Minuten">
             <button type="button" className={zoneUnit === "km" ? "on" : ""} onClick={() => setZoneUnit("km")}>km</button>
@@ -401,9 +406,9 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
           {a.source === "strava" && a.id && (
             <button className="sm ghost" title="Intervalle aus Strava neu laden (hebt deine manuelle Sperre auf)"
               onClick={async () => {
-                if (!window.confirm("Intervalle dieser Einheit aus Strava neu laden? Deine manuellen Änderungen werden beim nächsten Sync ersetzt.")) return;
+                if (!window.confirm(tr("track.reloadStrava.confirm", "Intervalle dieser Einheit aus Strava neu laden? Deine manuellen Änderungen werden beim nächsten Sync ersetzt."))) return;
                 await api.relinkEfforts(a.id!); onChange();
-              }}>↻ Aus Strava neu laden</button>
+              }}><T k="track.btn.reloadStrava">↻ Aus Strava neu laden</T></button>
           )}
         </div>
         <EffortBuilder value={e.efforts ?? null} onChange={(ef) => set({ efforts: ef })}
@@ -413,7 +418,7 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
       {/* Editierbare Einheit-Notiz (ToDo #2): vorbefüllt mit Strava-Beschreibung, frei änderbar */}
       <div style={{ marginTop: 10 }}>
         <label className="field" style={{ margin: 0 }}>
-          <span>Notizen zur Einheit (z.B. aus Strava — editierbar)</span>
+          <span><T k="track.field.notes">Notizen zur Einheit (z.B. aus Strava — editierbar)</T></span>
           <textarea value={commute ? "" : (e.notes ?? "")} rows={2} disabled={commute}
             placeholder={commute ? "Commutes haben keine Notizen" : ""}
             onChange={(x) => set({ notes: x.target.value })} />
@@ -421,9 +426,9 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
       </div>
 
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
-        {e.id && <button className="sm ghost danger" onClick={() => api.deleteActivity(e.id!).then(onChange)}>Löschen</button>}
-        <button className="sm ghost" onClick={() => (a.id ? setOpen(false) : onChange())}>Abbrechen</button>
-        <button className="sm primary" onClick={save} disabled={saving}>{saving ? "Speichert…" : "Speichern"}</button>
+        {e.id && <button className="sm ghost danger" onClick={() => api.deleteActivity(e.id!).then(onChange)}><T k="track.btn.delete">Löschen</T></button>}
+        <button className="sm ghost" onClick={() => (a.id ? setOpen(false) : onChange())}><T k="track.btn.cancel">Abbrechen</T></button>
+        <button className="sm primary" onClick={save} disabled={saving}>{saving ? tr("track.btn.saving", "Speichert…") : tr("track.btn.save", "Speichern")}</button>
       </div>
     </div>
   );

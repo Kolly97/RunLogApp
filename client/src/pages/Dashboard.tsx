@@ -11,10 +11,13 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
+import T from "../components/T.tsx";
+import { useT, renderFlag } from "../lib/i18n.tsx";
 
 export default function Dashboard() {
   const { season, week } = useSeason();
   const navigate = useNavigate();
+  const t = useT();
   const [range, setRange] = useState<DateRange | null>(null);
   const [pmc, setPmc] = useState<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number } | null>(null);
   const [rows, setRows] = useState<SeasonRow[]>([]);
@@ -78,16 +81,16 @@ export default function Dashboard() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
-        <StatCard label="Fitness (CTL)" value={last?.ctl ?? 0} cls="fitness" sub="42-Tage-Last" />
-        <StatCard label="Fatigue (ATL)" value={last?.atl ?? 0} cls="fatigue" sub="7-Tage-Last" />
-        <StatCard label="Form (TSB)" value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb)} />
-        <StatCard label="CTL-Ramp" value={pmc?.ctlRamp7 ?? 0} sub="pro Woche (7d)" />
+        <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} />
+        <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} />
+        <StatCard label={t("dashboard.stat.form.label", "Form (TSB)")} value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb, t)} />
+        <StatCard label={t("dashboard.stat.ctlramp.label", "CTL-Ramp")} value={pmc?.ctlRamp7 ?? 0} sub={t("dashboard.stat.ctlramp.sub", "pro Woche (7d)")} />
         <Vo2maxCard data={fit} />
       </div>
 
       {/* Zeitraum gilt für die großen Übersichts-Charts (PMC, Saison-Progression, Intervall-Trend) */}
       <div className="row" style={{ justifyContent: "flex-end", margin: "14px 0 10px" }}>
-        <span className="tiny muted">Zeitraum</span>
+        <span className="tiny muted"><T k="dashboard.range.label">Zeitraum</T></span>
         <RangeSelector seasonRange={seasonRange} onChange={setRange} defaultMode="ytd" />
       </div>
 
@@ -98,30 +101,36 @@ export default function Dashboard() {
   function blockCards(): EgBlock[] {
     const list: EgBlock[] = [
       {
-        id: "pmc", title: "Performance Management Chart", defaultSpan: 8, defaultHeight: 360,
+        id: "pmc", title: t("dashboard.block.pmc.title", "Performance Management Chart"), defaultSpan: 8, defaultHeight: 360,
         render: (h) => (
           <div className="card">
-            <div className="spread"><h2>Performance Management Chart</h2><span className="tiny muted">Fitness · Fatigue · Form</span></div>
+            <div className="spread">
+              <h2><T k="dashboard.block.pmc.title">Performance Management Chart</T></h2>
+              <span className="tiny muted"><T k="dashboard.block.pmc.sub">Fitness · Fatigue · Form</T></span>
+            </div>
             <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
               phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
           </div>
         ),
       },
       {
-        id: "week", title: "Aktuelle Woche", defaultSpan: 4,
+        id: "week", title: t("dashboard.block.week.title", "Aktuelle Woche"), defaultSpan: 4,
         render: () => (
           <div className="card">
-            <div className="spread"><h2>Aktuelle Woche</h2>{week && <a className="tiny" href="/plan">bearbeiten →</a>}</div>
-            {!week && <p className="muted">Keine aktuelle Woche.</p>}
+            <div className="spread">
+              <h2><T k="dashboard.block.week.title">Aktuelle Woche</T></h2>
+              {week && <a className="tiny" href="/plan"><T k="dashboard.week.edit">bearbeiten →</T></a>}
+            </div>
+            {!week && <p className="muted"><T k="dashboard.week.empty">Keine aktuelle Woche.</T></p>}
             {week && analyze && (
               <>
                 <div className="row mb">
                   <span className="pill phase">{week.phase}</span>
                   <span className="muted tiny">{weekLabel(week)} · {analyze.totals.km} / {week.target_km ?? "–"} km · {Math.round(analyze.totals.tss)} TSS</span>
                 </div>
-                {!analyze.flags.length && <p className="tiny muted">Keine Hinweise.</p>}
+                {!analyze.flags.length && <p className="tiny muted"><T k="dashboard.week.noflags">Keine Hinweise.</T></p>}
                 {analyze.flags.slice(0, 6).map((f, i) => (
-                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{renderFlag(f, t)}</span></div>
                 ))}
               </>
             )}
@@ -129,19 +138,22 @@ export default function Dashboard() {
         ),
       },
       {
-        id: "season", title: "Saison-Progression", defaultSpan: 6, defaultHeight: 336,
+        id: "season", title: t("dashboard.block.season.title", "Saison-Progression"), defaultSpan: 6, defaultHeight: 336,
         render: (h) => (
           <div className="card">
-            <h2>Saison-Progression</h2>
+            <h2><T k="dashboard.block.season.title">Saison-Progression</T></h2>
             <SeasonProgress rows={visibleRows} highlightLabel={week ? weekLabel(week) : undefined} races={racesByWeek} sickLabels={sickLabels} height={h ?? 336} />
           </div>
         ),
       },
       {
-        id: "intensity", title: "Intensity-Trend", defaultSpan: 6, defaultHeight: 240,
+        id: "intensity", title: t("dashboard.block.intensity.title", "Intensity-Trend"), defaultSpan: 6, defaultHeight: 240,
         render: (h) => (
           <div className="card">
-            <div className="spread"><h2>Intensity-Trend</h2><span className="tiny muted">ATL/CTL</span></div>
+            <div className="spread">
+              <h2><T k="dashboard.block.intensity.title">Intensity-Trend</T></h2>
+              <span className="tiny muted"><T k="dashboard.block.intensity.sub">ATL/CTL</T></span>
+            </div>
             <IntensityRatio data={pmc?.pmc ?? []} height={h ?? 240} />
           </div>
         ),
@@ -149,12 +161,12 @@ export default function Dashboard() {
     ];
     if (hasRunTrend(trend)) {
       list.push({
-        id: "intervall", title: "Intervall-Trend", defaultSpan: 12, defaultHeight: 260,
+        id: "intervall", title: t("dashboard.block.intervall.title", "Intervall-Trend"), defaultSpan: 12, defaultHeight: 260,
         render: (h) => (
           <div className="card">
             <div className="spread">
-              <h2>Intervall-Trend</h2>
-              <span className="tiny muted">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 (schneller = oben)</span>
+              <h2><T k="dashboard.block.intervall.title">Intervall-Trend</T></h2>
+              <span className="tiny muted"><T k="dashboard.block.intervall.sub">Ø-Pace der Belastungen je Einheit — LT1 · LT2 · VO2 (schneller = oben)</T></span>
             </div>
             <IntervalTrend data={trend ?? []} height={h ?? 260} />
           </div>
@@ -175,13 +187,13 @@ function StatCard({ label, value, cls, sub }: { label: string; value: number; cl
   );
 }
 
-function formHint(tsb?: number): string {
+function formHint(tsb: number | undefined, t: (k: string, fb?: string) => string): string {
   if (tsb == null) return "";
-  if (tsb > 15) return "sehr frisch / detrainiert?";
-  if (tsb > 5) return "frisch";
-  if (tsb > -10) return "neutral";
-  if (tsb > -25) return "ermüdet (Aufbau)";
-  return "stark ermüdet";
+  if (tsb > 15) return t("dashboard.form.very_fresh", "sehr frisch / detrainiert?");
+  if (tsb > 5) return t("dashboard.form.fresh", "frisch");
+  if (tsb > -10) return t("dashboard.form.neutral", "neutral");
+  if (tsb > -25) return t("dashboard.form.tired", "ermüdet (Aufbau)");
+  return t("dashboard.form.very_tired", "stark ermüdet");
 }
 
 function maxDate(a: string, b: string) { return a > b ? a : b; }

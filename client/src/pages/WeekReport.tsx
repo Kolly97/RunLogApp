@@ -22,14 +22,8 @@ import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/Seaso
 import WeekdayBars from "../charts/WeekdayBars.tsx";
 import { wellnessTrendData, WellnessTrendChart } from "../charts/WellnessTrends.tsx";
 import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
-
-const REFLECT: [string, string][] = [
-  ["adherence", "Plan-Treue (% umgesetzt)"], ["progress", "Fortschritt ggü. Vorwoche"],
-  ["highlight", "Highlight / Win der Woche"], ["pain", "Schmerzen / Niggles / Verletzungsrisiko"],
-  ["recovery_strategies", "Genutzte Recovery-Strategien"], ["fueling", "Ernährung / Fueling / Gewicht"],
-  ["mental", "Mentale Frische / Stress (Studium/Job)"], ["confidence", "Confidence Richtung Saisonziel"],
-  ["lessons", "Lessons → Anpassung Folgewoche"],
-];
+import T from "../components/T.tsx";
+import { useT, renderFlag } from "../lib/i18n.tsx";
 
 // Tagesfaktoren für Seite 2 — alles, was eingetragen werden kann, ist hier auffindbar.
 type MetricDef = { key: string; label: string; text?: boolean };
@@ -133,8 +127,20 @@ export default function WeekReport() {
       .catch(() => setSeasonRows([]));
   }, [season]);
 
-  if (loading) return <p className="muted">Lädt…</p>;
-  if (!week) return <div className="empty">Keine Woche.</div>;
+  const t = useT();
+  const REFLECT: [string, string][] = [
+    ["adherence", t("report.refl.adherence", "Plan-Treue (% umgesetzt)")],
+    ["progress", t("report.refl.progress", "Fortschritt ggü. Vorwoche")],
+    ["highlight", t("report.refl.highlight", "Highlight / Win der Woche")],
+    ["pain", t("report.refl.pain", "Schmerzen / Niggles / Verletzungsrisiko")],
+    ["recovery_strategies", t("report.refl.recoveryStrategies", "Genutzte Recovery-Strategien")],
+    ["fueling", t("report.refl.fueling", "Ernährung / Fueling / Gewicht")],
+    ["mental", t("report.refl.mental", "Mentale Frische / Stress (Studium/Job)")],
+    ["confidence", t("report.refl.confidence", "Confidence Richtung Saisonziel")],
+    ["lessons", t("report.refl.lessons", "Lessons → Anpassung Folgewoche")],
+  ];
+  if (loading) return <p className="muted"><T k="report.loading">Lädt…</T></p>;
+  if (!week) return <div className="empty"><T k="report.noWeek">Keine Woche.</T></div>;
 
   const days = daysOfWeek(week.start_date);
   // Marker (Races gold, Krank rot) für PMC + Saison-Progression
@@ -216,17 +222,17 @@ export default function WeekReport() {
   return (
     <div>
       <div className="spread no-print">
-        <h1>Wochenbericht</h1>
+        <h1><T k="report.title">Wochenbericht</T></h1>
         <div className="row">
           <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
-            jumpTo={{ href: `/track?date=${week.start_date}`, title: "Zur gleichen Woche im Tracking", label: "→ Tracking" }} />
-          <button className="primary" onClick={() => window.print()}>🖨 Drucken / PDF</button>
+            jumpTo={{ href: `/track?date=${week.start_date}`, title: t("report.toTracking.title", "Zur gleichen Woche im Tracking"), label: t("report.toTracking.label", "→ Tracking") }} />
+          <button className="primary" onClick={() => window.print()}><T k="report.btn.print">🖨 Drucken / PDF</T></button>
         </div>
       </div>
 
       <EditableGrid page="weekreport" paged>
         {/* Kopf */}
-        <EgItem id="head" title="Kopf" defaultSpan={12} defaultHeight={68} reserve={100}>{() => (
+        <EgItem id="head" title={t("report.tile.head", "Kopf")} defaultSpan={12} defaultHeight={68} reserve={100}>{() => (
           <div className="card spread report-head">
             <div>
               <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
@@ -236,36 +242,36 @@ export default function WeekReport() {
               </div>
             </div>
             <div className="row" style={{ gap: 18 }}>
-              <Mini label="Lauf" v={`${actualKm} km`} sub={`Ziel ${week.target_km ?? "–"}`} />
-              <Mini label="TSS" v={`${Math.round(actualTss)}`} />
-              <Mini label="Form (TSB)" v={`${analyze?.projectedTsb ?? "–"}`} />
+              <Mini label={t("report.head.run", "Lauf")} v={`${actualKm} km`} sub={`${t("report.head.target", "Ziel")} ${week.target_km ?? "–"}`} />
+              <Mini label={t("report.head.tss", "TSS")} v={`${Math.round(actualTss)}`} />
+              <Mini label={t("report.head.form", "Form (TSB)")} v={`${analyze?.projectedTsb ?? "–"}`} />
             </div>
           </div>
         )}</EgItem>
 
         {/* Kategorie-Summen: Lauf / Rad gesamt / Kraft & Mobility */}
-        <EgItem id="cats" title="Kategorie-Summen" defaultSpan={12} defaultHeight={86}>{() => (
+        <EgItem id="cats" title={t("report.tile.cats", "Kategorie-Summen")} defaultSpan={12} defaultHeight={86}>{() => (
           <div className="card cat-row mt">
-            <CatBox label="Lauf" main={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
-              sub={`geplant ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`} />
-            <CatBox label="Rad gesamt (indoor + outdoor + Commute)" main={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
-              sub={`geplant ${round1(plannedCat.bike.km)} km · ${hours(plannedCat.bike.min)}`} />
-            <CatBox label="Kraft / Mobility" main={hours(realCat.strength.min)}
-              sub={`geplant ${hours(plannedCat.strength.min)}`} />
+            <CatBox label={t("report.cat.run", "Lauf")} main={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
+              sub={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`} />
+            <CatBox label={t("report.cat.bike", "Rad gesamt (indoor + outdoor + Commute)")} main={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
+              sub={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.bike.km)} km · ${hours(plannedCat.bike.min)}`} />
+            <CatBox label={t("report.cat.strength", "Kraft / Mobility")} main={hours(realCat.strength.min)}
+              sub={`${t("report.cat.planned", "geplant")} ${hours(plannedCat.strength.min)}`} />
           </div>
         )}</EgItem>
 
         {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
-        <EgItem id="units" title="Einheiten" defaultSpan={12} defaultHeight={420}>{() => (
+        <EgItem id="units" title={t("report.tile.units", "Einheiten")} defaultSpan={12} defaultHeight={420}>{() => (
           <div className="card">
           <div className="spread mt">
-            <h3 style={{ margin: 0 }}>Einheiten</h3>
+            <h3 style={{ margin: 0 }}><T k="report.tile.units">Einheiten</T></h3>
             {hasAdh && adh?.weekPct != null && (
               <span className="tiny muted">Plan-Erfüllung Ø Woche {adh.weekPct}% <span className="muted">(TSS-Treffer + Zeit in Ziel-Pace-Zone)</span></span>
             )}
           </div>
           <div className="table-scroll"><table className="units">
-            <thead><tr><th>Tag</th><th>Plan-Erf.</th><th>Geplant</th><th>Real</th><th>km</th><th>Zeit</th><th>TSS</th><th>kcal</th><th>RPE/Beine</th></tr></thead>
+            <thead><tr><th><T k="report.col.day">Tag</T></th><th><T k="report.col.adh">Plan-Erf.</T></th><th><T k="report.col.planned">Geplant</T></th><th><T k="report.col.real">Real</T></th><th><T k="report.col.km">km</T></th><th><T k="report.col.time">Zeit</T></th><th><T k="report.col.tss">TSS</T></th><th><T k="report.col.kcal">kcal</T></th><th><T k="report.col.rpe">RPE/Beine</T></th></tr></thead>
             <tbody>
               {days.map((d, i) => {
                 const plan = sessions.filter((s) => s.date === d);
@@ -342,18 +348,18 @@ export default function WeekReport() {
 
         {/* Efficiency Factor je Wochentag (DL/Longruns) — v0.14.0, ToDo 11 */}
         {efVals.length > 0 && (
-          <EgItem id="ef" title="Efficiency Factor" defaultSpan={12} defaultHeight={150} reserve={100}>{() => (
+          <EgItem id="ef" title={t("report.tile.ef", "Efficiency Factor")} defaultSpan={12} defaultHeight={150} reserve={100}>{() => (
             <div className="card tight mt">
               <div className="spread">
-                <h3 style={{ margin: 0 }}>Efficiency Factor — DL &amp; Longruns <span className="muted tiny">(NGP-Tempo / Ø-HF)</span></h3>
-                {efAvg != null && <span className="tiny muted">Ø Woche {efAvg}</span>}
+                <h3 style={{ margin: 0 }}><T k="report.ef.title">Efficiency Factor — DL &amp; Longruns</T> <span className="muted tiny">(<T k="report.ef.sub">NGP-Tempo / Ø-HF</T>)</span></h3>
+                {efAvg != null && <span className="tiny muted"><T k="report.ef.avg">Ø Woche</T> {efAvg}</span>}
               </div>
               <div className="ef-strip mt">
                 {efByDay.map((x) => (
                   <div key={x.date} className={"ef-cell" + (x.hardPrev ? " hard-prev" : "")}>
                     <div className="ef-day">{x.day}</div>
                     <div className="ef-val">{x.ef != null ? x.ef.toFixed(2) : "–"}</div>
-                    {x.hardPrev && <div className="ef-mark" title="harte Einheit / Wettkampf am Vortag">⚡ hart davor</div>}
+                    {x.hardPrev && <div className="ef-mark" title={t("report.ef.hardPrev.title", "harte Einheit / Wettkampf am Vortag")}><T k="report.ef.hardPrev">⚡ hart davor</T></div>}
                   </div>
                 ))}
               </div>
@@ -363,9 +369,9 @@ export default function WeekReport() {
 
         {/* Wettkämpfe der Woche (ToDo #24) — einzeln mit Splits */}
         {weekRaces.length > 0 && (
-          <EgItem id="races" title="Wettkämpfe" defaultSpan={12} defaultHeight={96}>{() => (
+          <EgItem id="races" title={t("report.tile.races", "Wettkämpfe")} defaultSpan={12} defaultHeight={96}>{() => (
             <div className="card mt">
-              <h3>Wettkämpfe</h3>
+              <h3><T k="report.tile.races">Wettkämpfe</T></h3>
               {weekRaces.map((r) => {
                 const km = (r.distance_m || 0) / 1000;
                 const pace = km && r.time_s ? r.time_s / km : null;
@@ -394,34 +400,34 @@ export default function WeekReport() {
         )}
 
         {/* Kern-Visualisierung — Balken & Donuts je eigene Karte, Schilder breit darunter (ToDo 8, v0.12.0) */}
-        <EgItem id="zonedist" title="Zonenverteilung" defaultSpan={6} defaultHeight={220}>{() => (
+        <EgItem id="zonedist" title={t("report.tile.zones", "Zonenverteilung")} defaultSpan={6} defaultHeight={220}>{() => (
             <div className="card chart-card">
               <h3 style={{ textAlign: "center" }}>
-                Zonenverteilung geplant vs. real
+                <T k="report.zone.title">Zonenverteilung geplant vs. real</T>
               </h3>
               {analyze && <ZoneDistribution zones={analyze.zones} rows={[
-                { name: "Geplant", values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
-                ...(hasRealZones ? [{ name: "Real", values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
+                { name: t("report.tss.planned", "Geplant"), values: analyze.plannedZoneKm ?? analyze.totals.zoneMin },
+                ...(hasRealZones ? [{ name: t("report.tss.real", "Real"), values: (analyze.realZoneKm && Object.values(analyze.realZoneKm).some((v) => (v || 0) > 0)) ? analyze.realZoneKm : realZoneMin }] : []),
               ]} />}
-              {!hasRealZones && <p className="tiny muted">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</p>}
+              {!hasRealZones && <p className="tiny muted"><T k="report.zone.noReal">Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.</T></p>}
             </div>
         )}</EgItem>
 
         {/* Intensität (TSS) geplant vs. real */}
-        <EgItem id="tssdist" title="Intensität (TSS)" defaultSpan={6} defaultHeight={220}>{() => (
+        <EgItem id="tssdist" title={t("report.tile.tss", "Intensität (TSS)")} defaultSpan={6} defaultHeight={220}>{() => (
             <div className="card chart-card">
               <h3 style={{ textAlign: "center" }}>
-                Intensität (TSS) — geplant vs. real
+                <T k="report.tss.title">Intensität (TSS) — geplant vs. real</T>
               </h3>
               {analyze && (
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="tiny muted center" style={{ marginBottom: 2 }}>Geplant</div>
+                    <div className="tiny muted center" style={{ marginBottom: 2 }}><T k="report.tss.planned">Geplant</T></div>
                     <IntensityDonut intensity={analyze.tssIntensity ?? analyze.totals.intensity}
                       center={{ value: Math.round(analyze.totals.tss), sub: "TSS" }} height={120} showLegend />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="tiny muted center" style={{ marginBottom: 2 }}>Real</div>
+                    <div className="tiny muted center" style={{ marginBottom: 2 }}><T k="report.tss.real">Real</T></div>
                     <IntensityDonut intensity={analyze.realTssIntensity ?? { easy: 0, mod: 0, hard: 0 }}
                       center={{ value: Math.round(analyze.realTotalTss ?? 0), sub: "TSS" }} height={120} showLegend />
                   </div>
@@ -432,12 +438,12 @@ export default function WeekReport() {
 
         {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
         {analyze && (analyze.realLoadFlag || analyze.realKmFlag) && (
-          <EgItem id="realflags" title="Bewertung der realen Woche" defaultSpan={12} defaultHeight={96}>{() => (
+          <EgItem id="realflags" title={t("report.tile.realflags", "Bewertung der realen Woche")} defaultSpan={12} defaultHeight={96}>{() => (
             <div className="chart-card mt">
-              <h3>Bewertung der realen Woche</h3>
+              <h3><T k="report.tile.realflags">Bewertung der realen Woche</T></h3>
               <div className="flag-row">
                 {[analyze.realLoadFlag, analyze.realKmFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
-                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+                  <div key={i} className={"flag " + f.level}><span className="dot" /><span>{renderFlag(f, t)}</span></div>
                 ))}
               </div>
             </div>
@@ -445,9 +451,9 @@ export default function WeekReport() {
         )}
 
         {/* PMC + Saison-Progression über die ganze Seitenbreite (ToDo Z.13) */}
-        <EgItem id="pmc" title="PMC" defaultSpan={12} defaultHeight={210}>{(h) => (
+        <EgItem id="pmc" title={t("report.tile.pmc", "PMC")} defaultSpan={12} defaultHeight={210}>{(h) => (
           <div className="chart-card mt">
-            <h3>PMC — bis {weekLabel(week)}</h3>
+            <h3><T k="report.tile.pmc">PMC</T> — {t("report.pmc.until", "bis")} {weekLabel(week)}</h3>
             <div className="pmc-row">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Pmc data={pmcWin} height={h ?? 210} highlight={{ from: week.start_date, to: week.end_date }}
@@ -455,36 +461,36 @@ export default function WeekReport() {
               </div>
               {/* Last-Kennzahlen am Wochenende (v0.14.0, ToDo 2) */}
               <div className="pmc-values">
-                <Mini label="Fitness (CTL)" v={endPt ? Math.round(endPt.ctl) : "–"} cls="fitness" />
-                <Mini label="Fatigue (ATL)" v={endPt ? Math.round(endPt.atl) : "–"} cls="fatigue" />
-                <Mini label="Form (TSB)" v={endPt ? signed(Math.round(endPt.tsb)) : "–"} cls="form" />
-                <Mini label="CTL-Ramp /Wo" v={endRamp != null ? signed(endRamp) : "–"} />
+                <Mini label={t("report.pmc.ctl", "Fitness (CTL)")} v={endPt ? Math.round(endPt.ctl) : "–"} cls="fitness" />
+                <Mini label={t("report.pmc.atl", "Fatigue (ATL)")} v={endPt ? Math.round(endPt.atl) : "–"} cls="fatigue" />
+                <Mini label={t("report.pmc.tsb", "Form (TSB)")} v={endPt ? signed(Math.round(endPt.tsb)) : "–"} cls="form" />
+                <Mini label={t("report.pmc.ramp", "CTL-Ramp /Wo")} v={endRamp != null ? signed(endRamp) : "–"} />
               </div>
             </div>
           </div>
         )}</EgItem>
 
         {/* km & rTSS je Wochentag — eigene Kachel */}
-        <EgItem id="weekday" title="km & rTSS je Wochentag" defaultSpan={4} defaultHeight={210} reserve={80}>{(h) => (
+        <EgItem id="weekday" title={t("report.tile.weekday", "km & rTSS je Wochentag")} defaultSpan={4} defaultHeight={210} reserve={80}>{(h) => (
             <div className="card chart-card">
-              <h3>km &amp; rTSS je Wochentag</h3>
+              <h3><T k="report.tile.weekday">km &amp; rTSS je Wochentag</T></h3>
               <WeekdayBars days={days} acts={acts} bikeFactor={bikeFactor} height={h ?? 210} />
             </div>
         )}</EgItem>
 
         {/* Saison-Progression — eigene Kachel */}
-        <EgItem id="season" title="Saison-Progression" defaultSpan={8} defaultHeight={210} reserve={65}>{(h) => (
+        <EgItem id="season" title={t("report.tile.season", "Saison-Progression")} defaultSpan={8} defaultHeight={210} reserve={65}>{(h) => (
             <div className="card chart-card">
-              <h3>Saison-Progression (geplant / real km)</h3>
+              <h3><T k="report.season.title">Saison-Progression (geplant / real km)</T></h3>
               <SeasonProgress rows={reportRows} height={h ?? 210} highlightLabel={weekLabel(week)}
                 races={racesByWeek} sickLabels={sickLabels} showYears={false} />
             </div>
         )}</EgItem>
 
         {/* Whoop / Wellness Summary */}
-        <EgItem id="wellness" title="Whoop / Wellness" defaultSpan={12} defaultHeight={80} reserve={80}>{() => (
+        <EgItem id="wellness" title={t("report.tile.wellness", "Whoop / Wellness")} defaultSpan={12} defaultHeight={80} reserve={80}>{() => (
           <div className="card">
-          <h3 className="mt">Whoop / Wellness (Ø Woche)</h3>
+          <h3 className="mt"><T k="report.wellness.title">Whoop / Wellness (Ø Woche)</T></h3>
           <div className="row tiny" style={{ gap: 16, flexWrap: "wrap" }}>
             {WELLNESS_KEYS.map(([k, label]) => <Mini key={k} label={label} v={wellness[k] ?? ""} />)}
           </div>
@@ -492,11 +498,11 @@ export default function WeekReport() {
         )}</EgItem>
 
         {/* Wochen-Check — konfigurierbar in den Auswahllisten (ToDo 7) */}
-        <EgItem id="check" title="Wochen-Check" defaultSpan={12} defaultHeight={80} reserve={42}>{() => (
+        <EgItem id="check" title={t("report.tile.check", "Wochen-Check")} defaultSpan={12} defaultHeight={80} reserve={42}>{() => (
           <div className="card">
-          <h3 className="mt">Wochen-Check</h3>
+          <h3 className="mt"><T k="report.tile.check">Wochen-Check</T></h3>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
-            {checks.length === 0 && <span className="tiny muted">Keine Checks definiert — in „Auswahllisten" anlegen.</span>}
+            {checks.length === 0 && <span className="tiny muted"><T k="report.check.empty">Keine Checks definiert — in „Auswahllisten" anlegen.</T></span>}
             {checks.map((c) => (
               <label key={c.value} className="row tiny" style={{ gap: 5, width: "auto" }}>
                 <input type="checkbox" style={{ width: "auto" }} checked={!!wlog.checks?.[c.value]} onChange={(e) => saveCheck(c.value, e.target.checked)} /> {c.label}
@@ -507,17 +513,17 @@ export default function WeekReport() {
         )}</EgItem>
 
         {/* ============ SEITE 2: Tagesfaktoren ============ */}
-        <EgItem id="daily" title="Tagesfaktoren" defaultSpan={12} defaultHeight={360}>{() => (
+        <EgItem id="daily" title={t("report.tile.daily", "Tagesfaktoren")} defaultSpan={12} defaultHeight={360}>{() => (
           <div className="card">
           <div className="report-head">
-            <h2 style={{ margin: 0 }}>Tagesfaktoren — {weekLabel(week)}</h2>
+            <h2 style={{ margin: 0 }}><T k="report.tile.daily">Tagesfaktoren</T> — {weekLabel(week)}</h2>
             <div className="muted tiny">{fmtDateY(week.start_date)} – {fmtDateY(week.end_date)}</div>
           </div>
 
           <div className="table-scroll"><table className="daily-table mt">
             <thead>
               <tr>
-                <th>Faktor</th>
+                <th><T k="report.daily.col.factor">Faktor</T></th>
                 {days.map((d, i) => <th key={d}>{DAY_NAMES[i]} <span className="muted">{fmtDate(d)}</span></th>)}
                 <th>Ø</th>
               </tr>
@@ -534,7 +540,7 @@ export default function WeekReport() {
                   </tr>
                 );
               })}
-              {!visibleMetrics.length && <tr><td colSpan={9} className="muted center">Keine Tagesfaktoren eingetragen.</td></tr>}
+              {!visibleMetrics.length && <tr><td colSpan={9} className="muted center"><T k="report.daily.empty">Keine Tagesfaktoren eingetragen.</T></td></tr>}
             </tbody>
           </table></div>
           </div>
@@ -551,13 +557,13 @@ export default function WeekReport() {
         ))}
 
         {/* Reflexion */}
-        <EgItem id="reflexion" title="Reflexion" defaultSpan={12} defaultHeight={170}>{() => (
+        <EgItem id="reflexion" title={t("report.tile.refl", "Reflexion")} defaultSpan={12} defaultHeight={170}>{() => (
           <div className="card">
-          <h3 className="mt">Reflexion</h3>
+          <h3 className="mt"><T k="report.tile.refl">Reflexion</T></h3>
           <div className="grid cols-2">
-            <Refl label="Was lief gut?" v={wlog.refl_good} on={(x) => saveW({ refl_good: x })} />
-            <Refl label="Was war schwierig?" v={wlog.refl_hard} on={(x) => saveW({ refl_hard: x })} />
-            <Refl label="Was ändere ich nächste Woche?" v={wlog.refl_change} on={(x) => saveW({ refl_change: x })} />
+            <Refl label={t("report.refl.good", "Was lief gut?")} v={wlog.refl_good} on={(x) => saveW({ refl_good: x })} />
+            <Refl label={t("report.refl.hard", "Was war schwierig?")} v={wlog.refl_hard} on={(x) => saveW({ refl_hard: x })} />
+            <Refl label={t("report.refl.change", "Was ändere ich nächste Woche?")} v={wlog.refl_change} on={(x) => saveW({ refl_change: x })} />
             {REFLECT.map(([k, label]) => <Refl key={k} label={label} v={wlog.refl_extra?.[k]} on={(x) => saveRefl(k, x)} />)}
           </div>
           </div>

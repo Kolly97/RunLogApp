@@ -34,6 +34,8 @@ type Ctx = {
   setLang: (l: Lang) => void;
   t: (key: string, fallback?: string) => string;
   bump: () => void; // erzwingt Re-Render nach In-Memory-Edit
+  editMode: boolean; // Dev: Inline-Übersetzungs-Edit-Modus an/aus
+  setEditMode: (b: boolean) => void;
 };
 
 const LangContext = createContext<Ctx | null>(null);
@@ -50,6 +52,7 @@ function initialLang(): Lang {
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(initialLang);
   const [version, setVersion] = useState(0);
+  const [editMode, setEditMode] = useState(false);
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
@@ -64,7 +67,10 @@ export function LangProvider({ children }: { children: ReactNode }) {
   const t = useCallback((key: string, fallback?: string) => translate(lang, key, fallback), [lang]);
   // version in den Value aufnehmen: erzwingt nach einem In-Memory-Edit (bump) ein neues
   // Value-Objekt, sonst re-rendern die <T>-Consumer nicht und die Änderung bleibt unsichtbar.
-  const value = useMemo<Ctx>(() => ({ lang, setLang, t, bump }), [lang, setLang, t, bump, version]);
+  const value = useMemo<Ctx>(
+    () => ({ lang, setLang, t, bump, editMode, setEditMode }),
+    [lang, setLang, t, bump, version, editMode],
+  );
 
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 }
@@ -77,4 +83,24 @@ export function useLang(): Ctx {
 
 export function useT(): (key: string, fallback?: string) => string {
   return useLang().t;
+}
+
+// Interpolates {{key}} placeholders in a translated string.
+function tpl(str: string, p: Record<string, string | number | null>): string {
+  return str.replace(/\{\{(\w+)\}\}/g, (_, k) => p[k] != null ? String(p[k]) : "");
+}
+
+// Renders a server Flag using translation keys, with f.message as fallback.
+export function renderFlag(f: { code: string; message: string; params?: Record<string, string | number | null> }, t: (key: string, fallback?: string) => string): string {
+  const p = f.params ?? {};
+  const key = `flag.${f.code}`;
+  if (f.code === "taper") {
+    const parts: string[] = [];
+    if (p.tooNeg) parts.push(tpl(t("flag.taper.tsb_neg", "Form am Renntag (TSB {{tsb}}) zu negativ"), p));
+    if (p.tooHigh) parts.push(tpl(t("flag.taper.load_high", "geplante 7-Tage-Last ({{pre7tss}} TSS) zu hoch fürs Tapering (max ~{{tssCap}})"), p));
+    return tpl(t(key, f.message), { ...p, parts: parts.join(" · ") });
+  }
+  const tmpl = t(key, "");
+  if (!tmpl) return f.message;
+  return tpl(tmpl, p);
 }

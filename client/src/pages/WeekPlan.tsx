@@ -10,10 +10,13 @@ import IntensityCard from "../charts/IntensityCard.tsx";
 import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 import TemplateManager from "../components/TemplateManager.tsx";
+import T from "../components/T.tsx";
+import { useT, renderFlag } from "../lib/i18n.tsx";
 
 export default function WeekPlan() {
   const { season, week, weekNo, setWeekNo, loading, reload: reloadSeason } = useSeason();
   const { phases } = useOptions();
+  const tr = useT();
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
@@ -42,10 +45,10 @@ export default function WeekPlan() {
     return () => document.removeEventListener("click", close);
   }, [openTplDay]);
 
-  if (loading) return <p className="muted">Lädt…</p>;
+  if (loading) return <p className="muted"><T k="plan.loading">Lädt…</T></p>;
   if (!season.length)
-    return <div className="empty">Noch kein Saisonplan. Lege unter <a href="/settings">Einstellungen</a> einen an oder importiere den bestehenden Plan.</div>;
-  if (!week) return <p className="muted">Keine Woche gewählt.</p>;
+    return <div className="empty">Noch kein Saisonplan. Lege unter <a href="/settings">{tr("nav.settings", "Einstellungen")}</a> einen an oder importiere den bestehenden Plan.</div>;
+  if (!week) return <p className="muted"><T k="plan.noWeek">Keine Woche gewählt.</T></p>;
 
   const days = daysOfWeek(week.start_date);
   const byDate = (d: string) => sessions.filter((s) => s.date === d).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -117,7 +120,7 @@ export default function WeekPlan() {
   return (
     <div>
       <div className="spread no-print">
-        <h1>Wochenplanung</h1>
+        <h1><T k="plan.title">Wochenplanung</T></h1>
         <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo} />
       </div>
 
@@ -154,7 +157,7 @@ export default function WeekPlan() {
             })()}
           </div>
           <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
-            <span>Ziel km</span>
+            <span><T k="plan.targetKm">Ziel km</T></span>
             <input type="number" min="0" style={{ width: 72, padding: "4px 6px" }}
               key={`tgt-${week.week_no}-${week.target_km ?? ""}`} defaultValue={week.target_km ?? ""}
               onBlur={(e) => saveTargetKm(num(e.target.value))} title="Wochen-Ziel-km (wirkt auf den Volumen-Check; gleiche Quelle wie im Saisonplan)" />
@@ -177,12 +180,12 @@ export default function WeekPlan() {
                 <div className="day-head">
                   <span><span className="day-name">{DAY_NAMES[i]}</span> <span className="muted tiny">{fmtDate(d)}</span></span>
                   <div className="row" style={{ gap: 2, width: "auto", position: "relative" }}>
-                    <button className="sm ghost" onClick={() => setEditing({ date: d, sport: "Run", type: "Easy" })}>+ Einheit</button>
+                    <button className="sm ghost" onClick={() => setEditing({ date: d, sport: "Run", type: "Easy" })}><T k="plan.btn.addSession">+ Einheit</T></button>
                     <button className="sm ghost" title="Aus Vorlage einsetzen" style={{ padding: "2px 6px" }}
                       onClick={(e) => { e.stopPropagation(); setOpenTplDay(openTplDay === d ? null : d); }}>▾</button>
                     {openTplDay === d && (
                       <div className="tpl-menu" onClick={(e) => e.stopPropagation()}>
-                        {!templates.length && <div className="tiny muted" style={{ padding: "6px 10px" }}>Noch keine Vorlagen.</div>}
+                        {!templates.length && <div className="tiny muted" style={{ padding: "6px 10px" }}>{tr("plan.tplMenu.empty", "Noch keine Vorlagen.")}</div>}
                         {templates.map((t) => (
                           <button key={t.id} className="tpl-item" onClick={() => quickAdd(t, d)}>
                             <span style={{ width: 8, height: 8, borderRadius: 999, background: typeColor(t.type), flexShrink: 0 }} />
@@ -191,7 +194,7 @@ export default function WeekPlan() {
                           </button>
                         ))}
                         <div className="tpl-sep" />
-                        <button className="tpl-item" onClick={() => { setOpenTplDay(null); setShowManager(true); }}>✎ Verwalten…</button>
+                        <button className="tpl-item" onClick={() => { setOpenTplDay(null); setShowManager(true); }}><T k="plan.btn.manageTemplates">✎ Verwalten…</T></button>
                       </div>
                     )}
                   </div>
@@ -221,32 +224,32 @@ export default function WeekPlan() {
         {/* Analyse-Panel */}
         <div style={{ position: "sticky", top: 16 }}>
           <div className="card tight">
-            <h3>Geplante Woche</h3>
+            <h3><T k="plan.stat.planned">Geplante Woche</T></h3>
             <div className="grid cols-3" style={{ gap: 8 }}>
-              <Stat label="km (Lauf)" value={t ? t.km : 0} sub={target ? `Ziel ${target} · ${volPct > 0 ? "+" : ""}${volPct}%` : ""} color={Math.abs(volPct) > 10 ? "var(--warn)" : "var(--ok)"} />
-              <Stat label="TSS" value={t ? Math.round(t.tss) : 0} />
-              <Stat label="Einheiten" value={t ? t.sessions : 0} sub={`${t?.hardSessions ?? 0} hart`} />
+              <Stat label={tr("plan.stat.km", "km (Lauf)")} value={t ? t.km : 0} sub={target ? `Ziel ${target} · ${volPct > 0 ? "+" : ""}${volPct}%` : ""} color={Math.abs(volPct) > 10 ? "var(--warn)" : "var(--ok)"} />
+              <Stat label={tr("plan.stat.tss", "TSS")} value={t ? Math.round(t.tss) : 0} />
+              <Stat label={tr("plan.stat.sessions", "Einheiten")} value={t ? t.sessions : 0} sub={`${t?.hardSessions ?? 0} hart`} />
             </div>
             <div className="row tiny muted" style={{ marginTop: 6 }}>
-              <span>Rad {t?.bike_km ?? 0} km</span>·<span>längster Lauf {t?.longestKm ?? 0} km</span>
+              <span>{tr("plan.stat.bikeLabel", "Rad")} {t?.bike_km ?? 0} km</span>·<span>{tr("plan.stat.longestRun", "längster Lauf")} {t?.longestKm ?? 0} km</span>
               {analyze?.projectedTsb != null && <>·<span>Form Ende: {analyze.projectedTsb}</span></>}
             </div>
           </div>
 
           {analyze && t && (
             <div className="card tight">
-              <h3>Intensität & Zonen (geplant)</h3>
+              <h3><T k="plan.intensity.title">Intensität & Zonen (geplant)</T></h3>
               <IntensityCard tss={analyze.tssIntensity ?? t.intensity} height={120} />
-              <div className="tiny muted" style={{ marginTop: 8, marginBottom: 2 }}>km-Anteil je Zone</div>
-              <ZoneDistribution zones={analyze.zones} rows={[{ name: "Geplant", values: analyze.plannedZoneKm ?? t.zoneMin }]} />
+              <div className="tiny muted" style={{ marginTop: 8, marginBottom: 2 }}><T k="plan.intensity.zoneKm">km-Anteil je Zone</T></div>
+              <ZoneDistribution zones={analyze.zones} rows={[{ name: tr("report.tss.planned", "Geplant"), values: analyze.plannedZoneKm ?? t.zoneMin }]} />
             </div>
           )}
 
           <div className="card tight">
-            <h3>Check: passt die Woche?</h3>
-            {!analyze?.flags.length && <p className="tiny muted">Keine Hinweise.</p>}
+            <h3><T k="plan.check.title">Check: passt die Woche?</T></h3>
+            {!analyze?.flags.length && <p className="tiny muted"><T k="plan.check.noflags">Keine Hinweise.</T></p>}
             {analyze?.flags.map((f, i) => (
-              <div key={i} className={"flag " + f.level}><span className="dot" /><span>{f.message}</span></div>
+              <div key={i} className={"flag " + f.level}><span className="dot" /><span>{renderFlag(f, tr)}</span></div>
             ))}
           </div>
         </div>
