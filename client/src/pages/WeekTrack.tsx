@@ -407,7 +407,13 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
             <button className="sm ghost" title="Intervalle aus Strava neu laden (hebt deine manuelle Sperre auf)"
               onClick={async () => {
                 if (!window.confirm(tr("track.reloadStrava.confirm", "Intervalle dieser Einheit aus Strava neu laden? Deine manuellen Änderungen werden beim nächsten Sync ersetzt."))) return;
-                await api.relinkEfforts(a.id!); onChange();
+                try {
+                  const r = await api.relinkEfforts(a.id!) as { efforts?: number };
+                  onChange();
+                  if (!r?.efforts) window.alert(tr("track.reloadStrava.none", "Keine Intervalle erkannt (keine Laps oder kein harter Abschnitt in dieser Aktivität)."));
+                } catch (err) {
+                  window.alert(`${tr("track.reloadStrava.err", "Neu laden fehlgeschlagen")}: ${err}`);
+                }
               }}><T k="track.btn.reloadStrava">↻ Aus Strava neu laden</T></button>
           )}
         </div>

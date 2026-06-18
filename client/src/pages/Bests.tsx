@@ -1,5 +1,5 @@
-// Bestzeiten + Critical Speed (v0.14.0, ToDo 8): PBs je Standarddistanz aus Stravas best_efforts,
-// dazu ein 2-Parameter-CS-Modell (d = CS·t + D') mit Vorhersagen.
+// Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8): PBs je Standarddistanz aus Stravas best_efforts,
+// dazu eine VO2max/VDOT-Schätzung (Jack Daniels) + leistungs-äquivalente Renn-Prognosen.
 import { useEffect, useState } from "react";
 import {
   LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,10 +11,10 @@ import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
 const PRED_LINES = [
-  { key: "p5000", label: "5 km", color: "#0ea5e9" },
-  { key: "p10000", label: "10 km", color: "#22c55e" },
-  { key: "p21097", label: "Halbmarathon", color: "#eab308" },
-  { key: "p42195", label: "Marathon", color: "#ef4444" },
+  { key: "p5000", label: "5 km", color: "#0ea5e9", dist: 5000 },
+  { key: "p10000", label: "10 km", color: "#22c55e", dist: 10000 },
+  { key: "p21097", label: "Halbmarathon", color: "#eab308", dist: 21097 },
+  { key: "p42195", label: "Marathon", color: "#ef4444", dist: 42195 },
 ] as const;
 
 const DIST_NAMES: Record<number, string> = {
@@ -77,14 +77,14 @@ export default function Bests() {
   if (err) return <div className="empty"><T k="bests.err">Bestzeiten konnten nicht geladen werden.</T></div>;
   if (!data) return <p className="muted"><T k="bests.loading">Lädt…</T></p>;
 
-  const { pbs, cs, predictions } = data;
+  const { pbs, vdot, vdotLevel, age, predictions } = data;
   const predByDist = new Map(predictions.map((p) => [p.distance_m, p.time_s]));
 
   return (
     <div>
       <h1><T k="bests.title">Bestzeiten</T></h1>
       <p className="tiny muted" style={{ marginTop: -4 }}>
-        <T k="bests.hint">Persönliche Bestzeiten je Standarddistanz aus den Strava-Daten und ein Critical-Speed-Modell daraus. Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").</T>
+        <T k="bests.hint">Persönliche Bestzeiten je Standarddistanz aus den Strava-Daten und eine VDOT-Prognose (Jack Daniels) daraus. Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").</T>
       </p>
 
       {!pbs.length && (
@@ -152,18 +152,17 @@ export default function Bests() {
             </table>
           </div>
 
-          {/* Critical-Speed-Modell */}
+          {/* VO₂max (VDOT) + Renn-Prognose (Daniels) */}
           <div className="card">
-            <h2><T k="bests.cs.title">Critical Speed</T></h2>
-            {!cs && <p className="tiny muted"><T k="bests.cs.empty">Zu wenige Bestzeiten im aeroben Bereich (2–30 min) für ein Modell — kommt mit mehr Syncs.</T></p>}
-            {cs && (
+            <h2><T k="bests.vdot.title">VO₂max & Prognose</T></h2>
+            {vdot == null && <p className="tiny muted"><T k="bests.vdot.empty">Zu wenige Renndaten (≥1500 m, 3–30 min) für eine VDOT-Schätzung — kommt mit mehr Syncs.</T></p>}
+            {vdot != null && (
               <>
-                <div className="grid cols-3" style={{ gap: 8 }}>
-                  <div className="stat"><div className="label"><T k="bests.cs.label.cs">Critical Speed</T></div><div className="value" style={{ fontSize: 22 }}>{paceStr(cs.cs_pace_s)}<span className="tiny muted"> /km</span></div></div>
-                  <div className="stat"><div className="label"><T k="bests.cs.label.dp">D′ (anaerob)</T></div><div className="value" style={{ fontSize: 22 }}>{cs.dPrime_m}<span className="tiny muted"> m</span></div></div>
-                  <div className="stat"><div className="label"><T k="bests.cs.label.r2">Fit-Güte R²</T></div><div className="value" style={{ fontSize: 22 }}>{cs.rSquared ?? "–"}<span className="tiny muted"> · n={cs.n}</span></div></div>
+                <div className="grid cols-2" style={{ gap: 8 }}>
+                  <div className="stat"><div className="label"><T k="bests.vdot.label">VO₂max (aktuell)</T></div><div className="value" style={{ fontSize: 22 }}>{vdot.toFixed(1)}<span className="tiny muted"> ml/kg/min</span></div></div>
+                  <div className="stat"><div className="label"><T k="bests.vdot.level">Niveau</T></div><div className="value" style={{ fontSize: 22 }}>{vdotLevel ?? "–"}{age ? <span className="tiny muted"> · {age} J.</span> : null}</div></div>
                 </div>
-                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}><T k="bests.cs.model">Modell-Vorhersage</T></div>
+                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}><T k="bests.vdot.model">Renn-Prognose (Daniels-äquivalent)</T></div>
                 <table>
                   <thead><tr><th><T k="bests.cs.col.dist">Distanz</T></th><th><T k="bests.cs.col.pred">Prognose</T></th><th><T k="bests.cs.col.pb">PB</T></th></tr></thead>
                   <tbody>
@@ -190,21 +189,34 @@ export default function Bests() {
       {(() => {
         const predPoints = (fit?.points ?? []).filter((p) => p.p5000 != null || p.p10000 != null || p.p21097 != null || p.p42195 != null);
         if (predPoints.length < 2) return null;
+        // Y-Achse = Prognose-Pace (s/km) je Distanz → über die Strecken vergleichbar; die Zielzeit erscheint im Tooltip.
+        const paceData = predPoints.map((p) => {
+          const row: Record<string, number | string | null> = { date: p.date };
+          for (const l of PRED_LINES) {
+            const tsec = p[l.key] as number | null;
+            row[l.key] = tsec != null ? tsec / (l.dist / 1000) : null;
+          }
+          return row;
+        });
         return (
           <div className="card">
             <div className="spread">
               <h2><T k="bests.pred.title">Renn-Prognose im Verlauf</T></h2>
-              <span className="tiny muted"><T k="bests.pred.sub">CS-Modell, 90-Tage-Fenster — schneller = oben · Legende klicken zum Aus-/Einblenden</T></span>
+              <span className="tiny muted"><T k="bests.pred.sub">VDOT/Daniels, 90-Tage-Fenster — Pace je Distanz, schneller = oben · Legende klicken zum Aus-/Einblenden</T></span>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={predPoints} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+              <LineChart data={paceData} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
                 <CartesianGrid stroke="#eef1f5" vertical={false} />
                 <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-                <YAxis reversed domain={["dataMin", "dataMax"]} width={52} tickFormatter={(s: number) => secToClock(s)}
+                <YAxis reversed domain={["dataMin", "dataMax"]} width={52} tickFormatter={(s: number) => paceStr(s)}
                   tick={{ fontSize: 11, fill: "#8a96a6" }} />
                 <Tooltip
                   labelFormatter={(d) => fmtDateY(String(d))}
-                  formatter={(v: number, n: string) => [secToClock(v), n]}
+                  formatter={(v: number, n: string) => {
+                    const l = PRED_LINES.find((x) => x.label === n);
+                    const time = l ? Math.round(v * (l.dist / 1000)) : v;
+                    return [`${secToClock(time)} · ${paceStr(v)}/km`, n];
+                  }}
                   contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}

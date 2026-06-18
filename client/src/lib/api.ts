@@ -10,10 +10,9 @@ export interface Race {
   activity_id?: number | null; // v0.14.0: verknüpfte getrackte Einheit (Race aus Tracking)
 }
 
-// Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
+// Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
-export interface CsModel { cs_mps: number; cs_pace_s: number; dPrime_m: number; rSquared: number | null; n: number; }
-export interface BestsResult { pbs: Pb[]; cs: CsModel | null; predictions: { distance_m: number; time_s: number }[]; }
+export interface BestsResult { pbs: Pb[]; vdot: number | null; vdotLevel: string | null; age: number | null; predictions: { distance_m: number; time_s: number }[]; }
 // VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
 export interface FitnessTrendPoint { date: string; vdot: number | null; p5000: number | null; p10000: number | null; p21097: number | null; p42195: number | null; }
 export interface FitnessTrend { points: FitnessTrendPoint[]; current: FitnessTrendPoint | null; age: number | null; level: string | null; }

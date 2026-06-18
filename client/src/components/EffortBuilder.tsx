@@ -194,6 +194,14 @@ function GroupBox({ g, bike, zones, cols, planning, onChange, onRemove }: {
   );
 }
 
+/** Höchste HF-Zone, deren Untergrenze vom Puls erreicht wird — für den Zonen-Vorschlag aus der Max-HF. */
+function zoneFromHr(hr: number, zones?: HrZone[] | null): number | null {
+  if (!(hr > 0) || !zones?.length) return null;
+  let z: number | null = null;
+  for (const zn of zones) if (hr >= zn.min) z = zn.z;
+  return z;
+}
+
 function Row({ r, bike, zones, planning, onChange, onRemove }: {
   r: Effort; bike: boolean; zones?: HrZone[] | null; planning?: boolean;
   onChange: (patch: Partial<Effort>) => void; onRemove: () => void;
@@ -221,7 +229,16 @@ function Row({ r, bike, zones, planning, onChange, onRemove }: {
       )}
       {!planning && (
         <input type="number" style={cell} value={r.max_hr ?? ""}
-          onChange={(e) => onChange({ max_hr: num(e.target.value) })} />
+          onChange={(e) => onChange({ max_hr: num(e.target.value) })}
+          onBlur={(e) => {
+            // Zonen-Vorschlag erst beim Verlassen des Felds — sonst triggert schon die erste Ziffer (180 → „1").
+            // Nur wenn noch keine Zone gesetzt ist (manuelle Wahl bleibt erhalten).
+            const mh = num(e.target.value);
+            if (mh != null && r.zone == null) {
+              const z = zoneFromHr(mh, zones);
+              if (z != null) onChange({ zone: z });
+            }
+          }} />
       )}
       <select style={{ padding: "4px 2px", width: "100%" }} value={r.zone ?? ""}
         onChange={(e) => onChange({ zone: num(e.target.value) })}>

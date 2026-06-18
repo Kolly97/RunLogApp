@@ -13,8 +13,7 @@ import {
   hrTssFromZones,
   round1,
   vdot,
-  fitCriticalSpeed,
-  predictFromCs,
+  predictFromVdot,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
@@ -38,7 +37,7 @@ import {
   type EffortLine,
   type IntervalEffortStat,
 } from "./analysis.ts";
-import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, fetchAthleteZonesAndFtp } from "./strava.ts";
+import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -418,11 +417,13 @@ app.post("/api/races/import-from-season", (_req, res) => {
   res.json({ created });
 });
 
-// ---- Bestzeiten + Critical Speed (v0.14.0, ToDo 8) ----------------------
-// PBs je Standarddistanz aus Stravas best_efforts; 2-Parameter-CS-Modell d = CS·t + D' (lineare
-// Regression über aerobe PBs 2–30 min, ≥1000 m) + Vorhersagen für 5k/10k/HM/M.
+// ---- Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8) -----------------------
+// PBs je Standarddistanz aus Stravas best_efforts; Renn-Prognosen über das Jack-Daniels-VDOT-Modell
+// (leistungs-äquivalente Zeiten) für 5k/10k/HM/M — dauerabhängig, daher realistisch für lange Distanzen.
 const CS_PRED_DISTANCES = [5000, 10000, 21097, 42195];
+const FITNESS_WINDOW_DAYS = 90; // Rolling-Window für die aktuelle VDOT-/VO2max-Schätzung (Prognose-Quelle)
 app.get("/api/bests", (_req, res) => {
+  const today = todayIso();
   const rows = db.prepare(
     "SELECT date, name, best_efforts FROM activities WHERE profile_id=? AND sport='Run' AND best_efforts IS NOT NULL AND best_efforts<>'' AND best_efforts<>'{}'",
   ).all(pid()) as { date: string; name: string; best_efforts: string }[];
@@ -445,10 +446,27 @@ app.get("/api/bests", (_req, res) => {
     .map((p) => ({ ...p, pace_s: Math.round(p.time_s / (p.distance_m / 1000)) }))
     .sort((a, b) => a.distance_m - b.distance_m);
 
-  const fit = pbs.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000);
-  const cs = fitCriticalSpeed(fit);
-  const predictions = cs ? predictFromCs(cs.cs_mps, cs.dPrime_m, CS_PRED_DISTANCES) : [];
-  res.json({ pbs, cs, predictions });
+  // Prognose-Quelle = AKTUELLE Form, nicht der Allzeit-Bestwert: bestes VDOT im 90-Tage-Fenster (≥1500 m, 3–40 min).
+  // Identisch zur Dashboard-VO2max (/api/fitness-trend, letzter Punkt) → Prognose folgt der Form, nicht der je besten Zeit.
+  const winLo = addDaysIso(today, -FITNESS_WINDOW_DAYS);
+  let curVdot = 0;
+  for (const r of rows) {
+    if (!(r.date > winLo && r.date <= today)) continue;
+    const be = parseJson<Record<string, number>>(r.best_efforts, {});
+    for (const [d, t] of Object.entries(be)) {
+      const dist = Number(d), time = Number(t);
+      if (dist >= 1500 && time >= 180 && time <= 2400) curVdot = Math.max(curVdot, vdot(dist, time));
+    }
+  }
+  const predictions = curVdot > 0 ? predictFromVdot(curVdot, CS_PRED_DISTANCES) : [];
+
+  const athlete = getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
+  const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
+  const sex: "m" | "f" = athlete?.sex === "f" ? "f" : "m";
+  const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
+  const vdotVal = curVdot > 0 ? Math.round(curVdot * 10) / 10 : null;
+  const vdotLevel = vdotVal != null && age ? vo2maxLevel(vdotVal, age, sex) : null;
+  res.json({ pbs, vdot: vdotVal, vdotLevel, age, predictions });
 });
 
 app.put("/api/bests/override", (req, res) => {
@@ -465,8 +483,7 @@ app.delete("/api/bests/override/:distance_m", (req, res) => {
 });
 
 // ---- Fitness-Trend: VO2max (VDOT) + Renn-Prognose über die Zeit (v0.15.0, O1+O2) ----
-// 90-Tage-Rolling-Window über die Strava-best_efforts: je Woche bestes VDOT + CS-Fit-Prognosen.
-const FITNESS_WINDOW_DAYS = 90;
+// 90-Tage-Rolling-Window über die Strava-best_efforts: je Woche bestes VDOT + VDOT-Prognosen.
 app.get("/api/fitness-trend", (req, res) => {
   const today = todayIso();
   const to = String(req.query.to || today);
@@ -498,11 +515,10 @@ app.get("/api/fitness-trend", (req, res) => {
       if (cur == null || e.time_s < cur) bestPerDist.set(e.distance_m, e.time_s);
     }
     const distPts = [...bestPerDist.entries()].map(([distance_m, time_s]) => ({ distance_m, time_s }));
-    // VDOT nur aus überwiegend aeroben Leistungen (≥1500 m, 3–30 min) — kurze Sprints überschätzen VO2max.
+    // VDOT nur aus überwiegend aeroben Leistungen (≥1500 m, 3–40 min) — kurze Sprints überschätzen VO2max; 40 min schließt den 10k ein.
     let bestVdot = 0;
-    for (const p of distPts) if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 1800) bestVdot = Math.max(bestVdot, vdot(p.distance_m, p.time_s));
-    const csFit = fitCriticalSpeed(distPts.filter((p) => p.time_s >= 120 && p.time_s <= 1800 && p.distance_m >= 1000));
-    const pmap = new Map((csFit ? predictFromCs(csFit.cs_mps, csFit.dPrime_m, CS_PRED_DISTANCES) : []).map((x) => [x.distance_m, x.time_s]));
+    for (const p of distPts) if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 2400) bestVdot = Math.max(bestVdot, vdot(p.distance_m, p.time_s));
+    const pmap = new Map((bestVdot > 0 ? predictFromVdot(bestVdot, CS_PRED_DISTANCES) : []).map((x) => [x.distance_m, x.time_s]));
     return {
       date: w,
       vdot: bestVdot > 0 ? Math.round(bestVdot * 10) / 10 : null,
@@ -956,12 +972,8 @@ app.delete("/api/activities/:id", (req, res) => {
 });
 
 // v0.15.5 (O6): Intervalle einer Aktivität bewusst aus Strava neu laden — Sperre lösen, Laps neu ziehen.
-app.post("/api/activities/:id/relink-efforts", (req, res) => {
-  db.prepare(
-    "UPDATE activities SET efforts=NULL, efforts_locked=0, laps_fetched=0 WHERE id=? AND profile_id=? AND source='strava'",
-  ).run(req.params.id, pid());
-  res.json({ ok: true });
-});
+// Intervalle EINER Aktivität sofort aus Strava neu erzeugen (holt die Laps direkt, regeneriert + labelt).
+app.post("/api/activities/:id/relink-efforts", stravaRelinkEfforts);
 
 // ---- daily log ---------------------------------------------------------
 

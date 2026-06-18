@@ -19,7 +19,7 @@ export default function Vo2maxCard({ data }: { data: FitnessTrend | null }) {
 
   return (
     <div className="card stat">
-      <div className="label">VO₂max (geschätzt)</div>
+      <div className="label">VO₂max (aktuell · 90 T.)</div>
       {cur == null ? (
         <>
           <div className="value">–</div>

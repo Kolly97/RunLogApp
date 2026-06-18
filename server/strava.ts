@@ -104,13 +104,28 @@ function fallbackTss(sport: string, movingS: number): number {
   return Math.round((movingS / 3600) * iF * iF * 100 * 10) / 10;
 }
 
+type HrZoneSimple = { z: number; min: number; max: number };
+
+/** Höchste HF-Zone, deren Untergrenze vom (Spitzen-)Puls erreicht wird — für den Zonen-Vorschlag je Intervall. */
+function zoneFromHrSimple(hr: number | null, zones: HrZoneSimple[]): number | null {
+  if (!(hr && hr > 0) || !zones.length) return null;
+  let z: number | null = null;
+  for (const zn of zones) if (hr >= zn.min) z = zn.z;
+  return z;
+}
+
 /**
  * Work-Intervalle aus Strava-Laps (v0.12.0, ToDo 3): „Work" = Lap schneller als die Z3-Obergrenze (Lauf)
  * ODER Ø-HF ≥ Z4-Untergrenze. Warmup/Cooldown/Erholungs-Laps fallen so raus. Liefert Effort[]-JSON oder null.
+ *
+ * Label nach Einheitstyp (statt rein HF-basiert):
+ *  · VO2-Einheit  → Intervalle bis 400 m = „VO2short", länger = „VO2long".
+ *  · Schwelle     → bis 6 min Dauer = „LT2", länger = „LT1".
+ *  · sonst        → HF-zonenbasiert (Z5↑ VO2long, Z4 LT2, darunter LT1) wie bisher.
+ * Zusätzlich: Zonen-Vorschlag je Intervall aus der Max-HF (in welcher HF-Zone liegt der Spitzenpuls).
  */
-type HrZoneSimple = { z: number; min: number; max: number };
 function extractWorkLaps(
-  laps: any[], sport: string,
+  laps: any[], sport: string, type: string | null,
   zs: { pace_zones?: number[]; hr_zones: HrZoneSimple[]; hr_zones_bike?: HrZoneSimple[] | null },
 ): string | null {
   if (!Array.isArray(laps) || laps.length < 2) return null;
@@ -119,17 +134,24 @@ function extractWorkLaps(
   const z3Pace = zs.pace_zones?.[2]; // Z3-Obergrenze (s/km, schnellste erlaubte Z3-Pace)
   const z4HrMin = activeHrZones.find((z) => z.z === 4)?.min;
   const z5HrMin = activeHrZones.find((z) => z.z === 5)?.min;
+  const isVO2 = /vo2/i.test(type ?? "");
+  const isThreshold = /threshold|schwelle/i.test(type ?? "");
   const work: any[] = [];
   for (const lap of laps) {
     const dist = lap.distance ?? 0;
     const sec = lap.moving_time ?? lap.elapsed_time ?? 0;
     const hr = lap.average_heartrate ?? null;
+    const maxHr = lap.max_heartrate != null ? Math.round(lap.max_heartrate) : null;
     const pace = isRun && dist > 0 && sec > 0 ? sec / (dist / 1000) : null;
     const fastEnough = pace != null && z3Pace ? pace <= z3Pace : false;
     const hardHr = hr != null && z4HrMin ? hr >= z4HrMin : false;
     if (fastEnough || hardHr) {
       let label: string | undefined;
-      if (hr != null) {
+      if (isVO2) {
+        label = dist && dist <= 400 ? "VO2short" : "VO2long";
+      } else if (isThreshold) {
+        label = sec && sec <= 360 ? "LT2" : "LT1";
+      } else if (hr != null) {
         if (z5HrMin && hr >= z5HrMin) label = "VO2long";
         else if (z4HrMin && hr >= z4HrMin) label = "LT2";
         else label = "LT1";
@@ -142,7 +164,8 @@ function extractWorkLaps(
         sec: sec || null,
         pace_s: pace != null ? Math.round(pace) : null,
         avg_hr: hr != null ? Math.round(hr) : null,
-        max_hr: lap.max_heartrate != null ? Math.round(lap.max_heartrate) : null,
+        max_hr: maxHr,
+        zone: zoneFromHrSimple(maxHr, activeHrZones),
         label,
       });
     }
@@ -207,6 +230,14 @@ export async function stravaSync(req: Request, res: Response): Promise<void> {
   try {
     const after = String(req.body?.after || new Date().getFullYear() + "-01-01");
     const afterEpoch = Math.floor(new Date(after + "T00:00:00Z").getTime() / 1000);
+    // Defensive: Strava liefert für ein ungültiges oder zukünftiges `after` einen 400. Lieber eine klare,
+    // umsetzbare Meldung als die kryptische Roh-Fehlermeldung — und es gibt vor „jetzt" ohnehin nichts zu holen.
+    if (!Number.isFinite(afterEpoch)) {
+      return void res.status(400).json({ error: `Ungültiges „Daten ab"-Datum: ${after}` });
+    }
+    if (afterEpoch > Math.floor(Date.now() / 1000)) {
+      return void res.status(400).json({ error: `„Daten ab" (${after}) liegt in der Zukunft — bitte ein früheres Datum wählen.` });
+    }
     const profile = activeProfile();
 
     const exists = db.prepare("SELECT id FROM activities WHERE strava_id=?");
@@ -388,7 +419,7 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
         if (reqs >= MAX_REQ) break;
         const laps = (await api(`/activities/${c.strava_id}/laps`)) as any[]; reqs++;
         const zsL = effectiveZoneSet(c.date);
-        updLaps.run(extractWorkLaps(laps, c.sport, zsL), c.id);
+        updLaps.run(extractWorkLaps(laps, c.sport, c.type, zsL), c.id);
         enriched++;
       }
     } catch {
@@ -404,6 +435,32 @@ export async function stravaEnrich(req: Request, res: Response): Promise<void> {
     const after = String(req.body?.after || new Date().getFullYear() + "-01-01");
     const enriched = await enrichBudgeted(activeProfile(), after);
     res.json({ enriched });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+/** Endpoint: Intervalle EINER Aktivität sofort aus den Strava-Laps neu erzeugen (hebt die manuelle Sperre auf).
+ *  Holt die Laps direkt (1 Request) und labelt typabhängig + schlägt Zonen aus der Max-HF vor. */
+export async function stravaRelinkEfforts(req: Request, res: Response): Promise<void> {
+  try {
+    const profile = activeProfile();
+    const a = db.prepare(
+      "SELECT id, strava_id, sport, type, date FROM activities WHERE id=? AND profile_id=? AND source='strava'",
+    ).get(Number(req.params.id), profile) as
+      { id: number; strava_id: string; sport: string; type: string | null; date: string } | undefined;
+    if (!a || !a.strava_id) {
+      // Keine Strava-Aktivität → nur Sperre/Flags zurücksetzen (alte Semantik), Re-Import beim nächsten Sync.
+      db.prepare("UPDATE activities SET efforts=NULL, efforts_locked=0, laps_fetched=0 WHERE id=? AND profile_id=?")
+        .run(Number(req.params.id), profile);
+      return void res.json({ ok: true, efforts: 0 });
+    }
+    const laps = (await api(`/activities/${a.strava_id}/laps`)) as any[];
+    const efforts = extractWorkLaps(laps, a.sport, a.type, effectiveZoneSet(a.date));
+    db.prepare("UPDATE activities SET efforts=?, efforts_locked=0, laps_fetched=1 WHERE id=? AND profile_id=?")
+      .run(efforts, a.id, profile);
+    const n = efforts ? (JSON.parse(efforts) as any[]).length : 0;
+    res.json({ ok: true, efforts: n });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

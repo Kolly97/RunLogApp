@@ -413,3 +413,32 @@ export function predictFromCs(csMps: number, dPrimeM: number, distances: number[
   }
   return out;
 }
+
+/**
+ * Zeit (s) bei Distanz D (m) für eine Ziel-VDOT — invertiert die Daniels-Kurve per Bisektion.
+ * vdot(D,·) ist im realistischen Pace-Bereich streng monoton fallend (schneller ⇒ höhere VDOT),
+ * daher konvergiert die Bisektion gegen die leistungs-äquivalente Zeit. Im Gegensatz zum CS-Modell
+ * berücksichtigt der dauerabhängige %VO2max-Term, dass längere Distanzen korrekt langsamer werden.
+ */
+export function timeForVdot(distanceM: number, targetVdot: number): number | null {
+  if (!(distanceM > 0 && targetVdot > 0)) return null;
+  let lo = (distanceM / 1000) * 120; // 2:00/km (schnelle Schranke → hohe VDOT)
+  let hi = (distanceM / 1000) * 900; // 15:00/km (langsame Schranke → niedrige VDOT)
+  if (vdot(distanceM, lo) < targetVdot) return null; // selbst schnellste Schranke zu langsam → unerreichbar
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (vdot(distanceM, mid) > targetVdot) lo = mid;
+    else hi = mid;
+  }
+  return Math.round((lo + hi) / 2);
+}
+
+/** Renn-Prognosen (VDOT-äquivalent, Daniels) für die gegebenen Distanzen (m). */
+export function predictFromVdot(targetVdot: number, distances: number[]): { distance_m: number; time_s: number }[] {
+  const out: { distance_m: number; time_s: number }[] = [];
+  for (const D of distances) {
+    const t = timeForVdot(D, targetVdot);
+    if (t && t > 0) out.push({ distance_m: D, time_s: t });
+  }
+  return out;
+}
