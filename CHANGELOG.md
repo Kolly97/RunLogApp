@@ -4,6 +4,40 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.3.0] – 2026-06-23 — Echte Intensitätsverteilung, Laktat-Diagnostik & Wochen-Engine
+
+Zweite Runde der sportwiss. Meta-Studie. G4→G3→Engine-Reihenfolge, alle Blöcke addierend auf v1.2.0.
+
+### Hinzugefügt
+- **Echte Zeit-Intensitätsverteilung (G4):** physiologisches 3-Zonen-Modell (Z1 < LT1 / Z2 LT1–LT2 / Z3 > LT2)
+  aus `realZoneMin`, kalibrierbar über LT1/LT2-Grenzen. **Polarisierungs-Index (Treff et al. 2019)**:
+  `PI = log10((Z1/Z2)×Z3)`, PI ≥ 2.0 = polarisiert. **Phasen-Ziel** (pyramidal/polarisiert/regenerativ)
+  als Soll-Band. Neuer Flag `realPolarizationFlag` in „Bewertung der realen Woche" (WeekReport).
+  Neue Spalten `zone_sets.lt1_hr/lt1_pace` (LT1-Anker, Default = Z2/Z3-Grenze, von G3 überschreibbar).
+- **Laktat-/Feldtest-Diagnostik (G3, Profil-Seite):** vollständige Stufentest-Eingabe (km/h + Pace + HF +
+  Laktat + RPE), automatische Berechnung von **LT1** (Baseline + 0.4 mmol/L) und **LT2** (modifizierter Dmax,
+  AIS) in s/km und bpm. **Schwellen-Trend-Chart** (min. 2 Tests). **Zonen-Set-Vorschlag** aus LT1/LT2 (verankert
+  Z2-Top=LT1, Z4-Top=LT2) — Vorschlag-Modus, du bestätigst via `addZoneset`. Neuer Endpoint `/api/lactate-tests`
+  (CRUD + Punkte) + `/api/lactate-tests/:id/propose-zoneset`. Neues Modul `server/lactate.ts` (pure, keine DB).
+  Neue Tabellen `lactate_tests` / `lactate_points` (additiv).
+- **Wochen-/Block-Empfehlungs-Engine (WeekPlan):** regelbasierter Vorschlag für die Wochenstruktur aus Form
+  (TSB/CTL), Saison-Phase, Readiness und Periodisierungs-Modell (Block ≥ traditionell bei Specific). Liefert
+  Schlüsseleinheiten + TSS-Anteile + Verteilungs-Ziel + Begründung + Konfidenz. Button „In Wochenplanung
+  übernehmen" fügt Einheiten additiv ein (Vorschlag-Modus). Endpoint `GET /api/plan/week-suggestion`.
+  `weekStructureRecommendation()` in `analysis.ts`.
+
+### Geändert
+- `server/zones.ts` / lokales `effectiveZoneSet` in `index.ts`: LT1-Felder hinzugefügt, Default aus Z2/Z3-Grenze.
+- `AnalyzeResult` (api.ts): `physioDist`, `polarizationIndex`, `phaseTarget`, `realPolarizationFlag` ergänzt.
+
+### Datenbank
+- `zone_sets.lt1_hr` (REAL, additiv, NULL = Schätzwert aus Z2-Top).
+- `zone_sets.lt1_pace` (REAL, additiv, NULL = keine Pace-Schätzung).
+- `lactate_tests` (neue Tabelle, profilgefiltert).
+- `lactate_points` (neue Tabelle, FK auf test_id).
+
+---
+
 ## [1.2.0] – 2026-06-23 — Coach „Heute", Readiness, aerobe Entkopplung & Monotonie/Strain
 
 Erste Runde der sportwissenschaftlichen Meta-Studie (Intelligenz- & Analytik-Pfeiler). Alles regelbasiert/

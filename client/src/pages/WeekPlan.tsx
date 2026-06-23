@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race } from "../lib/api.ts";
+import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
@@ -27,6 +27,46 @@ export default function WeekPlan() {
   const [templates, setTemplates] = useState<SessionTemplate[]>([]);
   const [openTplDay, setOpenTplDay] = useState<string | null>(null);
   const [showManager, setShowManager] = useState(false);
+  // Engine: Wochen-Vorschlag (v1.3.0)
+  const [suggestion, setSuggestion] = useState<WeekSuggestionResult | null>(null);
+  const [suggOpen, setSuggOpen] = useState(false);
+  const [suggBusy, setSuggBusy] = useState(false);
+  const [suggMsg, setSuggMsg] = useState("");
+
+  async function loadSuggestion() {
+    if (weekNo == null || suggBusy) return;
+    setSuggBusy(true); setSuggMsg("");
+    try { setSuggestion(await api.weekSuggestion(weekNo)); setSuggOpen(true); }
+    catch (e: any) { setSuggMsg(String(e)); }
+    finally { setSuggBusy(false); }
+  }
+
+  async function applySuggestion() {
+    if (!suggestion || !week) return;
+    const rec = suggestion.recommendation;
+    // Für jede vorgeschlagene Session-Art eine neue planned_session anlegen (additiv, Vorschlag-Modus).
+    const tssPerSession: Record<string, number> = {};
+    for (const s of rec.sessions) {
+      tssPerSession[s.type] = Math.round(rec.tssRange.target * (s.tssShare / 100) / s.count);
+    }
+    const days = daysOfWeek(week.start_date);
+    let di = 0;
+    const toAdd: { date: string; type: string; tss: number }[] = [];
+    for (const s of rec.sessions) {
+      for (let i = 0; i < s.count; i++) {
+        const date = days[di % days.length];
+        di++;
+        toAdd.push({ date, type: s.type, tss: tssPerSession[s.type] || 0 });
+      }
+    }
+    for (const item of toAdd) {
+      await api.addSession({ week_no: week.week_no, date: item.date, type: item.type, sport: "Run", planned_tss: item.tss });
+    }
+    setSuggOpen(false);
+    setSuggestion(null);
+    reload();
+    setSuggMsg(`${toAdd.length} Einheiten aus Vorschlag angelegt.`);
+  }
 
   async function reload() {
     if (weekNo == null) return;
@@ -163,6 +203,52 @@ export default function WeekPlan() {
               onBlur={(e) => saveTargetKm(num(e.target.value))} title="Wochen-Ziel-km (wirkt auf den Volumen-Check; gleiche Quelle wie im Saisonplan)" />
           </label>
         </div>
+      </div>
+
+      {/* Engine: Wochen-Vorschlag (v1.3.0, Vorschlag-Modus) */}
+      <div className="card tight no-print" style={{ marginBottom: 8 }}>
+        <div className="spread">
+          <div className="row" style={{ gap: 8 }}>
+            <button className="sm ghost" onClick={loadSuggestion} disabled={suggBusy} title="Regelbasierter Wochen-Vorschlag aus Form, Readiness & Saison-Phase">
+              {suggBusy ? "…" : "▶ Wochen-Vorschlag"}
+            </button>
+            {suggMsg && <span style={{ fontSize: 12, color: "var(--ok-color, #22c55e)" }}>{suggMsg}</span>}
+          </div>
+          {suggOpen && suggestion && <button className="sm ghost" onClick={() => setSuggOpen(false)}>▲ schließen</button>}
+        </div>
+        {suggOpen && suggestion && (() => {
+          const rec = suggestion.recommendation;
+          const confCol = rec.confidence === "hoch" ? "var(--ok)" : rec.confidence === "mittel" ? "var(--warn)" : "#888";
+          return (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 14 }}>{rec.headline}</strong>
+                <span style={{ fontSize: 11, color: confCol }}>Konfidenz: {rec.confidence}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{rec.periodizationModel === "block" ? "Block" : "Traditionell"} · {rec.distTarget.label}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>TSS-Ziel: {rec.tssRange.min}–{rec.tssRange.max} ({rec.tssRange.kind})</span>
+              </div>
+              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {rec.sessions.map((s, i) => (
+                  <span key={i} style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, background: "var(--surface2, #f1f5f9)", border: "1px solid var(--border)" }}>
+                    {s.count}× <strong>{s.type}</strong> ({s.tssShare}% TSS) — {s.hint}
+                  </span>
+                ))}
+              </div>
+              <details style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
+                <summary style={{ cursor: "pointer" }}>Begründung ({rec.reasons.length})</summary>
+                <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                  {rec.reasons.map((r, i) => <li key={i}>{r.text}</li>)}
+                </ul>
+              </details>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={applySuggestion} title="Fügt die vorgeschlagenen Einheiten additiv in die Wochenplanung ein — nichts wird gelöscht. Du kannst danach alles anpassen.">
+                  In Wochenplanung übernehmen
+                </button>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Additiv — bestehende Einheiten bleiben.</span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", alignItems: "start" }}>

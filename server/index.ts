@@ -18,6 +18,7 @@ import {
   type PmcPoint,
 } from "./load.ts";
 import { vo2maxLevel } from "./norms.ts";
+import { lactateThresholds, proposedHrBounds, proposedPaceBounds, type LactatePoint as LacPoint } from "./lactate.ts";
 import {
   weekTotals,
   analyzeWeek,
@@ -29,6 +30,11 @@ import {
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  physioTimeZones,
+  polarizationIndex,
+  phaseDistributionTarget,
+  polarizationFlag,
+  weekStructureRecommendation,
   trainingMonotonyStrain,
   readinessScore,
   dailyRecommendation,
@@ -80,6 +86,8 @@ interface ZoneSetRow {
   lthr: number;
   ftp: number;
   threshold_pace: number;
+  lt1_hr: number | null;
+  lt1_pace: number | null;
   source: string;
   note: string;
 }
@@ -87,20 +95,29 @@ interface ZoneSetRow {
 function effectiveZoneSet(date: string) {
   const rows = db.prepare("SELECT * FROM zone_sets WHERE profile_id=? ORDER BY valid_from").all(pid()) as unknown as ZoneSetRow[];
   if (!rows.length) {
-    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], hr_zones_bike: null as HrZone[] | null, pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
+    const dh = DEFAULT_HR_ZONES as HrZone[];
+    return { id: 0, hr_zones: dh, hr_zones_bike: null as HrZone[] | null, pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230, lt1_hr: dh[1]?.max ?? 155, lt1_pace: null as number | null };
   }
   let pick = rows[0];
   for (const r of rows) if (r.valid_from <= date) pick = r;
+  const hr = parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]);
+  const pace = parseJson<number[]>(pick.pace_zones, []);
+  const lthr = pick.lthr ?? 172;
+  // LT1-Default (G4): Z2/Z3-Grenze ≈ aerobe Schwelle; G3 (Laktat) überschreibt mit Messwerten.
+  const lt1_hr = pick.lt1_hr ?? (hr.length >= 2 && hr[1].max ? hr[1].max : Math.round(lthr * 0.9));
+  const lt1_pace = pick.lt1_pace ?? (pace.length >= 2 ? pace[1] : null);
   return {
     id: pick.id,
-    hr_zones: parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]),
+    hr_zones: hr,
     hr_zones_bike: pick.hr_zones_bike ? parseJson<HrZone[]>(pick.hr_zones_bike, []) : null,
-    pace_zones: parseJson<number[]>(pick.pace_zones, []),
+    pace_zones: pace,
     speed_zones: parseJson<number[]>(pick.speed_zones, []),
     power_zones: parseJson<number[]>(pick.power_zones, []),
-    lthr: pick.lthr ?? 172,
+    lthr,
     ftp: pick.ftp ?? 265,
     threshold_pace: pick.threshold_pace ?? 230,
+    lt1_hr,
+    lt1_pace,
   };
 }
 
@@ -418,6 +435,136 @@ app.post("/api/races/import-from-season", (_req, res) => {
   }
   setSetting(ledgerKey, [...seen]);
   res.json({ created });
+});
+
+// ---- Laktat-/Feldtest-Diagnostik (G3, v1.3.0) ----------------------------
+
+app.get("/api/lactate-tests", (_req, res) => {
+  const rows = db.prepare("SELECT * FROM lactate_tests WHERE profile_id=? ORDER BY date DESC").all(pid()) as any[];
+  res.json(rows.map((r) => ({ ...r, warnings: parseJson(r.warnings, []) })));
+});
+
+app.get("/api/lactate-tests/:id", (req, res) => {
+  const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!test) return res.status(404).json({ error: "Test nicht gefunden" });
+  const points = db.prepare("SELECT * FROM lactate_points WHERE test_id=? ORDER BY stage, speed_kmh").all(test.id) as any[];
+  res.json({ ...test, warnings: parseJson(test.warnings, []), points });
+});
+
+app.post("/api/lactate-tests", (req, res) => {
+  const b = req.body || {};
+  const points: LacPoint[] = Array.isArray(b.points) ? b.points : [];
+  // Schwellen berechnen
+  const calc = lactateThresholds(points);
+  const r = db.prepare(
+    `INSERT INTO lactate_tests(profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr, lt2_pace, confidence, warnings, created_at)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    pid(), b.date || todayIso(), b.sport || "Run", b.kind || null, b.notes || null,
+    calc.lt1?.hr ?? null, calc.lt1?.pace_s ?? null,
+    calc.lt2?.hr ?? null, calc.lt2?.pace_s ?? null,
+    calc.confidence, JSON.stringify(calc.warnings), todayIso(),
+  );
+  const testId = Number(r.lastInsertRowid);
+  if (points.length) {
+    const ins = db.prepare("INSERT INTO lactate_points(test_id,stage,speed_kmh,pace_s,power_w,hr,lactate,rpe) VALUES(?,?,?,?,?,?,?,?)");
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const kmh = p.speed_kmh ?? (p.pace_s ? 3600 / p.pace_s : null);
+      const pace = p.pace_s ?? (p.speed_kmh ? Math.round(3600 / p.speed_kmh) : null);
+      ins.run(testId, p.stage ?? i + 1, kmh, pace, p.power_w ?? null, p.hr ?? null, p.lactate, p.rpe ?? null);
+    }
+  }
+  res.json({ id: testId, lt1: calc.lt1, lt2: calc.lt2, confidence: calc.confidence, warnings: calc.warnings });
+});
+
+app.put("/api/lactate-tests/:id", (req, res) => {
+  const b = req.body || {};
+  const existing = db.prepare("SELECT id FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid());
+  if (!existing) return res.status(404).json({ error: "Test nicht gefunden" });
+  const points: LacPoint[] = Array.isArray(b.points) ? b.points : [];
+  const calc = points.length ? lactateThresholds(points) : null;
+  db.prepare(
+    `UPDATE lactate_tests SET date=?, sport=?, kind=?, notes=?, lt1_hr=?, lt1_pace=?, lt2_hr=?, lt2_pace=?, confidence=?, warnings=? WHERE id=?`,
+  ).run(
+    b.date, b.sport || "Run", b.kind || null, b.notes || null,
+    calc?.lt1?.hr ?? b.lt1_hr ?? null, calc?.lt1?.pace_s ?? b.lt1_pace ?? null,
+    calc?.lt2?.hr ?? b.lt2_hr ?? null, calc?.lt2?.pace_s ?? b.lt2_pace ?? null,
+    calc?.confidence ?? b.confidence ?? null, JSON.stringify(calc?.warnings ?? b.warnings ?? []),
+    req.params.id,
+  );
+  if (points.length) {
+    db.prepare("DELETE FROM lactate_points WHERE test_id=?").run(req.params.id);
+    const ins = db.prepare("INSERT INTO lactate_points(test_id,stage,speed_kmh,pace_s,power_w,hr,lactate,rpe) VALUES(?,?,?,?,?,?,?,?)");
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const kmh = p.speed_kmh ?? (p.pace_s ? 3600 / p.pace_s : null);
+      const pace = p.pace_s ?? (p.speed_kmh ? Math.round(3600 / p.speed_kmh) : null);
+      ins.run(req.params.id, p.stage ?? i + 1, kmh, pace, p.power_w ?? null, p.hr ?? null, p.lactate, p.rpe ?? null);
+    }
+  }
+  res.json({ ok: true, ...(calc ? { lt1: calc.lt1, lt2: calc.lt2, confidence: calc.confidence, warnings: calc.warnings } : {}) });
+});
+
+app.delete("/api/lactate-tests/:id", (req, res) => {
+  db.prepare("DELETE FROM lactate_points WHERE test_id=?").run(req.params.id);
+  db.prepare("DELETE FROM lactate_tests WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
+});
+
+/** Zonen-Set aus Laktat-Test vorschlagen (schreibt NICHT — Nutzer bestätigt via POST /api/zonesets). */
+app.post("/api/lactate-tests/:id/propose-zoneset", (req, res) => {
+  const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!test) return res.status(404).json({ error: "Test nicht gefunden" });
+  const lt1Hr = test.lt1_hr, lt2Hr = test.lt2_hr, lt1Pace = test.lt1_pace, lt2Pace = test.lt2_pace;
+  if (!lt1Hr || !lt2Hr) return res.status(422).json({ error: "Keine LT1/LT2-HF im Test — Neuberechnung nötig." });
+  const maxHr = req.body?.max_hr ?? null;
+  const hrBounds = proposedHrBounds(lt1Hr, lt2Hr, maxHr);
+  const hrZones: HrZone[] = (DEFAULT_HR_ZONES as HrZone[]).map((z, i) => ({
+    z: z.z, min: i === 0 ? 0 : hrBounds[i - 1] + 1, max: hrBounds[i], label: z.label, color: z.color,
+  }));
+  const paceBounds = lt1Pace && lt2Pace ? proposedPaceBounds(lt1Pace, lt2Pace) : [];
+  res.json({
+    valid_from: test.date,
+    lthr: Math.round(lt2Hr),
+    threshold_pace: lt2Pace ? Math.round(lt2Pace) : null,
+    lt1_hr: Math.round(lt1Hr),
+    lt1_pace: lt1Pace ? Math.round(lt1Pace) : null,
+    hr_zones: hrZones,
+    pace_zones: paceBounds,
+    source: `laktat-test-${test.id}`,
+    note: `Vorschlag aus Laktat-Test ${test.date} (${test.sport})`,
+  });
+});
+
+// ---- Wochen-/Block-Empfehlung (Engine, v1.3.0) ---------------------------
+
+app.get("/api/plan/week-suggestion", (req, res) => {
+  const weekNo = req.query.week ? Number(req.query.week) : null;
+  const wk = weekNo != null
+    ? db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(pid(), weekNo) as any
+    : null;
+  const phase = wk?.phase ?? null;
+
+  // Form: PMC bis heute (identisch mit /api/today-Pattern)
+  const today = todayIso();
+  const from = minIso(earliestDataDate() ?? today, today);
+  const pmcAll = computePmc(dailyTssMap(from, today), from, today, today);
+  const last = pmcAll.length ? pmcAll[pmcAll.length - 1] : null;
+  const ctl = last?.ctl ?? 0;
+  const tsb = last?.tsb ?? null;
+  const ramp = ctlRamp(pmcAll, 7);
+
+  // Readiness (heute) — identisch mit /api/today-Pattern
+  const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), today) as { hrv: number }[]).map(r => r.hrv);
+  const hrvBaseline = baseHrv.length >= 3
+    ? (() => { const mean = baseHrv.reduce((a, b) => a + b, 0) / baseHrv.length; const sd = Math.sqrt(baseHrv.reduce((a, b) => a + (b - mean) ** 2, 0) / baseHrv.length); return { mean, sd }; })()
+    : null;
+  const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
+  const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
+
+  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null });
+  res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec });
 });
 
 // ---- Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8) -----------------------
@@ -1387,6 +1534,12 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const realLoadFlag = weekLoadFlag(realRating);
   const realKmFlag = kmPolarizationFlag(realKmIntensity);
 
+  // Echte Zeit-in-Zone-Verteilung (G4, v1.3.0): 3 Zonen gegen LT1/LT2 + Polarisierungs-Index + Phasen-Ziel.
+  const physioDist = physioTimeZones(realZoneMin, zs.hr_zones, zs.lt1_hr, zs.lthr);
+  const polIndex = polarizationIndex(physioDist.z1, physioDist.z2, physioDist.z3);
+  const phaseTarget = phaseDistributionTarget(wk?.phase);
+  const realPolarizationFlag = polarizationFlag(physioDist, phaseTarget, polIndex);
+
   // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).
   let monotony: ReturnType<typeof trainingMonotonyStrain> = { monotony: 0, strain: 0, weekTss: 0, flag: null };
   if (wk) {
@@ -1404,6 +1557,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
     realLoadFlag, realKmFlag, adherence, tssRec,
     monotony: monotony.monotony, strain: monotony.strain, monotonyFlag: monotony.flag,
+    physioDist, polarizationIndex: polIndex, phaseTarget, realPolarizationFlag,
   });
 });
 

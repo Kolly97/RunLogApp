@@ -438,12 +438,12 @@ export default function WeekReport() {
         )}</EgItem>
 
         {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
-        {analyze && (analyze.realLoadFlag || analyze.realKmFlag || analyze.monotonyFlag) && (
+        {analyze && (analyze.realLoadFlag || analyze.realKmFlag || analyze.monotonyFlag || analyze.realPolarizationFlag) && (
           <EgItem id="realflags" title={t("report.tile.realflags", "Bewertung der realen Woche")} defaultSpan={12} defaultHeight={96}>{() => (
             <div className="chart-card mt">
               <h3><T k="report.tile.realflags">Bewertung der realen Woche</T></h3>
               <div className="flag-row">
-                {[analyze.realLoadFlag, analyze.realKmFlag, analyze.monotonyFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
+                {[analyze.realLoadFlag, analyze.realKmFlag, analyze.realPolarizationFlag, analyze.monotonyFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
                   <div key={i} className={"flag " + f.level}><span className="dot" /><span>{renderFlag(f, t)}</span></div>
                 ))}
               </div>
