@@ -87,7 +87,16 @@ Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v1.2.0**.
 ## Desktop-App (Electron)
 Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mit Desktop-Icon, ganz ohne Terminal:
 
-- **macOS:** `RunLog-<version>-arm64.dmg` herunterladen, öffnen, RunLog in den Programme-Ordner ziehen, fertig.
+- **macOS:** `RunLog-<version>-arm64.dmg` herunterladen, öffnen, RunLog in den Programme-Ordner ziehen.
+  Da die App nicht signiert/notarisiert ist, blockt macOS sie beim ersten Start (Gatekeeper) — oft mit der Meldung
+  „… ist beschädigt" oder „… kann nicht geöffnet werden, da Apple sie nicht auf Schadsoftware prüfen kann". Einmalig
+  das Quarantäne-Flag entfernen, dann startet die App normal:
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/RunLog.app
+  ```
+  (Alternativ bei der „nicht verifizierter Entwickler"-Meldung: **Rechtsklick auf die App → Öffnen**, bzw.
+  **Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen"**. Bei der „beschädigt"-Meldung hilft nur
+  der `xattr`-Befehl oben.)
 - **Windows:** `RunLog-Setup-<version>.exe` herunterladen und ausführen. Der Installations-Assistent führt durch
   Pfadwahl und legt Startmenü-Eintrag + Deinstaller an. Da der Installer nicht signiert ist, meldet sich beim
   ersten Start ggf. der Windows-SmartScreen („Unbekannter Herausgeber") → **Weitere Informationen → Trotzdem ausführen**.

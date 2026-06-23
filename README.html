@@ -329,7 +329,8 @@ npm run dev          # → http://localhost:5173</code></pre>
         <h3><span class="os-icon">🍎</span> macOS</h3>
         <p>Datei: <code>RunLog-1.0.0-arm64.dmg</code></p>
         <p>Herunterladen → öffnen → RunLog in Programme-Ordner ziehen.</p>
-        <p style="color:var(--muted);font-size:.82rem;">Datenpfad: <code>~/Library/Application Support/RunLog</code></p>
+        <div class="warn">⚠ Gatekeeper (App unsigniert): Meldung „… ist beschädigt" oder „Apple kann nicht auf Schadsoftware prüfen". Einmalig im Terminal das Quarantäne-Flag entfernen:<br><code>xattr -dr com.apple.quarantine /Applications/RunLog.app</code></div>
+        <p style="color:var(--muted);font-size:.82rem;margin-top:.5rem;">Datenpfad: <code>~/Library/Application Support/RunLog</code></p>
       </div>
       <div class="dl-card">
         <h3><span class="os-icon">🪟</span> Windows</h3>
