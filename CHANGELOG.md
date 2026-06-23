@@ -4,6 +4,24 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.2.0] – 2026-06-23 — Coach „Heute", Readiness, aerobe Entkopplung & Monotonie/Strain
+
+Erste Runde der sportwissenschaftlichen Meta-Studie (Intelligenz- & Analytik-Pfeiler). Alles regelbasiert/
+lokal, erklärbar, Vorschlag-Modus (ändert nie ungefragt).
+
+### Hinzugefügt
+- **Coach-Karte „Heute"** (Dashboard, `GET /api/today`): regelbasierte Tages-Empfehlung aus Form (TSB/CTL-Ramp),
+  Readiness, Saison-Phase und Wochen-TSS-Ziel — mit **aufklappbarer Begründung** und „In Wochenplanung öffnen".
+  Decision-Tree in `dailyRecommendation()` (`analysis.ts`), voll erklärbar (keine LLM).
+- **Readiness-Score (advisory):** morgendliche **HRV gegen rollende 7-Tage-Baseline** (z-Score) als Kern, plus
+  Recovery/Schlaf/Muskelkater als Modifikatoren → Score 0–100 + Ampel (grün/gelb/rot). Beeinflusst die
+  Empfehlung als Hinweis, gated nicht zwingend (Evidenz: HRV-gesteuert ≥ feste Pläne). `readinessScore()`.
+- **Aerobe Entkopplung (Pa:HR, Friel):** je Lauf aus dem Velocity-/HF-Stream berechnet (Effizienz Speed/HF
+  2. vs. 1. Hälfte), Ampel <5 %/5–10 %/>10 %. Anzeige im Tracking & Wochenbericht. Neue Spalte
+  `activities.decoupling`; „Details/Splits nachziehen" füllt den Altbestand budgetiert nach (Läufe ≥ 20 min mit HF).
+- **Trainings-Monotonie & -Strain (Foster):** `Monotonie = Ø/SD der Tageslast`, `Strain = Wochenlast × Monotonie`
+  → Schild in der „Bewertung der realen Woche" (Infekt-/Übertrainings-Frühwarner). `trainingMonotonyStrain()`.
+
 ## [1.1.0] – 2026-06-17 — Editierbares Layout, WYSIWYG-Druck, Motion-System & Auswahllisten-Redesign
 
 ### Hinzugefügt

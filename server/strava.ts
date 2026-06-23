@@ -6,7 +6,7 @@
 // Credentials (Client-ID/Secret der eigenen Strava-API-App) liegen in settings; Tokens ebenso.
 import type { Request, Response } from "express";
 import { db, getSetting, setSetting, activeProfile } from "./db.ts";
-import { runTss, computeNgp, computeNp, streamZoneSplit, paceZoneSplit, powerTss, bikeTssEstimate, computeKmSplits } from "./load.ts";
+import { runTss, computeNgp, computeNp, streamZoneSplit, paceZoneSplit, powerTss, bikeTssEstimate, computeKmSplits, aerobicDecoupling } from "./load.ts";
 import { effectiveZoneSet } from "./zones.ts";
 
 const API = "https://www.strava.com/api/v3";
@@ -317,17 +317,18 @@ function parseBestEfforts(arr: any): Record<number, number> {
 async function enrichBudgeted(profile: number, after: string): Promise<number> {
   const candidates = db
     .prepare(
-      `SELECT id, strava_id, sport, type, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts, efforts_locked, best_efforts FROM activities
+      `SELECT id, strava_id, sport, type, date, distance_m, moving_s, avg_power, desc_fetched, streams_fetched, laps_fetched, efforts, efforts_locked, best_efforts, decoupling FROM activities
        WHERE source='strava' AND profile_id=? AND date >= ?
          AND (desc_fetched=0
               OR (sport='Run' AND best_efforts IS NULL)
               OR ((sport='Run' OR sport LIKE 'Bike%') AND streams_fetched=0)
               OR ((sport='Run' OR sport LIKE 'Bike%') AND laps_fetched=0 AND COALESCE(efforts_locked,0)=0
-                  AND (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]')))
+                  AND (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]'))
+              OR (sport='Run' AND streams_fetched=1 AND decoupling IS NULL AND avg_hr IS NOT NULL AND moving_s >= 1200))
        ORDER BY date DESC LIMIT ?`,
     )
     .all(profile, after, DETAIL_BUDGET_PER_SYNC) as
-    { id: number; strava_id: string; sport: string; type: string | null; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null; efforts_locked: number | null; best_efforts: string | null }[];
+    { id: number; strava_id: string; sport: string; type: string | null; date: string; distance_m: number | null; moving_s: number | null; avg_power: number | null; desc_fetched: number; streams_fetched: number; laps_fetched: number; efforts: string | null; efforts_locked: number | null; best_efforts: string | null; decoupling: number | null }[];
 
   const updDesc = db.prepare(
     "UPDATE activities SET kcal=COALESCE(?, kcal), " +
@@ -338,7 +339,7 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
       "zone_min=CASE WHEN (zone_min IS NULL OR zone_min='' OR zone_min='null') THEN ? ELSE zone_min END, " +
       "zone_km=CASE WHEN (zone_km IS NULL OR zone_km='' OR zone_km='null') THEN ? ELSE zone_km END, " +
       "pace_zone_min=CASE WHEN (pace_zone_min IS NULL OR pace_zone_min='' OR pace_zone_min='null') THEN ? ELSE pace_zone_min END, " +
-      "ngp=?, np=?, tss=COALESCE(?, tss), streams_fetched=1 WHERE id=?",
+      "ngp=?, np=?, tss=COALESCE(?, tss), decoupling=COALESCE(?, decoupling), streams_fetched=1 WHERE id=?",
   );
   const updLaps = db.prepare(
     "UPDATE activities SET efforts=CASE WHEN (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]') THEN ? ELSE efforts END, laps_fetched=1 WHERE id=? AND COALESCE(efforts_locked,0)=0",
@@ -361,7 +362,9 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
         if (isRun) updBests.run(JSON.stringify(parseBestEfforts(d.best_efforts)), c.id);
         enriched++;
       }
-      if (!c.streams_fetched && (isRun || isBike)) {
+      // Streams holen, wenn noch nicht geholt ODER Lauf ohne Entkopplung nachfüllen (v1.2.0 Backfill).
+      const needDecoup = isRun && c.streams_fetched === 1 && c.decoupling == null && (c.moving_s ?? 0) >= 1200;
+      if ((!c.streams_fetched || needDecoup) && (isRun || isBike)) {
         if (reqs >= MAX_REQ) break;
         const keys = isRun ? "time,heartrate,velocity_smooth,grade_smooth,distance" : "time,heartrate,watts";
         const s = (await api(`/activities/${c.strava_id}/streams?keys=${keys}&key_by_type=true`)) as any; reqs++;
@@ -381,12 +384,14 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
           zoneKmJson = Object.keys(zKm).length ? JSON.stringify(zKm) : null;
         }
         let ngp: number | null = null, np: number | null = null, tss: number | null = null;
-        let paceZoneMinJson: string | null = null;
+        let paceZoneMinJson: string | null = null, decoupling: number | null = null;
         if (isRun) {
           const vel: number[] = s?.velocity_smooth?.data ?? [];
           const grade: number[] = s?.grade_smooth?.data ?? [];
           ngp = vel.length && grade.length && time.length ? computeNgp(vel, grade, time) : null;
           tss = runTss(c.distance_m ?? 0, c.moving_s ?? 0, zsA.threshold_pace, ngp);
+          // Aerobe Entkopplung (Pa:HR) aus Velocity+HF-Stream (v1.2.0).
+          decoupling = vel.length && hr.length && time.length ? aerobicDecoupling(vel, hr, time) : null;
           // Zeit je Pace-Zone (für Plan-Erfüllung, v0.14.0) — aus demselben Velocity-Stream.
           if (vel.length && time.length) {
             const pzSec = paceZoneSplit(vel, time, zsA.pace_zones);
@@ -400,7 +405,7 @@ async function enrichBudgeted(profile: number, after: string): Promise<number> {
           const power = np ?? c.avg_power ?? null;
           tss = power && zsA.ftp ? powerTss(c.moving_s ?? 0, power, zsA.ftp) : bikeTssEstimate((c.moving_s ?? 0) / 60, "Easy");
         }
-        updStream.run(zoneMinJson, zoneKmJson, paceZoneMinJson, ngp, np, tss || null, c.id);
+        updStream.run(zoneMinJson, zoneKmJson, paceZoneMinJson, ngp, np, tss || null, decoupling, c.id);
         // Race aus Tracking (v0.14.0): km-Splits aus den Streams berechnen und am verknüpften Race
         // ablegen — nur in leere Splits (manuelle Edits bleiben erhalten).
         if (c.type === "Race" && dist.length && time.length) {

@@ -261,6 +261,33 @@ export function paceZoneSplit(vel: number[], time: number[], paceZones?: number[
   return sec;
 }
 
+/**
+ * Aerobe Entkopplung (Pa:HR, Friel — v1.2.0): %-Abweichung der Effizienz (Speed/HF) zweite vs. erste
+ * Lauf-Hälfte. <5 % = solide aerobe Haltbarkeit, 5–10 % mittel, >10 % schwach. Positiv = Pace fällt
+ * relativ zur HF (Ermüdung). Nur für längere (≥ 20 min) gleichmäßige Läufe sinnvoll; sonst null.
+ */
+export function aerobicDecoupling(velocity: number[], hr: number[], time: number[]): number | null {
+  const n = Math.min(velocity.length, hr.length, time.length);
+  if (n < 60) return null;
+  const total = (time[n - 1] ?? 0) - (time[0] ?? 0);
+  if (total < 1200) return null; // < 20 min → wenig aussagekräftig
+  const mid = (time[0] ?? 0) + total / 2;
+  let s1 = 0, c1 = 0, h1 = 0, hc1 = 0, s2 = 0, c2 = 0, h2 = 0, hc2 = 0;
+  for (let i = 1; i < n; i++) {
+    const dt = (time[i] ?? i) - (time[i - 1] ?? i - 1);
+    if (dt <= 0 || dt > 30) continue; // Lücken/Pausen überspringen
+    const v = velocity[i] ?? 0, b = hr[i] ?? 0;
+    if (v <= 0.3 || b <= 0) continue; // in Bewegung + gültige HF
+    if ((time[i] ?? 0) < mid) { s1 += v * dt; c1 += dt; h1 += b * dt; hc1 += dt; }
+    else { s2 += v * dt; c2 += dt; h2 += b * dt; hc2 += dt; }
+  }
+  if (c1 < 60 || c2 < 60 || hc1 < 60 || hc2 < 60) return null;
+  const ef1 = (s1 / c1) / (h1 / hc1); // Speed/HF erste Hälfte
+  const ef2 = (s2 / c2) / (h2 / hc2);
+  if (!(ef1 > 0)) return null;
+  return Math.round(((ef1 - ef2) / ef1) * 1000) / 10; // % auf 0.1 genau
+}
+
 /** Power-TSS fürs Rad: IF = NP/FTP. */
 export function powerTss(movingSec: number, avgPower: number, ftp: number): number {
   if (!movingSec || !avgPower || !ftp) return 0;

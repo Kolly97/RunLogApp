@@ -29,6 +29,9 @@ import {
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  trainingMonotonyStrain,
+  readinessScore,
+  dailyRecommendation,
   tssRecommendation,
   sessionCompletion,
   type IntLevel,
@@ -1384,11 +1387,59 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const realLoadFlag = weekLoadFlag(realRating);
   const realKmFlag = kmPolarizationFlag(realKmIntensity);
 
+  // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).
+  let monotony: ReturnType<typeof trainingMonotonyStrain> = { monotony: 0, strain: 0, weekTss: 0, flag: null };
+  if (wk) {
+    const dayMap = new Map<string, number>(
+      (db.prepare("SELECT date, SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ? GROUP BY date").all(pid(), wk.start_date, wk.end_date) as { date: string; s: number }[]).map((r) => [r.date, r.s]),
+    );
+    const days: number[] = [];
+    for (let d = wk.start_date; d <= wk.end_date; d = addDaysIso(d, 1)) days.push(dayMap.get(d) || 0);
+    monotony = trainingMonotonyStrain(days);
+  }
+
   res.json({
     totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
     realZoneMin, realZoneKm, realByCategory,
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
     realLoadFlag, realKmFlag, adherence, tssRec,
+    monotony: monotony.monotony, strain: monotony.strain, monotonyFlag: monotony.flag,
+  });
+});
+
+// ---- Coach „Heute" (v1.2.0): Readiness + regelbasierte Tages-Empfehlung (Vorschlag-Modus) ----
+app.get("/api/today", (req, res) => {
+  const date = String(req.query.date || todayIso());
+  // Form via PMC bis `date` (aus voller Historie geseedet).
+  const from = minIso(earliestDataDate() ?? date, date);
+  const pmc = computePmc(dailyTssMap(from, date), from, date, todayIso());
+  const lastPt = pmc.length ? pmc[pmc.length - 1] : null;
+  const ramp = ctlRamp(pmc, 7);
+  const ctl = lastPt?.ctl ?? 0, atl = lastPt?.atl ?? 0, tsb = lastPt?.tsb ?? null;
+
+  // Saison-Phase der Woche, die `date` enthält.
+  const wk = db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND start_date<=? AND end_date>=? LIMIT 1").get(pid(), date, date) as any;
+  const phase = wk?.phase ?? null;
+  const weekTssRec = tssRecommendation(ctl, phase);
+
+  // HRV-Baseline (7 Tage vor `date`) + heutige Tagesfaktoren.
+  const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), date) as { hrv: number }[]).map((r) => r.hrv);
+  const hrvBaseline = baseHrv.length >= 3
+    ? (() => { const mean = baseHrv.reduce((a, b) => a + b, 0) / baseHrv.length; const sd = Math.sqrt(baseHrv.reduce((a, b) => a + (b - mean) ** 2, 0) / baseHrv.length); return { mean, sd }; })()
+    : null;
+  const todayRow = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), date) as any;
+  const readiness = readinessScore({
+    hrvToday: todayRow?.hrv ?? null, hrvBaseline,
+    recovery: todayRow?.recovery ?? null, soreness: todayRow?.soreness ?? null, sleepH: todayRow?.sleep_h ?? null,
+  });
+
+  const plannedTypes = (db.prepare("SELECT type FROM planned_sessions WHERE profile_id=? AND date=? AND type!='Rest'").all(pid(), date) as { type: string }[]).map((r) => r.type);
+  const recommendation = dailyRecommendation({ tsb, ctlRamp: ramp, phase, readinessLevel: readiness?.level ?? null, weekTssRec, plannedTypes });
+
+  res.json({
+    date,
+    form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp },
+    phase, weekTssRec, readiness, plannedTypes, recommendation,
   });
 });
 

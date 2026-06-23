@@ -111,6 +111,10 @@ export default function WeekTrack() {
 
 // Wochentag-Switcher (v0.14.0, ToDo 13): Tabs Mo–So mit Farbpunkten je geplanter Einheit (Typ-Farbe)
 // + grünem Punkt, sobald an dem Tag eine Einheit getrackt ist.
+// Aerobe Entkopplung (v1.2.0): <5 % solide / 5–10 % mittel / >10 % schwach; negativ = besser.
+function decouplingColor(v: number): string { return v <= 5 ? "var(--ok)" : v <= 10 ? "var(--warn)" : "var(--danger)"; }
+function decouplingLabel(v: number): string { return `Entk. ${v > 0 ? "+" : ""}${v}%`; }
+
 function dotSize(tss?: number | null): number {
   if (!tss || tss <= 0) return 7;
   return Math.round(Math.max(6, Math.min(14, 6 + Math.sqrt(tss) * 0.75)));
@@ -313,6 +317,7 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
           {tempo && ` · ${tempo}`}
           {a.elevation ? ` · ${Math.round(a.elevation)} hm` : ""}
           {a.avg_hr ? ` · ${Math.round(a.avg_hr)} bpm` : ""}
+          {a.sport === "Run" && a.decoupling != null ? <span style={{ color: decouplingColor(a.decoupling), fontWeight: 600 }}> · {decouplingLabel(a.decoupling)}</span> : ""}
           {a.kcal ? ` · ${Math.round(a.kcal)} kcal` : ""}
           {a.tss ? ` · ${Math.round(a.tss)} TSS` : ""}
         </span>

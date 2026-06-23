@@ -223,6 +223,8 @@ function migrate(): void {
   addColumn("activities", "best_efforts", "TEXT");
   // v0.14.0 (ToDo 12): Zeit je PACE-Zone (JSON {zone: Minuten}) → Plan-Erfüllung (Pace, nicht Puls).
   addColumn("activities", "pace_zone_min", "TEXT");
+  // v1.2.0: aerobe Entkopplung (Pa:HR, %) — aus den Streams bei der Anreicherung berechnet.
+  addColumn("activities", "decoupling", "REAL");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`

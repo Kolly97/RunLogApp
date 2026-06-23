@@ -16,7 +16,7 @@ import OptionsConfig from "./pages/OptionsConfig.tsx";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
-const BUILD_DATE = "17.06.2026";
+const BUILD_DATE = "23.06.2026";
 
 const NAV = [
   { to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true },

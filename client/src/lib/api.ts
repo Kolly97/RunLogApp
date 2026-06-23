@@ -51,6 +51,7 @@ export interface Activity {
   max_hr?: number | null; avg_power?: number | null; elevation?: number | null; avg_cadence?: number | null;
   training_load?: number | null; tss?: number | null; kcal?: number | null;
   ngp?: number | null; np?: number | null; // grade-adjusted Pace (s/km, Lauf) / Normalized Power (W, Rad)
+  decoupling?: number | null; // aerobe Entkopplung Pa:HR (%, Lauf) — v1.2.0
   zones?: Record<number, number> | null; zone_min?: Record<number, number> | null;
   zone_km?: Record<number, number> | null; efforts?: Effort[] | null;
   overrides?: string[]; matched_session_id?: number | null; notes?: string;
@@ -84,6 +85,19 @@ export interface AnalyzeResult {
   adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null };
   // v0.15.0 (O4) — TSS-Wochenempfehlung (Korridor) aus CTL + Saisonplan-Phase, 3:1-Prinzip
   tssRec?: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null;
+  // v1.2.0 — Trainings-Monotonie & -Strain (Foster) der realen Woche
+  monotony?: number; strain?: number; monotonyFlag?: Flag | null;
+}
+
+// v1.2.0 — Coach „Heute": Readiness + regelbasierte Tages-Empfehlung (Vorschlag-Modus).
+export interface TodayResult {
+  date: string;
+  form: { ctl: number; atl: number; tsb: number | null; ramp: number };
+  phase: string | null;
+  weekTssRec: { min: number; max: number; target: number; kind: string } | null;
+  readiness: { score: number; level: "green" | "yellow" | "red"; drivers: { code: string; text: string }[] } | null;
+  plannedTypes: string[];
+  recommendation: { headline: string; sessionType: string; doseHint: string; reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig" };
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -149,6 +163,7 @@ export const api = {
 
   pmc: (from: string, to: string) => j<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number }>(`/api/pmc?from=${from}&to=${to}`),
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),
+  today: (date?: string) => j<TodayResult>(`/api/today${date ? `?date=${date}` : ""}`),
   intervalsTrend: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);

@@ -305,6 +305,127 @@ export function kmPolarizationFlag(zk: { easy: number; mod: number; hard: number
   return { level: "info", code: "km_balanced", message: `km-Polarisierung: ausgewogen — ${note}.`, params: { e, m, h } };
 }
 
+/**
+ * Trainings-Monotonie & -Strain (Foster, v1.2.0): `Monotonie = Ø(Tageslast)/SD(Tageslast)`,
+ * `Strain = Wochenlast × Monotonie`. Hohe Monotonie bei hoher Last → mehr Infekte/Übertraining.
+ * Erwartet die Tageslast (TSS) ALLER Tage der Woche inkl. Ruhetage (0) — die Nullen erzeugen die Varianz.
+ */
+export function trainingMonotonyStrain(dailyTss: number[]): { monotony: number; strain: number; weekTss: number; flag: Flag | null } {
+  const n = dailyTss.length || 1;
+  const weekTss = dailyTss.reduce((a, b) => a + (b || 0), 0);
+  const mean = weekTss / n;
+  const variance = dailyTss.reduce((a, b) => a + ((b || 0) - mean) ** 2, 0) / n;
+  const sd = Math.sqrt(variance);
+  // SD≈0 (alle Tage gleich belastet) → maximale Monotonie; ohne Last → 0.
+  const monotony = sd > 0.01 ? mean / sd : (mean > 0 ? 3 : 0);
+  const m = Math.round(monotony * 100) / 100;
+  const strain = Math.round(weekTss * monotony);
+  let flag: Flag | null = null;
+  if (weekTss > 0) {
+    if (monotony >= 2.0) flag = { level: "warn", code: "monotony_high", message: `Monotonie hoch (${m}) — wenig Variation, Strain ${strain}; Erholungstage einbauen.`, params: { m, strain } };
+    else if (monotony >= 1.5) flag = { level: "info", code: "monotony_mid", message: `Monotonie erhöht (${m}) — auf Erholungstage achten.`, params: { m, strain } };
+    else flag = { level: "ok", code: "monotony_ok", message: `Monotonie ausgewogen (${m}).`, params: { m, strain } };
+  }
+  return { monotony: m, strain, weekTss: Math.round(weekTss), flag };
+}
+
+// ---- Intelligenz-Layer (v1.2.0): Readiness + regelbasierte Tages-Empfehlung ----
+
+export type ReadinessLevel = "green" | "yellow" | "red";
+export interface Readiness {
+  score: number; // 0–100
+  level: ReadinessLevel;
+  drivers: { code: string; text: string }[];
+}
+
+/**
+ * Readiness-Score (v1.2.0, advisory): HRV-Tageswert gegen rollende 7-Tage-Baseline (z-Score) als Kern,
+ * plus Recovery (Whoop) / Schlaf / Muskelkater als Modifikatoren. Evidenz: HRV-gesteuert ≥ feste Pläne
+ * (Kiviniemi; weniger unnötiges HIIT, weniger Negativ-Responder). Liefert null bei zu wenig Daten.
+ */
+export function readinessScore(args: {
+  hrvToday: number | null;
+  hrvBaseline: { mean: number; sd: number } | null;
+  recovery: number | null; // 0–100 (Whoop)
+  soreness: number | null;  // 0–10 (höher = schlechter)
+  sleepH: number | null;
+}): Readiness | null {
+  const hasHrv = args.hrvToday != null && args.hrvBaseline != null && args.hrvBaseline.sd > 0.01;
+  const hasRecovery = args.recovery != null;
+  if (!hasHrv && !hasRecovery) return null; // ohne HRV-Baseline und ohne Recovery keine Aussage
+  const drivers: { code: string; text: string }[] = [];
+  let score = 70; // neutrale Basis
+  if (hasHrv) {
+    const z = (args.hrvToday! - args.hrvBaseline!.mean) / args.hrvBaseline!.sd;
+    score += Math.max(-30, Math.min(20, z * 15));
+    if (z <= -1) drivers.push({ code: "hrv_low", text: `HRV deutlich unter Baseline (z ${z.toFixed(1)})` });
+    else if (z >= 0.5) drivers.push({ code: "hrv_high", text: `HRV über Baseline` });
+  }
+  if (hasRecovery) {
+    score = hasHrv ? score * 0.6 + args.recovery! * 0.4 : args.recovery!; // ohne HRV trägt Recovery allein
+    if (args.recovery! < 50) drivers.push({ code: "recovery_low", text: `Recovery ${Math.round(args.recovery!)} %` });
+  }
+  if (args.soreness != null && args.soreness >= 6) { score -= 10; drivers.push({ code: "soreness", text: `Muskelkater ${args.soreness}/10` }); }
+  if (args.sleepH != null && args.sleepH < 6) { score -= 8; drivers.push({ code: "sleep_low", text: `Schlaf ${args.sleepH} h` }); }
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const level: ReadinessLevel = score >= 67 ? "green" : score >= 40 ? "yellow" : "red";
+  return { score, level, drivers };
+}
+
+export interface DailyRec {
+  headline: string;
+  sessionType: string;
+  doseHint: string;
+  reasons: { code: string; text: string }[];
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+
+/**
+ * Regelbasierte Tages-Empfehlung (v1.2.0, Vorschlag-Modus): Decision-Tree aus Form (TSB/CTL-Ramp),
+ * Readiness, Saison-Phase und Wochen-TSS-Ziel. Vollständig erklärbar (reasons), keine Black-Box.
+ */
+export function dailyRecommendation(args: {
+  tsb: number | null;
+  ctlRamp: number | null;
+  phase: string | null | undefined;
+  readinessLevel: ReadinessLevel | null;
+  weekTssRec: TssRec | null;
+  plannedTypes: string[];
+}): DailyRec {
+  const reasons: { code: string; text: string }[] = [];
+  const p = (args.phase || "").toLowerCase();
+  let sessionType = "Easy";
+  let headline: string;
+  let confidence: DailyRec["confidence"] = "mittel";
+
+  if (args.readinessLevel === "red") {
+    sessionType = "Easy"; headline = "Erholung — locker oder Ruhetag";
+    reasons.push({ code: "readiness_red", text: "Readiness niedrig → heute regenerieren statt belasten" });
+    confidence = "hoch";
+  } else if (p.includes("race week") || p.includes("raceweek") || p.includes("race-week")) {
+    sessionType = "Easy"; headline = "Taper — kurz & locker (ggf. ein paar Steigerungen)";
+    reasons.push({ code: "race_week", text: "Race Week → Frische aufbauen, Last reduzieren" });
+  } else if (p.includes("entlast") || p.includes("deload")) {
+    sessionType = "Easy"; headline = "Entlastungswoche — locker halten";
+    reasons.push({ code: "deload", text: "Entlastungsphase (3:1) → Umfang/Intensität runter" });
+  } else if (args.tsb != null && args.tsb > 5 && args.readinessLevel !== "yellow") {
+    sessionType = "Threshold"; headline = "Qualität möglich — Schwelle/Intervalle";
+    reasons.push({ code: "fresh", text: `Form frisch (TSB ${Math.round(args.tsb)}) + Readiness ok → Schlüsseleinheit` });
+    confidence = "hoch";
+  } else if (args.tsb != null && args.tsb < -20) {
+    sessionType = "Easy"; headline = "Ermüdet — lockerer Dauerlauf";
+    reasons.push({ code: "fatigued", text: `Form ermüdet (TSB ${Math.round(args.tsb)}) → aerob locker` });
+  } else {
+    sessionType = "Easy"; headline = "Lockerer Dauerlauf (Grundlage)";
+    reasons.push({ code: "base", text: "Standard-Grundlageneinheit (Z2)" });
+  }
+  if (args.readinessLevel === "yellow") reasons.push({ code: "readiness_yellow", text: "Readiness mittel → Intensität eher zurückhaltend" });
+  if (args.ctlRamp != null && args.ctlRamp > 8) reasons.push({ code: "ramp_high", text: `CTL-Ramp hoch (${args.ctlRamp}/Woche) — nicht überziehen` });
+  if (args.plannedTypes.length) reasons.push({ code: "already_planned", text: `Heute geplant: ${args.plannedTypes.join(", ")}` });
+  const doseHint = args.weekTssRec ? `Wochen-Ziel ${args.weekTssRec.target} TSS (${args.weekTssRec.kind})` : "";
+  return { headline, sessionType, doseHint, reasons, confidence };
+}
+
 /** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */
 export function zoneKmOf(sessions: PlannedSession[], zones: HrZone[], paceZones?: number[]): Record<number, number> {
   const zk: Record<number, number> = {};

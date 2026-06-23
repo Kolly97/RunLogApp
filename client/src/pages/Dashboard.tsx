@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
@@ -27,6 +27,8 @@ export default function Dashboard() {
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
   const [fit, setFit] = useState<FitnessTrend | null>(null);
+  const [today, setToday] = useState<TodayResult | null>(null);
+  useEffect(() => { api.today().then(setToday).catch(() => setToday(null)); }, []);
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, addDays(todayIso(), 21)) }
@@ -100,6 +102,45 @@ export default function Dashboard() {
 
   function blockCards(): EgBlock[] {
     const list: EgBlock[] = [
+      {
+        id: "today", title: t("dashboard.block.today.title", "Heute — Empfehlung"), defaultSpan: 12, defaultHeight: 150,
+        render: () => (
+          <div className="card">
+            <div className="spread">
+              <h2><T k="dashboard.block.today.title">Heute — Empfehlung</T></h2>
+              <span className="tiny muted"><T k="dashboard.block.today.sub">regelbasiert · Vorschlag</T></span>
+            </div>
+            {!today && <p className="muted tiny">…</p>}
+            {today && (
+              <div>
+                <div className="row" style={{ gap: 14, alignItems: "center", marginBottom: 4 }}>
+                  {today.readiness && (
+                    <span className="row" style={{ gap: 6, width: "auto" }}>
+                      <span className="dot" style={{ background: readinessColor(today.readiness.level), width: 12, height: 12 }} />
+                      <strong><T k="dashboard.today.readiness">Readiness</T> {today.readiness.score}</strong>
+                    </span>
+                  )}
+                  <strong style={{ fontSize: 16 }}>{today.recommendation.headline}</strong>
+                </div>
+                <div className="tiny muted">
+                  {today.recommendation.doseHint}
+                  {today.recommendation.confidence ? ` · ${t("dashboard.today.confidence", "Konfidenz")} ${today.recommendation.confidence}` : ""}
+                </div>
+                <details style={{ marginTop: 6 }}>
+                  <summary className="tiny" style={{ cursor: "pointer" }}><T k="dashboard.today.why">Begründung</T></summary>
+                  <ul className="tiny muted" style={{ margin: "4px 0 0 18px" }}>
+                    {today.readiness?.drivers.map((d, i) => <li key={"r" + i}>{d.text}</li>)}
+                    {today.recommendation.reasons.map((r, i) => <li key={"x" + i}>{r.text}</li>)}
+                  </ul>
+                </details>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <a className="sm ghost" href="/plan"><T k="dashboard.today.toPlan">In Wochenplanung öffnen →</T></a>
+                </div>
+              </div>
+            )}
+          </div>
+        ),
+      },
       {
         id: "pmc", title: t("dashboard.block.pmc.title", "Performance Management Chart"), defaultSpan: 8, defaultHeight: 360,
         render: (h) => (
@@ -194,6 +235,10 @@ function formHint(tsb: number | undefined, t: (k: string, fb?: string) => string
   if (tsb > -10) return t("dashboard.form.neutral", "neutral");
   if (tsb > -25) return t("dashboard.form.tired", "ermüdet (Aufbau)");
   return t("dashboard.form.very_tired", "stark ermüdet");
+}
+
+function readinessColor(level: "green" | "yellow" | "red"): string {
+  return level === "green" ? "var(--ok)" : level === "yellow" ? "var(--warn)" : "var(--danger)";
 }
 
 function maxDate(a: string, b: string) { return a > b ? a : b; }
