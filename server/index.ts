@@ -18,6 +18,8 @@ import {
   type PmcPoint,
 } from "./load.ts";
 import { vo2maxLevel } from "./norms.ts";
+import { lactateThresholds, proposedHrBounds, proposedPaceBounds, type LactatePoint as LacPoint } from "./lactate.ts";
+import { pacingPlan, type PacingProfileKm } from "./pacing.ts";
 import {
   weekTotals,
   analyzeWeek,
@@ -29,17 +31,26 @@ import {
   weekRatingLevel,
   weekLoadFlag,
   kmPolarizationFlag,
+  physioTimeZones,
+  polarizationIndex,
+  phaseDistributionTarget,
+  polarizationFlag,
+  weekStructureRecommendation,
   trainingMonotonyStrain,
   readinessScore,
   dailyRecommendation,
   tssRecommendation,
   sessionCompletion,
+  blockPlan,
+  injuryRiskFlag,
   type IntLevel,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
   type IntervalEffortStat,
+  type BlockWeekInput,
 } from "./analysis.ts";
+import type { Availability } from "./planbuilder.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +91,8 @@ interface ZoneSetRow {
   lthr: number;
   ftp: number;
   threshold_pace: number;
+  lt1_hr: number | null;
+  lt1_pace: number | null;
   source: string;
   note: string;
 }
@@ -87,20 +100,29 @@ interface ZoneSetRow {
 function effectiveZoneSet(date: string) {
   const rows = db.prepare("SELECT * FROM zone_sets WHERE profile_id=? ORDER BY valid_from").all(pid()) as unknown as ZoneSetRow[];
   if (!rows.length) {
-    return { id: 0, hr_zones: DEFAULT_HR_ZONES as HrZone[], hr_zones_bike: null as HrZone[] | null, pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230 };
+    const dh = DEFAULT_HR_ZONES as HrZone[];
+    return { id: 0, hr_zones: dh, hr_zones_bike: null as HrZone[] | null, pace_zones: [] as number[], speed_zones: [] as number[], power_zones: [] as number[], lthr: 172, ftp: 265, threshold_pace: 230, lt1_hr: dh[1]?.max ?? 155, lt1_pace: null as number | null };
   }
   let pick = rows[0];
   for (const r of rows) if (r.valid_from <= date) pick = r;
+  const hr = parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]);
+  const pace = parseJson<number[]>(pick.pace_zones, []);
+  const lthr = pick.lthr ?? 172;
+  // LT1-Default (G4): Z2/Z3-Grenze ≈ aerobe Schwelle; G3 (Laktat) überschreibt mit Messwerten.
+  const lt1_hr = pick.lt1_hr ?? (hr.length >= 2 && hr[1].max ? hr[1].max : Math.round(lthr * 0.9));
+  const lt1_pace = pick.lt1_pace ?? (pace.length >= 2 ? pace[1] : null);
   return {
     id: pick.id,
-    hr_zones: parseJson<HrZone[]>(pick.hr_zones, DEFAULT_HR_ZONES as HrZone[]),
+    hr_zones: hr,
     hr_zones_bike: pick.hr_zones_bike ? parseJson<HrZone[]>(pick.hr_zones_bike, []) : null,
-    pace_zones: parseJson<number[]>(pick.pace_zones, []),
+    pace_zones: pace,
     speed_zones: parseJson<number[]>(pick.speed_zones, []),
     power_zones: parseJson<number[]>(pick.power_zones, []),
-    lthr: pick.lthr ?? 172,
+    lthr,
     ftp: pick.ftp ?? 265,
     threshold_pace: pick.threshold_pace ?? 230,
+    lt1_hr,
+    lt1_pace,
   };
 }
 
@@ -354,6 +376,17 @@ app.post("/api/profiles/:id/reset", (req, res) => {
   }
 });
 
+// ---- Verfügbarkeits-/Präferenz-Profil (v1.4.0, A1) ----------------------
+
+app.get("/api/availability", (_req, res) => {
+  res.json(getSetting<Availability | null>(`availability_${pid()}`, null) ?? null);
+});
+app.put("/api/availability", (req, res) => {
+  const av: Availability = req.body;
+  setSetting(`availability_${pid()}`, av);
+  res.json({ ok: true });
+});
+
 // ---- Races (Wettkämpfe mit Splits, ToDo #24) ----------------------------
 
 app.get("/api/races", (req, res) => {
@@ -418,6 +451,185 @@ app.post("/api/races/import-from-season", (_req, res) => {
   }
   setSetting(ledgerKey, [...seen]);
   res.json({ created });
+});
+
+// ---- Laktat-/Feldtest-Diagnostik (G3, v1.3.0) ----------------------------
+
+app.get("/api/lactate-tests", (_req, res) => {
+  const rows = db.prepare("SELECT * FROM lactate_tests WHERE profile_id=? ORDER BY date DESC").all(pid()) as any[];
+  res.json(rows.map((r) => ({ ...r, warnings: parseJson(r.warnings, []) })));
+});
+
+app.get("/api/lactate-tests/:id", (req, res) => {
+  const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!test) return res.status(404).json({ error: "Test nicht gefunden" });
+  const points = db.prepare("SELECT * FROM lactate_points WHERE test_id=? ORDER BY stage, speed_kmh").all(test.id) as any[];
+  res.json({ ...test, warnings: parseJson(test.warnings, []), points });
+});
+
+app.post("/api/lactate-tests", (req, res) => {
+  const b = req.body || {};
+  const points: LacPoint[] = Array.isArray(b.points) ? b.points : [];
+  // Schwellen berechnen
+  const calc = lactateThresholds(points);
+  const r = db.prepare(
+    `INSERT INTO lactate_tests(profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr, lt2_pace, confidence, warnings, created_at)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    pid(), b.date || todayIso(), b.sport || "Run", b.kind || null, b.notes || null,
+    calc.lt1?.hr ?? null, calc.lt1?.pace_s ?? null,
+    calc.lt2?.hr ?? null, calc.lt2?.pace_s ?? null,
+    calc.confidence, JSON.stringify(calc.warnings), todayIso(),
+  );
+  const testId = Number(r.lastInsertRowid);
+  if (points.length) {
+    const ins = db.prepare("INSERT INTO lactate_points(test_id,stage,speed_kmh,pace_s,power_w,hr,lactate,rpe) VALUES(?,?,?,?,?,?,?,?)");
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const kmh = p.speed_kmh ?? (p.pace_s ? 3600 / p.pace_s : null);
+      const pace = p.pace_s ?? (p.speed_kmh ? Math.round(3600 / p.speed_kmh) : null);
+      ins.run(testId, p.stage ?? i + 1, kmh, pace, p.power_w ?? null, p.hr ?? null, p.lactate, p.rpe ?? null);
+    }
+  }
+  res.json({ id: testId, lt1: calc.lt1, lt2: calc.lt2, confidence: calc.confidence, warnings: calc.warnings });
+});
+
+app.put("/api/lactate-tests/:id", (req, res) => {
+  const b = req.body || {};
+  const existing = db.prepare("SELECT id FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid());
+  if (!existing) return res.status(404).json({ error: "Test nicht gefunden" });
+  const points: LacPoint[] = Array.isArray(b.points) ? b.points : [];
+  const calc = points.length ? lactateThresholds(points) : null;
+  db.prepare(
+    `UPDATE lactate_tests SET date=?, sport=?, kind=?, notes=?, lt1_hr=?, lt1_pace=?, lt2_hr=?, lt2_pace=?, confidence=?, warnings=? WHERE id=?`,
+  ).run(
+    b.date, b.sport || "Run", b.kind || null, b.notes || null,
+    calc?.lt1?.hr ?? b.lt1_hr ?? null, calc?.lt1?.pace_s ?? b.lt1_pace ?? null,
+    calc?.lt2?.hr ?? b.lt2_hr ?? null, calc?.lt2?.pace_s ?? b.lt2_pace ?? null,
+    calc?.confidence ?? b.confidence ?? null, JSON.stringify(calc?.warnings ?? b.warnings ?? []),
+    req.params.id,
+  );
+  if (points.length) {
+    db.prepare("DELETE FROM lactate_points WHERE test_id=?").run(req.params.id);
+    const ins = db.prepare("INSERT INTO lactate_points(test_id,stage,speed_kmh,pace_s,power_w,hr,lactate,rpe) VALUES(?,?,?,?,?,?,?,?)");
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const kmh = p.speed_kmh ?? (p.pace_s ? 3600 / p.pace_s : null);
+      const pace = p.pace_s ?? (p.speed_kmh ? Math.round(3600 / p.speed_kmh) : null);
+      ins.run(req.params.id, p.stage ?? i + 1, kmh, pace, p.power_w ?? null, p.hr ?? null, p.lactate, p.rpe ?? null);
+    }
+  }
+  res.json({ ok: true, ...(calc ? { lt1: calc.lt1, lt2: calc.lt2, confidence: calc.confidence, warnings: calc.warnings } : {}) });
+});
+
+app.delete("/api/lactate-tests/:id", (req, res) => {
+  db.prepare("DELETE FROM lactate_points WHERE test_id=?").run(req.params.id);
+  db.prepare("DELETE FROM lactate_tests WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
+});
+
+/** Zonen-Set aus Laktat-Test vorschlagen (schreibt NICHT — Nutzer bestätigt via POST /api/zonesets). */
+app.post("/api/lactate-tests/:id/propose-zoneset", (req, res) => {
+  const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!test) return res.status(404).json({ error: "Test nicht gefunden" });
+  const lt1Hr = test.lt1_hr, lt2Hr = test.lt2_hr, lt1Pace = test.lt1_pace, lt2Pace = test.lt2_pace;
+  if (!lt1Hr || !lt2Hr) return res.status(422).json({ error: "Keine LT1/LT2-HF im Test — Neuberechnung nötig." });
+  const maxHr = req.body?.max_hr ?? null;
+  const hrBounds = proposedHrBounds(lt1Hr, lt2Hr, maxHr);
+  const hrZones: HrZone[] = (DEFAULT_HR_ZONES as HrZone[]).map((z, i) => ({
+    z: z.z, min: i === 0 ? 0 : hrBounds[i - 1] + 1, max: hrBounds[i], label: z.label, color: z.color,
+  }));
+  const paceBounds = lt1Pace && lt2Pace ? proposedPaceBounds(lt1Pace, lt2Pace) : [];
+  res.json({
+    valid_from: test.date,
+    lthr: Math.round(lt2Hr),
+    threshold_pace: lt2Pace ? Math.round(lt2Pace) : null,
+    lt1_hr: Math.round(lt1Hr),
+    lt1_pace: lt1Pace ? Math.round(lt1Pace) : null,
+    hr_zones: hrZones,
+    pace_zones: paceBounds,
+    source: `laktat-test-${test.id}`,
+    note: `Vorschlag aus Laktat-Test ${test.date} (${test.sport})`,
+  });
+});
+
+// ---- Wochen-/Block-Empfehlung (Engine, v1.3.0) ---------------------------
+
+app.get("/api/plan/week-suggestion", (req, res) => {
+  const weekNo = req.query.week ? Number(req.query.week) : null;
+  const wk = weekNo != null
+    ? db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(pid(), weekNo) as any
+    : null;
+  const phase = wk?.phase ?? null;
+
+  // Form: PMC bis heute (identisch mit /api/today-Pattern)
+  const today = todayIso();
+  const from = minIso(earliestDataDate() ?? today, today);
+  const pmcAll = computePmc(dailyTssMap(from, today), from, today, today);
+  const last = pmcAll.length ? pmcAll[pmcAll.length - 1] : null;
+  const ctl = last?.ctl ?? 0;
+  const tsb = last?.tsb ?? null;
+  const ramp = ctlRamp(pmcAll, 7);
+
+  // Readiness (heute) — identisch mit /api/today-Pattern
+  const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), today) as { hrv: number }[]).map(r => r.hrv);
+  const hrvBaseline = baseHrv.length >= 3
+    ? (() => { const mean = baseHrv.reduce((a, b) => a + b, 0) / baseHrv.length; const sd = Math.sqrt(baseHrv.reduce((a, b) => a + (b - mean) ** 2, 0) / baseHrv.length); return { mean, sd }; })()
+    : null;
+  const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
+  const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
+
+  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null });
+  res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec });
+});
+
+// Mesozyklus-/Block-Vorschlag bis Renntag (v1.4.0, A4) — Vorschlag-Modus, schreibt nichts.
+app.get("/api/plan/block-suggestion", (req, res) => {
+  const today = todayIso();
+  // Startwoche: ?week= oder die Woche, die heute enthält (erste mit end_date>=heute).
+  const startWk = req.query.week != null
+    ? db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(pid(), Number(req.query.week)) as any
+    : db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND end_date>=? ORDER BY start_date LIMIT 1").get(pid(), today) as any;
+  if (!startWk) return res.json({ weeks: [], raceDate: null, reasons: [{ code: "no_weeks", text: "Kein Saisonplan vorhanden." }], confidence: "niedrig" });
+
+  // Nächster Renntag ab Startwoche (Races-Tabelle bevorzugt, sonst goal_race-Woche).
+  const raceRow = db.prepare("SELECT date FROM races WHERE profile_id=? AND date>=? ORDER BY date LIMIT 1").get(pid(), startWk.start_date) as { date: string } | undefined;
+  let raceDate = raceRow?.date ?? null;
+
+  // Wochen ab Startwoche; bei Renntag bis zur Renn-Woche, sonst rollend 6 Wochen.
+  const allWeeks = db.prepare("SELECT week_no, phase, start_date, end_date, goal_race FROM season_weeks_v2 WHERE profile_id=? AND start_date>=? ORDER BY start_date").all(pid(), startWk.start_date) as any[];
+  if (!raceDate) {
+    const goalWk = allWeeks.find((w) => w.goal_race && String(w.goal_race).trim());
+    if (goalWk) raceDate = goalWk.end_date;
+  }
+  let weeksRaw = allWeeks;
+  if (raceDate) weeksRaw = allWeeks.filter((w) => w.start_date <= raceDate!);
+  else weeksRaw = allWeeks.slice(0, 6);
+  if (!weeksRaw.length) weeksRaw = [startWk];
+
+  const weeks: BlockWeekInput[] = weeksRaw.map((w) => ({
+    week_no: w.week_no, phase: w.phase ?? null, start_date: w.start_date,
+    dates: Array.from({ length: 7 }, (_, i) => addDaysIso(w.start_date, i)),
+  }));
+
+  const from = minIso(earliestDataDate() ?? today, today);
+  const historicalDailyTss = dailyTssMap(from, today);
+  const zs = effectiveZoneSet(today);
+  const zones = { pace_zones: zs.pace_zones, threshold_pace: zs.threshold_pace, lt1_pace: zs.lt1_pace };
+
+  // Verfügbarkeits-/Präferenz-Profil (A1) — wenn (noch) nicht gepflegt → null → Gleichverteilung.
+  const availability = getSetting<Availability | null>(`availability_${pid()}`, null);
+
+  // Readiness (heute) — identisch mit week-suggestion.
+  const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), today) as { hrv: number }[]).map(r => r.hrv);
+  const hrvBaseline = baseHrv.length >= 3
+    ? (() => { const mean = baseHrv.reduce((a, b) => a + b, 0) / baseHrv.length; const sd = Math.sqrt(baseHrv.reduce((a, b) => a + (b - mean) ** 2, 0) / baseHrv.length); return { mean, sd }; })()
+    : null;
+  const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
+  const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
+
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null });
+  res.json(plan);
 });
 
 // ---- Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8) -----------------------
@@ -485,6 +697,44 @@ app.delete("/api/bests/override/:distance_m", (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Race-Pacing (v1.4.0, B1): Zielzeit → km-Splits (GAP-korrigiert, optional Negativ-Split) ----
+// Default-Zielzeit: ?target= (s) > eigene Renn-Zeit > VDOT-Prognose (aktuelle Form). GAP nur bei ?gap=1
+// und vorhandenem Höhenprofil (splits.elevation_m als Netto-Gewinn je km interpretiert).
+app.get("/api/races/:id/pacing", (req, res) => {
+  const race = db.prepare("SELECT id, name, distance_m, time_s, splits FROM races WHERE profile_id=? AND id=?")
+    .get(pid(), Number(req.params.id)) as { id: number; name: string; distance_m: number; time_s: number | null; splits: string | null } | undefined;
+  if (!race || !(race.distance_m > 0)) return res.status(404).json({ error: "race_not_found_or_no_distance" });
+
+  // Default-Zielzeit aus aktueller Form (bestes VDOT im 90-Tage-Fenster) — wie /api/bests.
+  const today = todayIso();
+  let vdotTarget: number | null = null;
+  if (!req.query.target && !race.time_s) {
+    const winLo = addDaysIso(today, -FITNESS_WINDOW_DAYS);
+    const rows = db.prepare("SELECT date, best_efforts FROM activities WHERE profile_id=? AND sport='Run' AND best_efforts IS NOT NULL AND best_efforts<>'' AND best_efforts<>'{}'").all(pid()) as { date: string; best_efforts: string }[];
+    let curVdot = 0;
+    for (const r of rows) {
+      if (!(r.date > winLo && r.date <= today)) continue;
+      const be = parseJson<Record<string, number>>(r.best_efforts, {});
+      for (const [d, t] of Object.entries(be)) { const dist = Number(d), time = Number(t); if (dist >= 1500 && time >= 180 && time <= 2400) curVdot = Math.max(curVdot, vdot(dist, time)); }
+    }
+    if (curVdot > 0) { const pr = predictFromVdot(curVdot, [race.distance_m]); vdotTarget = pr.length ? pr[0].time_s : null; }
+  }
+  const targetTimeS = req.query.target ? Number(req.query.target) : (race.time_s || vdotTarget || 0);
+  if (!(targetTimeS > 0)) return res.json({ error: "no_target", message: "Keine Zielzeit (weder Parameter noch Renn-Zeit noch VDOT-Prognose)." });
+
+  // Höhenprofil aus Race-Splits (nur wenn ?gap=1 und Höhenwerte vorhanden).
+  let profile: PacingProfileKm[] | null = null;
+  if (req.query.gap) {
+    const splits = parseJson<{ km: number; elevation_m: number | null }[]>(race.splits, []);
+    if (splits.some((s) => s.elevation_m != null)) {
+      profile = splits.map((s) => ({ dist_km: s.km > 0 ? s.km : 1, elev_gain_m: s.elevation_m ?? null }));
+    }
+  }
+
+  const plan = pacingPlan({ distanceM: race.distance_m, targetTimeS, profile, negativeSplit: !!req.query.neg, splitPct: req.query.split ? Number(req.query.split) : undefined });
+  res.json({ race: { id: race.id, name: race.name, distance_m: race.distance_m }, source: req.query.target ? "manual" : (race.time_s ? "race" : "vdot"), ...plan });
+});
+
 // ---- Fitness-Trend: VO2max (VDOT) + Renn-Prognose über die Zeit (v0.15.0, O1+O2) ----
 // 90-Tage-Rolling-Window über die Strava-best_efforts: je Woche bestes VDOT + VDOT-Prognosen.
 app.get("/api/fitness-trend", (req, res) => {
@@ -539,6 +789,22 @@ app.get("/api/fitness-trend", (req, res) => {
   const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
   const level = current?.vdot != null && age ? vo2maxLevel(current.vdot, age, sex) : null;
   res.json({ points, current, age, level });
+});
+
+// Aerobe Entkopplung je Lauf (v1.4.0, C1) — Zeitreihe für Durability/Decoupling-Trend in LongTerm.
+// Nur Läufe ≥30 min mit berechneter Entkopplungs-Kennzahl (aus Streams, backfill via Strava-Sync).
+app.get("/api/decoupling-trend", (req, res) => {
+  const today = todayIso();
+  const to = String(req.query.to || today);
+  const from = String(req.query.from || addDaysIso(to, -365));
+  const rows = db.prepare(
+    "SELECT date, decoupling, distance_m FROM activities WHERE profile_id=? AND sport='Run' AND decoupling IS NOT NULL AND moving_s >= 1800 AND date BETWEEN ? AND ? ORDER BY date",
+  ).all(pid(), from, to) as { date: string; decoupling: number; distance_m: number | null }[];
+  res.json(rows.map((r) => ({
+    date: r.date,
+    decoupling: Math.round(r.decoupling * 10) / 10,
+    distance_km: r.distance_m ? Math.round(r.distance_m / 100) / 10 : null,
+  })));
 });
 
 // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12) — Wochenmittel für den Langzeit-Trend.
@@ -884,6 +1150,43 @@ function syncRaceFromActivity(activityId: number, b: any): void {
     db.prepare("DELETE FROM races WHERE id=? AND source='tracking'").run(link.id);
   }
 }
+
+// Zonen-Histogramm (v1.4.0, C3): aggregierte Zeit in HF- und Pace-Zonen über einen Zeitraum.
+// Basis: zone_min (HF, aus Strava/manuell) + pace_zone_min (Pace, aus Strava-Streams).
+app.get("/api/zone-histogram", (req, res) => {
+  const today = todayIso();
+  const to = String(req.query.to || today);
+  const from = String(req.query.from || addDaysIso(to, -365));
+  const sport = String(req.query.sport || "Run");
+  const rows = db.prepare(
+    "SELECT zones, zone_min, pace_zone_min, moving_s FROM activities WHERE profile_id=? AND sport=? AND date BETWEEN ? AND ?",
+  ).all(pid(), sport, from, to) as { zones: string | null; zone_min: string | null; pace_zone_min: string | null; moving_s: number | null }[];
+
+  const hrAgg: Record<number, number> = {};
+  const paceAgg: Record<number, number> = {};
+  let totalMin = 0;
+  for (const r of rows) {
+    totalMin += (r.moving_s ?? 0) / 60;
+    const zm = parseJson<Record<string, number> | null>(r.zone_min, null);
+    const zs = parseJson<Record<string, number> | null>(r.zones, null);
+    const pzm = parseJson<Record<string, number> | null>(r.pace_zone_min, null);
+    const hrSrc = zm || (zs ? Object.fromEntries(Object.entries(zs).map(([k, v]) => [k, v / 60])) : null);
+    if (hrSrc) for (const [z, m] of Object.entries(hrSrc)) { const zn = Number(z); if (zn >= 1 && zn <= 5) hrAgg[zn] = (hrAgg[zn] ?? 0) + m; }
+    if (pzm) for (const [z, m] of Object.entries(pzm)) { const zn = Number(z); if (zn >= 1 && zn <= 5) paceAgg[zn] = (paceAgg[zn] ?? 0) + m; }
+  }
+  const zs = effectiveZoneSet(today);
+  const HR_LABELS = ["Z1 Locker", "Z2 GA1", "Z3 GA2", "Z4 Schwelle", "Z5 VO2max"];
+  const PACE_LABELS = ["Z1 Locker", "Z2 Marathon", "Z3 LT1", "Z4 LT2/Schwelle", "Z5 VO2max"];
+  const HR_COLORS = ["#22c55e", "#86efac", "#f59e0b", "#ef4444", "#7c3aed"];
+  const hrBands = Array.from({ length: 5 }, (_, i) => ({
+    zone: i + 1, label: HR_LABELS[i], min: Math.round(hrAgg[i + 1] ?? 0), color: HR_COLORS[i],
+    pctOfMax: zs.hr_zones?.[i] ? `${zs.hr_zones[i].min}–${zs.hr_zones[i].max} bpm` : "",
+  }));
+  const paceBands = Array.from({ length: 5 }, (_, i) => ({
+    zone: i + 1, label: PACE_LABELS[i], min: Math.round(paceAgg[i + 1] ?? 0), color: HR_COLORS[i],
+  }));
+  res.json({ hrBands, paceBands, totalMin: Math.round(totalMin) });
+});
 
 app.get("/api/activities", (req, res) => {
   const { from, to } = req.query as Record<string, string>;
@@ -1387,6 +1690,12 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const realLoadFlag = weekLoadFlag(realRating);
   const realKmFlag = kmPolarizationFlag(realKmIntensity);
 
+  // Echte Zeit-in-Zone-Verteilung (G4, v1.3.0): 3 Zonen gegen LT1/LT2 + Polarisierungs-Index + Phasen-Ziel.
+  const physioDist = physioTimeZones(realZoneMin, zs.hr_zones, zs.lt1_hr, zs.lthr);
+  const polIndex = polarizationIndex(physioDist.z1, physioDist.z2, physioDist.z3);
+  const phaseTarget = phaseDistributionTarget(wk?.phase);
+  const realPolarizationFlag = polarizationFlag(physioDist, phaseTarget, polIndex);
+
   // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).
   let monotony: ReturnType<typeof trainingMonotonyStrain> = { monotony: 0, strain: 0, weekTss: 0, flag: null };
   if (wk) {
@@ -1404,6 +1713,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
     realLoadFlag, realKmFlag, adherence, tssRec,
     monotony: monotony.monotony, strain: monotony.strain, monotonyFlag: monotony.flag,
+    physioDist, polarizationIndex: polIndex, phaseTarget, realPolarizationFlag,
   });
 });
 
@@ -1436,10 +1746,18 @@ app.get("/api/today", (req, res) => {
   const plannedTypes = (db.prepare("SELECT type FROM planned_sessions WHERE profile_id=? AND date=? AND type!='Rest'").all(pid(), date) as { type: string }[]).map((r) => r.type);
   const recommendation = dailyRecommendation({ tsb, ctlRamp: ramp, phase, readinessLevel: readiness?.level ?? null, weekTssRec, plannedTypes });
 
+  // Überlastungs-Frühwarnung (v1.4.0, C2): ACWR + 7-Tage-Monotonie + Ramp + Readiness → erklärter Risiko-Flag.
+  const tssByDay = new Map<string, number>((db.prepare("SELECT date, SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ? GROUP BY date").all(pid(), addDaysIso(date, -6), date) as { date: string; s: number }[]).map((r) => [r.date, r.s]));
+  const days7: number[] = [];
+  for (let i = 6; i >= 0; i--) days7.push(tssByDay.get(addDaysIso(date, -i)) || 0);
+  const mono7 = trainingMonotonyStrain(days7).monotony;
+  const acwr = ctl > 0 ? Math.round((atl / ctl) * 100) / 100 : null;
+  const injuryRisk = injuryRiskFlag({ acwr, monotony: mono7, ctlRamp: ramp, readinessLevel: readiness?.level ?? null, ctl });
+
   res.json({
     date,
-    form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp },
-    phase, weekTssRec, readiness, plannedTypes, recommendation,
+    form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp, acwr },
+    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk,
   });
 });
 

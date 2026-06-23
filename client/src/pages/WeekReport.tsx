@@ -437,13 +437,20 @@ export default function WeekReport() {
             </div>
         )}</EgItem>
 
+        {/* Physiologische Intensitätsverteilung + Polarisierungs-Index (G4, v1.3.0) */}
+        {analyze?.physioDist && (
+          <EgItem id="physiodist" title={t("report.tile.physio", "Intensitätsverteilung (LT1/LT2)")} defaultSpan={6} defaultHeight={220}>{() => (
+            <PhysioDistTile pd={analyze.physioDist!} tgt={analyze.phaseTarget} pi={analyze.polarizationIndex} t={t} />
+          )}</EgItem>
+        )}
+
         {/* Breite Karte: reale Analyse-Schilder (Wochen-Last + km-Polarisierung über die realen Werte) */}
-        {analyze && (analyze.realLoadFlag || analyze.realKmFlag || analyze.monotonyFlag) && (
+        {analyze && (analyze.realLoadFlag || analyze.realKmFlag || analyze.monotonyFlag || analyze.realPolarizationFlag) && (
           <EgItem id="realflags" title={t("report.tile.realflags", "Bewertung der realen Woche")} defaultSpan={12} defaultHeight={96}>{() => (
             <div className="chart-card mt">
               <h3><T k="report.tile.realflags">Bewertung der realen Woche</T></h3>
               <div className="flag-row">
-                {[analyze.realLoadFlag, analyze.realKmFlag, analyze.monotonyFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
+                {[analyze.realLoadFlag, analyze.realKmFlag, analyze.realPolarizationFlag, analyze.monotonyFlag].filter((f): f is NonNullable<typeof f> => !!f).map((f, i) => (
                   <div key={i} className={"flag " + f.level}><span className="dot" /><span>{renderFlag(f, t)}</span></div>
                 ))}
               </div>
@@ -588,6 +595,80 @@ function CatBox({ label, main, sub }: { label: string; main: string; sub?: strin
 }
 function Refl({ label, v, on }: { label: string; v?: string; on: (x: string) => void }) {
   return <label className="field"><span>{label}</span><textarea rows={2} defaultValue={v ?? ""} onBlur={(e) => on(e.target.value)} /></label>;
+}
+
+// Physiologische Intensitätsverteilung (G4, v1.3.0): Zeit-in-Zone Z1/Z2/Z3 (LT1/LT2-Grenzen) +
+// Polarisierungs-Index (Treff et al. 2019) + Phasen-Soll. Self-contained, gestapelte Balken.
+const PHYSIO_COL = { z1: "#22c55e", z2: "#f59e0b", z3: "#ef4444" } as const;
+function PhysioStack({ vals, height = 24 }: { vals: { z1: number; z2: number; z3: number }; height?: number }) {
+  const segs = [
+    { k: "z1" as const, pct: vals.z1 }, { k: "z2" as const, pct: vals.z2 }, { k: "z3" as const, pct: vals.z3 },
+  ];
+  return (
+    <div style={{ display: "flex", height, borderRadius: 6, overflow: "hidden", border: "1px solid #e3e8ef", background: "#f1f5f9" }}>
+      {segs.map((s) => s.pct > 0 && (
+        <div key={s.k} style={{ width: `${s.pct}%`, background: PHYSIO_COL[s.k], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fff", fontWeight: 600 }}>
+          {s.pct >= 9 ? `${Math.round(s.pct)}%` : ""}
+        </div>
+      ))}
+    </div>
+  );
+}
+function PhysioDistTile({ pd, tgt, pi, t }: {
+  pd: NonNullable<AnalyzeResult["physioDist"]>;
+  tgt?: AnalyzeResult["phaseTarget"];
+  pi?: number | null;
+  t: (k: string, d: string) => string;
+}) {
+  const zones = [
+    { k: "z1" as const, lab: "Z1", desc: t("report.physio.z1", "< LT1 · aerob"), pct: pd.z1, min: pd.z1Min },
+    { k: "z2" as const, lab: "Z2", desc: t("report.physio.z2", "LT1–LT2 · Schwelle"), pct: pd.z2, min: pd.z2Min },
+    { k: "z3" as const, lab: "Z3", desc: t("report.physio.z3", "> LT2 · hart"), pct: pd.z3, min: pd.z3Min },
+  ];
+  const hasData = pd.z1 + pd.z2 + pd.z3 > 0;
+  const polarized = pi != null && pi >= 2.0;
+  return (
+    <div className="card chart-card">
+      <h3 style={{ textAlign: "center" }}>{t("report.physio.title", "Intensitätsverteilung (LT1/LT2)")}</h3>
+      {!hasData ? (
+        <p className="tiny muted">{t("report.physio.noData", "Reale Zeit-in-Zone erscheint, sobald Aktivitäten mit Zonen-Minuten oder HF-Streams vorliegen.")}</p>
+      ) : (
+        <>
+          {/* Polarisierungs-Index */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0 10px" }}>
+            <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1 }}>{pi != null ? pi.toFixed(2) : "—"}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="tiny" style={{ fontWeight: 600, color: pi == null ? "#64748b" : polarized ? "#16a34a" : "#b45309" }}>
+                {pi == null ? t("report.physio.piNa", "PI n/a") : polarized ? t("report.physio.polarized", "polarisiert") : t("report.physio.notPolarized", "nicht polarisiert")}
+              </div>
+              <div className="tiny muted">{t("report.physio.piLabel", "Polarisierungs-Index · ≥ 2,0 = polarisiert")}</div>
+            </div>
+          </div>
+          {/* Ist */}
+          <div className="tiny muted" style={{ marginBottom: 3 }}>{t("report.physio.real", "Real (Zeit-in-Zone)")}</div>
+          <PhysioStack vals={pd} />
+          {/* Soll */}
+          {tgt && (
+            <>
+              <div className="tiny muted" style={{ margin: "8px 0 3px" }}>
+                {t("report.physio.target", "Phasen-Soll")} · {tgt.label}
+              </div>
+              <PhysioStack vals={tgt} height={16} />
+            </>
+          )}
+          {/* Legende mit Minuten */}
+          <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+            {zones.map((z) => (
+              <span key={z.k} className="tiny" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span className="dot" style={{ background: PHYSIO_COL[z.k] }} />
+                <b>{z.lab}</b> {z.desc} · {Math.round(z.pct)}% ({Math.round(z.min)} min)
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ---- Helfer ----

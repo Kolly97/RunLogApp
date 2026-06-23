@@ -10,13 +10,14 @@ import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
+import ZoneHistogram from "../charts/ZoneHistogram.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
@@ -102,6 +103,9 @@ export default function LongTerm() {
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
   const [adherence, setAdherence] = useState<PlanAdherenceWeek[]>([]); // Plan-Erfüllung je Woche (v0.14.0)
+  const [decoupling, setDecoupling] = useState<DecouplingPoint[]>([]); // C1 v1.4.0
+  const [zoneHist, setZoneHist] = useState<ZoneHistogramData | null>(null); // C3 v1.4.0
+  const [fitnessTrend, setFitnessTrend] = useState<FitnessTrend | null>(null); // C4 v1.4.0
   // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
   const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
 
@@ -115,6 +119,9 @@ export default function LongTerm() {
     api.activities({ from: range.from, to: range.to }).then(setActs).catch(() => setActs([]));
     api.intervalsTrend({ from: range.from, to: range.to }).then(setTrend).catch(() => setTrend(null));
     api.pmc(range.from, range.to).then((r) => setPmc(r.pmc)).catch(() => setPmc([]));
+    api.decouplingTrend({ from: range.from, to: range.to }).then(setDecoupling).catch(() => setDecoupling([]));
+    api.zoneHistogram({ from: range.from, to: range.to }).then(setZoneHist).catch(() => setZoneHist(null));
+    api.fitnessTrend(range.from, range.to).then(setFitnessTrend).catch(() => setFitnessTrend(null));
   }, [range?.from, range?.to]);
 
   // Saison-Zeilen einmal über die ganze Saison bauen (wie Dashboard); Anzeige per Zeitraum gefiltert.
@@ -417,6 +424,92 @@ export default function LongTerm() {
             </div>
       )}</EgItem>
       )}
+
+      {/* (b2b) Aerobe Entkopplung / Durability-Trend (C1, v1.4.0) */}
+      {decoupling.length > 0 && (
+        <EgItem id="decoupling" title={t("lt.block.decoupling.title", "Aerobe Entkopplung (Durability)")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+          <div className="card chart-card">
+            <h3><T k="lt.block.decoupling.title">Aerobe Entkopplung (Pa:HR-Drift)</T></h3>
+            <ResponsiveContainer width="100%" height={h ?? 240}>
+              <LineChart data={decoupling} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+                <CartesianGrid stroke="#eef1f5" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="%" />
+                <Tooltip
+                  labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
+                  formatter={(v: number, _n: string, item: any) => {
+                    const km = item?.payload?.distance_km;
+                    return [`${v} %${km ? ` · ${km} km` : ""}`, "Entkopplung"];
+                  }}
+                  contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                />
+                <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
+                <ReferenceLine y={5} stroke="#f59e0b" strokeDasharray="4 3"
+                  label={{ value: "5% Schwelle", fontSize: 9, fill: "#f59e0b", position: "right" }} />
+                <Line type="monotone" dataKey="decoupling" name="Entkopplung" stroke="#8b5cf6" strokeWidth={1.8}
+                  connectNulls dot={{ r: 3, fill: "#8b5cf6", strokeWidth: 0 }} />
+                <Customized component={(p: any) => <ChartDecor {...p} runs={[]} years={yearMarksByDateAll(decoupling.map((x) => x.date))} />} />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+              <T k="lt.block.decoupling.hint">Herzfrequenz-Drift langer Läufe (≥30 min): unter 5% = gute aerobe Ausdauer. Nur Läufe mit Herzfrequenz-Stream.</T>
+            </p>
+          </div>
+        )}</EgItem>
+      )}
+
+      {/* (b2c) Zonen-Histogramm: aggregierte Zeit in HF/Pace-Zonen (C3, v1.4.0) */}
+      {zoneHist && (zoneHist.hrBands.some((b) => b.min > 0) || zoneHist.paceBands.some((b) => b.min > 0)) && (
+        <EgItem id="zone-hist" title={t("lt.block.zhist.title", "Zonen-Histogramm (HF & Pace)")} defaultSpan={12} defaultHeight={200} reserve={130}>{(h) => (
+          <div className="card chart-card">
+            <h3><T k="lt.block.zhist.title">Zeit in HF- und Pace-Zonen</T></h3>
+            <ZoneHistogram data={zoneHist} height={(h ?? 200) - 50} />
+            <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+              <T k="lt.block.zhist.hint">Aggregierte Trainingszeit je Zone im gewählten Zeitraum. Pace-Zonen nur für Läufe mit Strava-Streams.</T>
+            </p>
+          </div>
+        )}</EgItem>
+      )}
+
+      {/* (b2d) Fitness-Signale konsolidiert: CTL + VDOT-Trend (C4, v1.4.0) */}
+      {(() => {
+        if (!fitnessTrend || !pmc.length) return null;
+        const vdotMap = new Map<string, number>();
+        for (const p of fitnessTrend.points) if (p.vdot != null) vdotMap.set(p.date, p.vdot);
+        const merged = pmc.map((p) => ({ date: p.date, ctl: Math.round(p.ctl), vdot: vdotMap.get(p.date) ?? null }));
+        const hasVdot = merged.some((x) => x.vdot != null);
+        if (!hasVdot) return null;
+        const fitYears = yearMarksByDate(pmc.map((p) => p.date));
+        const fitPhaseRuns = phaseRunsByDate(pmc.map((p) => p.date), season);
+        return (
+          <EgItem id="fitness-signals" title={t("lt.block.fitness.title", "Fitness-Signale (CTL + VDOT)")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+            <div className="card chart-card">
+              <h3><T k="lt.block.fitness.title">Fitness-Signale: CTL & VDOT-Trend</T></h3>
+              <ResponsiveContainer width="100%" height={h ?? 240}>
+                <ComposedChart data={merged} margin={{ top: 8, right: 40, left: -14, bottom: 26 }}>
+                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  <YAxis yAxisId="ctl" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#2b6cb0" }} width={40} />
+                  <YAxis yAxisId="vdot" orientation="right" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#d97706" }} width={32} />
+                  <Tooltip
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
+                    formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
+                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                  />
+                  <Line yAxisId="ctl" type="monotone" dataKey="ctl" name="CTL" stroke="#2b6cb0" strokeWidth={1.6}
+                    dot={false} connectNulls />
+                  <Line yAxisId="vdot" type="monotone" dataKey="vdot" name="VDOT" stroke="#d97706" strokeWidth={1.8}
+                    dot={{ r: 3, fill: "#d97706", strokeWidth: 0 }} connectNulls />
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={fitPhaseRuns} years={fitYears} />} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                <T k="lt.block.fitness.hint">CTL (blau, links) zeigt das Trainingsvolumen; VDOT (orange, rechts) die aerobe Kapazität. Beide sollten langfristig steigen.</T>
+              </p>
+            </div>
+          )}</EgItem>
+        );
+      })()}
 
       {/* (b3) Plan-Erfüllung (Wochenmittel) — v0.14.0, ToDo 12 */}
       {hasAdh && (

@@ -1,8 +1,9 @@
 // Wettkämpfe (ToDo #24): Liste + Detail-Erfassung mit manuellen Splits (km/Zeit/Pace/Ø-HF).
 // Erscheinen zusätzlich als goldene Marker in PMC/Saison-Progression und einzeln im Wochenbericht.
-import { useEffect, useState } from "react";
-import { api, type Race, type RaceSplit } from "../lib/api.ts";
+import { useEffect, useRef, useState } from "react";
+import { api, type Race, type RaceSplit, type PacingResult } from "../lib/api.ts";
 import { fmtDateY, paceStr, todayIso, num } from "../lib/util.ts";
+import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -23,6 +24,7 @@ const EMPTY: Race = { date: todayIso(), name: "", distance_m: null, time_s: null
 export default function Races() {
   const [races, setRaces] = useState<Race[]>([]);
   const [edit, setEdit] = useState<Race | null>(null);
+  const [pacingRace, setPacingRace] = useState<Race | null>(null);
   const t = useT();
 
   const reload = () => api.races().then(setRaces).catch(() => setRaces([]));
@@ -38,6 +40,7 @@ export default function Races() {
       <p className="tiny muted"><T k="races.hint">Wettkämpfe mit Endzeit, Platzierung, Splits und Notizen. Sie erscheinen als goldene Marker in den Verlaufs-Charts und einzeln im Wochenbericht.</T></p>
 
       {edit && <RaceForm race={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
+      {pacingRace && <PacingPanel race={pacingRace} onClose={() => setPacingRace(null)} />}
 
       {!races.length && !edit && <p className="muted"><T k="races.empty">Noch keine Wettkämpfe eingetragen.</T></p>}
       {races.length > 0 && (
@@ -57,6 +60,9 @@ export default function Races() {
                   <td>{r.placement || "—"}</td>
                   <td style={{ textAlign: "right" }}>
                     <button className="sm ghost" onClick={() => setEdit({ ...r, splits: r.splits || [] })}><T k="races.btn.edit">Bearbeiten</T></button>
+                    {r.distance_m && r.id && (
+                      <button className="sm ghost" onClick={() => setPacingRace(r)} title="Pacing-Plan berechnen"><T k="races.btn.pacing">Pacing</T></button>
+                    )}
                     <button className="sm ghost danger" onClick={() => api.deleteRace(r.id!).then(reload)}>✕</button>
                   </td>
                 </tr>
@@ -140,4 +146,108 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
 // Pace je Split aus km + Zeit
 function recomputePace(splits: RaceSplit[]): RaceSplit[] {
   return splits.map((s) => ({ ...s, pace_s: s.km && s.time_s ? Math.round(s.time_s / s.km) : null }));
+}
+
+// ---- Pacing-Panel (v1.4.0, B2) ------------------------------------------
+
+function PacingPanel({ race, onClose }: { race: Race; onClose: () => void }) {
+  const [targetStr, setTargetStr] = useState(fmtTime(race.time_s));
+  const [neg, setNeg] = useState(false);
+  const [result, setResult] = useState<PacingResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+
+  function compute() {
+    if (!race.id) return;
+    const target = parseTime(targetStr);
+    if (!target) { setErr("Ungültige Zeit."); return; }
+    setErr(""); setBusy(true);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    api.racePacing(race.id, { target, neg })
+      .then(setResult)
+      .catch((e) => { if (!ctrl.signal.aborted) setErr(String(e)); })
+      .finally(() => setBusy(false));
+  }
+
+  const km = (race.distance_m || 0) / 1000;
+  const distLabel = km ? `${km} km` : "–";
+
+  return (
+    <div className="card" style={{ background: "#fafbfd", marginBottom: 8 }}>
+      <div className="spread">
+        <h2 style={{ fontSize: 15 }}>Pacing-Plan — {race.name || distLabel}</h2>
+        <button className="sm ghost" onClick={onClose}>Schließen</button>
+      </div>
+      <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+        <label className="field" style={{ margin: 0, width: 140 }}>
+          <span>Zielzeit (h:mm:ss)</span>
+          <input value={targetStr} onChange={(e) => setTargetStr(e.target.value)} placeholder="3:30:00"
+            onKeyDown={(e) => e.key === "Enter" && compute()} />
+        </label>
+        <label className="field row" style={{ margin: 0, gap: 6, width: "auto" }}>
+          <input type="checkbox" checked={neg} onChange={(e) => setNeg(e.target.checked)} style={{ width: "auto" }} />
+          <span>Negativ-Split (+2%)</span>
+        </label>
+        <button onClick={compute} disabled={busy}>{busy ? "…" : "Berechnen"}</button>
+        {err && <span className="tiny" style={{ color: "var(--danger, #ef4444)" }}>{err}</span>}
+      </div>
+
+      {result && (
+        <>
+          <div className="row tiny muted" style={{ gap: 16, marginBottom: 8, flexWrap: "wrap" }}>
+            <span>Distanz: <strong>{(result.distance_m / 1000).toFixed(1)} km</strong></span>
+            <span>Zielzeit: <strong>{fmtTime(result.target_time_s)}</strong></span>
+            <span>Even Pace: <strong>{paceStr(result.even_pace_s)}/km</strong></span>
+            {result.hasProfile && <span>GAP-Basis: <strong>{paceStr(result.gap_pace_s)}/km</strong></span>}
+            {result.negativeSplit && <span className="muted">(Negativ-Split aktiv)</span>}
+            {result.hasProfile && <span className="muted">(Höhenprofil aus Splits)</span>}
+          </div>
+
+          {/* Mini-Chart: Pace je km */}
+          <ResponsiveContainer width="100%" height={90}>
+            <BarChart data={result.splits} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+              <XAxis dataKey="km" tick={{ fontSize: 9 }} interval={Math.floor(result.splits.length / 8)} />
+              <YAxis domain={["dataMin - 10", "dataMax + 10"]} tick={{ fontSize: 9 }} tickFormatter={(v) => paceStr(v)} width={38} />
+              <Tooltip formatter={(v: number, name: string) => [paceStr(v) + "/km", name === "pace_s" ? "Soll-Pace" : "GAP"]} labelFormatter={(l) => `km ${l}`} />
+              <ReferenceLine y={result.even_pace_s} stroke="var(--muted, #94a3b8)" strokeDasharray="3 3" />
+              <Bar dataKey="pace_s" name="pace_s" radius={[1, 1, 0, 0]}>
+                {result.splits.map((s, i) => (
+                  <Cell key={i} fill={s.pace_s > result.even_pace_s + 10 ? "#f59e0b" : s.pace_s < result.even_pace_s - 10 ? "#22c55e" : "#3b82f6"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+
+          {/* Split-Tabelle */}
+          <table style={{ marginTop: 6, fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th>km</th>
+                {result.hasProfile && <th>Steig.</th>}
+                <th>Soll-Pace</th>
+                {result.hasProfile && <th>GAP</th>}
+                <th>Kumuliert</th>
+                {result.hasProfile && <th>Hm</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {result.splits.map((s, i) => (
+                <tr key={i}>
+                  <td className="muted">{s.km}</td>
+                  {result.hasProfile && <td className={s.gradient > 0.03 ? "warn" : s.gradient < -0.03 ? "" : "muted"}>{(s.gradient * 100).toFixed(1)}%</td>}
+                  <td><strong>{paceStr(s.pace_s)}</strong></td>
+                  {result.hasProfile && <td className="muted">{paceStr(s.gap_s)}</td>}
+                  <td className="muted">{fmtTime(s.cum_s)}</td>
+                  {result.hasProfile && <td className="muted">{s.elev_gain_m != null ? (s.elev_gain_m > 0 ? "+" : "") + s.elev_gain_m : "—"}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
 }

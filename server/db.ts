@@ -192,6 +192,10 @@ function migrate(): void {
   addColumn("zone_sets", "power_zones", "TEXT");
   // v0.15.0: separate HF-Zonen fürs Fahrrad (Lauf-Zonen bleiben in hr_zones)
   addColumn("zone_sets", "hr_zones_bike", "TEXT");
+  // v1.3.0 (G4): aerober Schwellen-Anker LT1 (HF + Pace). LT2 = bestehendes lthr/threshold_pace.
+  // Default (NULL) wird in zones.ts aus der Z2/Z3-Grenze abgeleitet; G3 (Laktat) überschreibt mit Messwerten.
+  addColumn("zone_sets", "lt1_hr", "REAL");
+  addColumn("zone_sets", "lt1_pace", "REAL");
   // Feedback 12.6.: einheitlich km je Zone auch beim Tracking (zone_min bleibt als Legacy lesbar)
   addColumn("activities", "zone_km", "TEXT");
   // ToDo 14: Sleep Performance bei den Tagesfaktoren
@@ -364,6 +368,39 @@ function migrate(): void {
     date TEXT NOT NULL,
     UNIQUE(profile_id, distance_m)
   )`);
+
+  // v1.3.0 (G3): Laktat-/Feldtest-Diagnostik — Tests + Stufen-Punkte (additiv).
+  // lt1_*/lt2_* sind berechneter Cache (aus lactateThresholds), für Trend-Chart ohne Neu-Berechnung.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lactate_tests (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      sport       TEXT NOT NULL DEFAULT 'Run',
+      kind        TEXT,
+      notes       TEXT,
+      lt1_hr      REAL,
+      lt1_pace    REAL,
+      lt2_hr      REAL,
+      lt2_pace    REAL,
+      confidence  TEXT,
+      warnings    TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_lactate_tests_date ON lactate_tests(profile_id, date);
+    CREATE TABLE IF NOT EXISTS lactate_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      test_id     INTEGER NOT NULL,
+      stage       INTEGER,
+      speed_kmh   REAL,
+      pace_s      REAL,
+      power_w     REAL,
+      hr          REAL,
+      lactate     REAL NOT NULL,
+      rpe         INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_lactate_points_test ON lactate_points(test_id);
+  `);
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

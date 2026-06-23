@@ -1,5 +1,6 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
-import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, type HrZone } from "./load.ts";
+import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, type HrZone } from "./load.ts";
+import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort } from "./planbuilder.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
 const DEFAULT_BIKE_KMH = 25;
@@ -305,6 +306,67 @@ export function kmPolarizationFlag(zk: { easy: number; mod: number; hard: number
   return { level: "info", code: "km_balanced", message: `km-Polarisierung: ausgewogen — ${note}.`, params: { e, m, h } };
 }
 
+// ---- Echte Intensitätsverteilung (G4, v1.3.0): Zeit-in-Zone gegen LT1/LT2 + Polarisierungs-Index ----
+
+export interface PhysioDist { z1: number; z2: number; z3: number; z1Min: number; z2Min: number; z3Min: number }
+
+/**
+ * Physiologische 3-Zonen-Verteilung als ZEIT-in-Zone (Seiler): Z1 < LT1, Z2 = LT1–LT2, Z3 > LT2.
+ * Mappt die vorhandenen HF-Zonen-Minuten (`zoneMin`) anhand der Zonen-Mitte gegen die LT1/LT2-HF —
+ * keine Roh-Stream-Neuberechnung nötig. Bei null Last → alle 0. Grenzen sind kalibrierbar (G3 füllt LT1).
+ */
+export function physioTimeZones(zoneMin: Record<number, number>, hrZones: HrZone[], lt1Hr: number, lt2Hr: number): PhysioDist {
+  let z1 = 0, z2 = 0, z3 = 0;
+  for (const z of hrZones) {
+    const min = zoneMin[z.z] || 0;
+    if (min <= 0) continue;
+    const mid = (z.min + (z.max || z.min)) / 2; // repräsentative HF der Zone
+    if (mid < lt1Hr) z1 += min;
+    else if (mid < lt2Hr) z2 += min;
+    else z3 += min;
+  }
+  const tot = z1 + z2 + z3;
+  if (tot <= 0) return { z1: 0, z2: 0, z3: 0, z1Min: 0, z2Min: 0, z3Min: 0 };
+  return {
+    z1: r1((z1 / tot) * 100), z2: r1((z2 / tot) * 100), z3: r1((z3 / tot) * 100),
+    z1Min: r1(z1), z2Min: r1(z2), z3Min: r1(z3),
+  };
+}
+
+/**
+ * Polarisierungs-Index (Treff et al. 2019): PI = log10( (Z1/Z2) × Z3 ), Z* = %-Zeit. PI ≥ 2.0 = polarisiert.
+ * Guards: ohne harten Anteil (Z3≈0) oder ohne easy (Z1≈0) nicht definiert → null; Z2<1 % auf 1 gekappt.
+ */
+export function polarizationIndex(z1: number, z2: number, z3: number): number | null {
+  if (z3 <= 0 || z1 <= 0) return null;
+  const z2c = z2 < 1 ? 1 : z2;
+  return Math.round(Math.log10((z1 / z2c) * z3) * 100) / 100;
+}
+
+export interface DistTarget { model: "pyramidal" | "polarized" | "regenerativ"; z1: number; z2: number; z3: number; label: string }
+
+/** Verteilungs-Ziel je Saison-Phase (advisory): Base/Belastung pyramidal, Race Specific polarisiert, Entlastung/Taper regenerativ. */
+export function phaseDistributionTarget(phase: string | null | undefined): DistTarget {
+  const p = (phase || "").toLowerCase();
+  if (p.includes("specific")) return { model: "polarized", z1: 78, z2: 4, z3: 18, label: "polarisiert" };
+  if (p.includes("entlast") || p.includes("deload") || p.includes("race week") || p.includes("raceweek") || p.includes("race-week") || p.includes("krank"))
+    return { model: "regenerativ", z1: 90, z2: 7, z3: 3, label: "regenerativ (Z1-lastig)" };
+  return { model: "pyramidal", z1: 80, z2: 15, z3: 5, label: "pyramidal" };
+}
+
+/** Schild für die reale Zeit-Verteilung: Ist vs. Phasen-Ziel + Polarisierungs-Index. */
+export function polarizationFlag(dist: PhysioDist | null, target: DistTarget, pi: number | null): Flag | null {
+  if (!dist || (dist.z1 + dist.z2 + dist.z3) <= 0) return null;
+  const a = Math.round(dist.z1), b = Math.round(dist.z2), c = Math.round(dist.z3);
+  const piTxt = pi != null ? `PI ${pi}` : "PI n/a";
+  const note = `${a}/${b}/${c}% Z1/Z2/Z3 · ${piTxt} · Ziel ${target.label} ${target.z1}/${target.z2}/${target.z3}`;
+  const params = { a, b, c, pi };
+  if (b >= target.z2 + 12) return { level: "info", code: "pol_grey", message: `Zeit-Verteilung: viel Grey-Zone (Z2 ${b}%) — ${note}.`, params };
+  if (c >= target.z3 + 12) return { level: "warn", code: "pol_hard", message: `Zeit-Verteilung: hoher harter Anteil (Z3 ${c}%) — ${note}.`, params };
+  if (target.model === "polarized" && pi != null && pi >= 2.0) return { level: "ok", code: "pol_polarized", message: `Zeit-Verteilung: polarisiert (PI ${pi}) — ${note}.`, params };
+  return { level: "ok", code: "pol_ontarget", message: `Zeit-Verteilung nahe Phasen-Ziel — ${note}.`, params };
+}
+
 /**
  * Trainings-Monotonie & -Strain (Foster, v1.2.0): `Monotonie = Ø(Tageslast)/SD(Tageslast)`,
  * `Strain = Wochenlast × Monotonie`. Hohe Monotonie bei hoher Last → mehr Infekte/Übertraining.
@@ -424,6 +486,271 @@ export function dailyRecommendation(args: {
   if (args.plannedTypes.length) reasons.push({ code: "already_planned", text: `Heute geplant: ${args.plannedTypes.join(", ")}` });
   const doseHint = args.weekTssRec ? `Wochen-Ziel ${args.weekTssRec.target} TSS (${args.weekTssRec.kind})` : "";
   return { headline, sessionType, doseHint, reasons, confidence };
+}
+
+// ---- Wochen-/Block-Empfehlungs-Engine (v1.3.0): Periodisierungs-Modell + Wochenstruktur ----
+
+export interface WeekSessionRec {
+  type: string;           // Session-Typ (z.B. "Easy", "Threshold", "Long", "VO2")
+  count: number;          // Wie oft diese Woche
+  tssShare: number;       // Anteil am Wochen-Ziel-TSS (%)
+  hint: string;           // kurze Beschreibung (Dauer/Intensität)
+}
+
+export interface WeekStructureRec {
+  headline: string;
+  periodizationModel: "block" | "traditional";
+  tssRange: TssRec;
+  sessions: WeekSessionRec[];
+  distTarget: DistTarget;
+  reasons: { code: string; text: string }[];
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+
+/**
+ * Regelbasierte Wochen-/Block-Empfehlung (v1.3.0, Vorschlag-Modus).
+ * Verzahnt: Phasen-Verteilungs-Ziel (G4), TSS-Korridor (tssRecommendation), Form (TSB/CTL).
+ * Periodisierungs-Prinzipien: Block ≥ traditionell für VO2max/Wmax; 3:1-Deload; Taper.
+ * Evidenz: Issurin Block-Meta (2008), tssRecommendation 3:1-Prinzip, Treff Verteilung.
+ */
+export function weekStructureRecommendation(args: {
+  ctl: number;
+  tsb: number | null;
+  ctlRamp: number | null;
+  phase: string | null | undefined;
+  weekNo?: number | null;   // für 3:1 Modulo (jede 4. Woche Deload)
+  readinessLevel: ReadinessLevel | null;
+}): WeekStructureRec {
+  const reasons: { code: string; text: string }[] = [];
+  const p = (args.phase || "").toLowerCase();
+  const tssRange = tssRecommendation(args.ctl, args.phase);
+  const distTarget = phaseDistributionTarget(args.phase);
+  let confidence: WeekStructureRec["confidence"] = "mittel";
+  let periodizationModel: WeekStructureRec["periodizationModel"] = "traditional";
+  let headline = "";
+  const sessions: WeekSessionRec[] = [];
+
+  // ---- 3:1-Entlastungswoche erkennen (wenn Phase nicht explizit gesetzt: Modulo-4) ----
+  const isDeload = p.includes("entlast") || p.includes("deload");
+  const isRaceWeek = p.includes("race week") || p.includes("raceweek") || p.includes("race-week");
+  const isSick = p.includes("krank");
+  const isBase = p.includes("base") || p.includes("aufbau") || p.includes("belast");
+  const isSpecific = p.includes("specific") || p.includes("spec");
+  const weakForm = args.tsb != null && args.tsb < -15;
+  const freshForm = args.tsb != null && args.tsb > 5;
+
+  if (isSick) {
+    headline = "Regeneration (Krank) — ausruhen, keine Belastung";
+    sessions.push({ type: "Easy", count: 2, tssShare: 100, hint: "Nur wenn symptomfrei; sehr kurz & locker" });
+    reasons.push({ code: "sick", text: "Phase = Krank → kein Training außer sehr lockerer Bewegung" });
+    return { headline, periodizationModel, tssRange, sessions, distTarget, reasons, confidence: "hoch" };
+  }
+
+  if (isDeload || isRaceWeek) {
+    headline = isRaceWeek ? "Race Week — Taper, Frische maximieren" : "Entlastungswoche (3:1) — Umfang −40 %, Intensität zurück";
+    sessions.push({ type: "Easy", count: 3, tssShare: 70, hint: "Lockere Z1/Z2-Läufe, kurz halten" });
+    if (isRaceWeek) sessions.push({ type: "Easy", count: 1, tssShare: 20, hint: "Steigerungen (5×80 m), nicht mehr" });
+    else sessions.push({ type: "Threshold", count: 1, tssShare: 30, hint: "1 kurze Qualitätseinheit — halb so lang wie Normalo-Woche" });
+    reasons.push({ code: isRaceWeek ? "race_week" : "deload", text: isRaceWeek ? "Race Week → TSS-Taper −50 %, letzte Einheit ≥3 Tage vor Rennen" : "Entlastungsphase → TSS −40 %, niedrige Monotonie" });
+    confidence = "hoch";
+    return { headline, periodizationModel, tssRange, sessions, distTarget, reasons, confidence };
+  }
+
+  if (weakForm) {
+    reasons.push({ code: "fatigued", text: `Form ermüdet (TSB ${Math.round(args.tsb!)}) → Umfang/Intensität etwas zurück` });
+  }
+  if (args.readinessLevel === "red") {
+    reasons.push({ code: "readiness_red", text: "Readiness niedrig → Intensität runter, Erholungstage einbauen" });
+  }
+  if (args.ctlRamp != null && args.ctlRamp > 8) {
+    reasons.push({ code: "ramp_high", text: `CTL-Ramp ${args.ctlRamp}/Woche hoch — ggf. Woche beschränken` });
+  }
+
+  // ---- Phase-spezifische Wochenstruktur ----
+  if (isSpecific) {
+    // Race-Specific: Block-Periodisierung, polarisierte Verteilung — qualitätsdichte Woche
+    periodizationModel = "block";
+    headline = "Race-Specific-Block — 2 Schlüsseleinheiten, polarisiert";
+    sessions.push({ type: "Threshold", count: 1, tssShare: 30, hint: "Tempo/Renntempo-Einheit, 20–40 min im Bereich LT2" });
+    sessions.push({ type: "VO2", count: 1, tssShare: 25, hint: "VO2max-Intervalle (4–6×3–5 min mit Pause)" });
+    sessions.push({ type: "Long", count: 1, tssShare: 25, hint: "Langer Lauf Z1/Z2 (auch aerobe Basis erhalten)" });
+    sessions.push({ type: "Easy", count: 2, tssShare: 20, hint: "Locker Z1/Z2 als Auflockerung/Recovery" });
+    reasons.push({ code: "specific_block", text: "Race Specific → Block-Periodisierung: Qualitäts-Cluster + aerobe Basis (Issurin)" });
+    confidence = freshForm ? "hoch" : "mittel";
+  } else if (isBase) {
+    // Belastungsphase: traditionell pyramidal, 1 Schlüsseleinheit
+    headline = "Aufbau-/Belastungswoche — pyramidal, 1 Schlüsseleinheit";
+    sessions.push({ type: "Long", count: 1, tssShare: 30, hint: "Langer Lauf (20–35 % Wochen-km, Z1/Z2)" });
+    if (!weakForm && args.readinessLevel !== "red") {
+      sessions.push({ type: "Threshold", count: 1, tssShare: 25, hint: "Schwellen-Einheit (3×10–20 min LT2-Pace), Z4" });
+      reasons.push({ code: "build_quality", text: "Aufbau → 1 Schlüsseleinheit (Schwelle) + langer Lauf + Grundlage" });
+    } else {
+      sessions.push({ type: "Easy", count: 1, tssShare: 25, hint: "Locker statt Qualität (Form/Readiness)" });
+      reasons.push({ code: "build_reduced", text: "Aufbau, aber Form/Readiness beeinträchtigt → Qualität zurückgenommen" });
+    }
+    sessions.push({ type: "Easy", count: 3, tssShare: 45, hint: "Grundlage Z1/Z2, Umfang aufbauen" });
+    confidence = "hoch";
+  } else {
+    // Base / Erhalt / Standard (unbekannte Phase)
+    headline = "Grundlagen-/Erhaltswoche — Z1/Z2-Fokus";
+    sessions.push({ type: "Long", count: 1, tssShare: 30, hint: "Langer Lauf Z1/Z2 (aerobe Basis)" });
+    if (freshForm && args.readinessLevel !== "red") {
+      sessions.push({ type: "Threshold", count: 1, tssShare: 20, hint: "1 moderate Schwelleneinheit (2×15 min)" });
+    }
+    sessions.push({ type: "Easy", count: 3, tssShare: 50, hint: "Locker Z1/Z2, ggf. Steigerungen einbauen" });
+    reasons.push({ code: "base_standard", text: "Base/Erhalt → Volumen Z1/Z2-Fokus, 1 langer Lauf" });
+    confidence = "mittel";
+  }
+
+  if (reasons.length === 0) reasons.push({ code: "default", text: "Standardplanung nach Phase und Form" });
+  return { headline, periodizationModel, tssRange, sessions, distTarget, reasons, confidence };
+}
+
+// ===================== A4 — Mesozyklus-/Block-Planer bis Renntag =====================
+// Iteriert die Wochen ab Start bis Renntag, projiziert die Form vorwärts (CTL/TSB akkumulieren mit dem
+// generierten Plan-TSS), ruft je Woche weekStructureRecommendation und macht jede Einheit konkret (A2) +
+// tagesgebunden (A3). Vorschlag-Modus: schreibt nichts — liefert reine Vorschau.
+
+export interface BlockWeekInput { week_no: number; phase: string | null; start_date: string; dates: string[] }
+
+export interface BlockDay {
+  date: string; weekdayIdx: number; type: string; isSecond: boolean;
+  planned_min: number; planned_tss: number; description: string;
+  zone_alloc: { byMin: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
+}
+export interface BlockWeek {
+  week_no: number; start_date: string; phase: string | null;
+  headline: string; periodizationModel: "block" | "traditional";
+  tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
+  isDeload: boolean; days: BlockDay[];
+  reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
+}
+export interface BlockPlan {
+  weeks: BlockWeek[]; raceDate: string | null;
+  reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
+}
+
+function addDaysIsoLocal(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export function blockPlan(args: {
+  weeks: BlockWeekInput[];
+  historicalDailyTss: Map<string, number>;
+  from: string;            // frühestes Datum für die PMC-Berechnung
+  today: string;
+  raceDate: string | null;
+  zones: ZonesInput;
+  availability: Availability | null;
+  readinessLevel: ReadinessLevel | null;
+}): BlockPlan {
+  const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
+  const outWeeks: BlockWeek[] = [];
+  let lowConf = false;
+
+  args.weeks.forEach((w, wi) => {
+    // Form zu Beginn der Woche: PMC aus historischem + bisher generiertem Plan-TSS bis zum Vortag.
+    const merged = new Map(args.historicalDailyTss);
+    for (const [d, t] of projected) merged.set(d, (merged.get(d) ?? 0) + t);
+    const endPmc = addDaysIsoLocal(w.start_date, -1);
+    const pmc = computePmc(merged, args.from, endPmc, args.today);
+    const last = pmc.length ? pmc[pmc.length - 1] : null;
+    const ctl = last?.ctl ?? 0;
+    const tsb = last?.tsb ?? null;
+    const ramp = ctlRamp(pmc, 7);
+
+    // Readiness fließt nur in die unmittelbar nächste Woche ein (Zukunft unbekannt).
+    const rec = weekStructureRecommendation({
+      ctl, tsb, ctlRamp: ramp, phase: w.phase, weekNo: w.week_no,
+      readinessLevel: wi === 0 ? args.readinessLevel : null,
+    });
+    const target = rec.tssRange.target;
+
+    // rec.sessions (Typ/Anzahl/Anteil) → einzelne Einheiten mit Ziel-TSS.
+    const units: PlannedUnit[] = [];
+    for (const s of rec.sessions) {
+      const per = s.count > 0 ? Math.round((target * (s.tssShare / 100)) / s.count) : 0;
+      for (let i = 0; i < s.count; i++) units.push({ type: s.type, targetTss: per });
+    }
+
+    // Auf Wochentage verteilen + konkretisieren.
+    const scheduled = scheduleWeek(units, args.availability, w.dates);
+    const days: BlockDay[] = [];
+    let tssActual = 0;
+    for (const su of scheduled) {
+      const c = concretizeSession(su.type, su.targetTss, args.zones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
+      days.push({
+        date: su.date, weekdayIdx: su.weekdayIdx, type: su.type, isSecond: su.isSecond,
+        planned_min: c.planned_min, planned_tss: c.planned_tss, description: c.description,
+        zone_alloc: c.zone_alloc, efforts: c.efforts, paceTarget: c.paceTarget,
+      });
+      projected.set(su.date, (projected.get(su.date) ?? 0) + c.planned_tss);
+      tssActual += c.planned_tss;
+    }
+
+    if (rec.confidence === "niedrig") lowConf = true;
+    const pl = (rec.headline || "").toLowerCase();
+    const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
+    outWeeks.push({
+      week_no: w.week_no, start_date: w.start_date, phase: w.phase,
+      headline: rec.headline, periodizationModel: rec.periodizationModel,
+      tssTarget: Math.round(target), tssActual: Math.round(tssActual),
+      ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null,
+      isDeload, days, reasons: rec.reasons, confidence: rec.confidence,
+    });
+  });
+
+  const reasons: { code: string; text: string }[] = [
+    { code: "block_horizon", text: args.raceDate ? `Mesozyklus bis Renntag ${args.raceDate}: 3:1-Rhythmus + Taper` : "Rollender Block (kein Renntag gesetzt)" },
+  ];
+  return { weeks: outWeeks, raceDate: args.raceDate, reasons, confidence: lowConf ? "niedrig" : "mittel" };
+}
+
+// ===================== C2 — Überlastungs-/Verletzungs-Frühwarnung =====================
+/**
+ * Kombinierter Risiko-Flag aus ACWR (ATL/CTL, Gabbett), Monotonie (Foster), CTL-Ramp und Readiness.
+ * Erklärbar: nennt die beitragenden Faktoren. Vorschlag-Modus — nur Hinweis, keine Aktion.
+ * Evidenz: Gabbett ACWR-„sweet spot" 0.8–1.3 (>1.5 erhöhtes Risiko); Foster Monotonie ≥2.0; Ramp-Rate.
+ */
+export function injuryRiskFlag(args: {
+  acwr: number | null;            // ATL/CTL
+  monotony: number | null;        // Foster
+  ctlRamp: number | null;         // CTL/Woche
+  readinessLevel: ReadinessLevel | null;
+  ctl?: number | null;            // Guard gegen Früh-Spikes bei minimaler Historie
+}): Flag | null {
+  if (args.ctl != null && args.ctl < 1) return null;
+  const factors: string[] = [];
+  let score = 0;
+  const acwr = args.acwr;
+  if (acwr != null) {
+    if (acwr >= 1.5) { score += 2; factors.push(`ACWR ${acwr.toFixed(2)} (Lastspitze)`); }
+    else if (acwr >= 1.3) { score += 1; factors.push(`ACWR ${acwr.toFixed(2)} (erhöht)`); }
+  }
+  const mono = args.monotony;
+  if (mono != null) {
+    if (mono >= 2.0) { score += 2; factors.push(`Monotonie ${mono.toFixed(1)}`); }
+    else if (mono >= 1.5) { score += 1; factors.push(`Monotonie ${mono.toFixed(1)}`); }
+  }
+  const ramp = args.ctlRamp;
+  if (ramp != null) {
+    if (ramp > 10) { score += 2; factors.push(`CTL-Ramp +${Math.round(ramp)}/Wo`); }
+    else if (ramp > 7) { score += 1; factors.push(`CTL-Ramp +${Math.round(ramp)}/Wo`); }
+  }
+  if (args.readinessLevel === "red") { score += 2; factors.push("Readiness niedrig"); }
+  else if (args.readinessLevel === "yellow") { score += 1; factors.push("Readiness mittel"); }
+
+  const params = {
+    acwr: acwr != null ? Math.round(acwr * 100) / 100 : null,
+    monotony: mono != null ? Math.round(mono * 10) / 10 : null,
+    ramp: ramp != null ? Math.round(ramp) : null, score,
+  };
+  if (score >= 4) return { level: "danger", code: "injury_risk_high", message: `Überlastungsrisiko hoch — ${factors.join(", ")}. Entlastungstag/-woche einplanen.`, params };
+  if (score >= 2) return { level: "warn", code: "injury_risk_mid", message: `Überlastungsrisiko erhöht — ${factors.join(", ")}. Belastung beobachten.`, params };
+  if (score >= 1) return { level: "info", code: "injury_risk_low", message: `Leicht erhöhte Belastungssignale — ${factors.join(", ")}.`, params };
+  return { level: "ok", code: "injury_risk_ok", message: "Belastung im grünen Bereich (ACWR/Monotonie/Ramp/Readiness unauffällig).", params };
 }
 
 /** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */

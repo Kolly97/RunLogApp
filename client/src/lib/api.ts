@@ -87,6 +87,11 @@ export interface AnalyzeResult {
   tssRec?: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null;
   // v1.2.0 — Trainings-Monotonie & -Strain (Foster) der realen Woche
   monotony?: number; strain?: number; monotonyFlag?: Flag | null;
+  // v1.3.0 (G4) — echte Zeit-in-Zone-Verteilung (Z1<LT1 / Z2 LT1–LT2 / Z3>LT2) + Polarisierungs-Index + Phasen-Ziel
+  physioDist?: { z1: number; z2: number; z3: number; z1Min: number; z2Min: number; z3Min: number };
+  polarizationIndex?: number | null;
+  phaseTarget?: { model: "pyramidal" | "polarized" | "regenerativ"; z1: number; z2: number; z3: number; label: string };
+  realPolarizationFlag?: Flag | null;
 }
 
 // v1.2.0 — Coach „Heute": Readiness + regelbasierte Tages-Empfehlung (Vorschlag-Modus).
@@ -98,6 +103,95 @@ export interface TodayResult {
   readiness: { score: number; level: "green" | "yellow" | "red"; drivers: { code: string; text: string }[] } | null;
   plannedTypes: string[];
   recommendation: { headline: string; sessionType: string; doseHint: string; reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig" };
+}
+
+// v1.3.0 (G3) — Laktat-/Feldtest-Diagnostik.
+export interface LactateTestPoint {
+  id?: number; stage?: number | null;
+  speed_kmh?: number | null; pace_s?: number | null; power_w?: number | null;
+  hr?: number | null; lactate: number; rpe?: number | null;
+}
+export interface LactateTest {
+  id: number; profile_id: number; date: string; sport: string; kind?: string | null; notes?: string | null;
+  lt1_hr?: number | null; lt1_pace?: number | null; lt2_hr?: number | null; lt2_pace?: number | null;
+  confidence?: string | null; warnings: string[]; created_at: string;
+  points?: LactateTestPoint[];
+}
+export interface LactateThresholdResult {
+  lt1: { speed_kmh: number; pace_s: number; hr: number | null; lactate: number } | null;
+  lt2: { speed_kmh: number; pace_s: number; hr: number | null; lactate: number } | null;
+  confidence: string; warnings: string[];
+}
+export interface LactateZoneProposal {
+  valid_from: string; lthr: number; threshold_pace: number | null;
+  lt1_hr: number; lt1_pace: number | null;
+  hr_zones: HrZone[]; pace_zones: number[];
+  source: string; note: string;
+}
+
+// v1.4.0 (A1) — Verfügbarkeits-/Präferenz-Profil (gespiegelt aus server/planbuilder.ts).
+// minutesByWeekday[7]: 0=Ruhetag; Wochentag-Index 0=Mo…6=So.
+export interface Availability {
+  daysPerWeek?: number | null;
+  minutesByWeekday: number[];
+  longRunDay?: number | null;
+  hardDays?: number[];
+  allowDoubles?: boolean;
+  doubleDays?: number[];
+}
+
+// v1.3.0 (Engine) — Wochen-/Block-Empfehlungs-Engine.
+export interface WeekSessionRec { type: string; count: number; tssShare: number; hint: string; }
+export interface WeekStructureRec {
+  headline: string;
+  periodizationModel: "block" | "traditional";
+  tssRange: { min: number; max: number; target: number; kind: string };
+  sessions: WeekSessionRec[];
+  distTarget: { model: string; z1: number; z2: number; z3: number; label: string };
+  reasons: { code: string; text: string }[];
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+export interface WeekSuggestionResult {
+  week: SeasonWeek | null;
+  phase: string | null;
+  form: { ctl: number; tsb: number | null; ramp: number };
+  readiness: { score: number; level: "green" | "yellow" | "red"; drivers: { code: string; text: string }[] } | null;
+  recommendation: WeekStructureRec;
+}
+
+// v1.4.0 (C3) — Zonen-Histogramm (aggregierte Zeit in HF/Pace-Zonen)
+export interface ZoneBand { zone: number; label: string; min: number; color: string; pctOfMax?: string; }
+export interface ZoneHistogramData { hrBands: ZoneBand[]; paceBands: ZoneBand[]; totalMin: number; }
+
+// v1.4.0 (C1) — Durability/Decoupling-Trend
+export interface DecouplingPoint { date: string; decoupling: number; distance_km: number | null; }
+
+// v1.4.0 (B1/B2) — Race-Pacing: Splits + GAP
+export interface PacingSplit {
+  km: number; dist_km: number; gradient: number;
+  pace_s: number; gap_s: number; cum_s: number; elev_gain_m: number | null;
+}
+export interface PacingResult {
+  distance_m: number; target_time_s: number; even_pace_s: number; gap_pace_s: number;
+  negativeSplit: boolean; hasProfile: boolean; splits: PacingSplit[];
+}
+
+// v1.4.0 (A5) — Block-/Mesoplaner: konkrete Tage + Wochen-Zusammenfassungen.
+export interface BlockDay {
+  date: string; weekdayIdx: number; type: string; isSecond: boolean;
+  planned_min: number; planned_tss: number; description: string;
+  zone_alloc: { byMin: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
+}
+export interface BlockWeek {
+  week_no: number; start_date: string; phase: string | null;
+  headline: string; periodizationModel: "block" | "traditional";
+  tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
+  isDeload: boolean; days: BlockDay[];
+  reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
+}
+export interface BlockPlan {
+  weeks: BlockWeek[]; raceDate: string | null;
+  reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -129,6 +223,17 @@ export const api = {
   deleteZoneset: (id: number) => j(`/api/zonesets/${id}`, { method: "DELETE" }),
   // HF-/Power-Zonen aus Strava importieren (v0.14.0, ToDo 10)
   importStravaZones: (valid_from: string) => j<{ ok: true }>("/api/strava/import-zones", { method: "POST", body: JSON.stringify({ valid_from }) }),
+
+  // v1.3.0 (G3) — Laktat-/Feldtest-Diagnostik
+  lactateTests: () => j<LactateTest[]>("/api/lactate-tests"),
+  lactateTest: (id: number) => j<LactateTest>(`/api/lactate-tests/${id}`),
+  addLactateTest: (b: { date: string; sport?: string; kind?: string; notes?: string; points: LactateTestPoint[] }) =>
+    j<LactateThresholdResult & { id: number }>("/api/lactate-tests", { method: "POST", body: JSON.stringify(b) }),
+  updateLactateTest: (id: number, b: { date?: string; sport?: string; kind?: string; notes?: string; points?: LactateTestPoint[] }) =>
+    j<{ ok: true } & Partial<LactateThresholdResult>>(`/api/lactate-tests/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteLactateTest: (id: number) => j<{ ok: true }>(`/api/lactate-tests/${id}`, { method: "DELETE" }),
+  proposeLactateZoneset: (id: number, maxHr?: number) =>
+    j<LactateZoneProposal>(`/api/lactate-tests/${id}/propose-zoneset`, { method: "POST", body: JSON.stringify({ max_hr: maxHr ?? null }) }),
 
   season: () => j<SeasonWeek[]>("/api/season"),
   saveWeek: (no: number, b: Partial<SeasonWeek>) => j(`/api/season/week/${no}`, { method: "PUT", body: JSON.stringify(b) }),
@@ -164,6 +269,8 @@ export const api = {
   pmc: (from: string, to: string) => j<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number }>(`/api/pmc?from=${from}&to=${to}`),
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),
   today: (date?: string) => j<TodayResult>(`/api/today${date ? `?date=${date}` : ""}`),
+  weekSuggestion: (weekNo?: number) => j<WeekSuggestionResult>(`/api/plan/week-suggestion${weekNo != null ? `?week=${weekNo}` : ""}`),
+  blockSuggestion: (weekNo?: number) => j<BlockPlan>(`/api/plan/block-suggestion${weekNo != null ? `?week=${weekNo}` : ""}`),
   intervalsTrend: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
@@ -187,6 +294,13 @@ export const api = {
   updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
   importRacesFromSeason: () => j<{ created: number }>("/api/races/import-from-season", { method: "POST" }),
+  racePacing: (id: number, q?: { target?: number; neg?: boolean }) => {
+    const p = new URLSearchParams();
+    if (q?.target) p.set("target", String(q.target));
+    if (q?.neg) p.set("neg", "1");
+    const qs = p.toString();
+    return j<PacingResult>(`/api/races/${id}/pacing${qs ? `?${qs}` : ""}`);
+  },
 
   // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
   bests: () => j<BestsResult>("/api/bests"),
@@ -202,11 +316,25 @@ export const api = {
   },
   // Plan-Erfüllung je Saisonwoche (v0.14.0, ToDo 12)
   planAdherence: () => j<PlanAdherenceWeek[]>("/api/plan-adherence"),
+  // v1.4.0 (C1) — Durability/Decoupling
+  decouplingTrend: (q?: { from?: string; to?: string }) => {
+    const p = new URLSearchParams((q as Record<string, string>) || {}).toString();
+    return j<DecouplingPoint[]>(`/api/decoupling-trend${p ? `?${p}` : ""}`);
+  },
+  // v1.4.0 (C3) — Zonen-Histogramm
+  zoneHistogram: (q?: { from?: string; to?: string; sport?: string }) => {
+    const p = new URLSearchParams((q as Record<string, string>) || {}).toString();
+    return j<ZoneHistogramData>(`/api/zone-histogram${p ? `?${p}` : ""}`);
+  },
 
   // Seiten-Layout (T8): anpassbares Chart-Raster je Seite + Profil
   getLayout: (page: string) => j<LayoutMap>(`/api/layout/${page}`),
   setLayout: (page: string, map: LayoutMap) =>
     j<{ ok: boolean }>(`/api/layout/${page}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(map) }),
+
+  // v1.4.0 (A1) — Verfügbarkeits-/Präferenz-Profil
+  availability: () => j<Availability | null>("/api/availability"),
+  saveAvailability: (b: Availability) => j<{ ok: boolean }>("/api/availability", { method: "PUT", body: JSON.stringify(b) }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

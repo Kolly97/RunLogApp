@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v1.1.0** (17.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v1.4.0** (23.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -66,7 +66,16 @@
   `server/norms.ts`); `POST /api/activities/:id/relink-efforts` (setzt `efforts_locked=0, laps_fetched=0,
   efforts=NULL` → nächster Sync zieht Laps neu); `PUT /api/activities/:id` setzt jetzt `efforts_locked=1`.
 - `zones.ts` — `effectiveZoneSet(date)` / `effectiveZoneSetForSeed()` (profil-gefiltert; hr/pace/power-zones,
-  lthr/ftp/threshold_pace).
+  lthr/ftp/threshold_pace, **`lt1_hr`/`lt1_pace`** — LT1-Anker; Default aus Z2/Z3-Grenze, von G3 überschreibbar).
+- `planbuilder.ts` (**neu v1.4.0**) — pure Modul (keine DB): `concretizeSession(type, targetTss, zones, opts)` →
+  `ConcreteSession` (planned_min, zone_alloc.byMin, efforts, description, paceTarget). Invertiert exakt
+  `rTssFromZones`. `scheduleWeek(units, availability, weekDates)` → `ScheduledUnit[]` (Tagesplaner).
+- `pacing.ts` (**neu v1.4.0**) — pure Modul: `pacingPlan({distanceM, targetTimeS, profile?, negativeSplit?})`
+  → km-Splits mit GAP (Minetti-Gradient). Σ(pace_i·dist_i) == targetTimeS exakt.
+- `lactate.ts` (**neu v1.3.0**) — pure Modul (keine DB): `lactateThresholds(points)` → LT1 (Baseline+0.4 mmol/L
+  interpoliert) + LT2 (modifizierter Dmax/AIS: Polynom-Fit Grad min(3,n-1), Gauß-Elim., max. senkrechte Distanz
+  vom Sehnen-Startpunkt). `proposedHrBounds(lt1Hr, lt2Hr, maxHr?)` und `proposedPaceBounds(lt1Pace, lt2Pace)` → 6
+  Zonen-Grenzen-Arrays für Zonen-Set-Vorschlag.
 - `strava.ts` — OAuth (Scope `activity:read_all,profile:read_all`) + `stravaSync`: Listen-Import per `strava_id`
   (nie überschreiben). `api()` führt Rate-Limit-Header mit → `rateLimitMessage()` (15-min vs. **Tageslimit**) +
   `dayBudgetExhausted()`-Bremse. Anreicherung budgetiert: Detail (kcal, Beschreibung→leere Notiz; bei Läufen
@@ -102,7 +111,8 @@
   **`IntensityRatio`** (ATL/CTL-Bänder, 5 Zonen, Optimal-Korridor-Linien),
   **`SleepWindow`** (Whoop-Stil Bettzeit→Aufwach, Floating Bars, reversed Y-Achse).
 - `components/` — `WeekSelector`, `SessionModal`, `EffortBuilder`, **`AthleteCard`**, `ZoneSets`
-  (+ Fahrrad-HF-Zonen-Sektion). `App.tsx`, `styles.css`, `pages/track.css`.
+  (+ Fahrrad-HF-Zonen-Sektion), **`LactateTests`** (v1.3.0: Stufentest-Eingabe + Ergebnis + Trend + Zonen-Vorschlag).
+  `App.tsx`, `styles.css`, `pages/track.css`.
 
 ## 3. Datenmodell (SQLite, alles profil-bezogen)
 
@@ -116,7 +126,11 @@
   `matched_session_id`, `overrides` JSON, `notes`, **`ngp`** (s/km, Lauf), **`np`** (W, Rad), `desc_fetched`,
   `streams_fetched`, **`efforts_locked`** INTEGER DEFAULT 0 — v0.15: Strava-Overwrite-Schutz).
 - `zone_sets` (profile_id, hr/pace/speed/power-zones JSON, lthr/ftp/threshold_pace, valid_from; `source` u.a.
-  „Strava"; **`hr_zones_bike`** TEXT — v0.15: separate Fahrrad-HF-Zonen).
+  „Strava"; **`hr_zones_bike`** TEXT — v0.15; **`lt1_hr`/`lt1_pace`** REAL — v1.3.0: LT1-Anker addiert).
+- `lactate_tests` (**neu v1.3.0** — additiv): id, profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr,
+  lt2_pace, confidence, warnings, created_at. Index auf (profile_id, date).
+- `lactate_points` (**neu v1.3.0** — additiv): id, test_id, stage, speed_kmh, pace_s, power_w, hr, lactate, rpe.
+  FK test_id → lactate_tests.
 - `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,
   max_hr,elevation_m}], `avg_hr`, `max_hr`, `elevation_m`, `source`=manual|season|**tracking**, **`activity_id`**
   (verknüpfte getrackte Einheit); Auto-Import aus Saisonplan `goal_race` (Ledger `season_races_imported_<pid>`)
@@ -124,7 +138,56 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v1.1.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v1.4.0 (Ist-Stand, nicht Historie)
+
+**Neu in v1.4.0 (Kurz):**
+- **Verfügbarkeits-Profil (A1):** `AvailabilityCard` in Profile.tsx. 7×Minuten/Tag, Longrun-Tag, Qualitätstage,
+  Doubles. Gespeichert als `availability_<pid>` in Settings. Endpoints `GET/PUT /api/availability`.
+- **Session-Konkretisierer (A2):** `server/planbuilder.ts` `concretizeSession()` — invertiert `rTssFromZones`
+  exakt → Plan-TSS trifft Ziel; gibt `zone_alloc.byMin + efforts + description + paceTarget` zurück.
+- **Tages-Scheduler (A3):** `scheduleWeek()` in `planbuilder.ts` — Longrun/48h-Hart/Doubles/Budget; Fallback Round-Robin.
+- **Mesozyklus-Planer (A4):** `blockPlan()` in `analysis.ts` — 3:1 + Deload + Taper bis Renntag, PMC-Vorwärtsprojektion.
+  Endpoint `GET /api/plan/block-suggestion`.
+- **Konkrete Engine-Karte & Block-Vorschau (A5):** WeekPlan zeigt Einheiten mit Wochentag/Dauer/Pace/Intervall.
+  Block-Vorschau (ausklappbar, alle Wochen bis Renntag) mit „Woche übernehmen". `applySuggestion` schreibt jetzt
+  `zone_alloc/efforts/planned_min` statt nur type+tss.
+- **Race-Pacing B1/B2:** `server/pacing.ts` `pacingPlan()` mit GAP/Minetti; Endpoint `GET /api/races/:id/pacing`.
+  In Races.tsx: `PacingPanel` mit Zielzeit-Eingabe, Negativ-Split, Split-Tabelle, Mini-BarChart.
+- **Durability/Decoupling-Trend (C1):** Zeitreihe aerobe Entkopplung (≥30-min-Läufe) in Langzeit.
+  Endpoint `GET /api/decoupling-trend`. Referenzlinie 5 %.
+- **Überlastungs-Frühwarnung (C2):** `injuryRiskFlag()` in `analysis.ts` — ACWR + Monotonie + Ramp + Readiness;
+  in `/api/today`-Response.
+- **Zonen-Histogramm (C3):** Aggregierte Zeit in HF/Pace-Zonen. Endpoint `GET /api/zone-histogram`.
+  Neues Chart `charts/ZoneHistogram.tsx`. EgItem in Langzeit.
+- **Fitness-Signale (C4):** ComposedChart CTL + VDOT in Langzeit (zwei Y-Achsen).
+
+## 4a. Funktionsstand v1.3.0 (nicht Ist-Stand — historisch)
+
+**Neu in v1.3.0 (Kurz):**
+- **Echte Intensitätsverteilung (G4):** physiologisches 3-Zonen-Modell (Z1 < LT1 / Z2 = LT1–LT2 / Z3 > LT2) aus
+  vorhandenem `realZoneMin`. Polarisierungs-Index (Treff et al. 2019): `PI = log10((Z1/Z2)×Z3)`, PI ≥ 2.0 = polarisiert.
+  Phasen-Ziel-Band je Saisonphase (pyramidal/polarisiert/regenerativ). Neuer `realPolarizationFlag` in WeekReport.
+  Neue additive Spalten `zone_sets.lt1_hr/lt1_pace` (LT1-Anker, Default Z2/Z3-Grenze).
+- **Laktat-/Feldtest-Diagnostik (G3):** Stufentest-Eingabe in Profile.tsx (`LactateTests`-Komponente):
+  Geschwindigkeit/Pace/HF/Laktat/RPE je Stufe, automatische LT1- + LT2-Berechnung (LT1 = Baseline+0.4 mmol/L;
+  LT2 = modifizierter Dmax/AIS). Schwellen-Trend-Chart (ab 2 Tests). Button „Als Zonen-Set übernehmen" (Vorschlag-Modus).
+  Neues Modul `server/lactate.ts` (pure). Endpunkte `/api/lactate-tests` (CRUD+Punkte) + `propose-zoneset`.
+  Neue Tabellen `lactate_tests` / `lactate_points` (additiv).
+- **Wochen-/Block-Empfehlung (Engine):** Engine-Karte in WeekPlan: regelbasierter Vorschlag aus CTL/TSB/Phase/
+  Readiness. Periodisierungsmodell (Block ≥ traditionell bei Specific), Schlüsseleinheiten + TSS-Anteile +
+  Verteilungs-Ziel + Begründungstext + Konfidenz. Button „In Wochenplanung übernehmen" (additiv, Vorschlag-Modus).
+  `weekStructureRecommendation()` in `analysis.ts`; Endpunkt `GET /api/plan/week-suggestion`.
+
+**Neu in v1.2.0 (Kurz):**
+- **Tagescoach / Coach „Heute"** (Dashboard + `/api/today`): Readiness-Score (0–100, aus Schlaf/HRV/Fatigue/
+  Monotonie/Taper), Trainingsempfehlung mit Art/Dauer/Intensität + Begründung, `dailyRecommendation()`.
+- **Readiness-Kachel** (Dashboard): Farbbalken + Score + Ampel-Icon + Kurztext; `readinessLevel` in AnalyzeResult.
+- **Aerobe Entkopplung (EF-Drift):** `efDrift` (NGP-EF 1. vs. 2. Hälfte) in `/api/analyze/week`; Flag in WeekReport.
+- **Monotonie + Strain:** `dailyMonotony` / `dailyStrain` (Foster); `monotonyFlag` + `strainFlag` in analyze; in
+  WeekReport. `daily_log_v2.monotony/strain` berechnet und gespeichert.
+- **Kovariationskoeff. (CV-Pace):** Wochenrythmus-Flag aus Standardabweichung der NGP-Tage.
+
+## 4b. Funktionsstand v1.1.0 (nicht Ist-Stand — historisch)
 
 **Neu in v1.1.0 (Kurz):**
 - **EditableGrid (react-grid-layout v1.5.3):** Wochenbericht + Langzeit als freies Drag-Resize-Kachel-Layout
@@ -177,7 +240,7 @@
   8-Wochen-Referenz in Wellness-Sparklines; Schlaf-Felder hh:mm; IntervalTrend-Legende togglebar;
   PDF-Wasserzeichen; VO2max-Konsolidierung (VO2short/VO2long → VO2max + Effort-Label).
 
-## 4a. Funktionsstand v0.14.0 (Ist-Stand, nicht Historie)
+## 4c. Funktionsstand v0.14.0 (historisch)
 
 **Neu in v0.14.0 (Kurz):**
 - **Geräteneutral:** COROS-Training-Load komplett raus (Parsing/Faktor/Feld). TSS nur noch rTSS/NGP,

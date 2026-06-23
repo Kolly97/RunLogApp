@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { api, type Profile } from "../lib/api.ts";
 import ZoneSets from "../components/ZoneSets.tsx";
+import LactateTests from "../components/LactateTests.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
+import AvailabilityCard from "../components/AvailabilityCard.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -72,6 +74,12 @@ export default function ProfilePage() {
 
       {/* HF-Zonen & Schwellen des aktiven Profils */}
       <ZoneSets />
+
+      {/* Trainings-Verfügbarkeit (A1, v1.4.0) */}
+      <AvailabilityCard />
+
+      {/* Laktat-/Feldtest-Diagnostik (G3, v1.3.0) */}
+      <LactateTests />
     </div>
   );
 }

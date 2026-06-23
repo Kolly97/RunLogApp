@@ -4,6 +4,97 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.4.0] – 2026-06-23 — Konkreter Mesoplaner, Race-Pacing & tiefere Analytik
+
+Block A (konkreter, tagesgebundener Trainingsplaner), Block B (Race-Pacing mit GAP/Höhenprofil), Block C (4 neue Analytik-Karten). Alle Änderungen additiv auf v1.3.0.
+
+### Hinzugefügt
+
+**Block A — Konkreter Mesoplaner**
+- **Verfügbarkeits-/Präferenz-Profil (A1):** neues Formular auf der Profil-Seite (`AvailabilityCard`).
+  7 Felder Zeitbudget/Wochentag (0 = Ruhetag), Longrun-Tag, Qualitätstage, Doubles-Option, bevorzugte Double-Tage.
+  Gespeichert als Setting-JSON `availability_<pid>` (additiv). Endpoints `GET/PUT /api/availability`.
+- **Session-Konkretisierer (A2):** `server/planbuilder.ts` `concretizeSession(type, targetTss, zones)` →
+  konkrete Einheit mit `planned_min`, `zone_alloc.byMin`, `efforts`, `description`, `paceTarget`.
+  Invertiert exakt die `rTssFromZones`-Mathe — Plan-TSS trifft Ziel auf die Nachkommastelle.
+  Easy/Long: Z2-Dauerlauf; LT1: Z3 @ lt1_pace; Threshold: N×12' @ Z4; VO2: N×4' @ Z5; Hill: N×1' @ Z4.
+- **Tages-Scheduler (A3):** `scheduleWeek()` in `planbuilder.ts` verteilt Einheiten per Regel auf Wochentage:
+  Longrun → `longRunDay`, Qualität → `hardDays` mit ≥48 h Abstand, Easy füllt Trainingstage,
+  Doubles nur auf Easy-Tagen wenn erlaubt; Tagesbudget wird auf alle Einheiten aufgeteilt.
+  Fallback ohne Profil = Round-Robin (keine Regression).
+- **Mesozyklus-Planer bis Renntag (A4):** `blockPlan()` in `analysis.ts` iteriert Wochen bis Renntag
+  (aus `races`-Tabelle oder `goal_race`-Woche), wendet 3:1-Deload + Taper an, akkumuliert Plan-TSS
+  in PMC-Vorwärtsprojektion für realistische Formschätzung je Woche.
+  Endpoint `GET /api/plan/block-suggestion`.
+- **Konkrete Engine-Karte & Block-Vorschau (A5):** `WeekPlan.tsx` Button „Wochen-Vorschlag" lädt jetzt
+  VDOT `weekSuggestion` + `blockSuggestion` parallel. Engine-Karte zeigt konkrete Einheiten mit
+  Wochentag · Dauer · Ziel-Pace · Beschreibung. „Übernehmen" schreibt `zone_alloc/efforts/planned_min`
+  (nicht mehr nur type+tss). Neue **Block-Vorschau** zeigt alle Wochen bis Renntag mit selektivem
+  „Woche übernehmen" — strikt additiv, bestehende `planned_sessions` unangetastet.
+
+**Block B — Race-Pacing**
+- **Pacing-Core (B1):** `server/pacing.ts` `pacingPlan()` verteilt Zielzeit auf km-Splits:
+  höhenkorrigiert via Minetti-Gradient-Faktor (wie NGP), optionaler linearer Negativ-Split (+/–f).
+  Garantie: `Σ(pace_i × dist_i) == Zielzeit` exakt. Endpoint `GET /api/races/:id/pacing`.
+- **Pacing-UI (B2):** Races-Seite: Button „Pacing" pro Wettkampf öffnet `PacingPanel` mit
+  Zielzeit-Eingabe, Negativ-Split-Toggle, Split-Tabelle (km · Steigung · Soll-Pace · GAP · kumuliert)
+  und Mini-BarChart (Pace je Split, Referenzlinie even_pace).
+
+**Block C — Tiefere Analytik**
+- **Durability/Decoupling-Trend (C1):** Zeitreihe der aeroben Entkopplung (Pa:HR-Drift) je Lauf ≥30 min.
+  Endpoint `GET /api/decoupling-trend`. Neues EgItem „Aerobe Entkopplung" in Langzeit mit
+  Referenzlinie bei 5 % (kritische Drift-Schwelle).
+- **Überlastungs-Frühwarnung (C2):** `injuryRiskFlag()` kombiniert ACWR + Monotonie/Strain + CTL-Ramp
+  + Readiness-Level zu einem gewichteten Risiko-Score (ok/info/warn/danger). Erscheint in
+  `/api/today`-Response; ausbaubar auf Dashboard/WeekReport.
+- **Zonen-Histogramm (C3):** Aggregierte Zeit in HF- und Pace-Zonen über den gewählten Zeitraum.
+  Endpoint `GET /api/zone-histogram`. Neues EgItem „Zeit in HF- und Pace-Zonen" in Langzeit
+  (horizontale BarCharts je Zone). Neues Chart-Modul `charts/ZoneHistogram.tsx`.
+- **Fitness-Signale konsolidiert (C4):** CTL (blau, täglich aus PMC) + VDOT (orange, wöchentlich aus
+  fitness-trend) in einem `ComposedChart` mit zwei Y-Achsen. Neues EgItem „Fitness-Signale" in Langzeit.
+
+### Geändert
+- `client/src/lib/api.ts`: neue Typen `Availability`, `BlockDay`, `BlockWeek`, `BlockPlan`,
+  `PacingSplit`, `PacingResult`, `DecouplingPoint`, `ZoneBand`, `ZoneHistogramData`, `FitnessTrend`
+  (Import); neue API-Methoden `availability`, `saveAvailability`, `blockSuggestion`, `racePacing`,
+  `decouplingTrend`, `zoneHistogram`.
+- `WeekPlan.tsx` `applySuggestion`: verwendet jetzt `zone_alloc/efforts/planned_min` aus Block-Plan
+  statt abstrakter Verteilung (Fallback auf alte Logik ohne Block-Plan).
+
+## [1.3.0] – 2026-06-23 — Echte Intensitätsverteilung, Laktat-Diagnostik & Wochen-Engine
+
+Zweite Runde der sportwiss. Meta-Studie. G4→G3→Engine-Reihenfolge, alle Blöcke addierend auf v1.2.0.
+
+### Hinzugefügt
+- **Echte Zeit-Intensitätsverteilung (G4):** physiologisches 3-Zonen-Modell (Z1 < LT1 / Z2 LT1–LT2 / Z3 > LT2)
+  aus `realZoneMin`, kalibrierbar über LT1/LT2-Grenzen. **Polarisierungs-Index (Treff et al. 2019)**:
+  `PI = log10((Z1/Z2)×Z3)`, PI ≥ 2.0 = polarisiert. **Phasen-Ziel** (pyramidal/polarisiert/regenerativ)
+  als Soll-Band. Neuer Flag `realPolarizationFlag` in „Bewertung der realen Woche" (WeekReport).
+  Neue Spalten `zone_sets.lt1_hr/lt1_pace` (LT1-Anker, Default = Z2/Z3-Grenze, von G3 überschreibbar).
+- **Laktat-/Feldtest-Diagnostik (G3, Profil-Seite):** vollständige Stufentest-Eingabe (km/h + Pace + HF +
+  Laktat + RPE), automatische Berechnung von **LT1** (Baseline + 0.4 mmol/L) und **LT2** (modifizierter Dmax,
+  AIS) in s/km und bpm. **Schwellen-Trend-Chart** (min. 2 Tests). **Zonen-Set-Vorschlag** aus LT1/LT2 (verankert
+  Z2-Top=LT1, Z4-Top=LT2) — Vorschlag-Modus, du bestätigst via `addZoneset`. Neuer Endpoint `/api/lactate-tests`
+  (CRUD + Punkte) + `/api/lactate-tests/:id/propose-zoneset`. Neues Modul `server/lactate.ts` (pure, keine DB).
+  Neue Tabellen `lactate_tests` / `lactate_points` (additiv).
+- **Wochen-/Block-Empfehlungs-Engine (WeekPlan):** regelbasierter Vorschlag für die Wochenstruktur aus Form
+  (TSB/CTL), Saison-Phase, Readiness und Periodisierungs-Modell (Block ≥ traditionell bei Specific). Liefert
+  Schlüsseleinheiten + TSS-Anteile + Verteilungs-Ziel + Begründung + Konfidenz. Button „In Wochenplanung
+  übernehmen" fügt Einheiten additiv ein (Vorschlag-Modus). Endpoint `GET /api/plan/week-suggestion`.
+  `weekStructureRecommendation()` in `analysis.ts`.
+
+### Geändert
+- `server/zones.ts` / lokales `effectiveZoneSet` in `index.ts`: LT1-Felder hinzugefügt, Default aus Z2/Z3-Grenze.
+- `AnalyzeResult` (api.ts): `physioDist`, `polarizationIndex`, `phaseTarget`, `realPolarizationFlag` ergänzt.
+
+### Datenbank
+- `zone_sets.lt1_hr` (REAL, additiv, NULL = Schätzwert aus Z2-Top).
+- `zone_sets.lt1_pace` (REAL, additiv, NULL = keine Pace-Schätzung).
+- `lactate_tests` (neue Tabelle, profilgefiltert).
+- `lactate_points` (neue Tabelle, FK auf test_id).
+
+---
+
 ## [1.2.0] – 2026-06-23 — Coach „Heute", Readiness, aerobe Entkopplung & Monotonie/Strain
 
 Erste Runde der sportwissenschaftlichen Meta-Studie (Intelligenz- & Analytik-Pfeiler). Alles regelbasiert/

@@ -24,14 +24,14 @@ In der App führt der Footer-Link **„Anleitung"** zu einer Schritt-für-Schrit
 
 ## Seiten
 - **Dashboard** — Performance Management Chart (PMC, 2fr) + Aktuelle Woche (1fr) nebeneinander; darunter Saison-Progression + Intensity-Trend (ATL/CTL-Verhältnis, 5-Band) auf halber Breite. Stat-Grid mit CTL/ATL/TSB/CTL-Ramp + **VO2max-Kachel** (VDOT, Niveau-Badge, Mini-Sparkline). Zeitraum umschaltbar.
-- **Wochenplanung** — Einheiten je Tag (Sport, Typ, km/min, **km je Zone**, Intervall-Builder, Beschreibung). Phase-Pille klickbar (Inline-Dropdown). Einheiten per Drag-and-Drop verschieben oder ⊕ kopieren. Live-Panel: geplante km vs. Phasenziel, Zonenverteilung & Intensität, geplanter TSS, projizierte Form, regelbasierte Hinweise + **TSS-Empfehlung-Badge** (Ampel aus CTL × Phase). Wettkampf-Einheit → Race automatisch angelegt.
+- **Wochenplanung** — Einheiten je Tag (Sport, Typ, km/min, **km je Zone**, Intervall-Builder, Beschreibung). Phase-Pille klickbar (Inline-Dropdown). Einheiten per Drag-and-Drop verschieben oder ⊕ kopieren. Live-Panel: geplante km vs. Phasenziel, Zonenverteilung & Intensität, geplanter TSS, projizierte Form, regelbasierte Hinweise + **TSS-Empfehlung-Badge** (Ampel aus CTL × Phase). **Engine-Karte** (v1.4.0): Klick „Wochen-Vorschlag" → konkrete Einheiten mit Wochentag · Dauer · Ziel-Pace · Intervallstruktur (planbuilder.ts). **Block-Vorschau** (ausklappbar): Mesozyklus bis Renntag, selektive Wochenübernahme. Wettkampf-Einheit → Race automatisch angelegt.
 - **Tracking** — Wochentag-Switcher (Punkte skalieren mit TSS), Tag/Woche-Umschalter; pro Tag Wellness (Schlaf inkl. Bett-/Aufwachzeit in h:mm & Sleep-Performance, HRV, Ruhepuls, Recovery, Strain, Beine, RPE, Schmerz, Gewicht, …) und Aktivitäten als Kacheln (Typ-Farbbalken, **% Plan-Erfüllung**, Intervall-Belastungen, km je Zone, kcal, Dauer als h:mm:ss, Commute-Schnellerfassung, „+ Zusätzliche Einheit"). Strava-Aktivitäten: „↻ Aus Strava neu laden"-Knopf (setzt Intervall-Sperre zurück). Ein Lauf mit Typ „Wettkampf" landet automatisch in Races.
-- **Wochenbericht** — geplant-vs-real Tagestabelle mit Notizen + **Plan-Erfüllung als Farb-Kachel je Tag** (≥ 90 % grün / ≥ 70 % gold / sonst rot), Kategorie-Summen, Zonen-/Intensitäts-Charts, **Efficiency Factor je Wochentag**, PMC bis zur Berichtswoche (+ CTL/ATL/TSB/Ramp), reale Bewertungs-Schilder, Wellness-Schnitt inkl. **Schlaffenster (Bett → Auf)**, Wochen-Check, Reflexion → **Drucken/PDF** (2-seitiges Layout, Wasserzeichen).
-- **Langzeit** — PMC + Saison-km, **Intensity-Trend (ATL/CTL)**, Wellness-Verläufe (HRV, Ruhepuls, Recovery, Strain, Schlaf, **Schlaffenster-Chart im Whoop-Stil**, Sleep-Performance, Gewicht, 8-Wochen-Referenzband), Zonen-Effizienz der Easy-Läufe, **Plan-Erfüllung (Wochenmittel)**, Intervall-Trend (LT1/LT2/VO2) → ebenfalls druckbar.
-- **Races** (eigene Seite) — Wettkämpfe mit Endzeit, Distanz, Platzierung, Ø-/Max-HF, Höhenmeter, manuellen Splits und Notizen; erscheinen als goldene Marker in den Charts. Wettkämpfe aus Saisonplan, Tracking **und Wochenplanung** werden automatisch übernommen.
+- **Wochenbericht** — geplant-vs-real Tagestabelle mit Notizen + **Plan-Erfüllung als Farb-Kachel je Tag** (≥ 90 % grün / ≥ 70 % gold / sonst rot), Kategorie-Summen, Zonen-/Intensitäts-Charts, **Efficiency Factor je Wochentag**, PMC bis zur Berichtswoche (+ CTL/ATL/TSB/Ramp), reale Bewertungs-Schilder inkl. **Polarisierungs-Flag** (v1.3.0), Wellness-Schnitt inkl. **Schlaffenster (Bett → Auf)**, Wochen-Check, Reflexion → **Drucken/PDF** (2-seitiges Layout, Wasserzeichen).
+- **Langzeit** — PMC + Saison-km, **Intensity-Trend (ATL/CTL)**, Wellness-Verläufe (HRV, Ruhepuls, Recovery, Strain, Schlaf, **Schlaffenster-Chart im Whoop-Stil**, Sleep-Performance, Gewicht, 8-Wochen-Referenzband), Zonen-Effizienz der Easy-Läufe, **Aerobe Entkopplung/Durability-Trend** (v1.4.0), **Zonen-Histogramm HF/Pace** (v1.4.0), **Fitness-Signale CTL+VDOT** (v1.4.0), **Plan-Erfüllung (Wochenmittel)**, Intervall-Trend (LT1/LT2/VO2) → ebenfalls druckbar.
+- **Races** (eigene Seite) — Wettkämpfe mit Endzeit, Distanz, Platzierung, Ø-/Max-HF, Höhenmeter, manuellen Splits und Notizen; erscheinen als goldene Marker in den Charts. **Pacing-Plan** (v1.4.0): Zielzeit → km-Splits mit Soll-Pace, GAP (höhenkorrigiert via Minetti), kumulierter Zeit und Mini-Chart. Wettkämpfe aus Saisonplan, Tracking **und Wochenplanung** werden automatisch übernommen.
 - **Bestzeiten** (eigene Seite) — persönliche Bestzeiten je Standarddistanz aus Strava + **Critical-Speed-Modell** (CS-Pace, D′, R², Prognosen) mit Distanz-Zeit-Diagramm + **Race-Prediction-Chart** (5k/10k/HM/Marathon über den Saisonverlauf aus dem CS-Modell, Y-Achse invertiert: schneller = oben).
 - **Saisonplan** (eigene Seite) — Wochen anlegen/bearbeiten; automatisch nach Datum sortiert und ab 0 nummeriert.
-- **Profil** — Athletenprofil (Geburtsjahr, Geschlecht, Gewicht, Max-HF für VO2max-Norm), HF-Zonen Lauf + **Fahrrad** separat, Pace- und Power-Zonen. Profile umbenennen/löschen/zurücksetzen.
+- **Profil** — Athletenprofil (Geburtsjahr, Geschlecht, Gewicht, Max-HF für VO2max-Norm), HF-Zonen Lauf + **Fahrrad** separat, Pace- und Power-Zonen. **Laktat-/Feldtest-Diagnostik** (v1.3.0): Stufentest eingeben → automatische LT1/LT2-Berechnung (HF + Pace) → Zonen-Set-Vorschlag + Schwellen-Trend über Zeit. **Trainings-Verfügbarkeit** (v1.4.0): Zeitbudget je Wochentag, Longrun-Tag, Qualitätstage, Doubles. Profile umbenennen/löschen/zurücksetzen.
 - **Einstellungen** — Zonen-Sets mit Gültig-ab-Datum, Analyse-Schwellen, Strava-Verbindung.
 - **Auswahllisten** — Phasen, Sportarten, Einheitstypen, Wochen-Checks und Tagesfaktoren ohne Code-Änderung hinzufügen/umbenennen/umfärben/sortieren (Drag &amp; Drop). **Master-Detail-Layout:** links Kategorie-Navigation, rechts aktive Liste mit Filter.
 
@@ -58,11 +58,18 @@ gehören dem Profil „Kolja".
 - **VO2max-Schätzung** per VDOT-Formel (Daniels-Gilbert) aus deinen besten Laufzeiten — mit Niveau-Badge nach ACSM-Normen (Alter + Geschlecht). Füllt sich automatisch mit den Strava-Bestzeiten.
 - **Race-Prediction** aus dem Critical-Speed-Modell: CS-Pace + D′ aus aeroben Bestzeiten → Prognosekurven 5k/10k/HM/Marathon über den Saisonverlauf.
 - **TSS-Wochenempfehlung** (3:1-Prinzip): Korridor aus CTL × Phase — Aufbau, Erhalt, Entlastung, Race Week und Krank haben eigene Faktoren; wird als Ampel-Badge in der Wochenplanung angezeigt.
+- **Echte Intensitätsverteilung** (v1.3.0): physiologisches 3-Zonen-Modell (Z1 < LT1 / Z2 = LT1–LT2 / Z3 > LT2) aus gemessener Zeit-in-Zone. **Polarisierungs-Index** (Treff et al. 2019): `PI = log10((Z1/Z2)×Z3)`, PI ≥ 2.0 = polarisiert. Phasenziel-Band (pyramidal / polarisiert / regenerativ).
+- **Laktat-/Feldtest-Diagnostik** (v1.3.0): LT1 = Baseline + 0.4 mmol/L (interpoliert); LT2 = modifizierter Dmax/AIS (Polynom-Fit, max. Perpendicular Distance). Kalibriert die Intensitätsverteilung mit echten Schwellenwerten.
+- **Wochen-Engine** (v1.3.0): `weekStructureRecommendation()` — regelbasierter Coach aus CTL/TSB/Phase/Readiness. Liefert Periodisierungsmodell (Block vs. traditionell), Schlüsseleinheiten mit TSS-Anteilen, Begründung + Konfidenz.
+- **Konkreter Mesoplaner** (v1.4.0): `blockPlan()` — Mesozyklus bis Renntag mit 3:1-Deload + Taper. `concretizeSession()` invertiert die rTSS-Mathe exakt → konkrete Einheiten mit Dauer, Pace, Intervallstruktur. Tages-Scheduler nach Verfügbarkeitsprofil.
+- **Race-Pacing** (v1.4.0): Zielzeit → km-Splits mit GAP (Minetti-Gradient-Korrektur), optionalem Negativ-Split. Σ(pace×dist) == Zielzeit exakt.
+- **Überlastungs-Frühwarnung** (v1.4.0): `injuryRiskFlag()` — gewichteter Score aus ACWR + Monotonie + CTL-Ramp + Readiness (ok/info/warn/danger).
+- **Tagescoach / Coach „Heute"** (v1.2.0): Readiness-Score (0–100) aus Schlaf/HRV/Fatigue/Monotonie/Taper → Trainingsempfehlung (Art, Dauer, Intensität) mit erklärbarer Begründung.
 - Geplante Einheiten werden in der PMC-Kurve nach vorne projiziert → du siehst vorab, wie die geplante Woche Fitness/Fatigue/Form bewegt.
 - Prüf-Engine: Volumen vs. Phasenziel, Ramp-Rate, CTL-Ramp, Form/Taper, Polarisierung (80/20), Quality-Spacing, Longrun-Anteil, Recovery-Readiness, Phasen-Stimmigkeit. Alle Schwellen editierbar.
 
 ## Architektur
-- `server/` — Express + `node:sqlite`. `db.ts` (Schema/Migrationen/Profile), `load.ts` (TSS/PMC/NGP/Best-Efforts/Zonen-Splits), `analysis.ts` (Prüf-Engine + Plan-Erfüllung), `zones.ts` (Zonen-Sets), `strava.ts` (OAuth/Sync/Zonen-Import), `index.ts` (API + statisches Hosting).
+- `server/` — Express + `node:sqlite`. `db.ts` (Schema/Migrationen/Profile), `load.ts` (TSS/PMC/NGP/Best-Efforts/Zonen-Splits), `analysis.ts` (Prüf-Engine + Plan-Erfüllung + Engine + blockPlan + injuryRiskFlag), `zones.ts` (Zonen-Sets + LT1-Anker), `lactate.ts` (LT1/LT2-Algorithmus, pure), `planbuilder.ts` (v1.4.0: concretizeSession + scheduleWeek, pure), `pacing.ts` (v1.4.0: pacingPlan, pure), `strava.ts` (OAuth/Sync/Zonen-Import), `index.ts` (API + statisches Hosting).
 - `client/` — Vite + React + TypeScript, Charts mit Recharts. `pages/`, `charts/`, `components/`, `lib/`.
 - Migrationen sind strikt **additiv** (`ALTER TABLE ADD COLUMN` + v2-Tabellen mit Kopie) — Bestandsdaten werden nie angetastet.
 
@@ -82,7 +89,7 @@ leere DB an) oder `training.empty.db` als `data/training.db` mitkopieren. `node_
 nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v1.2.0**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v1.4.0**.
 
 ## Desktop-App (Electron)
 Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mit Desktop-Icon, ganz ohne Terminal:
