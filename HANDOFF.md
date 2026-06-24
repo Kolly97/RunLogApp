@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v1.4.0** (23.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v1.5.0** (24.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -50,12 +50,16 @@
   `ctlRamp`. **v0.15:** `vdot(distanceM, timeS)` (Daniels-Gilbert, nur Efforts ≥ 1500 m / ≥ 180 s),
   `fitCriticalSpeed(pts)` (aus `/api/bests` extrahiert), `predictFromCs(cs, dPrime, distances)`.
   Sonst `DEFAULT_ZONE_PACE/SPEED`, `round1`. Typen `HrZone`/`PmcPoint`/`CsFit`. (`parseCorosLoad` entfernt.)
+  **v1.5.0:** `effectiveVo2max({ngpSec,avgPaceSec,avgHr,decoupling,hrRest,hrMax})` → Pro-Lauf-VO2max
+  (Daniels-Kosten + %VO2R≈%HRR), aggregat-basiert/backfillbar; Typ `EffVo2max`.
 - `analysis.ts` — `weekTotals`, `plannedSessionTss`, `typeIntensityShares` (Donut **nach Einheitstyp**),
   `zoneKmOf`/`zoneKmIntensityOf`, `classifyTss`, `weekRatingLevel`, `weekLoadFlag` + `kmPolarizationFlag`,
   **`sessionCompletion`** (Plan-% = TSS-Treffer + Pace-Zonen-Overlap), `intervalEffortStat`, `analyzeWeek`
   (Taper-Flag jetzt renntag-basiert: `raceDate/raceTsb/racePre7Tss/raceAvgWeeklyTss`).
   **v0.15:** `tssRecommendation(ctl, phase)` → `{min,max,target,kind}` nach 3:1-Belastungsprinzip (Aufbau
   +5–7 CTL/Woche; Entlastung 55–65 %; Race-Week ~50 %; Krank 0–40 %); `analyzeWeek` liefert `tssRec`.
+  **v1.5.0:** `adjustTodaySession(planned, ctx)` → `SessionAdjustment` (adaptiver Coach: TSB/Ramp/Readiness/Risiko
+  → heutige Einheit re-konkretisieren; advisory|gate); in `/api/today` als `adjustment`.
 - `index.ts` — alle Routen. `pid()`, `effectiveZoneSet`, `thresholds()` (+ `raceweek_tss_max_pct`), `dailyTssMap`,
   `earliestDataDate`, `avgPlannedWeeklyTss`/`avgWeeklyTss`, `addDaysIso`, **`ensureSeasonWeeks`** (2 Zukunftswochen
   + bis Renntag), **`syncRaceFromActivity`** (Race aus Tracking), `activityTssToStore`. Endpunkte u.a.:
@@ -124,13 +128,16 @@
   `zones`/`zone_min`/`zone_km` JSON, **`pace_zone_min`** JSON (Pace-Zonen-Min, für Plan-%), `efforts` JSON, `tss`,
   `training_load` (Legacy, ungenutzt → null), **`best_efforts`** JSON {distance_m:time_s} (Bestzeiten), `strava_id`,
   `matched_session_id`, `overrides` JSON, `notes`, **`ngp`** (s/km, Lauf), **`np`** (W, Rad), `desc_fetched`,
-  `streams_fetched`, **`efforts_locked`** INTEGER DEFAULT 0 — v0.15: Strava-Overwrite-Schutz).
+  `streams_fetched`, **`efforts_locked`** INTEGER DEFAULT 0 — v0.15: Strava-Overwrite-Schutz;
+  **`eff_vo2max`** REAL — v1.5.0: Effective VO2max je Lauf, via Recompute backfillbar).
 - `zone_sets` (profile_id, hr/pace/speed/power-zones JSON, lthr/ftp/threshold_pace, valid_from; `source` u.a.
   „Strava"; **`hr_zones_bike`** TEXT — v0.15; **`lt1_hr`/`lt1_pace`** REAL — v1.3.0: LT1-Anker addiert).
 - `lactate_tests` (**neu v1.3.0** — additiv): id, profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr,
   lt2_pace, confidence, warnings, created_at. Index auf (profile_id, date).
 - `lactate_points` (**neu v1.3.0** — additiv): id, test_id, stage, speed_kmh, pace_s, power_w, hr, lactate, rpe.
   FK test_id → lactate_tests.
+- `vo2max_lab` (**neu v1.5.0** — additiv): id, profile_id, date, value, source, notes, created_at. Labor-VO2max-
+  Werte über Zeit → eichen die Effective-VO2max-Schätzung. Index auf (profile_id, date).
 - `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,
   max_hr,elevation_m}], `avg_hr`, `max_hr`, `elevation_m`, `source`=manual|season|**tracking**, **`activity_id`**
   (verknüpfte getrackte Einheit); Auto-Import aus Saisonplan `goal_race` (Ledger `season_races_imported_<pid>`)
@@ -138,7 +145,24 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v1.4.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v1.5.0 (Ist-Stand, nicht Historie)
+
+**Neu in v1.5.0 (Kurz):**
+- **Effective VO2max je Lauf (V):** `effectiveVo2max()` in `load.ts` — submax HF↔Pace (Daniels-Laufkosten +
+  %VO2R≈%HRR), NGP-basiert, Gate auf stetig-aerobe Läufe. Aggregat-basiert (aus `ngp`/`avg_hr`/`decoupling`)
+  → über die volle Historie backfillbar (Recompute). Neue Spalte `activities.eff_vo2max`.
+- **Labor-Kalibrierung:** Tabelle `vo2max_lab` (mehrere Werte über Zeit) + `hr_rest` im `athlete`-Setting.
+  CRUD `/api/vo2max-lab`; `/api/effective-vo2max-trend` (roh + linear interpolierte Eichung zwischen Tests).
+  UI: Karte in Langzeit (Trend + Labor-Punkte + geeichte Linie), `Vo2maxLabCard` + Ruhe-HF im Profil.
+- **Adaptiver Coach (S):** `adjustTodaySession()` in `analysis.ts` — Decision-Tree (TSB/Ramp/Readiness/Risiko)
+  passt die heutige Haupt-Einheit an, re-konkretisiert über `concretizeSession` (Plan-TSS exakt). `/api/today`
+  liefert `adjustment`; Dashboard-Coach-Karte mit „Anpassung übernehmen" (`POST /api/sessions/:id/apply-adjustment`).
+  Gate-Modus konfigurierbar (Setting `readiness_gate_mode` advisory|gate, Toggle in Einstellungen).
+- **Anreicherungs-Fortschritt (D1):** `GET /api/enrich-progress`; zwei Doughnuts „x/Σ" (Details, Streams) in der Strava-Karte.
+- **Bugfix-Notiz:** Threshold-TSS-„Explosion" war eine Pace-Zonen-Fehleingabe (Z4 0:03 statt 3:24), kein Code-Bug
+  (Zonen-Pace ~0 → `IF²` in `rTssFromZones` explodiert). **Offen v1.6:** Methoden-Findung (N-of-1).
+
+## 4a. Funktionsstand v1.4.0 (historisch)
 
 **Neu in v1.4.0 (Kurz):**
 - **Verfügbarkeits-Profil (A1):** `AvailabilityCard` in Profile.tsx. 7×Minuten/Tag, Longrun-Tag, Qualitätstage,
@@ -161,7 +185,7 @@
   Neues Chart `charts/ZoneHistogram.tsx`. EgItem in Langzeit.
 - **Fitness-Signale (C4):** ComposedChart CTL + VDOT in Langzeit (zwei Y-Achsen).
 
-## 4a. Funktionsstand v1.3.0 (nicht Ist-Stand — historisch)
+## 4b. Funktionsstand v1.3.0 (nicht Ist-Stand — historisch)
 
 **Neu in v1.3.0 (Kurz):**
 - **Echte Intensitätsverteilung (G4):** physiologisches 3-Zonen-Modell (Z1 < LT1 / Z2 = LT1–LT2 / Z3 > LT2) aus
@@ -187,7 +211,7 @@
   WeekReport. `daily_log_v2.monotony/strain` berechnet und gespeichert.
 - **Kovariationskoeff. (CV-Pace):** Wochenrythmus-Flag aus Standardabweichung der NGP-Tage.
 
-## 4b. Funktionsstand v1.1.0 (nicht Ist-Stand — historisch)
+## 4c. Funktionsstand v1.1.0 (nicht Ist-Stand — historisch)
 
 **Neu in v1.1.0 (Kurz):**
 - **EditableGrid (react-grid-layout v1.5.3):** Wochenbericht + Langzeit als freies Drag-Resize-Kachel-Layout
@@ -240,7 +264,7 @@
   8-Wochen-Referenz in Wellness-Sparklines; Schlaf-Felder hh:mm; IntervalTrend-Legende togglebar;
   PDF-Wasserzeichen; VO2max-Konsolidierung (VO2short/VO2long → VO2max + Effort-Label).
 
-## 4c. Funktionsstand v0.14.0 (historisch)
+## 4d. Funktionsstand v0.14.0 (historisch)
 
 **Neu in v0.14.0 (Kurz):**
 - **Geräteneutral:** COROS-Training-Load komplett raus (Parsing/Faktor/Feld). TSS nur noch rTSS/NGP,

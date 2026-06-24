@@ -230,6 +230,9 @@ function migrate(): void {
   // v1.2.0: aerobe Entkopplung (Pa:HR, %) — aus den Streams bei der Anreicherung berechnet.
   addColumn("activities", "decoupling", "REAL");
 
+  // v1.5.0: Effective VO2max je Lauf (Runalyze-Stil, aus NGP + Ø-HF + Entkopplung), backfillbar via Recompute.
+  addColumn("activities", "eff_vo2max", "REAL");
+
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
     CREATE TABLE IF NOT EXISTS options (
@@ -400,6 +403,20 @@ function migrate(): void {
       rpe         INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_lactate_points_test ON lactate_points(test_id);
+  `);
+
+  // v1.5.0: Labor-VO2max-Werte über Zeit → Eichung der Effective-VO2max-Schätzung (mehrere Tests möglich).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vo2max_lab (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      value       REAL NOT NULL,
+      source      TEXT,
+      notes       TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_vo2max_lab_date ON vo2max_lab(profile_id, date);
   `);
 }
 

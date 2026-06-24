@@ -4,6 +4,47 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.5.0] – 2026-06-24 — Effective VO2max, adaptiver Coach & Anreicherungs-Fortschritt
+
+Zweiter Pfeiler der Meta-Studie (Intelligenz & Steuerung), Teil 1. Block V (tägliches, am Labor
+kalibrierbares Fitness-Signal) + Block S (Coach „Heute" passt die geplante Einheit aktiv an) + D1
+(Anreicherungs-Fortschritt in den Einstellungen). Methoden-Findung (N-of-1) folgt als eigenes großes
+Update v1.6. Alle Änderungen additiv auf v1.4.0.
+
+### Hinzugefügt
+
+**Block V — Effective VO2max je Lauf**
+- **Pro-Lauf-VO2max-Schätzung (V1):** `effectiveVo2max()` in `server/load.ts` — submaximale HF↔Pace
+  (Daniels-Laufkosten + %VO2R≈%HRR-Brücke, NGP-basiert). Gate auf stetig-aerobe Läufe (HF-Reserve-Band +
+  aerobe Entkopplung). Aggregat-basiert aus gespeicherten Feldern → über die volle Historie backfillbar.
+- **Labor-Kalibrierung (V2):** neue additive Spalte `activities.eff_vo2max`; neue Tabelle `vo2max_lab`
+  (mehrere Werte über Zeit). Backfill über „TSS neu berechnen". CRUD `GET/POST/PUT/DELETE /api/vo2max-lab`;
+  Trend-Endpoint `GET /api/effective-vo2max-trend` (roh + linear zwischen Labortests interpolierte Eichung).
+  Athlete-Feld `hr_rest` (Ruhe-HF) für die HF-Reserve.
+- **UI (V3):** Karte „Effective VO2max je Lauf" in Langzeit (Schätz-Trend + Labor-Punkte + geeichte Linie);
+  Laborwert-Tabelle `Vo2maxLabCard` + Ruhe-HF-Feld in Profil.
+
+**Block S — Adaptiver Coach**
+- **`adjustTodaySession()` (S1)** in `server/analysis.ts`: erklärbarer Decision-Tree aus Form (TSB/CTL-Ramp),
+  Readiness und Überlastungsrisiko → passt die heutige Haupt-Einheit an (TSS skalieren / harte Einheit
+  entschärfen) und re-konkretisiert über `concretizeSession` (Plan-TSS exakt). Vollständige Begründung + Konfidenz.
+- **Integration (S2):** `/api/today` liefert jetzt `adjustment`; Coach-„Heute"-Karte im Dashboard zeigt die
+  Anpassung geschichtet mit Button „Anpassung übernehmen" (`POST /api/sessions/:id/apply-adjustment`,
+  server-autoritative TSS). Konfigurierbarer Gate-Modus (Setting `readiness_gate_mode`, advisory|gate) in den Einstellungen.
+
+**Block D — Anreicherungs-Fortschritt**
+- **Doughnut in den Einstellungen (D1):** `GET /api/enrich-progress` (total / Details / Streams je aktivem
+  Profil); zwei kompakte Ring-Statistiken „x / Σ" in der Strava-Karte, aktualisiert nach „Details/Splits nachziehen".
+
+### Geändert
+- `POST /api/recompute-tss` backfillt zusätzlich `eff_vo2max` aller Läufe (Antwort um `effVo2` erweitert).
+- `client/src/lib/api.ts`: Typen `Vo2maxLab`, `EffVo2maxPoint`, `EffVo2maxTrend`, `TodayResult.adjustment`;
+  Methoden `vo2maxLabs/addVo2maxLab/updateVo2maxLab/deleteVo2maxLab`, `effVo2maxTrend`, `applyAdjustment`, `enrichProgress`.
+
+### Behoben
+- Threshold-Plan-TSS-„Explosion" war eine versehentliche Pace-Zonen-Eingabe (Z4 0:03 statt 3:24) — kein
+  Code-Fehler. Diagnose dokumentiert: eine Zonen-Pace nahe 0 lässt `IF²` in `rTssFromZones` explodieren.
+
 ## [1.4.0] – 2026-06-23 — Konkreter Mesoplaner, Race-Pacing & tiefere Analytik
 
 Block A (konkreter, tagesgebundener Trainingsplaner), Block B (Race-Pacing mit GAP/Höhenprofil), Block C (4 neue Analytik-Karten). Alle Änderungen additiv auf v1.3.0.

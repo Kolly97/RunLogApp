@@ -10,7 +10,7 @@ import {
   ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
@@ -106,6 +106,7 @@ export default function LongTerm() {
   const [decoupling, setDecoupling] = useState<DecouplingPoint[]>([]); // C1 v1.4.0
   const [zoneHist, setZoneHist] = useState<ZoneHistogramData | null>(null); // C3 v1.4.0
   const [fitnessTrend, setFitnessTrend] = useState<FitnessTrend | null>(null); // C4 v1.4.0
+  const [effVo2, setEffVo2] = useState<EffVo2maxTrend | null>(null); // V v1.5.0
   // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
   const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
 
@@ -122,6 +123,7 @@ export default function LongTerm() {
     api.decouplingTrend({ from: range.from, to: range.to }).then(setDecoupling).catch(() => setDecoupling([]));
     api.zoneHistogram({ from: range.from, to: range.to }).then(setZoneHist).catch(() => setZoneHist(null));
     api.fitnessTrend(range.from, range.to).then(setFitnessTrend).catch(() => setFitnessTrend(null));
+    api.effVo2maxTrend(range.from, range.to).then(setEffVo2).catch(() => setEffVo2(null));
   }, [range?.from, range?.to]);
 
   // Saison-Zeilen einmal über die ganze Saison bauen (wie Dashboard); Anzeige per Zeitraum gefiltert.
@@ -505,6 +507,50 @@ export default function LongTerm() {
               </ResponsiveContainer>
               <p className="tiny muted" style={{ margin: "6px 0 0" }}>
                 <T k="lt.block.fitness.hint">CTL (blau, links) zeigt das Trainingsvolumen; VDOT (orange, rechts) die aerobe Kapazität. Beide sollten langfristig steigen.</T>
+              </p>
+            </div>
+          )}</EgItem>
+        );
+      })()}
+
+      {/* (b2e) Effective VO2max je Lauf + Labor-Eichung (V, v1.5.0) */}
+      {(() => {
+        if (!effVo2 || effVo2.points.length < 3) return null;
+        const labByDate = new Map(effVo2.lab.map((l) => [l.date, l.value]));
+        const estByDate = new Map(effVo2.points.map((p) => [p.date, p]));
+        const dates = Array.from(new Set([...effVo2.points.map((p) => p.date), ...effVo2.lab.map((l) => l.date)])).sort();
+        const data = dates.map((d) => {
+          const p = estByDate.get(d);
+          return { date: d, est: p?.est ?? null, calibrated: p?.calibrated ?? null, lab: labByDate.get(d) ?? null };
+        });
+        const evYears = yearMarksByDateAll(dates);
+        return (
+          <EgItem id="eff-vo2max" title={t("lt.block.effvo2.title", "Effective VO2max")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+            <div className="card chart-card">
+              <h3><T k="lt.block.effvo2.title">Effective VO2max je Lauf</T></h3>
+              <ResponsiveContainer width="100%" height={h ?? 240}>
+                <ComposedChart data={data} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="" />
+                  <Tooltip
+                    labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
+                    formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
+                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                  />
+                  {effVo2.calibrated && (
+                    <Line type="monotone" dataKey="est" name="Schätzung (roh)" stroke="#cbd5e1" strokeWidth={1.2} dot={false} connectNulls />
+                  )}
+                  <Line type="monotone" dataKey="calibrated" name={effVo2.calibrated ? "Kalibriert" : "Effective VO2max"} stroke="#0ea5e9" strokeWidth={1.8} dot={false} connectNulls />
+                  <Line dataKey="lab" name="Labor" stroke="none" dot={{ r: 5, fill: "#16a34a", strokeWidth: 0 }} connectNulls={false} />
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={[]} years={evYears} />} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                <T k="lt.block.effvo2.hint">Pro-Lauf-VO2max aus submaximaler HF↔Pace (stetige Läufe).</T>{" "}
+                {effVo2.calibrated
+                  ? t("lt.block.effvo2.cal", "Auf die Laborwerte (grün) geeicht.")
+                  : t("lt.block.effvo2.uncal", "Noch unkalibriert — Laborwerte im Profil hinzufügen für absolute Eichung.")}
               </p>
             </div>
           )}</EgItem>

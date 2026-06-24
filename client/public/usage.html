@@ -165,6 +165,20 @@
           <p>Saison / 1M / 6M / 1J / YTD / Eigene — gilt für die großen Charts. CTL/ATL werden immer aus der
             vollen Historie gerechnet und nur für die Anzeige zugeschnitten, damit die Fitness am Anfang stimmt.</p>
         </section>
+
+        <section class="card">
+          <h2>Coach „Heute" &amp; adaptive Anpassung <span class="pill">v1.5.0</span></h2>
+          <p>Die „Heute"-Karte gibt aus Form (TSB), Readiness (HRV/Schlaf), Saisonphase und Wochen-TSS-Ziel eine
+            erklärbare Tages-Empfehlung — immer im <strong>Vorschlag-Modus</strong> (du bestätigst).</p>
+          <p>Ist für heute bereits eine Einheit geplant, schlägt der <strong>adaptive Coach</strong> bei Bedarf eine
+            konkrete <strong>Anpassung</strong> vor: harte Einheit bei roter Readiness auf locker reduzieren, bei
+            Überlastungsrisiko/starker Ermüdung Dosis senken, bei frischer Form mit Wochenrückstand leicht erhöhen.
+            Die angepasste Einheit wird exakt neu konkretisiert (Dauer/Intervalle/Pace), die Plan-TSS bleibt stimmig.
+            Mit <em>Anpassung übernehmen</em> wird sie additiv in die Planung geschrieben.</p>
+          <div class="note">Den Gate-Modus (<strong>beratend</strong> oder <strong>Gate</strong>) stellst du in den
+            <a href="#einstellungen">Einstellungen</a> ein. Voraussetzung für gute Vorschläge: gepflegte Tagesfaktoren
+            (HRV/Schlaf) und korrekte Max-/Ruhe-HF im <a href="#profil">Profil</a>.</div>
+        </section>
       </div>
 
       <!-- ============================ PLANUNG ============================ -->
@@ -304,8 +318,19 @@
             <dt>Intervall-Trend</dt><dd>Ø-Pace der Belastungen nach Kategorie (LT1 / LT2 / VO2).</dd>
             <dt>Intensity-Trend</dt><dd>ATL/CTL × 100 % — zeigt ob du gerade aufbaust, erhältst oder überlastest
               (5 Bänder von Decreasing bis Excessive).</dd>
+            <dt>Aerobe Entkopplung &amp; Zonen-Histogramm</dt><dd>Pa:HR-Drift langer Läufe (unter 5&nbsp;% = solide)
+              und die aggregierte Zeit je HF-/Pace-Zone im Zeitraum.</dd>
+            <dt>Fitness-Signale (CTL + VDOT)</dt><dd>Trainingsvolumen (CTL) und aerobe Kapazität (VDOT) in einem Chart.</dd>
+            <dt>Effective VO2max je Lauf <span class="pill">v1.5.0</span></dt><dd>Pro-Lauf-VO2max aus
+              submaximaler HF↔Pace (nur stetige, aerobe Läufe). Trägst du im <a href="#profil">Profil</a>
+              <strong>Laborwerte</strong> ein, wird die Schätzung darauf <strong>geeicht</strong> (grüne Punkte =
+              Labor, blaue Linie = kalibriert). Ohne Laborwerte zeigt sie den relativen Trend. Ergänzt VDOT um ein
+              tägliches Fitness-Signal.</dd>
           </dl>
           <p>Zeitraum frei wählbar (Standard 6 Monate), druckbar.</p>
+          <div class="note">Effective VO2max + aerobe Entkopplung brauchen Strava-<strong>Streams</strong>. Anteil der
+            angereicherten Einheiten siehst du in den <a href="#einstellungen">Einstellungen</a>; „TSS neu berechnen"
+            füllt die Schätzung über die ganze Historie nach.</div>
         </section>
       </div>
 
@@ -383,11 +408,21 @@
           <p>Grenzwerte der Check-Engine (Volumen-%, CTL-Ramp-max, Hart-%-max, Z3-%-max, Longrun-%-max,
             TSB Race Week min, <strong>Race 7d-Last max %</strong>) sowie die Intensitäts-Einstufung
             (easy-/hart-% und Referenz-Fenster in Wochen).</p>
+          <h2>Adaptiver Coach (Readiness-Gate) <span class="pill">v1.5.0</span></h2>
+          <p>Steuert, wie der <a href="#dashboard">Coach „Heute"</a> bei niedriger Readiness mit deiner geplanten
+            Einheit umgeht: <strong>Beratend</strong> = unverbindlicher Vorschlag; <strong>Gate</strong> = die
+            vorgeschlagene Reduktion wird hervorgehoben. In beiden Fällen entscheidest du selbst (Vorschlag-Modus).</p>
           <h2>Strava &amp; TSS</h2>
           <p>Strava verbinden &amp; synchronisieren (siehe <a href="#strava">Strava</a>) — inkl. einstellbarem
             <strong>„Daten ab"-Datum</strong> für den Import. <strong>„TSS neu berechnen (Lauf + Rad)"</strong>
             rechnet alle Lauf- (rTSS/NGP) und Rad-TSS (Power-TSS/NP) + geplanten TSS neu (mit automatischem
-            DB-Backup), z.&nbsp;B. nachdem neue Streams per Sync hereingekommen sind oder die Schwellen geändert wurden.</p>
+            DB-Backup), z.&nbsp;B. nachdem neue Streams per Sync hereingekommen sind oder die Schwellen geändert wurden.
+            Dabei wird auch die <strong>Effective VO2max</strong> jedes Laufs neu geschätzt.</p>
+          <h3>Anreicherungs-Fortschritt <span class="pill">v1.5.0</span></h3>
+          <p>Zwei Ringe zeigen, welcher Anteil deiner Aktivitäten schon mit <strong>Details</strong> bzw.
+            <strong>Streams/Splits</strong> angereichert ist (jeweils „x / Σ"). Streams liefern NGP/NP, Zeit-in-Zone,
+            Race-Splits und die Effective VO2max. Der Knopf <a href="#strava">„Details/Splits nachziehen"</a> füllt den
+            Rest budgetiert auf (wegen des Strava-Rate-Limits ggf. über mehrere Durchläufe).</p>
         </section>
       </div>
 
@@ -403,6 +438,16 @@
             pro Profil getrennt. <strong>Zurücksetzen</strong> löscht <em>alle</em> Trainings- &amp; Plandaten des Profils
             (Aktivitäten, Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan/Ziel-km und Wettkämpfe);
             nur die <strong>HF-Zonen/Schwellen</strong> bleiben erhalten (mit automatischem DB-Backup).</p>
+          <h2>Athletendaten &amp; VO2max-Laborwerte <span class="pill">v1.5.0</span></h2>
+          <p>Geburtsjahr, Geschlecht, Gewicht sowie <strong>Max-HF</strong> und <strong>Ruhe-HF</strong>. Geburtsjahr +
+            Geschlecht bestimmen die Alters-Norm der VO2max-Einordnung; Max-/Ruhe-HF speisen die <strong>HF-Reserve</strong>
+            der <a href="#langzeit">Effective-VO2max</a>-Schätzung. Nach Änderung der HF-Werte einmal
+            „TSS neu berechnen" drücken, damit die Läufe neu geschätzt werden.</p>
+          <p>Darunter trägst du <strong>VO2max-Laborwerte</strong> (Spiroergometrie) mit Datum ein — mehrere über die
+            Zeit möglich. Sie <strong>eichen</strong> die Pro-Lauf-Schätzung: zwischen zwei Tests wird der Korrektur-Offset
+            linear interpoliert, sodass die Effective-VO2max-Kurve absolut zu deinen Messungen passt.</p>
+          <div class="warn note">Eingabe-Fallstrick: Pace-Zonen immer als <strong>mm:ss/km</strong> (z.&nbsp;B. 3:24),
+            nicht 0:03 — eine Pace nahe 0 lässt die geplante TSS in absurde Höhen schießen.</div>
           <h2>HF-Zonen &amp; Schwellen</h2>
           <p>HF-Zonen (bpm), Pace-Zonen (mm:ss/km, Lauf) und Power-Zonen (Watt, Rad), dazu <strong>LTHR</strong>,
             <strong>FTP</strong> und <strong>Schwellen-Pace</strong>. Bei den HF-Zonen gibst du nur die
@@ -582,11 +627,16 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
               Distanzreserve (m). Lineare Regression über aerobe PBs (~2–30&nbsp;min); daraus Renn-Prognosen.</dd>
             <dt>Intervall-Kategorien</dt><dd>LT1 (unteres Schwellen-/Tempo), LT2 (Schwelle), VO2 kurz/lang — aus den
               Belastungs-Blöcken abgeleitet.</dd>
+            <dt>Effective VO2max <span class="pill">v1.5.0</span></dt><dd>Pro-Lauf-VO2max-Schätzung aus submaximaler
+              HF↔Pace: Lauf-Energiekosten nach Daniels <code>VO2 = −4,60 + 0,182258·v + 0,000104·v²</code> (v in m/min,
+              aus NGP) und der Brücke <strong>%VO2R ≈ %HRR</strong> →
+              <code>VO2max = 3,5 + (VO2 − 3,5) / %HRR</code>, mit <code>%HRR = (Ø-HF − Ruhe-HF)/(Max-HF − Ruhe-HF)</code>.
+              Nur für stetige, aerobe Läufe; absolut über Labor-Werte geeicht (Offset zwischen Tests linear interpoliert).</dd>
           </dl>
         </section>
 
         <footer>
-          RunLog v1.1.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+          RunLog v1.5.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
         </footer>
       </div>
     </main>

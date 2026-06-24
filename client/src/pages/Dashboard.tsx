@@ -29,6 +29,19 @@ export default function Dashboard() {
   const [fit, setFit] = useState<FitnessTrend | null>(null);
   const [today, setToday] = useState<TodayResult | null>(null);
   useEffect(() => { api.today().then(setToday).catch(() => setToday(null)); }, []);
+  const [adjBusy, setAdjBusy] = useState(false);
+  const [adjMsg, setAdjMsg] = useState("");
+  const applyAdjustment = async () => {
+    const adj = today?.adjustment;
+    if (!adj?.changed || !adj.adjusted) return;
+    setAdjBusy(true);
+    try {
+      await api.applyAdjustment(adj.originalSessionId, adj.adjusted);
+      setAdjMsg(t("dashboard.today.adjApplied", "übernommen ✓"));
+      api.today().then(setToday).catch(() => {});
+    } catch { setAdjMsg(t("dashboard.today.adjErr", "Fehler")); }
+    finally { setAdjBusy(false); }
+  };
 
   const seasonRange: DateRange | null = season.length
     ? { from: season[0].start_date, to: maxDate(season[season.length - 1].end_date, addDays(todayIso(), 21)) }
@@ -133,6 +146,30 @@ export default function Dashboard() {
                     {today.recommendation.reasons.map((r, i) => <li key={"x" + i}>{r.text}</li>)}
                   </ul>
                 </details>
+                {today.adjustment?.changed && today.adjustment.adjusted && (
+                  <div className="card" style={{ marginTop: 10, padding: "8px 10px", background: today.adjustment.mode === "gate" ? "#fff7ed" : "#f8fafc", border: "1px solid var(--line)" }}>
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                      <span className="dot" style={{ background: today.adjustment.mode === "gate" ? "#f97316" : "#0ea5e9", width: 10, height: 10 }} />
+                      <strong style={{ fontSize: 13 }}>{today.adjustment.headline}</strong>
+                    </div>
+                    <div className="tiny muted" style={{ marginTop: 3 }}>
+                      {today.adjustment.original.type} {today.adjustment.original.planned_tss} TSS → <strong>{today.adjustment.adjusted.type} {today.adjustment.adjusted.planned_tss} TSS</strong>
+                      {today.adjustment.adjusted.description ? ` · ${today.adjustment.adjusted.description}` : ""}
+                    </div>
+                    <details style={{ marginTop: 4 }}>
+                      <summary className="tiny" style={{ cursor: "pointer" }}><T k="dashboard.today.adjWhy">Warum</T></summary>
+                      <ul className="tiny muted" style={{ margin: "4px 0 0 18px" }}>
+                        {today.adjustment.reasons.map((r, i) => <li key={"a" + i}>{r.text}</li>)}
+                      </ul>
+                    </details>
+                    <div className="row" style={{ marginTop: 6, gap: 8, alignItems: "center" }}>
+                      <button className="sm primary" disabled={adjBusy} onClick={applyAdjustment}>
+                        <T k="dashboard.today.applyAdj">Anpassung übernehmen</T>
+                      </button>
+                      <span className="tiny muted">{today.adjustment.mode === "gate" ? t("dashboard.today.gate", "Gate aktiv") : t("dashboard.today.advisory", "beratend")}{adjMsg ? ` · ${adjMsg}` : ""}</span>
+                    </div>
+                  </div>
+                )}
                 <div className="row" style={{ marginTop: 8 }}>
                   <a className="sm ghost" href="/plan"><T k="dashboard.today.toPlan">In Wochenplanung öffnen →</T></a>
                 </div>

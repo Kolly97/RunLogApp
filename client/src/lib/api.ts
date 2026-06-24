@@ -16,6 +16,9 @@ export interface BestsResult { pbs: Pb[]; vdot: number | null; vdotLevel: string
 // VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
 export interface FitnessTrendPoint { date: string; vdot: number | null; p5000: number | null; p10000: number | null; p21097: number | null; p42195: number | null; }
 export interface FitnessTrend { points: FitnessTrendPoint[]; current: FitnessTrendPoint | null; age: number | null; level: string | null; }
+export interface Vo2maxLab { id: number; profile_id: number; date: string; value: number; source?: string | null; notes?: string | null; created_at: string; }
+export interface EffVo2maxPoint { date: string; est: number; calibrated: number; }
+export interface EffVo2maxTrend { points: EffVo2maxPoint[]; lab: { date: string; value: number }[]; calibrated: boolean; }
 export interface PlanAdherenceWeek { week_no: number; start: string; end: string; pct: number | null; n: number; }
 // Seiten-Layout (T8): freies Raster (react-grid-layout-Koordinaten) je Chart-Block.
 // x/y/w/h in Rastereinheiten (12 Spalten); fehlende Felder → Default des Blocks.
@@ -103,6 +106,17 @@ export interface TodayResult {
   readiness: { score: number; level: "green" | "yellow" | "red"; drivers: { code: string; text: string }[] } | null;
   plannedTypes: string[];
   recommendation: { headline: string; sessionType: string; doseHint: string; reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig" };
+  adjustment: {
+    changed: boolean;
+    action: string;
+    headline: string;
+    reasons: { code: string; text: string }[];
+    confidence: "hoch" | "mittel" | "niedrig";
+    mode: "advisory" | "gate";
+    original: { type: string; planned_tss: number };
+    adjusted: { type: string; planned_min: number; zone_alloc: { byMin: Record<number, number> }; efforts: unknown[] | null; description: string; planned_tss: number; paceTarget: number | null } | null;
+    originalSessionId: number;
+  } | null;
 }
 
 // v1.3.0 (G3) — Laktat-/Feldtest-Diagnostik.
@@ -235,6 +249,19 @@ export const api = {
   proposeLactateZoneset: (id: number, maxHr?: number) =>
     j<LactateZoneProposal>(`/api/lactate-tests/${id}/propose-zoneset`, { method: "POST", body: JSON.stringify({ max_hr: maxHr ?? null }) }),
 
+  vo2maxLabs: () => j<Vo2maxLab[]>("/api/vo2max-lab"),
+  addVo2maxLab: (b: { date: string; value: number; source?: string; notes?: string }) =>
+    j<{ id: number }>("/api/vo2max-lab", { method: "POST", body: JSON.stringify(b) }),
+  updateVo2maxLab: (id: number, b: { date: string; value: number; source?: string; notes?: string }) =>
+    j<{ ok: true }>(`/api/vo2max-lab/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteVo2maxLab: (id: number) => j<{ ok: true }>(`/api/vo2max-lab/${id}`, { method: "DELETE" }),
+  effVo2maxTrend: (from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return j<EffVo2maxTrend>(`/api/effective-vo2max-trend${p.toString() ? `?${p}` : ""}`);
+  },
+
   season: () => j<SeasonWeek[]>("/api/season"),
   saveWeek: (no: number, b: Partial<SeasonWeek>) => j(`/api/season/week/${no}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteWeek: (no: number) => j(`/api/season/week/${no}`, { method: "DELETE" }),
@@ -246,6 +273,9 @@ export const api = {
   addSession: (b: PlannedSession) => j<{ id: number; planned_tss: number }>("/api/sessions", { method: "POST", body: JSON.stringify(b) }),
   updateSession: (id: number, b: PlannedSession) => j<{ planned_tss: number }>(`/api/sessions/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteSession: (id: number) => j(`/api/sessions/${id}`, { method: "DELETE" }),
+  applyAdjustment: (id: number, adjusted: object) =>
+    j<{ ok: true; planned_tss: number }>(`/api/sessions/${id}/apply-adjustment`, { method: "POST", body: JSON.stringify(adjusted) }),
+  enrichProgress: () => j<{ total: number; details: number; streams: number }>("/api/enrich-progress"),
 
   activities: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();

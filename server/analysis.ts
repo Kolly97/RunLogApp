@@ -1,6 +1,6 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
 import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, type HrZone } from "./load.ts";
-import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort } from "./planbuilder.ts";
+import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort, type ConcreteSession } from "./planbuilder.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
 const DEFAULT_BIKE_KMH = 25;
@@ -486,6 +486,88 @@ export function dailyRecommendation(args: {
   if (args.plannedTypes.length) reasons.push({ code: "already_planned", text: `Heute geplant: ${args.plannedTypes.join(", ")}` });
   const doseHint = args.weekTssRec ? `Wochen-Ziel ${args.weekTssRec.target} TSS (${args.weekTssRec.kind})` : "";
   return { headline, sessionType, doseHint, reasons, confidence };
+}
+
+// ---- Adaptiver Coach (v1.5.0): heutige geplante Einheit an Form/Readiness/Risiko anpassen ----
+
+export interface SessionAdjustment {
+  changed: boolean;
+  action: string;
+  headline: string;
+  reasons: { code: string; text: string }[];
+  confidence: "hoch" | "mittel" | "niedrig";
+  mode: "advisory" | "gate";
+  original: { type: string; planned_tss: number };
+  adjusted: ConcreteSession | null; // null wenn unverändert
+}
+
+/**
+ * Adaptiver Coach (v1.5.0, Vorschlag-Modus): passt die HEUTE geplante Einheit an die aktuelle
+ * Form (TSB/CTL-Ramp), Readiness und das Überlastungsrisiko an — erklärbarer Decision-Tree
+ * (Athletica/IntervalCoach-Stil, Meta-Studie A7). Re-konkretisiert über concretizeSession, sodass
+ * die Plan-TSS exakt zum angepassten Ziel passt. `mode` betrifft nur die UI (gate = bestätigen/
+ * erzwingen, advisory = Hinweis); die Anpassung wird immer aus den Signalen berechnet.
+ * Gibt null zurück, wenn heute keine Einheit geplant ist.
+ */
+export function adjustTodaySession(
+  planned: { type: string; planned_tss: number } | null,
+  ctx: {
+    tsb: number | null;
+    ctlRamp: number | null;
+    readinessLevel: ReadinessLevel | null;
+    injuryLevel: "ok" | "info" | "warn" | "danger" | null;
+    weekTssRecMin: number | null;
+    weekRealizedTss: number | null;
+    zones: ZonesInput;
+    gateMode: "advisory" | "gate";
+  },
+): SessionAdjustment | null {
+  if (!planned || !planned.type) return null;
+  const isHard = HARD_TYPES.has(planned.type);
+  const base = Math.max(1, planned.planned_tss || 0);
+  const reasons: { code: string; text: string }[] = [];
+  let factor = 1, newType = planned.type, action = "on_track";
+  let headline = "Einheit passt — wie geplant";
+  let confidence: SessionAdjustment["confidence"] = "mittel";
+
+  if (ctx.readinessLevel === "red" && isHard) {
+    newType = "Easy"; factor = 0.6; action = "gate_readiness_red"; confidence = "hoch";
+    headline = "Readiness niedrig → harte Einheit auf locker reduzieren";
+    reasons.push({ code: "readiness_red", text: "Readiness rot → heute regenerieren statt Qualität" });
+  } else if (ctx.injuryLevel === "danger") {
+    factor = 0.7; if (isHard) newType = "Easy"; action = "risk_danger"; confidence = "hoch";
+    headline = "Überlastungs-Warnung → Umfang/Intensität reduzieren";
+    reasons.push({ code: "risk_danger", text: "Erhöhtes Überlastungsrisiko (ACWR/Monotonie/Ramp) → defensiv" });
+  } else if (ctx.tsb != null && ctx.tsb < -20 && isHard) {
+    newType = "LT1"; factor = 0.8; action = "deep_fatigue"; confidence = "mittel";
+    headline = "Stark ermüdet → harte Einheit zu Tempo/Steady entschärfen";
+    reasons.push({ code: "deep_fatigue", text: `Form ermüdet (TSB ${Math.round(ctx.tsb)}) → Intensität runter` });
+  } else if (ctx.ctlRamp != null && ctx.ctlRamp > 8) {
+    factor = 0.9; action = "ramp_high"; confidence = "mittel";
+    headline = "CTL-Ramp hoch → Dosis leicht reduzieren";
+    reasons.push({ code: "ramp_high", text: `CTL-Ramp ${ctx.ctlRamp}/Woche → nicht überziehen` });
+  } else if (
+    ctx.readinessLevel === "green" && ctx.tsb != null && ctx.tsb > 5 &&
+    ctx.weekTssRecMin != null && ctx.weekRealizedTss != null && ctx.weekRealizedTss < ctx.weekTssRecMin
+  ) {
+    factor = 1.1; action = "behind_fresh"; confidence = "mittel";
+    headline = "Frisch + Wochenrückstand → Dosis leicht erhöhen";
+    reasons.push({ code: "behind_fresh", text: "Readiness grün, Form frisch, Wochen-TSS unter Ziel → etwas mehr möglich" });
+  }
+
+  const changed = factor !== 1 || newType !== planned.type;
+  const original = { type: planned.type, planned_tss: round1(base) };
+  if (!changed) {
+    return {
+      changed: false, action, headline: "Einheit passt — wie geplant",
+      reasons: [{ code: "on_track", text: "Form/Readiness im grünen Bereich → keine Anpassung nötig" }],
+      confidence, mode: ctx.gateMode, original, adjusted: null,
+    };
+  }
+  if (ctx.readinessLevel === "yellow") reasons.push({ code: "readiness_yellow", text: "Readiness mittel → eher zurückhaltend" });
+  const targetTss = Math.max(1, round1(base * factor));
+  const adjusted = concretizeSession(newType, targetTss, ctx.zones);
+  return { changed: true, action, headline, reasons, confidence, mode: ctx.gateMode, original, adjusted };
 }
 
 // ---- Wochen-/Block-Empfehlungs-Engine (v1.3.0): Periodisierungs-Modell + Wochenstruktur ----

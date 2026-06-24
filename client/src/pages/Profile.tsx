@@ -6,6 +6,7 @@ import ZoneSets from "../components/ZoneSets.tsx";
 import LactateTests from "../components/LactateTests.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
 import AvailabilityCard from "../components/AvailabilityCard.tsx";
+import Vo2maxLabCard from "../components/Vo2maxLab.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -80,6 +81,9 @@ export default function ProfilePage() {
 
       {/* Laktat-/Feldtest-Diagnostik (G3, v1.3.0) */}
       <LactateTests />
+
+      {/* VO2max-Laborwerte (v1.5.0) — eicht die Effective-VO2max-Schätzung */}
+      <Vo2maxLabCard />
     </div>
   );
 }

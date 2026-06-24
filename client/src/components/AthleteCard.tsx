@@ -5,7 +5,7 @@ import { api } from "../lib/api.ts";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
-interface Athlete { name?: string; weight?: number | null; max_hr?: number | null; birth_year?: number | null; sex?: "m" | "f"; }
+interface Athlete { name?: string; weight?: number | null; max_hr?: number | null; hr_rest?: number | null; birth_year?: number | null; sex?: "m" | "f"; }
 
 export default function AthleteCard() {
   const [a, setA] = useState<Athlete>({});
@@ -53,7 +53,13 @@ export default function AthleteCard() {
           <input type="number" key={`mh-${a.max_hr ?? ""}`} defaultValue={a.max_hr ?? ""}
             onBlur={(e) => save({ max_hr: numOrNull(e.target.value) })} />
         </label>
+        <label className="field" style={{ margin: 0, width: 110 }}>
+          <span><T k="athlete.field.hrRest">Ruhe-HF (bpm)</T></span>
+          <input type="number" placeholder="48" key={`hr-${a.hr_rest ?? ""}`} defaultValue={a.hr_rest ?? ""}
+            onBlur={(e) => save({ hr_rest: numOrNull(e.target.value) })} />
+        </label>
       </div>
+      <p className="tiny muted" style={{ marginTop: 6 }}><T k="athlete.hint.hrRest">Max-/Ruhe-HF speisen die Effective-VO2max-Schätzung (HF-Reserve). Nach Änderung „TSS neu berechnen" drücken, um die Läufe neu zu schätzen.</T></p>
     </div>
   );
 }

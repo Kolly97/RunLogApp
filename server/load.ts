@@ -288,6 +288,48 @@ export function aerobicDecoupling(velocity: number[], hr: number[], time: number
   return Math.round(((ef1 - ef2) / ef1) * 1000) / 10; // % auf 0.1 genau
 }
 
+/** Ergebnis einer Pro-Lauf-VO2max-Schätzung (Runalyze-Stil). */
+export interface EffVo2max { value: number; confidence: "hoch" | "mittel" | "niedrig"; }
+
+/**
+ * Effective VO2max je Lauf (Runalyze-/Daniels-nah): submax HF↔Pace → extrapolierte VO2max.
+ * Aggregat-basiert (aus gespeicherten Feldern, damit über die volle Historie backfillbar und
+ * Trend-konsistent — Roh-Streams werden nicht persistiert):
+ *  - Pace = NGP (grade-adjustiert) bevorzugt, sonst Ø-Pace → v[m/min].
+ *  - Daniels-Laufkosten: VO2 = −4.60 + 0.182258·v + 0.000104·v² (m/min) — für Läufer genauer als ACSM.
+ *  - Brücke %VO2R ≈ %HRR (Swain) aus Ø-HF: %HRR = (avgHr − hrRest)/(hrMax − hrRest).
+ *  - VO2max = 3.5 + (VO2 − 3.5)/%HRR.
+ * Der absolute Pegel ist lauf-ökonomie-abhängig → die Labor-Kalibrierung (Trend-Endpoint) eicht ihn;
+ * der Rohwert dient als monotoner, kalibrierbarer Proxy. Gate auf stetig-aerobe Läufe: %HRR im
+ * submax-Band (0.55–0.88) + (falls vorhanden) aerobe Entkopplung < 10 % → Intervalle/Rennen raus.
+ */
+export function effectiveVo2max(args: {
+  ngpSec?: number | null;      // grade-adjusted Pace s/km (bevorzugt)
+  avgPaceSec?: number | null;  // Fallback-Ø-Pace s/km (Distanz/Zeit)
+  avgHr?: number | null;
+  decoupling?: number | null;  // aerobe Entkopplung % (Stetigkeits-Gate), optional
+  hrRest: number;
+  hrMax: number;
+}): EffVo2max | null {
+  const { hrRest, hrMax } = args;
+  if (!(hrMax > hrRest + 20)) return null; // unplausible HF-Reserve
+  const pace = args.ngpSec && args.ngpSec > 0 ? args.ngpSec : args.avgPaceSec && args.avgPaceSec > 0 ? args.avgPaceSec : null;
+  if (!pace || !args.avgHr || args.avgHr <= 0) return null;
+  if (args.decoupling != null && args.decoupling > 10) return null; // nicht stetig → unbrauchbar
+  const pHRR = (args.avgHr - hrRest) / (hrMax - hrRest);
+  if (pHRR < 0.55 || pHRR > 0.88) return null; // außerhalb submax-aerobem Band
+  const vMin = (1000 / pace) * 60; // m/min
+  const vo2 = -4.60 + 0.182258 * vMin + 0.000104 * vMin * vMin; // Daniels-Laufkosten (ml/kg/min)
+  const vo2max = 3.5 + (vo2 - 3.5) / pHRR; // %VO2R≈%HRR invertiert
+  if (!(vo2max > 20 && vo2max < 90)) return null; // Plausibilitätsfenster
+  // Konfidenz: stetiger Lauf im mittleren Band → hoch; Randbereich/höhere Drift → niedrig.
+  let confidence: EffVo2max["confidence"] = "mittel";
+  const drift = args.decoupling;
+  if ((drift == null || drift < 5) && pHRR >= 0.62 && pHRR <= 0.84) confidence = "hoch";
+  else if ((drift != null && drift > 8) || pHRR < 0.58 || pHRR > 0.86) confidence = "niedrig";
+  return { value: round1(vo2max), confidence };
+}
+
 /** Power-TSS fürs Rad: IF = NP/FTP. */
 export function powerTss(movingSec: number, avgPower: number, ftp: number): number {
   if (!movingSec || !avgPower || !ftp) return 0;

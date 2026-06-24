@@ -14,6 +14,8 @@ import {
   round1,
   vdot,
   predictFromVdot,
+  effectiveVo2max,
+  paceToSecPerKm,
   type HrZone,
   type PmcPoint,
 } from "./load.ts";
@@ -43,6 +45,7 @@ import {
   sessionCompletion,
   blockPlan,
   injuryRiskFlag,
+  adjustTodaySession,
   type IntLevel,
   type PlannedSession,
   type CategoryTotals,
@@ -526,6 +529,73 @@ app.delete("/api/lactate-tests/:id", (req, res) => {
   db.prepare("DELETE FROM lactate_points WHERE test_id=?").run(req.params.id);
   db.prepare("DELETE FROM lactate_tests WHERE id=? AND profile_id=?").run(req.params.id, pid());
   res.json({ ok: true });
+});
+
+// ---- VO2max-Laborwerte (v1.5.0) → Eichung der Effective-VO2max-Schätzung -------------------
+app.get("/api/vo2max-lab", (_req, res) => {
+  res.json(db.prepare("SELECT * FROM vo2max_lab WHERE profile_id=? ORDER BY date DESC").all(pid()));
+});
+
+app.post("/api/vo2max-lab", (req, res) => {
+  const b = req.body || {};
+  if (!(Number(b.value) > 0)) return res.status(400).json({ error: "value (VO2max) erforderlich" });
+  const r = db.prepare(
+    "INSERT INTO vo2max_lab(profile_id, date, value, source, notes, created_at) VALUES(?,?,?,?,?,?)",
+  ).run(pid(), b.date || todayIso(), Number(b.value), b.source || null, b.notes || null, todayIso());
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+app.put("/api/vo2max-lab/:id", (req, res) => {
+  const b = req.body || {};
+  const ex = db.prepare("SELECT id FROM vo2max_lab WHERE id=? AND profile_id=?").get(req.params.id, pid());
+  if (!ex) return res.status(404).json({ error: "Nicht gefunden" });
+  db.prepare("UPDATE vo2max_lab SET date=?, value=?, source=?, notes=? WHERE id=? AND profile_id=?")
+    .run(b.date, Number(b.value), b.source || null, b.notes || null, req.params.id, pid());
+  res.json({ ok: true });
+});
+
+app.delete("/api/vo2max-lab/:id", (req, res) => {
+  db.prepare("DELETE FROM vo2max_lab WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
+});
+
+// Effective-VO2max-Trend: Pro-Lauf-Schätzungen + lineare Labor-Eichung (Offset zwischen Labortests interpoliert).
+app.get("/api/effective-vo2max-trend", (req, res) => {
+  const to = String(req.query.to || todayIso());
+  const from = String(req.query.from || addDaysIso(to, -365));
+  const runs = db.prepare(
+    "SELECT date, eff_vo2max v FROM activities WHERE profile_id=? AND sport='Run' AND eff_vo2max IS NOT NULL AND date BETWEEN ? AND ? ORDER BY date",
+  ).all(pid(), from, to) as { date: string; v: number }[];
+  const labs = db.prepare("SELECT date, value FROM vo2max_lab WHERE profile_id=? ORDER BY date").all(pid()) as { date: string; value: number }[];
+  const allRuns = db.prepare(
+    "SELECT date, eff_vo2max v FROM activities WHERE profile_id=? AND sport='Run' AND eff_vo2max IS NOT NULL ORDER BY date",
+  ).all(pid()) as { date: string; v: number }[];
+
+  // Robuster Schätz-Anker um ein Datum (±21 Tage Median) → dämpft Einzel-Lauf-Rauschen für die Eichung.
+  const estAround = (d: string): number | null => {
+    const lo = addDaysIso(d, -21), hi = addDaysIso(d, 21);
+    const vs = allRuns.filter((r) => r.date >= lo && r.date <= hi).map((r) => r.v).sort((a, b) => a - b);
+    return vs.length ? vs[Math.floor(vs.length / 2)] : null;
+  };
+  // Offset je Labortest = lab − Schätz-Anker; dazwischen linear interpoliert, außen konstant.
+  const anchors = labs.map((l) => { const e = estAround(l.date); return { date: l.date, off: e != null ? l.value - e : 0 }; });
+  const offsetAt = (d: string): number => {
+    if (!anchors.length) return 0;
+    if (d <= anchors[0].date) return anchors[0].off;
+    if (d >= anchors[anchors.length - 1].date) return anchors[anchors.length - 1].off;
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const a = anchors[i], b = anchors[i + 1];
+      if (d >= a.date && d <= b.date) {
+        const span = (Date.parse(b.date) - Date.parse(a.date)) || 1;
+        const f = (Date.parse(d) - Date.parse(a.date)) / span;
+        return a.off + f * (b.off - a.off);
+      }
+    }
+    return anchors[anchors.length - 1].off;
+  };
+
+  const points = runs.map((r) => ({ date: r.date, est: r.v, calibrated: round1(r.v + offsetAt(r.date)) }));
+  res.json({ points, lab: labs, calibrated: labs.length > 0 });
 });
 
 /** Zonen-Set aus Laktat-Test vorschlagen (schreibt NICHT — Nutzer bestätigt via POST /api/zonesets). */
@@ -1054,6 +1124,17 @@ function activityTssToStore(b: any): number | null {
   return b.tss ?? null;
 }
 
+/** Effective VO2max (v1.5.0) für eine Lauf-Aktivitäts-Row aus gespeicherten Aggregaten (NGP/Ø-HF/Entkopplung). */
+function effVo2maxForRow(a: any): number | null {
+  if (a.sport !== "Run" || !a.moving_s) return null;
+  const ath = getSetting("athlete", { max_hr: 196 }) as { max_hr?: number; hr_rest?: number };
+  const hrMax = Number(ath?.max_hr) || 196;
+  const hrRest = Number(ath?.hr_rest) || 48;
+  const avgPace = a.distance_m > 0 && a.moving_s > 0 ? paceToSecPerKm(a.distance_m, a.moving_s) : null;
+  const e = effectiveVo2max({ ngpSec: a.ngp ?? null, avgPaceSec: avgPace, avgHr: a.avg_hr ?? null, decoupling: a.decoupling ?? null, hrRest, hrMax });
+  return e ? e.value : null;
+}
+
 app.get("/api/sessions", (req, res) => {
   const { week, from, to } = req.query as Record<string, string>;
   let rows;
@@ -1115,6 +1196,25 @@ app.put("/api/sessions/:id", (req, res) => {
     b.sort_order ?? 0,
     req.params.id,
   );
+  res.json({ ok: true, planned_tss: tss });
+});
+
+// Adaptive Coach-Anpassung übernehmen (v1.5.0, S): überschreibt die heutige Einheit mit dem
+// vorgeschlagenen, konkretisierten Vorschlag; Plan-TSS wird server-autoritativ neu gerechnet.
+app.post("/api/sessions/:id/apply-adjustment", (req, res) => {
+  const b = req.body || {}; // adjusted ConcreteSession
+  const ex = db.prepare("SELECT * FROM planned_sessions WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!ex) return res.status(404).json({ error: "Einheit nicht gefunden" });
+  const merged = {
+    ...ex, sport: ex.sport, date: ex.date,
+    type: b.type ?? ex.type, planned_min: b.planned_min ?? ex.planned_min,
+    zone_alloc: b.zone_alloc ?? null, efforts: b.efforts ?? null,
+    description: b.description ?? ex.description,
+  };
+  const tss = computeSessionTss(merged);
+  db.prepare(
+    "UPDATE planned_sessions SET type=?, planned_min=?, planned_km=?, zone_alloc=?, efforts=?, description=?, planned_tss=? WHERE id=? AND profile_id=?",
+  ).run(merged.type, merged.planned_min, null, JSON.stringify(b.zone_alloc ?? null), JSON.stringify(b.efforts ?? null), merged.description, tss, req.params.id, pid());
   res.json({ ok: true, planned_tss: tss });
 });
 
@@ -1370,6 +1470,17 @@ app.get("/api/pmc", (req, res) => {
 // ToDo v0.9.0/v0.10.0: alle Lauf- UND Rad-/Commute-TSS rückwirkend neu rechnen (Aktivitäten via
 // activityTssToStore = rTSS/NGP bzw. Power-TSS/NP, Overrides respektiert; geplante per Zone).
 // Vorher konsistenter DB-Snapshot (VACUUM INTO). Nach Syncs (mehr NGP/NP-Daten) erneut auslösbar.
+// Anreicherungs-Fortschritt (v1.5.0, D1): wie viele Aktivitäten haben Details bzw. Streams/Splits.
+app.get("/api/enrich-progress", (_req, res) => {
+  const row = db.prepare(
+    "SELECT COUNT(*) total, " +
+      "SUM(CASE WHEN desc_fetched=1 THEN 1 ELSE 0 END) details, " +
+      "SUM(CASE WHEN streams_fetched=1 THEN 1 ELSE 0 END) streams " +
+      "FROM activities WHERE profile_id=?",
+  ).get(pid()) as { total: number; details: number; streams: number };
+  res.json({ total: row.total || 0, details: row.details || 0, streams: row.streams || 0 });
+});
+
 app.post("/api/recompute-tss", (_req, res) => {
   try {
     const profile = pid();
@@ -1377,14 +1488,18 @@ app.post("/api/recompute-tss", (_req, res) => {
     db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
 
     const acts = db.prepare(
-      "SELECT id, date, sport, distance_m, moving_s, avg_power, ngp, np, tss, overrides FROM activities " +
+      "SELECT id, date, sport, distance_m, moving_s, avg_hr, avg_power, ngp, np, decoupling, tss, overrides FROM activities " +
         "WHERE profile_id=? AND (sport='Run' OR sport LIKE 'Bike%' OR sport='General') AND moving_s IS NOT NULL",
     ).all(profile) as any[];
     const updA = db.prepare("UPDATE activities SET tss=? WHERE id=?");
-    let activities = 0;
+    const updEv = db.prepare("UPDATE activities SET eff_vo2max=? WHERE id=?");
+    let activities = 0, effVo2 = 0;
     for (const a of acts) {
       const t = activityTssToStore({ ...a, overrides: parseJson(a.overrides, []) });
       if (t != null) { updA.run(t, a.id); activities++; }
+      const ev = effVo2maxForRow(a);
+      updEv.run(ev, a.id); // auch null setzen → entfernt veraltete Werte bei nicht mehr stetigen Läufen
+      if (ev != null) effVo2++;
     }
 
     const sess = db.prepare(
@@ -1396,7 +1511,7 @@ app.post("/api/recompute-tss", (_req, res) => {
       const t = computeSessionTss({ ...s, zone_alloc: parseJson(s.zone_alloc, null) });
       updS.run(t, s.id); sessions++;
     }
-    res.json({ ok: true, backup: bak, activities, sessions });
+    res.json({ ok: true, backup: bak, activities, sessions, effVo2 });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1754,10 +1869,32 @@ app.get("/api/today", (req, res) => {
   const acwr = ctl > 0 ? Math.round((atl / ctl) * 100) / 100 : null;
   const injuryRisk = injuryRiskFlag({ acwr, monotony: mono7, ctlRamp: ramp, readinessLevel: readiness?.level ?? null, ctl });
 
+  // Adaptiver Coach (v1.5.0, S): heutige Haupt-Einheit an Form/Readiness/Risiko anpassen (Vorschlag-Modus).
+  const todayMain = db.prepare(
+    "SELECT id, type, planned_tss FROM planned_sessions WHERE profile_id=? AND date=? AND type!='Rest' AND sport='Run' ORDER BY planned_tss DESC LIMIT 1",
+  ).get(pid(), date) as { id: number; type: string; planned_tss: number } | undefined;
+  let adjustment: ReturnType<typeof adjustTodaySession> & { originalSessionId?: number } | null = null;
+  if (todayMain) {
+    const zsToday = effectiveZoneSet(date);
+    const weekStart = wk?.start_date ?? date;
+    const weekRealized = (db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), weekStart, date) as { s: number }).s || 0;
+    const gateMode = (getSetting<string>("readiness_gate_mode", "advisory") === "gate" ? "gate" : "advisory") as "advisory" | "gate";
+    const adj = adjustTodaySession(
+      { type: todayMain.type, planned_tss: todayMain.planned_tss },
+      {
+        tsb, ctlRamp: ramp, readinessLevel: readiness?.level ?? null, injuryLevel: injuryRisk?.level ?? null,
+        weekTssRecMin: weekTssRec?.min ?? null, weekRealizedTss: round1(weekRealized),
+        zones: { pace_zones: zsToday.pace_zones, threshold_pace: zsToday.threshold_pace, lt1_pace: zsToday.lt1_pace },
+        gateMode,
+      },
+    );
+    if (adj) adjustment = { ...adj, originalSessionId: todayMain.id };
+  }
+
   res.json({
     date,
     form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp, acwr },
-    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk,
+    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk, adjustment,
   });
 });
 
