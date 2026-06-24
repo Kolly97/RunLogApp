@@ -2,7 +2,7 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v1.5.0** (24.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v1.6.2** (24.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
 
 ---
 
@@ -138,6 +138,11 @@
   FK test_id → lactate_tests.
 - `vo2max_lab` (**neu v1.5.0** — additiv): id, profile_id, date, value, source, notes, created_at. Labor-VO2max-
   Werte über Zeit → eichen die Effective-VO2max-Schätzung. Index auf (profile_id, date).
+- `method_experiments` (**neu v1.6.0** — additiv): id, profile_id, start_date, end_date, method
+  (polarized|pyramidal|threshold|norwegian_double_threshold|custom), label, notes, created_at. Geführte
+  N-of-1-Methoden-Blöcke; Marker-Snapshots werden on-the-fly berechnet (kein Speicherzwang). Index (profile_id, start_date).
+- **`efforts`-JSON v1.6.0:** je Intervall optional `rest_s` (Pause s), `rest_type` (jog|stand), `hr_recovery`
+  (bpm) — additiv im bestehenden TEXT-Feld, kein Schema-Change.
 - `races` (profile_id, date, name, distance_m, time_s, placement, notes, `splits` JSON [{km,time_s,pace_s,avg_hr,
   max_hr,elevation_m}], `avg_hr`, `max_hr`, `elevation_m`, `source`=manual|season|**tracking**, **`activity_id`**
   (verknüpfte getrackte Einheit); Auto-Import aus Saisonplan `goal_race` (Ledger `season_races_imported_<pid>`)
@@ -145,7 +150,49 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v1.5.0 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v1.6.2 (Ist-Stand, nicht Historie)
+
+**Neu in v1.6.2 (Kurz):**
+- **N-of-1-Inferenz-Performance (`server/index.ts`):** `buildMethodInference` ist jetzt ein gecachter Accessor
+  (`computeMethodInference` = ein `loadProfileRuns()`-Load + In-Memory-Fenster + leichte `rollingCsVdot` statt
+  60 voller `buildMarkerSnapshot`). Cache pro Profil, globale `inferenceVersion`, invalidiert über Middleware bei
+  **jedem Nicht-GET** (`invalidateInference`). Ergebnisse identisch. `buildMarkerSnapshot` nur noch on-demand
+  (`/api/markers`, `/:id/evaluation`). Block-Route holt CS/VDOT via `rollingCsVdot(runs, today, 90)`.
+- **Renntempo nach Zieldistanz (`workouts.ts`):** neuer Anker **`"race"`** → `zones.goal_pace`; `race_pace` nutzt ihn;
+  neue Vorlagen `race_pace_long` (HM/Marathon) + `long_mp_segments` (Marathon-Longrun). `pickWeekWorkouts(…,
+  goalDistanceM)` wählt Race-Specific distanzgerecht (short ≤15k VO2-lastig / mid HM / long ≥30k MP-Schwelle).
+  `ZonesInput` um `goal_distance_m`/`goal_pace`; Block-Route leitet sie aus `races.distance_m` + `predictFromVdot` ab;
+  `blockPlan` reicht `goalDistanceM` durch.
+
+**Neu in v1.6.1 (Kurz):**
+- **Trainings-Einheiten-Bibliothek (`server/workouts.ts`, neu, pure):** ~23 `WorkoutTemplate` mit Metadaten
+  (Familie, Phase, Anstrengung, Nutzen, Synergie, Quelle). `fitnessLevel(ctl,csPace)`→low/mid/high skaliert die
+  Reps (20×400 nur high). `pickWeekWorkouts(phase,weekInPhase,fitness,allowDoubles)` komponiert+rotiert die Woche
+  (Doppel-Schwellen-Tag bei Doubles). `renderWorkout(tpl,{zones,fitness,progress,targetTss})` → konkrete Einheit
+  mit **Pace-Bereich** (Anker LT1/LT2/CS ± Fenster) + **HF-Spanne** (aus `hr_zones`) + **Pausen** je Effort;
+  Berg = Aufwand+HF. **`blockPlan`** nutzt jetzt diesen Pfad (Easy/Long gleichen die Wochen-TSS-Differenz aus,
+  Hybrid); `phaseProgress()` liefert Rotation/Progression. `ZonesInput` um `hr_zones`/`cs_pace`/`rep_pace`
+  erweitert; block-suggestion reicht aktuelle CS-Pace + hr_zones. `concretizeSession` bleibt Fallback (Coach/Einzel).
+- **Effective-VO2max-Gate (`effVo2maxForRow`):** nur Läufe >30 min + gleichmäßige Typen (Dauer/kont. Tempo/Schwelle;
+  Intervalle/VO2/Berg/Race raus). Recompute-Query selektiert jetzt `type`/`efforts`. Nach Update „TSS neu berechnen".
+- **HTML-Cleanup:** veraltete `client/public/{changelog,readme}.html` + ihre `usage.html`-Nav-Links entfernt.
+
+**Neu in v1.6.0 (Kurz):**
+- **Methoden-Findung (N-of-1), Seite „Methodik":** `markerSnapshot`/`compareMarkers`/`methodInference`/
+  `classifyWeekRegime` (alle `analysis.ts`, pure) + Helfer `efficiencyFactor` (`load.ts`). Marker-Batterie
+  (CS primär, VDOT, Threshold-Pace/HF, Decoupling, Submax-EF, Effective VO2max, Laktat-an-Pace, PI/Verteilung)
+  über ein Fenster (Default 14 Tage); Vorher/Nachher-Verdikt gegen MCID-Rauschen + Konfidenz; passive Inferenz
+  (Wochen-Regime → vorwärtsgerichtete CS/VDOT-Reaktion, strenge Confounder-Kontrolle: Krank/Taper/Race raus,
+  stabile CTL). Engine-Nudge (advisory `methodPreference` in `weekStructureRecommendation`/`blockPlan`).
+  Neue Tabelle `method_experiments`. Endpoints `/api/method-experiments` (CRUD), `…/:id/evaluation`,
+  `/api/markers`, `/api/method-inference`. Seite `pages/Methodik.tsx` + `charts/MarkerDelta.tsx`.
+- **Periodisierung Block-Vorschlag:** `derivePhaseSequence()` leitet Phasen rückwärts vom Renntag ab
+  (Base→Belastung→Race-Specific→Race Week) + 3:1-Entlastung; **manuelle `season_weeks_v2.phase` gewinnt immer**.
+  Evidenzbasierte LT1/LT2/VO2/Sub-Threshold-Einheiten je Phase (Norwegian/Casado) + Wochen-Variation.
+- **Intervall-Pausen:** `Effort` um `rest_s`/`rest_type`/`hr_recovery` erweitert (JSON, additiv). UI im
+  `EffortBuilder` (Spalten Pause/Art); Strava `extractWorkLaps` füllt Pause + HF-Erholung aus der Recovery-Runde.
+- **Fixes:** Wochencheck-Ampeln (`--warn` gelb, `--info` neutral-grau, ok grün, danger rot) + Badge-Angleich;
+  Zonen-Plausibilität in `ZoneSets` (HF/Power steigen, Pace wird je Zone schneller).
 
 **Neu in v1.5.0 (Kurz):**
 - **Effective VO2max je Lauf (V):** `effectiveVo2max()` in `load.ts` — submax HF↔Pace (Daniels-Laufkosten +

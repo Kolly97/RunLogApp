@@ -136,40 +136,57 @@ function extractWorkLaps(
   const z5HrMin = activeHrZones.find((z) => z.z === 5)?.min;
   const isVO2 = /vo2/i.test(type ?? "");
   const isThreshold = /threshold|schwelle/i.test(type ?? "");
+  // Eine Runde gilt als „Work", wenn schnell genug (Pace ≤ Z3-Grenze) ODER HF ≥ Z4-Untergrenze.
+  const isWorkLap = (lap: any): boolean => {
+    const dist = lap.distance ?? 0;
+    const sec = lap.moving_time ?? lap.elapsed_time ?? 0;
+    const hr = lap.average_heartrate ?? null;
+    const pace = isRun && dist > 0 && sec > 0 ? sec / (dist / 1000) : null;
+    const fastEnough = pace != null && z3Pace ? pace <= z3Pace : false;
+    const hardHr = hr != null && z4HrMin ? hr >= z4HrMin : false;
+    return fastEnough || hardHr;
+  };
   const work: any[] = [];
-  for (const lap of laps) {
+  laps.forEach((lap, idx) => {
+    if (!isWorkLap(lap)) return;
     const dist = lap.distance ?? 0;
     const sec = lap.moving_time ?? lap.elapsed_time ?? 0;
     const hr = lap.average_heartrate ?? null;
     const maxHr = lap.max_heartrate != null ? Math.round(lap.max_heartrate) : null;
     const pace = isRun && dist > 0 && sec > 0 ? sec / (dist / 1000) : null;
     const fastEnough = pace != null && z3Pace ? pace <= z3Pace : false;
-    const hardHr = hr != null && z4HrMin ? hr >= z4HrMin : false;
-    if (fastEnough || hardHr) {
-      let label: string | undefined;
-      if (isVO2) {
-        label = dist && dist <= 400 ? "VO2short" : "VO2long";
-      } else if (isThreshold) {
-        label = sec && sec <= 360 ? "LT2" : "LT1";
-      } else if (hr != null) {
-        if (z5HrMin && hr >= z5HrMin) label = "VO2long";
-        else if (z4HrMin && hr >= z4HrMin) label = "LT2";
-        else label = "LT1";
-      } else if (fastEnough) {
-        label = "LT1";
-      }
-      work.push({
-        reps: 1,
-        dist_m: dist ? Math.round(dist) : null,
-        sec: sec || null,
-        pace_s: pace != null ? Math.round(pace) : null,
-        avg_hr: hr != null ? Math.round(hr) : null,
-        max_hr: maxHr,
-        zone: zoneFromHrSimple(maxHr, activeHrZones),
-        label,
-      });
+    let label: string | undefined;
+    if (isVO2) {
+      label = dist && dist <= 400 ? "VO2short" : "VO2long";
+    } else if (isThreshold) {
+      label = sec && sec <= 360 ? "LT2" : "LT1";
+    } else if (hr != null) {
+      if (z5HrMin && hr >= z5HrMin) label = "VO2long";
+      else if (z4HrMin && hr >= z4HrMin) label = "LT2";
+      else label = "LT1";
+    } else if (fastEnough) {
+      label = "LT1";
     }
-  }
+    // v1.6.0: Pause = folgende Recovery-Runde (nächste Runde, die keine Work-Runde ist).
+    const next = laps[idx + 1];
+    let rest_s: number | null = null, rest_type: "jog" | "stand" | null = null, hr_recovery: number | null = null;
+    if (next && !isWorkLap(next)) {
+      rest_s = Math.round(next.moving_time ?? next.elapsed_time ?? 0) || null;
+      hr_recovery = next.average_heartrate != null ? Math.round(next.average_heartrate) : null;
+      rest_type = (next.distance ?? 0) > 30 ? "jog" : "stand"; // bewegte Pause vs. Stehpause
+    }
+    work.push({
+      reps: 1,
+      dist_m: dist ? Math.round(dist) : null,
+      sec: sec || null,
+      pace_s: pace != null ? Math.round(pace) : null,
+      avg_hr: hr != null ? Math.round(hr) : null,
+      max_hr: maxHr,
+      zone: zoneFromHrSimple(maxHr, activeHrZones),
+      label,
+      rest_s, rest_type, hr_recovery,
+    });
+  });
   return work.length ? JSON.stringify(work) : null;
 }
 

@@ -288,6 +288,16 @@ export function aerobicDecoupling(velocity: number[], hr: number[], time: number
   return Math.round(((ef1 - ef2) / ef1) * 1000) / 10; // % auf 0.1 genau
 }
 
+/**
+ * Efficiency Factor (Friel): NGP-Speed (m/min) ÷ Ø-HF. Höher = ökonomischer (gleiche Pace bei niedrigerer HF
+ * bzw. schnellere Pace bei gleicher HF). Nur für gleichmäßige Easy/Long-Läufe aussagekräftig (N-of-1-Submax-Marker).
+ */
+export function efficiencyFactor(ngpSec: number | null | undefined, avgHr: number | null | undefined): number | null {
+  if (!ngpSec || ngpSec <= 0 || !avgHr || avgHr <= 0) return null;
+  const vMin = (1000 / ngpSec) * 60; // m/min
+  return Math.round((vMin / avgHr) * 1000) / 1000;
+}
+
 /** Ergebnis einer Pro-Lauf-VO2max-Schätzung (Runalyze-Stil). */
 export interface EffVo2max { value: number; confidence: "hoch" | "mittel" | "niedrig"; }
 

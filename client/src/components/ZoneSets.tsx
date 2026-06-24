@@ -65,6 +65,32 @@ function parsePaceInput(t: string): number | null {
   return isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
+/** Plausibilitäts-Check der Zonen-Reihenfolge (v1.6.0, F2): HF/Power steigen je Zone, Pace wird schneller (kleinere s/km). */
+function zoneWarnings(e: ZoneSet): string[] {
+  const w: string[] = [];
+  const hrCheck = (zones: { z: number; max: number }[] | null | undefined, label: string) => {
+    if (!zones) return;
+    for (let i = 0; i < zones.length - 1; i++) {
+      const a = zones[i].max, b = zones[i + 1].max;
+      if (a >= 990 || b >= 990) continue; // Max-Sentinel (offene Oberzone)
+      if (a > 0 && b > 0 && a >= b) w.push(`${label}: Z${zones[i].z} (${a}) ≥ Z${zones[i + 1].z} (${b}) — HF muss je Zone steigen.`);
+    }
+  };
+  hrCheck(e.hr_zones, "HF Lauf");
+  hrCheck(e.hr_zones_bike, "HF Rad");
+  const pace = e.pace_zones || [];
+  for (let i = 0; i < pace.length - 1; i++) {
+    const a = pace[i], b = pace[i + 1];
+    if ((a ?? 0) > 0 && (b ?? 0) > 0 && a <= b) w.push(`Pace: Z${i + 1} (${paceMmSs(a)}) ist nicht langsamer als Z${i + 2} (${paceMmSs(b)}) — höhere Zone muss schneller sein (kleinere s/km).`);
+  }
+  const pw = e.power_zones || [];
+  for (let i = 0; i < pw.length - 1; i++) {
+    const a = pw[i], b = pw[i + 1];
+    if ((a ?? 0) > 0 && (b ?? 0) > 0 && a >= b) w.push(`Power: Z${i + 1} (${a} W) ≥ Z${i + 2} (${b} W) — Watt muss je Zone steigen.`);
+  }
+  return w;
+}
+
 function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () => void; canDelete: boolean }) {
   const [e, setE] = useState(z);
   const t = useT();
@@ -83,6 +109,7 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
   };
   const setPace = (i: number, v: number | null) => { const arr = [...(e.pace_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, pace_zones: arr }); };
   const setPower = (i: number, v: number | null) => { const arr = [...(e.power_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, power_zones: arr }); };
+  const warnings = zoneWarnings(e);
   return (
     <div className="card tight" style={{ background: "#fafbfd" }}>
       <div className="row mb">
@@ -152,6 +179,12 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
           </div>
         ))}
       </div>
+      {warnings.length > 0 && (
+        <div className="flag danger" style={{ marginTop: 8, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+          <strong style={{ fontSize: 12 }}>⚠ Zonen-Plausibilität</strong>
+          {warnings.map((wn, i) => <span key={i} className="tiny">{wn}</span>)}
+        </div>
+      )}
     </div>
   );
 }

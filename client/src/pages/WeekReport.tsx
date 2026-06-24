@@ -292,7 +292,7 @@ export default function WeekReport() {
                           style={{
                             display: "inline-block", minWidth: 34, padding: "2px 6px", borderRadius: 6,
                             fontSize: 11, fontWeight: 700, color: "#fff",
-                            background: adhByDay[i].pct! >= 90 ? "var(--ok)" : adhByDay[i].pct! >= 70 ? "var(--form)" : "var(--danger)",
+                            background: adhByDay[i].pct! >= 90 ? "var(--ok)" : adhByDay[i].pct! >= 70 ? "var(--warn)" : "var(--danger)",
                           }}>{adhByDay[i].pct}%</span>
                       )}
                     </td>

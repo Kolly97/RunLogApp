@@ -36,6 +36,7 @@ export interface Effort {
   reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null;
   avg_hr?: number | null; max_hr?: number | null; zone?: number | null; label?: string;
   group?: boolean; children?: Effort[];
+  rest_s?: number | null; rest_type?: "jog" | "stand" | null; hr_recovery?: number | null; // v1.6.0: Intervall-Pause
 }
 export interface PlannedSession {
   id?: number; date: string; week_no?: number | null; sport: string; type: string;
@@ -220,6 +221,65 @@ export interface IntervalEffortStat {
   label?: string;
 }
 
+// ---- N-of-1 Methoden-Findung (v1.6.0) ----
+export interface MethodExperiment {
+  id: number;
+  profile_id: number;
+  start_date: string;
+  end_date: string | null;
+  method: string; // polarized | pyramidal | threshold | norwegian_double_threshold | custom
+  label: string | null;
+  notes: string | null;
+  created_at: string;
+}
+export interface PhysioDist { z1: number; z2: number; z3: number; z1Min: number; z2Min: number; z3Min: number }
+export interface Markers {
+  date: string; windowDays: number; n: number;
+  csPace: number | null; csConfidence: "hoch" | "mittel" | "niedrig" | null;
+  vdot: number | null;
+  thresholdPace: number | null; thresholdHr: number | null;
+  decoupling: number | null;
+  submaxEf: number | null;
+  effVo2max: number | null;
+  lactateAtPace: number | null;
+  pi: number | null;
+  dist: PhysioDist | null;
+}
+export interface MarkerDelta {
+  key: string; label: string; unit: string;
+  start: number | null; end: number | null; delta: number | null;
+  direction: "besser" | "flach" | "schlechter" | null;
+}
+export interface MethodEvaluation {
+  primary: "csPace";
+  verdict: "besser" | "flach" | "schlechter" | "unklar";
+  confidence: "hoch" | "mittel" | "niedrig";
+  exploratory: boolean;
+  deltas: MarkerDelta[];
+  note: string;
+}
+export interface MethodEvaluationResult {
+  experiment: MethodExperiment;
+  window: number;
+  start: Markers;
+  end: Markers;
+  evaluation: MethodEvaluation;
+}
+export interface RegimeStat {
+  regime: "polarized" | "pyramidal" | "threshold" | "norwegian" | "mixed";
+  nWeeks: number;
+  csChange: number | null;
+  vdotChange: number | null;
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+export interface MethodInferenceResult {
+  regimes: RegimeStat[];
+  best: RegimeStat["regime"] | null;
+  lagWeeks: number;
+  note: string;
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
   if (!r.ok) throw new Error(`${r.status} ${url}`);
@@ -261,6 +321,23 @@ export const api = {
     if (to) p.set("to", to);
     return j<EffVo2maxTrend>(`/api/effective-vo2max-trend${p.toString() ? `?${p}` : ""}`);
   },
+
+  // N-of-1 Methoden-Findung (v1.6.0)
+  methodExperiments: () => j<MethodExperiment[]>("/api/method-experiments"),
+  addMethodExperiment: (b: { start_date: string; end_date?: string | null; method: string; label?: string; notes?: string }) =>
+    j<{ id: number }>("/api/method-experiments", { method: "POST", body: JSON.stringify(b) }),
+  updateMethodExperiment: (id: number, b: { start_date: string; end_date?: string | null; method: string; label?: string; notes?: string }) =>
+    j<{ ok: true }>(`/api/method-experiments/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteMethodExperiment: (id: number) => j<{ ok: true }>(`/api/method-experiments/${id}`, { method: "DELETE" }),
+  methodEvaluation: (id: number, window?: number) =>
+    j<MethodEvaluationResult>(`/api/method-experiments/${id}/evaluation${window ? `?window=${window}` : ""}`),
+  markers: (date?: string, window?: number) => {
+    const p = new URLSearchParams();
+    if (date) p.set("date", date);
+    if (window) p.set("window", String(window));
+    return j<Markers>(`/api/markers${p.toString() ? `?${p}` : ""}`);
+  },
+  methodInference: () => j<MethodInferenceResult>("/api/method-inference"),
 
   season: () => j<SeasonWeek[]>("/api/season"),
   saveWeek: (no: number, b: Partial<SeasonWeek>) => j(`/api/season/week/${no}`, { method: "PUT", body: JSON.stringify(b) }),

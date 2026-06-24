@@ -10,13 +10,14 @@ import WeekReport from "./pages/WeekReport.tsx";
 import LongTerm from "./pages/LongTerm.tsx";
 import Races from "./pages/Races.tsx";
 import Bests from "./pages/Bests.tsx";
+import Methodik from "./pages/Methodik.tsx";
 import Settings from "./pages/Settings.tsx";
 import ProfilePage from "./pages/Profile.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
-const BUILD_DATE = "24.06.2026"; // v1.5.0
+const BUILD_DATE = "24.06.2026"; // v1.6.2
 
 const NAV = [
   { to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true },
@@ -26,6 +27,7 @@ const NAV = [
   { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
   { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
   { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
+  { to: "/methodik", ico: "🔬", tk: "nav.methodik", label: "Methodik" },
   { to: "/profile", ico: "👤", tk: "nav.profile", label: "Profil" },
   { to: "/settings", ico: "⚙", tk: "nav.settings", label: "Einstellungen" },
   { to: "/options", ico: "🏷", tk: "nav.options", label: "Auswahllisten" },
@@ -58,6 +60,7 @@ export default function App() {
             <Route path="/longterm" element={<LongTerm />} />
             <Route path="/races" element={<Races />} />
             <Route path="/bests" element={<Bests />} />
+            <Route path="/methodik" element={<Methodik />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/options" element={<OptionsConfig />} />

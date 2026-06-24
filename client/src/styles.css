@@ -8,10 +8,10 @@
   --fitness: #2b6cb0; /* CTL blau */
   --fatigue: #d53f8c; /* ATL rosa */
   --form: #d69e2e;    /* TSB gelb */
-  --ok: #16a34a;
-  --warn: #d97706;
-  --danger: #dc2626;
-  --info: #0891b2;
+  --ok: #16a34a;       /* grün = gut */
+  --warn: #eab308;     /* gelb = passt nicht ganz */
+  --danger: #dc2626;   /* rot = Warnung */
+  --info: #64748b;     /* neutral (grau) */
   --radius: 12px;
   --shadow: 0 1px 3px rgba(20, 30, 50, 0.06), 0 1px 2px rgba(20, 30, 50, 0.04);
   --shadow-lift: 0 6px 18px rgba(20, 30, 50, 0.10), 0 2px 6px rgba(20, 30, 50, 0.06);
@@ -125,9 +125,9 @@ tr:last-child td { border-bottom: none; }
 .flag .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
 .flag.ok { background: #f0faf3; color: #14672f; }
 .flag.ok .dot { background: var(--ok); }
-.flag.info { background: #eff9fb; color: #0e5a6b; }
+.flag.info { background: #f1f5f9; color: #475569; }
 .flag.info .dot { background: var(--info); }
-.flag.warn { background: #fdf6ec; color: #92590f; }
+.flag.warn { background: #fefce8; color: #854d0e; }
 .flag.warn .dot { background: var(--warn); }
 .flag.danger { background: #fdf0f0; color: #971b1b; }
 .flag.danger .dot { background: var(--danger); }

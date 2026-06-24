@@ -255,7 +255,7 @@ npm run dev          # → http://localhost:5173</code></pre>
       </div>
       <div class="page-card">
         <div class="page-name">Wochenbericht</div>
-        <p>Geplant-vs-real-Tabelle mit Farb-Kacheln (≥90 % grün / ≥70 % gold / rot), PMC, <strong>Efficiency Factor</strong> je Tag, Wellness-Schnitt, Reflexion → <strong>Drucken/PDF</strong>.</p>
+        <p>Geplant-vs-real-Tabelle mit Farb-Kacheln (≥90 % grün / ≥70 % gelb / rot), PMC, <strong>Efficiency Factor</strong> je Tag, Wellness-Schnitt, Reflexion → <strong>Drucken/PDF</strong>.</p>
       </div>
       <div class="page-card">
         <div class="page-name">Langzeit</div>
@@ -268,6 +268,10 @@ npm run dev          # → http://localhost:5173</code></pre>
       <div class="page-card">
         <div class="page-name">Bestzeiten</div>
         <p>PBs je Standarddistanz aus Strava + <strong>Critical-Speed-Modell</strong> (CS-Pace, D′, R²) + Race-Prediction-Chart (5k/10k/HM/M über Saisonverlauf).</p>
+      </div>
+      <div class="page-card">
+        <div class="page-name">Methodik <span class="tag tag-purple">v1.6.0</span></div>
+        <p><strong>N-of-1-Methoden-Engine:</strong> Marker-Batterie (CS primär, VDOT, Threshold, Entkopplung, EF…), geführte Vorher/Nachher-Experimente + <strong>passive Inferenz</strong> (welches Regime — polarisiert/pyramidal/threshold/Norwegian — bei <em>dir</em> mit Fortschritt korreliert; mit Confounder-Kontrolle).</p>
       </div>
       <div class="page-card">
         <div class="page-name">Saisonplan</div>
@@ -317,6 +321,9 @@ npm run dev          # → http://localhost:5173</code></pre>
       <div class="model-row"><div class="model-key">VO2max</div><div class="model-val">VDOT-Formel (Daniels-Gilbert) aus besten Laufzeiten · Niveau-Badge nach ACSM-Normen (Alter + Geschlecht).</div></div>
       <div class="model-row"><div class="model-key">Race-Prediction</div><div class="model-val">Critical-Speed-Modell (CS-Pace + D′) → Prognose 5k/10k/HM/M über Saisonverlauf.</div></div>
       <div class="model-row"><div class="model-key">TSS-Empfehlung</div><div class="model-val">3:1-Prinzip · Korridor aus CTL × Phase (Aufbau/Erhalt/Entlastung/Race Week/Krank) · Ampel-Badge in der Wochenplanung.</div></div>
+      <div class="model-row"><div class="model-key">Periodisierung <span class="tag tag-purple">v1.6.0</span></div><div class="model-val">Block-Vorschlag leitet Phasen vom Renntag ab (Base → Belastung → Race-Specific → Taper) + 3:1-Entlastung. Manuell gesetzte Phasen übersteuern immer.</div></div>
+      <div class="model-row"><div class="model-key">Einheiten-Bibliothek <span class="tag tag-purple">v1.6.1</span></div><div class="model-val">~23 sportwiss. Vorlagen (Daniels T/I/R · Norwegian/Bakken · Billat · Hügelläufe): je Phase <strong>rotierend + progressiv</strong>, <strong>fitness-skaliert</strong> (20×400 nur bei hoher Fitness), mit Pace-<strong>Bereich</strong> (Anker LT1/LT2/CS) + HF-Spanne + Pausen. Berg = Aufwand+HF.</div></div>
+      <div class="model-row"><div class="model-key">Methoden-Findung (N-of-1) <span class="tag tag-purple">v1.6.0</span></div><div class="model-val">Marker-Batterie (Critical Speed primär) → Vorher/Nachher-Verdikt + Konfidenz; passive Regime-Inferenz über 2–4-Wochen-Lag mit strenger Confounder-Kontrolle (CTL-Band; Krank/Taper/Race raus). Korrelation, nicht Kausalität — advisory, nie erzwingend.</div></div>
     </div>
   </section>
 

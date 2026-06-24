@@ -79,6 +79,7 @@
       <a href="#langzeit">Langzeit</a>
       <a href="#races">Races</a>
       <a href="#bestzeiten">Bestzeiten</a>
+      <a href="#methodik">Methodik</a>
       <a href="#saisonplan">Saisonplan</a>
       <a href="#profil">Profil</a>
       <a href="#einstellungen">Einstellungen</a>
@@ -86,9 +87,6 @@
       <a href="#strava">Strava</a>
       <div class="grp">Nachschlagen</div>
       <a href="#glossar">Glossar &amp; Formeln</a>
-      <div class="grp">Weitere Seiten</div>
-      <a href="/changelog.html">Changelog</a>
-      <a href="/readme.html">Über RunLog</a>
     </nav>
 
     <main>
@@ -118,6 +116,7 @@
             <dt>📈 <a href="#langzeit">Langzeit</a></dt><dd>Monate-Entwicklung: Wellness, Zonen-Effizienz, Intervall-Trend.</dd>
             <dt>🏁 <a href="#races">Races</a></dt><dd>Wettkämpfe mit Splits, Zeit, Platzierung, HF, Höhenmetern (auch automatisch aus dem Tracking).</dd>
             <dt>🏅 <a href="#bestzeiten">Bestzeiten</a></dt><dd>Persönliche Bestzeiten je Distanz + Critical-Speed-Modell.</dd>
+            <dt>🔬 <a href="#methodik">Methodik</a></dt><dd>N-of-1: welche Trainingsmethode bringt dir am meisten? Marker, Experimente, passive Inferenz.</dd>
             <dt>🗓 <a href="#saisonplan">Saisonplan</a></dt><dd>Wochen (KW-gesteuert) mit Phase, Ziel-km und Saisonziel-Rennen.</dd>
             <dt>👤 <a href="#profil">Profil</a></dt><dd>Profile verwalten/zurücksetzen, HF-Zonen &amp; Schwellen.</dd>
             <dt>⚙ <a href="#einstellungen">Einstellungen</a></dt><dd>Analyse-Schwellen &amp; Strava.</dd>
@@ -212,6 +211,32 @@
           <div class="note">Die <strong>geplanten km</strong> der Woche ergeben sich immer aus den Einheiten dieser
             Kalenderwoche (Mo–So). Mit den <strong>← →</strong>-Pfeilen neben dem Wochen-Dropdown springst du
             zur vorigen/nächsten Woche. Beim Planen reicht die <strong>Zone</strong> — Ø/Max-HF kommen erst beim Tracking.</div>
+        </section>
+
+        <section class="card">
+          <h2>Einheiten-Bibliothek <span class="pill">v1.6.1</span></h2>
+          <p>Der <strong>Block-Vorschlag</strong> wählt die konkreten Einheiten aus einer sportwissenschaftlich
+            fundierten Bibliothek (Daniels · Bakken/Norwegian · Seiler · Billat). Über einen längeren Plan
+            <strong>rotieren</strong> die Qualitätseinheiten Woche für Woche und werden <strong>progressiv</strong>
+            schwerer; die Dosis ist an deine <strong>Fitness</strong> angepasst (z.&nbsp;B. 20–25×400&nbsp;m erst bei
+            hoher Fitness). Jede Einheit kommt mit <strong>Pace-Bereich</strong> (verankert an LT1/LT2/Critical&nbsp;Speed),
+            <strong>HF-Spanne</strong> und <strong>Pausen-Empfehlung</strong>.</p>
+          <table>
+            <thead><tr><th>Familie</th><th>Beispiel-Einheiten</th><th>Phase</th><th>Aufwand</th><th>Nutzen</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Easy / Long</strong></td><td>Recovery, GA1, Longrun (auch mit schnellem Ende)</td><td>alle</td><td>1–3</td><td>aerobe Basis, Fettstoffwechsel, Ermüdungsresistenz</td></tr>
+              <tr><td><strong>LT1 / Sub-Threshold</strong></td><td>kont. 30–50', 4–6×8–10'</td><td>Base/Build</td><td>3</td><td>aerobe Schwelle, Laktat-Clearance</td></tr>
+              <tr><td><strong>LT2 / Threshold</strong></td><td>Tempo 20–40', Cruise 4–5×8–12', 1000er, <strong>Norwegian 20–25×400m</strong>, Sub-T 6'-Reps, <strong>Doppel-Schwelle AM+PM</strong></td><td>Build</td><td>4</td><td>Schwellen-Volumen bei kontrolliertem Laktat (2,5–3,5&nbsp;mmol)</td></tr>
+              <tr><td><strong>VO2max</strong></td><td>5–6×3', 4–5×4–5', 1000er, 400er, Billat 30/30</td><td>Race-Specific</td><td>5</td><td>aerobe Leistung, Renntempo schärfen</td></tr>
+              <tr><td><strong>Berg</strong></td><td>Bergsprints 10–15s, Hügel-Reps 60–90s / 2–3'</td><td>Base/Build</td><td>4–5</td><td>Neuromuskulär, Kraft, VO2 (gelenkschonend)</td></tr>
+              <tr><td><strong>Speed</strong></td><td>200–400er @ R-Pace, Steigerungen</td><td>alle</td><td>2–5</td><td>Laufökonomie, Lockerheit</td></tr>
+              <tr><td><strong>Renntempo</strong></td><td>4–6×1km @ Zieltempo</td><td>Race-Specific</td><td>5</td><td>Wettkampf-Spezifik</td></tr>
+            </tbody>
+          </table>
+          <div class="note">Bergläufe werden über <strong>Aufwand + HF</strong> gesteuert (keine Pace, weil die
+            Steigung variiert). Die <strong>Phasen</strong> leitet der Block-Vorschlag automatisch vom Renntag ab
+            (Base → Belastung → Race-Specific → Taper) — du kannst jede Wochenphase aber manuell überschreiben,
+            der Vorschlag passt sich an.</div>
         </section>
       </div>
 
@@ -374,6 +399,133 @@
           <div class="warn note">Braucht Strava-Läufe mit GPS/Distanz; rein manuelle Einheiten liefern keine PBs.
             Für ein belastbares CS-Modell helfen mehrere kurze bis mittlere harte Läufe (z.&nbsp;B. 1k, 3k, 5k, 10k).</div>
         </section>
+      </div>
+
+      <!-- ============================ METHODIK ============================ -->
+      <div class="page" id="methodik">
+        <p class="crumbs">Die Seiten › Methodik</p>
+        <h1>🔬 Methodik <span class="pill">v1.6.0</span></h1>
+        <p class="lead">Die Methoden-Engine (N-of-1): Sie beantwortet die wichtigste Frage der Trainingssteuerung —
+          <strong>welche Art von Training bringt <em>dir persönlich</em> am meisten?</strong> Nicht im Lehrbuch,
+          sondern in deinen eigenen Daten.</p>
+
+        <section class="card">
+          <h2>Die Idee: N-of-1</h2>
+          <p>Studien sagen, was im Schnitt für viele Läufer gilt. Aber du bist kein Durchschnitt. „N-of-1" heißt:
+            Die Stichprobe bist <strong>du allein</strong> — über viele Wochen. Die Engine misst, wie dein Körper auf
+            verschiedene Trainings-<em>Regime</em> (polarisiert, pyramidal, threshold, Norwegian) reagiert, und zeigt
+            dir, welches bei <em>dir</em> mit echtem Fortschritt zusammenfällt. Drei Bausteine arbeiten zusammen:</p>
+          <ol>
+            <li><strong>Marker-Batterie</strong> — misst deinen aktuellen Fitness-Zustand auf 9 Achsen.</li>
+            <li><strong>Geführte Experimente</strong> — du erklärst einen Trainings-Block, die Engine bewertet Vorher↔Nachher.</li>
+            <li><strong>Passive Inferenz</strong> — die Engine durchsucht <em>automatisch</em> deine gesamte Historie nach Mustern.</li>
+          </ol>
+        </section>
+
+        <section class="card">
+          <h2>1 · Die Marker-Batterie</h2>
+          <p>Über ein Rückblick-Fenster (Standard 14 Tage) verdichtet RunLog deine Läufe zu Fitness-Markern. Der
+            <strong>Primär-Marker ist die Critical Speed (CS)</strong> — die robusteste, am wenigsten von Tagesform
+            verzerrte Kennzahl. Die anderen stützen oder widersprechen.</p>
+          <table>
+            <thead><tr><th>Marker</th><th>Was er misst</th><th>Besser =</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Critical Speed</strong> <span class="pill">primär</span></td><td>Nachhaltige Dauerleistungs-Pace (aus den Bestzeiten, 2–30 min)</td><td>schneller (kleinere s/km)</td></tr>
+              <tr><td>VDOT</td><td>Renn-äquivalente VO2max nach Daniels (aus harten Efforts)</td><td>höher</td></tr>
+              <tr><td>Threshold-Pace / -HF</td><td>Lage deiner anaeroben Schwelle (LT2)</td><td>schneller / Kontext</td></tr>
+              <tr><td>Aerobe Entkopplung</td><td>Wie stabil Pace↔HF über einen Lauf bleibt (Durability)</td><td>kleiner (&lt; 5 %)</td></tr>
+              <tr><td>Submax-EF</td><td>Laufeffizienz: NGP-Tempo pro Herzschlag (Easy/Long)</td><td>höher</td></tr>
+              <tr><td>Effective VO2max</td><td>Submax-Schätzung HF↔Pace je Lauf (v1.5)</td><td>höher</td></tr>
+              <tr><td>Laktat @ Schwelle</td><td>Blut-Laktat bei deiner Schwellen-Pace (aus Feldtests)</td><td>niedriger</td></tr>
+              <tr><td>Polarisierungs-Index</td><td>Form der Intensitätsverteilung (PI ≥ 2 = polarisiert)</td><td>kein „gut/schlecht"</td></tr>
+            </tbody>
+          </table>
+          <div class="note"><strong>Leere Marker?</strong> Marker hängen an angereicherten Strava-Daten (NGP, Zonen,
+            Bestzeiten, Entkopplung). Frisch importierte oder rein manuelle Läufe liefern sie noch nicht — sie füllen
+            sich über mehrere Strava-Syncs („Details/Splits nachziehen"). <em>Laktat @ Schwelle</em> braucht einen
+            <a href="#profil">Feldtest</a> im Zeitfenster.</div>
+        </section>
+
+        <section class="card">
+          <h2>2 · Geführte Experimente</h2>
+          <p>Hier sagst du der Engine, <em>was</em> du gemacht hast — sie sagt dir, <em>was es gebracht hat.</em></p>
+          <ol>
+            <li><strong>Block anlegen:</strong> Start- und Enddatum eines zusammenhängenden Trainings-Abschnitts
+              (ideal ein 3–4-Wochen-Mesozyklus) + die gefahrene <strong>Methode</strong> + optional ein Label.</li>
+            <li><strong>Auswertung öffnen:</strong> Klick auf den Block. RunLog rechnet einen Marker-Snapshot am
+              <em>Start</em> und am <em>Ende</em> (je 14-Tage-Fenster) und stellt sie gegenüber.</li>
+            <li><strong>Verdikt lesen:</strong> Jeder Marker bekommt ein Δ und eine Richtung; das Gesamt-Verdikt kommt
+              aus der <strong>Critical Speed</strong>. Daneben steht, wie viele der übrigen Marker das stützen.</li>
+          </ol>
+          <p>Ein Δ zählt nur als <em>besser/schlechter</em>, wenn es größer ist als das normale Mess-Rauschen
+            (MCID, z.&nbsp;B. CS ±1,5&nbsp;s/km) — kleine Zufalls-Schwankungen werden als <em>„flach"</em> geführt.</p>
+        </section>
+
+        <section class="card">
+          <h2>3 · Passive Inferenz</h2>
+          <p>Der mächtigste Teil läuft <strong>automatisch</strong>, ganz ohne dein Zutun: Die Engine ordnet jede
+            Woche deiner Historie einem <strong>Regime</strong> zu (aus Zonen-Verteilung + Session-Struktur) und misst,
+            wie sich deine Critical Speed in den <strong>2–4 Folgewochen</strong> entwickelt hat. Dann rankt sie die
+            Regime nach dieser Reaktion: <em>„Bei dir korrelierte polarisiert mit −9,7&nbsp;s/km CS (n=10 Wochen)."</em></p>
+          <p><strong>Damit das fair bleibt</strong> (Confounder-Kontrolle), schließt sie aus, was das Bild verfälschen
+            würde:</p>
+          <ul>
+            <li>Krankheits-, Taper- und Wettkampfwochen fliegen raus.</li>
+            <li>Nur Wochen-Paare mit <strong>annähernd gleicher Gesamtlast (CTL)</strong> werden verglichen — so wird
+              ein Fortschritt der Methode zugeschrieben und nicht einfach „mehr Umfang".</li>
+            <li>Regime mit zu wenigen Wochen werden klar als unsicher markiert.</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>Die vier Methoden — kurz erklärt</h2>
+          <dl>
+            <dt>Polarisiert</dt><dd>Viel locker (Z1), wenig hart (Z3), kaum Mittelbereich. PI ≥ 2. Klassiker für die Wettkampfphase.</dd>
+            <dt>Pyramidal</dt><dd>Viel locker, spürbarer Schwellen-Anteil (Z2), wenig sehr hart. Typisch für Base/Build.</dd>
+            <dt>Threshold</dt><dd>Schwellen-betont: mehrere kontrollierte LT2-Einheiten pro Woche.</dd>
+            <dt>Norwegian Double-Threshold</dt><dd>Sub-Threshold-Intervalle bei kontrolliertem Laktat (2–4,5&nbsp;mmol/l, oft 2× pro Tag). Die Engine erkennt Doppel-Schwellen-Tage automatisch.</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Konfidenz richtig lesen</h2>
+          <p>Jede Aussage trägt eine Konfidenz — sie sagt, <em>wie ernst</em> du sie nehmen darfst:</p>
+          <table>
+            <thead><tr><th>Stufe</th><th>Bedeutung</th><th>Was tun</th></tr></thead>
+            <tbody>
+              <tr><td><strong>hoch</strong></td><td>genug Wochen + Marker ziehen am gleichen Strang</td><td>als echten Hinweis behandeln</td></tr>
+              <tr><td><strong>mittel</strong></td><td>brauchbare Datenmenge, aber nicht eindeutig</td><td>beobachten, weiter Daten sammeln</td></tr>
+              <tr><td><strong>niedrig / „explorativ"</strong></td><td>zu wenige Wochen (n)</td><td>nur als Tendenz lesen, nicht handeln</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <h2>So ziehst du den besten Nutzen</h2>
+          <ol>
+            <li><strong>Erst Datenbasis schaffen.</strong> Lass deine Strava-Historie über mehrere Syncs anreichern
+              („Details/Splits nachziehen", dann „TSS neu berechnen"). Je vollständiger NGP, Zonen und Bestzeiten,
+              desto schärfer die Marker.</li>
+            <li><strong>Sauber experimentieren.</strong> Fahre eine Methode <em>konsequent</em> über einen ganzen
+              Mesozyklus (3–4 Wochen), bevor du sie bewertest — Fitness reagiert mit Verzögerung. Wechsle nicht mitten im Block.</li>
+            <li><strong>Eine Variable pro Block.</strong> Ändere die Methode, aber halte Umfang grob stabil — sonst weißt
+              du am Ende nicht, ob die Methode oder das Mehr-an-km gewirkt hat (genau das kontrolliert die Engine über die CTL).</li>
+            <li><strong>Mehrere Blöcke pro Methode.</strong> Ein einziger Block ist „explorativ". Erst <strong>n ≥ 2 Blöcke</strong>
+              bzw. <strong>≥ 4 Regime-Wochen</strong> ergeben ein belastbares Verdikt. Wiederhole vielversprechende Methoden.</li>
+            <li><strong>Den Primär-Marker führen lassen.</strong> Schau zuerst auf die Critical Speed; nutze die anderen
+              Marker, um die Geschichte zu verstehen (z.&nbsp;B. CS hoch <em>und</em> Entkopplung runter = robuste Verbesserung).</li>
+            <li><strong>Feldtests einstreuen.</strong> Ein gelegentlicher <a href="#profil">Laktat-/Stufentest</a> schaltet
+              <em>Laktat @ Schwelle</em> frei — der direkteste Beleg für „schneller bei gleichem Laktat" (das Norwegian-Ziel).</li>
+            <li><strong>Der Engine beim Planen zuhören.</strong> Findet die passive Inferenz mit mind. mittlerer Konfidenz
+              eine Lieblingsmethode, <em>nudgt</em> sie das Verteilungsziel im <a href="#planung">Wochen-/Block-Vorschlag</a>
+              sanft in diese Richtung — als Hinweis, nie als Zwang.</li>
+          </ol>
+        </section>
+
+        <div class="warn note"><strong>Korrelation, nicht Kausalität.</strong> Die Engine beobachtet Muster in deinen
+          eigenen Daten — sie beweist nichts, besonders bei wenig Wochen. Lebensstress, Schlaf, Wetter und Zufall reden
+          mit. Nutze die Aussagen als gut begründete Hypothesen für deine nächste Trainingsentscheidung, nicht als
+          Naturgesetz. Genau deshalb macht RunLog kleine Stichproben (n) und die Konfidenz immer sichtbar.</div>
       </div>
 
       <!-- ============================ SAISONPLAN ============================ -->

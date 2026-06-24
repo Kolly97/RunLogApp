@@ -418,6 +418,23 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_vo2max_lab_date ON vo2max_lab(profile_id, date);
   `);
+
+  // v1.6.0 (N-of-1): Geführte Methoden-Experimente. Vorher/Nachher-Marker-Snapshots werden on-the-fly
+  // berechnet (kein Speicherzwang) — die Tabelle hält nur Zeitraum + gewählte Methode + Notizen.
+  // method ∈ {polarized, pyramidal, threshold, norwegian_double_threshold, custom}.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS method_experiments (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      start_date  TEXT NOT NULL,
+      end_date    TEXT,
+      method      TEXT NOT NULL,
+      label       TEXT,
+      notes       TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_method_experiments ON method_experiments(profile_id, start_date);
+  `);
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig

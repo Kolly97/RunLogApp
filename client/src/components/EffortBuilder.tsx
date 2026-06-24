@@ -86,8 +86,8 @@ export function effortStats(rows: Effort[]): { totalSec: number; totalM: number;
   return { totalSec, totalM, avgHr: hrW ? Math.round(hrSum / hrW) : null };
 }
 
-const COLS = "40px 58px 64px 68px 48px 48px 82px minmax(56px,1fr) 24px";
-const COLS_PLAN = "40px 58px 64px 68px 82px minmax(56px,1fr) 24px"; // Planung: ohne Ø-HF/Max-HF (ToDo v0.13.0)
+const COLS = "40px 58px 64px 68px 48px 48px 82px 52px 60px minmax(56px,1fr) 24px";
+const COLS_PLAN = "40px 58px 64px 68px 82px 52px 60px minmax(56px,1fr) 24px"; // Planung: ohne Ø-HF/Max-HF (ToDo v0.13.0)
 const cell: CSSProperties = { padding: "4px 5px", textAlign: "center", width: "100%" };
 
 export default function EffortBuilder({ value, onChange, sport, zones, planning }: {
@@ -130,6 +130,8 @@ export default function EffortBuilder({ value, onChange, sport, zones, planning 
             {!planning && <div className="tiny muted center">Ø HF</div>}
             {!planning && <div className="tiny muted center">Max HF</div>}
             <div className="tiny muted center">Zone</div>
+            <div className="tiny muted center" title="Pause/Trabzeit zwischen den Wiederholungen (Sekunden)">Pause s</div>
+            <div className="tiny muted center">Art</div>
             <div className="tiny muted center">Label</div>
             <div />
           </div>
@@ -251,6 +253,15 @@ function Row({ r, bike, zones, planning, onChange, onRemove }: {
             </option>
           );
         })}
+      </select>
+      <input type="number" min={0} style={cell} value={r.rest_s ?? ""} placeholder="s"
+        title={r.hr_recovery ? `HF-Erholung ${r.hr_recovery} bpm` : "Pause zwischen den Wiederholungen (Sekunden)"}
+        onChange={(e) => onChange({ rest_s: num(e.target.value) })} />
+      <select style={{ padding: "4px 2px", width: "100%" }} value={r.rest_type ?? ""}
+        onChange={(e) => onChange({ rest_type: (e.target.value || null) as Effort["rest_type"] })}>
+        <option value="">–</option>
+        <option value="jog">Trab</option>
+        <option value="stand">Stehen</option>
       </select>
       <select style={{ padding: "4px 2px", width: "100%" }} value={r.label ?? ""}
         onChange={(e) => onChange({ label: e.target.value || undefined })}>

@@ -14,6 +14,7 @@ import {
   round1,
   vdot,
   predictFromVdot,
+  fitCriticalSpeed,
   effectiveVo2max,
   paceToSecPerKm,
   type HrZone,
@@ -46,12 +47,18 @@ import {
   blockPlan,
   injuryRiskFlag,
   adjustTodaySession,
+  markerSnapshot,
+  compareMarkers,
+  methodInference,
   type IntLevel,
   type PlannedSession,
   type CategoryTotals,
   type EffortLine,
   type IntervalEffortStat,
   type BlockWeekInput,
+  type MarkerActivity,
+  type MarkerLactateTest,
+  type WeekRegimeInput,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
@@ -59,6 +66,9 @@ import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, st
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+// v1.6.2: Jeder Schreibzugriff invalidiert den Methoden-Inferenz-Cache (advisory, langsam wechselnd) →
+// der nächste Plan-Vorschlag rechnet frisch, alle GETs dazwischen nutzen das gecachte Ergebnis.
+app.use((req, _res, next) => { if (req.method !== "GET" && req.method !== "HEAD") invalidateInference(); next(); });
 
 initSchema();
 
@@ -649,8 +659,10 @@ app.get("/api/plan/week-suggestion", (req, res) => {
   const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
   const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
 
-  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null });
-  res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec });
+  const inf = buildMethodInference();
+  const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
+  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null, methodPreference });
+  res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec, methodPreference });
 });
 
 // Mesozyklus-/Block-Vorschlag bis Renntag (v1.4.0, A4) — Vorschlag-Modus, schreibt nichts.
@@ -663,7 +675,7 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   if (!startWk) return res.json({ weeks: [], raceDate: null, reasons: [{ code: "no_weeks", text: "Kein Saisonplan vorhanden." }], confidence: "niedrig" });
 
   // Nächster Renntag ab Startwoche (Races-Tabelle bevorzugt, sonst goal_race-Woche).
-  const raceRow = db.prepare("SELECT date FROM races WHERE profile_id=? AND date>=? ORDER BY date LIMIT 1").get(pid(), startWk.start_date) as { date: string } | undefined;
+  const raceRow = db.prepare("SELECT date, distance_m FROM races WHERE profile_id=? AND date>=? ORDER BY date LIMIT 1").get(pid(), startWk.start_date) as { date: string; distance_m: number | null } | undefined;
   let raceDate = raceRow?.date ?? null;
 
   // Wochen ab Startwoche; bei Renntag bis zur Renn-Woche, sonst rollend 6 Wochen.
@@ -685,7 +697,21 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const from = minIso(earliestDataDate() ?? today, today);
   const historicalDailyTss = dailyTssMap(from, today);
   const zs = effectiveZoneSet(today);
-  const zones = { pace_zones: zs.pace_zones, threshold_pace: zs.threshold_pace, lt1_pace: zs.lt1_pace };
+  const runs = loadProfileRuns();
+  const cur = rollingCsVdot(runs, today, 90); // aktuelle CS + bestes VDOT (ein Daten-Load)
+  const csPace = cur.csPace;
+  // v1.6.2: Zieldistanz aus dem angesteuerten Renntag (nur Races-Tabelle) → individuelles Renntempo via Daniels-VDOT.
+  const goalDistanceM = raceRow?.distance_m && raceRow.distance_m > 0 ? Number(raceRow.distance_m) : null;
+  let goalPace: number | null = null;
+  if (goalDistanceM && cur.vdot) {
+    const pr = predictFromVdot(cur.vdot, [goalDistanceM]);
+    if (pr.length && pr[0].time_s > 0) goalPace = Math.round(pr[0].time_s / (goalDistanceM / 1000));
+  }
+  const zones = {
+    pace_zones: zs.pace_zones, threshold_pace: zs.threshold_pace, lt1_pace: zs.lt1_pace,
+    hr_zones: zs.hr_zones, cs_pace: csPace, rep_pace: csPace ? csPace - 8 : null,
+    goal_distance_m: goalDistanceM, goal_pace: goalPace,
+  };
 
   // Verfügbarkeits-/Präferenz-Profil (A1) — wenn (noch) nicht gepflegt → null → Gleichverteilung.
   const availability = getSetting<Availability | null>(`availability_${pid()}`, null);
@@ -698,8 +724,194 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
   const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
 
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null });
-  res.json(plan);
+  const inf = buildMethodInference();
+  const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM });
+  res.json({ ...plan, methodPreference, goalDistanceM, goalPace });
+});
+
+// ===================== N-of-1 Methoden-Findung (v1.6.0) =====================
+
+/** HF-Zonen-Minuten einer Aktivität: Priorität zone_km > zone_min > zones (wie im /api/analyze). */
+function activityZoneMin(a: any, paceZones: number[] | undefined): Record<number, number> {
+  const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
+  const zMin = parseJson<Record<string, number> | null>(a.zone_min, null);
+  const zSec = parseJson<Record<string, number> | null>(a.zones, null);
+  const out: Record<number, number> = {};
+  const hasKm = !!zKm && Object.values(zKm).some((v) => (v || 0) > 0);
+  if (hasKm) {
+    const avgPace = a.distance_m && a.moving_s ? a.moving_s / (a.distance_m / 1000) : null;
+    for (const [z, km] of Object.entries(zKm!)) { const zi = Number(z); if (!km) continue; const pace = paceZones?.[zi - 1] || avgPace || 300; out[zi] = (out[zi] || 0) + (km * pace) / 60; }
+  } else if (zMin) { for (const [z, m] of Object.entries(zMin)) out[Number(z)] = (out[Number(z)] || 0) + (m || 0); }
+  else if (zSec) { for (const [z, s] of Object.entries(zSec)) out[Number(z)] = (out[Number(z)] || 0) + (s || 0) / 60; }
+  return out;
+}
+
+/** Baut einen Marker-Snapshot aus der DB (Fenster [endDate-windowDays, endDate]). */
+function buildMarkerSnapshot(endDate: string, windowDays: number) {
+  const startDate = addDaysIso(endDate, -windowDays);
+  const zs = effectiveZoneSet(endDate);
+  const rows = db.prepare(
+    "SELECT date, sport, type, best_efforts, ngp, avg_hr, decoupling, eff_vo2max, zone_min, zone_km, zones, distance_m, moving_s FROM activities WHERE profile_id=? AND date>=? AND date<=? ORDER BY date",
+  ).all(pid(), startDate, endDate) as any[];
+  const activities: MarkerActivity[] = rows.map((a) => ({
+    date: a.date, sport: a.sport, type: a.type,
+    best_efforts: parseJson<Record<string, number> | null>(a.best_efforts, null),
+    ngp: a.ngp ?? null, avg_hr: a.avg_hr ?? null, decoupling: a.decoupling ?? null, eff_vo2max: a.eff_vo2max ?? null,
+    zoneMin: activityZoneMin(a, zs.pace_zones),
+  }));
+  const lacRows = db.prepare(
+    "SELECT id, date FROM lactate_tests WHERE profile_id=? AND date BETWEEN ? AND ? ORDER BY date",
+  ).all(pid(), addDaysIso(endDate, -120), addDaysIso(endDate, 30)) as { id: number; date: string }[];
+  const lactateTests: MarkerLactateTest[] = lacRows.map((t) => ({
+    date: t.date,
+    points: (db.prepare("SELECT pace_s, speed_kmh, lactate FROM lactate_points WHERE test_id=?").all(t.id) as any[])
+      .map((p) => ({ pace_s: p.pace_s ?? null, speed_kmh: p.speed_kmh ?? null, lactate: p.lactate })),
+  }));
+  return markerSnapshot({
+    endDate, windowDays, activities,
+    zones: { hr_zones: zs.hr_zones, threshold_pace: zs.threshold_pace, lthr: zs.lthr, lt1_hr: zs.lt1_hr },
+    lactateTests,
+  });
+}
+
+const SUB_THR_RE = /threshold|lt2|sub|tempo|schwelle/i;
+
+interface RunLite { date: string; type: string | null; best_efforts: Record<string, number> | null; zone_km: any; zone_min: any; zones: any; distance_m: number; moving_s: number }
+
+/** Alle Läufe des aktiven Profils einmal laden (best_efforts geparst) — Basis für die schnelle Inferenz. */
+function loadProfileRuns(): RunLite[] {
+  const rows = db.prepare(
+    "SELECT date, type, best_efforts, zone_km, zone_min, zones, distance_m, moving_s FROM activities WHERE profile_id=? AND sport='Run' ORDER BY date",
+  ).all(pid()) as any[];
+  return rows.map((a) => ({
+    date: a.date, type: a.type, best_efforts: parseJson<Record<string, number> | null>(a.best_efforts, null),
+    zone_km: a.zone_km, zone_min: a.zone_min, zones: a.zones, distance_m: a.distance_m, moving_s: a.moving_s,
+  }));
+}
+
+/** Leichte Rolling-CS + bestes VDOT aus dem In-Memory-Lauf-Set — identische Mathe zu markerSnapshot, ohne den Rest. */
+function rollingCsVdot(runs: RunLite[], endDate: string, windowDays: number): { csPace: number | null; vdot: number | null } {
+  const startDate = addDaysIso(endDate, -windowDays);
+  const bestByDist = new Map<number, number>();
+  for (const a of runs) {
+    if (a.date < startDate || a.date > endDate || !a.best_efforts) continue;
+    for (const [dStr, tRaw] of Object.entries(a.best_efforts)) {
+      const d = Number(dStr), t = Number(tRaw);
+      if (!(d > 0) || !(t > 0)) continue;
+      const cur = bestByDist.get(d);
+      if (cur == null || t < cur) bestByDist.set(d, t);
+    }
+  }
+  const allPts = [...bestByDist.entries()].map(([d, t]) => ({ distance_m: d, time_s: t }));
+  const cs = fitCriticalSpeed(allPts.filter((p) => p.time_s >= 120 && p.time_s <= 1800));
+  let vd = 0;
+  for (const p of allPts) if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 2400) { const v = vdot(p.distance_m, p.time_s); if (v > vd) vd = v; }
+  return { csPace: cs?.cs_pace_s ?? null, vdot: vd > 0 ? Math.round(vd * 10) / 10 : null };
+}
+
+// In-Memory-Cache der Methoden-Inferenz (advisory, langsam wechselnd). Globale Version, bei jedem Schreibzugriff
+// hochgezählt (Middleware) → nächster Plan-Aufruf rechnet neu; alle GETs dazwischen nutzen den Cache.
+let inferenceVersion = 0;
+const inferenceCache = new Map<number, { version: number; result: ReturnType<typeof methodInference> }>();
+function invalidateInference(): void { inferenceVersion++; }
+
+/** Berechnet die passive Methoden-Inferenz — ein Daten-Load, In-Memory-Fenster, leichte Rolling-CS. */
+function computeMethodInference() {
+  const today = todayIso();
+  const runs = loadProfileRuns();
+  const weeksRows = db.prepare(
+    "SELECT week_no, phase, start_date, end_date FROM season_weeks_v2 WHERE profile_id=? AND start_date<=? ORDER BY start_date",
+  ).all(pid(), today) as any[];
+  const recent = weeksRows.slice(-60); // letzte ~60 Wochen
+  const from = minIso(earliestDataDate() ?? today, today);
+  const pmc = computePmc(dailyTssMap(from, today), from, today, today);
+  const ctlByDate = new Map<string, number>();
+  for (const p of pmc) ctlByDate.set(p.date, p.ctl);
+  const raceDatesArr = (db.prepare("SELECT date FROM races WHERE profile_id=?").all(pid()) as { date: string }[]).map((r) => r.date);
+
+  const input: WeekRegimeInput[] = [];
+  for (const w of recent) {
+    const acts = runs.filter((a) => a.date >= w.start_date && a.date <= w.end_date);
+    if (!acts.length) continue;
+    const zs = effectiveZoneSet(w.end_date);
+    const agg: Record<number, number> = {};
+    for (const a of acts) { const zm = activityZoneMin(a, zs.pace_zones); for (const [z, m] of Object.entries(zm)) agg[Number(z)] = (agg[Number(z)] || 0) + m; }
+    const dist = Object.keys(agg).length ? physioTimeZones(agg, zs.hr_zones, zs.lt1_hr, zs.lthr) : null;
+    const pi = dist ? polarizationIndex(dist.z1, dist.z2, dist.z3) : null;
+    const sessions = acts.map((a) => ({ type: a.type || "", subThreshold: SUB_THR_RE.test(a.type || "") }));
+    const byDay = new Map<string, number>();
+    for (const a of acts) if (SUB_THR_RE.test(a.type || "")) byDay.set(a.date, (byDay.get(a.date) || 0) + 1);
+    const doubleThresholdDays = [...byDay.values()].filter((c) => c >= 2).length;
+    const ph = String(w.phase || "").toLowerCase();
+    const hasRace = raceDatesArr.some((d) => d >= w.start_date && d <= w.end_date);
+    const excluded = ph.includes("krank") || ph.includes("race") || ph.includes("taper") || ph.includes("entlast") || ph.includes("deload") || hasRace;
+    const { csPace, vdot: vd } = rollingCsVdot(runs, w.end_date, 42);
+    input.push({
+      week_no: w.week_no, start_date: w.start_date, phase: w.phase ?? null,
+      dist, pi, ctl: ctlByDate.get(w.start_date) ?? null,
+      sessions, doubleThresholdDays, excluded, csPace, vdot: vd,
+    });
+  }
+  return methodInference(input, { lagWeeks: 3, ctlBand: 8 });
+}
+
+/** Gecachte Methoden-Inferenz (pro Profil; invalidiert bei jedem Schreibzugriff). */
+function buildMethodInference() {
+  const p = pid();
+  const cached = inferenceCache.get(p);
+  if (cached && cached.version === inferenceVersion) return cached.result;
+  const result = computeMethodInference();
+  inferenceCache.set(p, { version: inferenceVersion, result });
+  return result;
+}
+
+// CRUD geführte Experimente
+app.get("/api/method-experiments", (_req, res) => {
+  res.json(db.prepare("SELECT * FROM method_experiments WHERE profile_id=? ORDER BY start_date DESC").all(pid()));
+});
+app.post("/api/method-experiments", (req, res) => {
+  const b = req.body || {};
+  if (!b.start_date || !b.method) return res.status(400).json({ error: "start_date + method erforderlich" });
+  const r = db.prepare(
+    "INSERT INTO method_experiments(profile_id, start_date, end_date, method, label, notes, created_at) VALUES(?,?,?,?,?,?,?)",
+  ).run(pid(), b.start_date, b.end_date || null, b.method, b.label || null, b.notes || null, todayIso());
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+app.put("/api/method-experiments/:id", (req, res) => {
+  const b = req.body || {};
+  const ex = db.prepare("SELECT id FROM method_experiments WHERE id=? AND profile_id=?").get(req.params.id, pid());
+  if (!ex) return res.status(404).json({ error: "Nicht gefunden" });
+  db.prepare("UPDATE method_experiments SET start_date=?, end_date=?, method=?, label=?, notes=? WHERE id=? AND profile_id=?")
+    .run(b.start_date, b.end_date || null, b.method, b.label || null, b.notes || null, req.params.id, pid());
+  res.json({ ok: true });
+});
+app.delete("/api/method-experiments/:id", (req, res) => {
+  db.prepare("DELETE FROM method_experiments WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
+});
+
+// Aktueller Marker-Snapshot (für die Methodik-Seite)
+app.get("/api/markers", (req, res) => {
+  const date = String(req.query.date || todayIso());
+  const window = req.query.window ? Number(req.query.window) : 14;
+  res.json(buildMarkerSnapshot(date, Math.max(7, Math.min(60, window || 14))));
+});
+
+// Auswertung eines Experiments: Vorher/Nachher-Snapshots + Vergleich
+app.get("/api/method-experiments/:id/evaluation", (req, res) => {
+  const exp = db.prepare("SELECT * FROM method_experiments WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
+  if (!exp) return res.status(404).json({ error: "Experiment nicht gefunden" });
+  const w = Math.max(7, Math.min(60, req.query.window ? Number(req.query.window) || 14 : 14));
+  const endDate = exp.end_date || todayIso();
+  const start = buildMarkerSnapshot(exp.start_date, w);
+  const end = buildMarkerSnapshot(endDate, w);
+  res.json({ experiment: exp, window: w, start, end, evaluation: compareMarkers(start, end) });
+});
+
+// Passive Methoden-Inferenz
+app.get("/api/method-inference", (_req, res) => {
+  res.json(buildMethodInference());
 });
 
 // ---- Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8) -----------------------
@@ -1124,9 +1336,21 @@ function activityTssToStore(b: any): number | null {
   return b.tss ?? null;
 }
 
+// v1.6.1: Effective VO2max nur für ausreichend lange, GLEICHMÄSSIGE aerobe Läufe — die submaximale
+// HF↔Pace-Brücke gilt nicht für Intervalle/kurze Läufe. Dauerläufe immer; Tempo/Schwelle nur kontinuierlich
+// (ohne Intervall-`efforts`); VO2/Berg/Race + alle Intervall-Einheiten raus.
+const VO2MAX_STEADY_TYPES = new Set(["easy", "long", "steady", "recovery", "regeneration", "tempo", "dauerlauf", "lt1", "ga1", "ga2"]);
+const VO2MAX_CONT_THR_TYPES = new Set(["threshold", "lt2", "schwelle", "sub-t", "sub-threshold"]);
+
 /** Effective VO2max (v1.5.0) für eine Lauf-Aktivitäts-Row aus gespeicherten Aggregaten (NGP/Ø-HF/Entkopplung). */
 function effVo2maxForRow(a: any): number | null {
   if (a.sport !== "Run" || !a.moving_s) return null;
+  if (a.moving_s <= 1800) return null; // nur Läufe > 30 min (gleichmäßiger aerober Zustand)
+  const t = (a.type || "").toLowerCase();
+  const ef = a.efforts;
+  const hasIntervals = !!ef && ef !== "" && ef !== "null" && ef !== "[]";
+  const typeOk = VO2MAX_STEADY_TYPES.has(t) || ((VO2MAX_CONT_THR_TYPES.has(t) || t === "") && !hasIntervals);
+  if (!typeOk) return null; // Intervalle/VO2/Berg/Race + kurze Läufe ausgeschlossen
   const ath = getSetting("athlete", { max_hr: 196 }) as { max_hr?: number; hr_rest?: number };
   const hrMax = Number(ath?.max_hr) || 196;
   const hrRest = Number(ath?.hr_rest) || 48;
@@ -1488,7 +1712,7 @@ app.post("/api/recompute-tss", (_req, res) => {
     db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
 
     const acts = db.prepare(
-      "SELECT id, date, sport, distance_m, moving_s, avg_hr, avg_power, ngp, np, decoupling, tss, overrides FROM activities " +
+      "SELECT id, date, sport, type, efforts, distance_m, moving_s, avg_hr, avg_power, ngp, np, decoupling, tss, overrides FROM activities " +
         "WHERE profile_id=? AND (sport='Run' OR sport LIKE 'Bike%' OR sport='General') AND moving_s IS NOT NULL",
     ).all(profile) as any[];
     const updA = db.prepare("UPDATE activities SET tss=? WHERE id=?");

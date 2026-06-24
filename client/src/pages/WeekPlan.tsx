@@ -206,7 +206,7 @@ export default function WeekPlan() {
             {week.goal_race && <span className="muted">· Ziel: {week.goal_race}</span>}
             {analyze?.tssRec && (() => {
               const r = analyze.tssRec;
-              const col = r.level === "ok" ? "var(--ok)" : r.level === "over" ? "var(--warn)" : "#3b82f6";
+              const col = r.level === "ok" ? "var(--ok)" : r.level === "over" ? "var(--warn)" : "var(--info)";
               const hint = r.level === "ok" ? "im Zielkorridor" : r.level === "over" ? "über Empfehlung" : "unter Empfehlung";
               return (
                 <span className="pill" style={{ background: col, color: "#fff" }}

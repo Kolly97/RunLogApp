@@ -193,6 +193,14 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <h4>Versionen</h4>
+    <a href="#v162"><span class="v-badge">1.6.2</span>2026-06-24</a>
+    <a href="#v161"><span class="v-badge">1.6.1</span>2026-06-24</a>
+    <a href="#v160"><span class="v-badge">1.6.0</span>2026-06-24</a>
+    <a href="#v150"><span class="v-badge">1.5.0</span>2026-06-24</a>
+    <a href="#v140"><span class="v-badge">1.4.0</span>2026-06-23</a>
+    <a href="#v130"><span class="v-badge">1.3.0</span>2026-06-23</a>
+    <a href="#v120"><span class="v-badge">1.2.0</span>2026-06-23</a>
+    <a href="#v110"><span class="v-badge">1.1.0</span>2026-06-17</a>
     <a href="#v0155"><span class="v-badge">0.15.5</span>2026-06-16</a>
     <a href="#v0150"><span class="v-badge">0.15.0</span>2026-06-15</a>
     <a href="#v0140"><span class="v-badge">0.14.0</span>2026-06-15</a>
@@ -214,9 +222,202 @@
   <main>
     <!-- stats -->
     <div class="stats">
-      <div class="stat"><div class="stat-num">16</div><div class="stat-label">Versionen</div></div>
-      <div class="stat"><div class="stat-num">5</div><div class="stat-label">Tage Entwicklung</div></div>
-      <div class="stat"><div class="stat-num">v1.0.0</div><div class="stat-label">Aktuelle Release</div></div>
+      <div class="stat"><div class="stat-num">24</div><div class="stat-label">Versionen</div></div>
+      <div class="stat"><div class="stat-num">14</div><div class="stat-label">Tage Entwicklung</div></div>
+      <div class="stat"><div class="stat-num">v1.6.2</div><div class="stat-label">Aktuelle Release</div></div>
+    </div>
+
+    <!-- ═══════════════════ 1.6.2 ═══════════════════ -->
+    <div class="version open" id="v162">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.6.2</span>
+        <span class="version-title">N-of-1-Inferenz-Performance &amp; Renntempo nach Zieldistanz</span>
+        <span class="version-date">2026-06-24</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert / Behoben</div>
+          <ul class="changes">
+            <li><strong>N-of-1-Inferenz-Performance:</strong> <code>buildMethodInference</code> rechnete je Woche einen <strong>vollen</strong> Marker-Snapshot (überlappende 42-Tage-DB-Fenster, Laktat, EF, Decoupling, Physio-Zonen) — gebraucht wurden nur CS/VDOT. Jetzt: <strong>ein</strong> Daten-Load + leichte Rolling-CS (<code>rollingCsVdot</code>) + <strong>In-Memory-Cache</strong> (invalidiert bei jedem Schreibzugriff). Ergebnisse identisch, Block-/Wochen-Vorschlag lädt um ein Vielfaches schneller.</li>
+            <li><strong>Renntempo nach Zieldistanz (Daniels VDOT):</strong> Race-Specific-Einheiten ankern das Renntempo an der <strong>Zieldistanz</strong> (<code>races.distance_m</code>) — via VDOT individuell (5k schneller, Marathon langsamer). Neue Vorlagen <code>race_pace_long</code> (HM/Marathon) + <code>long_mp_segments</code> (MP-Longrun). Die Race-Specific-<strong>Auswahl</strong> passt sich an: ≤10k VO2-lastig · HM Schwelle/Renntempo · Marathon Schwelle/MP-lastig + MP-Longrun, VO2 reduziert. Ohne Renn-Eintrag bleibt das CS-Verhalten.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.6.1 ═══════════════════ -->
+    <div class="version" id="v161">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.6.1</span>
+        <span class="version-title">Trainings-Einheiten-Bibliothek (Variety-Engine), VO2max-Gate &amp; HTML-Cleanup</span>
+        <span class="version-date">2026-06-24</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Der Block-Vorschlag erzeugt jetzt <strong>echte Abwechslung</strong> statt immer „3×12' Threshold": eine sportwissenschaftlich fundierte Einheiten-Bibliothek (Daniels T/I/R · Bakken/Casado Norwegian · Seiler · Billat · neuromuskuläre Hügelläufe), aus der je Phase <strong>rotierende + progressive</strong>, <strong>fitness-skalierte</strong> Einheiten gewählt werden — mit Pace-<strong>Bereich</strong> (Anker LT1/LT2/CS) + HF-Spanne + Pausen.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Einheiten-Bibliothek (<code>server/workouts.ts</code>):</strong> ~23 Vorlagen mit Metadaten (Familie, Phase, Anstrengung 1–5, Nutzen, Synergie, Quelle) — LT1, LT2 (Tempo/Cruise/1000er/<strong>Norwegian 400er</strong>/Sub-T-Reps/<strong>Doppel-Schwelle AM+PM</strong>), VO2max (3'/4–5'/1000er/400er/<strong>Billat 30/30</strong>), Berg (Sprints, Hügel-Reps), Speed (R-Pace, Steigerungen), Renntempo, Easy/Long.</li>
+            <li><strong>Fitness-Skalierung (<code>fitnessLevel</code>):</strong> CTL/CS → low/mid/high skaliert die Wiederholungszahlen — <strong>20–25×400 nur bei hoher Fitness</strong>.</li>
+            <li><strong>Rotation + Progression (<code>pickWeekWorkouts</code>):</strong> Qualitäts-Slots rotieren Woche für Woche; Dosis steigt über den Block; <strong>Doppel-Schwellen-Tage</strong> bei erlaubten Doubles.</li>
+            <li><strong>Renderer (<code>renderWorkout</code>):</strong> Pace-Bereich (Anker ± Fenster) + HF-Spanne + Pausen (Trab/Stehen) je Intervall; Berg = Aufwand + HF. Hybrid: Easy/Long gleichen die Wochen-TSS-Differenz aus.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert / Behoben</div>
+          <ul class="changes">
+            <li><strong>Effective-VO2max-Gate:</strong> nur Läufe <strong>&gt; 30 min</strong> + gleichmäßige Typen (Dauer + kont. Tempo/Schwelle; Intervalle/VO2/Berg/Race raus). Danach „TSS neu berechnen" drücken.</li>
+            <li><strong>HTML-Cleanup:</strong> veraltete <code>public/changelog.html</code> + <code>readme.html</code> + ihre Nav-Links in <code>usage.html</code> entfernt.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.6.0 ═══════════════════ -->
+    <div class="version" id="v160">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.6.0</span>
+        <span class="version-title">Methoden-Findung (N-of-1), Periodisierung, Intervall-Pausen &amp; Fixes</span>
+        <span class="version-date">2026-06-24</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Dritter Pfeiler der Meta-Studie: <strong>Methoden-Findung (N-of-1)</strong> — findet mit den eigenen Daten heraus, welche Trainingsmethode den größten Benefit bringt (geführte Experimente + passive Inferenz). Plus echte Periodisierung im Block-Vorschlag, Intervall-Pausen-Tracking und vier Fixes. Vorschlag-Modus, lokal, erklärbar; N-of-1-Grenzen (kleine n, Korrelation≠Kausalität) sichtbar. Evidenz: Bakken/Casado et al. 2023 (Norwegian/LGTIT), Casado 2022 (Periodisierung), Treff 2019 (PI).</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Block N (N-of-1, Flaggschiff)</div>
+          <ul class="changes">
+            <li><strong>Marker-Batterie (<code>markerSnapshot</code>):</strong> über ein Rückblick-Fenster (Standard 14 Tage). <strong>Critical Speed (primär)</strong>, VDOT, Threshold-Pace/HF, aerobe Entkopplung, <strong>Submax-EF</strong> (neuer Helfer <code>efficiencyFactor</code>), Effective VO2max, Laktat-an-Pace, Polarisierungs-Index + Zeit-Verteilung. Maximal aus vorhandener Mathe wiederverwendet.</li>
+            <li><strong>Vorher/Nachher-Vergleich (<code>compareMarkers</code>):</strong> Marker-Deltas + Verdikt aus dem Primär-Marker CS (besser/flach/schlechter gegen MCID-Rauschen) + Konfidenz (n + Konsistenz); kleine n als „explorativ".</li>
+            <li><strong>Passive Inferenz (<code>methodInference</code> + <code>classifyWeekRegime</code>):</strong> bucketet Wochen nach Regime (polarisiert/pyramidal/threshold/<strong>Norwegian Double-Threshold</strong>) und misst die vorwärtsgerichtete CS/VDOT-Reaktion über 2–4 Folgewochen. <strong>Strenge Confounder-Kontrolle:</strong> Krank/Taper/Race raus, nur Paare mit stabiler CTL (|ΔCTL| ≤ 8).</li>
+            <li><strong>Engine-Kopplung (advisory):</strong> beste Methode nudgt das Verteilungsziel in <code>weekStructureRecommendation</code>/<code>blockPlan</code> sanft — nur ab Konfidenz ≥ mittel, nie erzwingend.</li>
+            <li><strong>Neue Seite „Methodik"</strong> (<code>pages/Methodik.tsx</code>, Nav): aktuelle Marker, Passiv-Inferenz-Karte, Experiment-Liste/Anlegen, Vorher/Nachher-Auswertung (Tabelle + <code>charts/MarkerDelta.tsx</code>). Endpoints <code>/api/method-experiments</code> (CRUD), <code>…/:id/evaluation</code>, <code>/api/markers</code>, <code>/api/method-inference</code>.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Periodisierung &amp; Pausen</div>
+          <ul class="changes">
+            <li><strong>Block-Vorschlag periodisiert (<code>derivePhaseSequence</code>):</strong> Phasen werden rückwärts vom Renntag abgeleitet (Base → Belastung → Race-Specific → Race Week) + automatische 3:1-Entlastung. <strong>Manuelle <code>season_weeks_v2.phase</code> übersteuert immer</strong>, der Vorschlag passt sich an.</li>
+            <li><strong>Evidenzbasierte Einheiten je Phase:</strong> Base = LT1-Volumen + lockere LT2; Belastung = 2 kontrollierte Sub-Threshold-Einheiten (Norwegian, Doppel-Schwellen-Tag) + Long; Race-Specific = VO2max + Renntempo, polarisiert. Wochen-zu-Wochen-Variation der Schlüsseleinheiten.</li>
+            <li><strong>Intervall-Pausen im Tracking:</strong> <code>Effort</code> um <code>rest_s</code> / <code>rest_type</code> (Trab/Stehen) / <code>hr_recovery</code> erweitert (JSON, additiv). Eingabe im <code>EffortBuilder</code>; Strava <code>extractWorkLaps</code> füllt Pause + HF-Erholung automatisch aus der Recovery-Runde.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert / Behoben</div>
+          <ul class="changes">
+            <li><strong>Wochencheck-Ampeln:</strong> <code>--warn</code> → klares Gelb (passt nicht ganz), <code>--info</code> → neutrales Grau, ok grün (gut), danger rot (Warnung). TSS-Rec-Badge „unter" → neutral, Adherence-Mittelfeld → gelb.</li>
+            <li><strong>Zonen-Plausibilität:</strong> <code>ZoneSets</code> warnt, wenn HF/Power nicht je Zone steigen oder Pace nicht je Zone schneller wird (Z3 nicht schneller als Z4).</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Datenbank (additiv)</div>
+          <ul class="changes">
+            <li>Neue Tabelle <code>method_experiments</code> (Methoden-Block-Zeiträume); Snapshots on-the-fly. <code>efforts</code>-JSON um Pausen-Felder erweitert (kein Schema-Change).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.5.0 ═══════════════════ -->
+    <div class="version" id="v150">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.5.0</span>
+        <span class="version-title">Effective VO2max, adaptiver Coach &amp; Anreicherungs-Fortschritt</span>
+        <span class="version-date">2026-06-24</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Effective VO2max je Lauf (<code>effectiveVo2max</code>):</strong> submaximale HF↔Pace (Daniels + %VO2R≈%HRR), NGP-basiert, Gate auf stetig-aerobe Läufe; über die volle Historie backfillbar. Neue Spalte <code>activities.eff_vo2max</code>.</li>
+            <li><strong>Labor-Kalibrierung:</strong> Tabelle <code>vo2max_lab</code> (mehrere Werte über Zeit) + <code>hr_rest</code>; CRUD <code>/api/vo2max-lab</code> + Trend-Endpoint (roh + zwischen Labortests interpolierte Eichung). Karte in Langzeit + Profil.</li>
+            <li><strong>Adaptiver Coach (<code>adjustTodaySession</code>):</strong> Decision-Tree (TSB/Ramp/Readiness/Risiko) passt die heutige Einheit an, re-konkretisiert exakt. <code>/api/today</code>-Adjustment + Dashboard-Karte „Anpassung übernehmen"; Gate-Modus advisory/gate.</li>
+            <li><strong>Anreicherungs-Fortschritt:</strong> <code>/api/enrich-progress</code> + zwei Doughnuts „x/Σ" (Details, Streams) in den Einstellungen.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.4.0 ═══════════════════ -->
+    <div class="version" id="v140">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.4.0</span>
+        <span class="version-title">Konkreter Mesoplaner, Race-Pacing &amp; tiefere Analytik</span>
+        <span class="version-date">2026-06-23</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Konkreter Mesoplaner:</strong> Verfügbarkeits-Profil (<code>AvailabilityCard</code>), Session-Konkretisierer <code>concretizeSession</code> (invertiert <code>rTssFromZones</code> exakt), Tages-Scheduler <code>scheduleWeek</code>, Mesozyklus-Planer <code>blockPlan</code> bis Renntag (3:1 + Taper, PMC-Vorwärtsprojektion). Engine-Karte + Block-Vorschau in der Wochenplanung.</li>
+            <li><strong>Race-Pacing (<code>pacingPlan</code>):</strong> Zielzeit → km-Splits mit GAP (Minetti) + Negativ-Split; <code>PacingPanel</code> auf der Races-Seite.</li>
+            <li><strong>Tiefere Analytik:</strong> Durability/Decoupling-Trend, Überlastungs-Frühwarnung (<code>injuryRiskFlag</code>: ACWR + Monotonie + Ramp + Readiness), Zonen-Histogramm, Fitness-Signale CTL+VDOT.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.3.0 ═══════════════════ -->
+    <div class="version" id="v130">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.3.0</span>
+        <span class="version-title">Echte Intensitätsverteilung, Laktat-Diagnostik &amp; Wochen-Engine</span>
+        <span class="version-date">2026-06-23</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Echte Zeit-Intensitätsverteilung:</strong> physiologisches 3-Zonen-Modell (Z1&lt;LT1 / Z2 LT1–LT2 / Z3&gt;LT2) + <strong>Polarisierungs-Index</strong> (Treff et al. 2019, <code>PI = log10((Z1/Z2)×Z3)</code>, PI ≥ 2 = polarisiert) + Phasen-Ziel-Band. Neue Spalten <code>zone_sets.lt1_hr/lt1_pace</code>.</li>
+            <li><strong>Laktat-/Feldtest-Diagnostik:</strong> Stufentest-Eingabe → automatische LT1/LT2-Berechnung (modifizierter Dmax) + Schwellen-Trend + Zonen-Set-Vorschlag. Neues Modul <code>server/lactate.ts</code>, Tabellen <code>lactate_tests</code>/<code>lactate_points</code>.</li>
+            <li><strong>Wochen-/Block-Empfehlungs-Engine (<code>weekStructureRecommendation</code>):</strong> regelbasierter Vorschlag aus Form/Phase/Readiness + Periodisierungsmodell. Endpoint <code>/api/plan/week-suggestion</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.2.0 ═══════════════════ -->
+    <div class="version" id="v120">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.2.0</span>
+        <span class="version-title">Coach „Heute", Readiness, aerobe Entkopplung &amp; Monotonie/Strain</span>
+        <span class="version-date">2026-06-23</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Coach-Karte „Heute"</strong> (<code>/api/today</code>): regelbasierte Tages-Empfehlung aus Form/Readiness/Phase mit aufklappbarer Begründung (<code>dailyRecommendation</code>).</li>
+            <li><strong>Readiness-Score:</strong> morgendliche HRV gegen rollende 7-Tage-Baseline (z-Score) + Recovery/Schlaf/Muskelkater → Score 0–100 + Ampel (advisory).</li>
+            <li><strong>Aerobe Entkopplung (Pa:HR):</strong> je Lauf aus dem Stream; neue Spalte <code>activities.decoupling</code>. <strong>Monotonie &amp; Strain (Foster)</strong> als Frühwarner.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.1.0 ═══════════════════ -->
+    <div class="version" id="v110">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.1.0</span>
+        <span class="version-title">Editierbares Layout, WYSIWYG-Druck, Motion-System &amp; Auswahllisten-Redesign</span>
+        <span class="version-date">2026-06-17</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Editierbares Grid-Layout:</strong> Wochenbericht + Langzeit mit <code>react-grid-layout</code> (Drag-Resize-Kacheln, Layout pro Seite+Profil gespeichert).</li>
+            <li><strong>WYSIWYG-A4-Druck:</strong> fester A4-Canvas, Editor = PDF; Textgröße 60/70/85/100 %. Manuelle PBs (<code>pb_overrides</code>), EffortTable im Bericht.</li>
+            <li><strong>Motion-System</strong> (zentrale Tokens, <code>prefers-reduced-motion</code>) + <strong>Auswahllisten-Redesign</strong> (Master-Detail, Drag-and-Drop-Sortierung).</li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════════════ 0.15.5 ═══════════════════ -->

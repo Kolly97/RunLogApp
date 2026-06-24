@@ -4,6 +4,102 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.6.2] – 2026-06-24 — N-of-1-Inferenz-Performance & Renntempo nach Zieldistanz
+
+Zwei Folge-Fixes: der Wochen-/Block-Vorschlag lädt deutlich schneller, und das vorgeschlagene Renntempo
+richtet sich nach deiner Zieldistanz.
+
+### Geändert / Behoben
+- **N-of-1-Inferenz-Performance:** `buildMethodInference` rechnete je Woche einen **vollen** Marker-Snapshot
+  (überlappende 42-Tage-DB-Fenster, Laktat-Interpolation, EF, Decoupling, Physio-Zonen) — gebraucht wurden nur
+  CS/VDOT. Jetzt: **ein** Daten-Load + leichte Rolling-CS (`rollingCsVdot`) + **In-Memory-Cache** (invalidiert
+  bei jedem Schreibzugriff). Ergebnisse **identisch**, aber der Block-/Wochen-Vorschlag lädt um ein Vielfaches
+  schneller (zweiter Aufruf aus dem Cache ~sofort).
+- **Renntempo nach Zieldistanz (Daniels VDOT):** Die Race-Specific-Einheiten ankern das Renntempo jetzt an der
+  **Zieldistanz des angesteuerten Rennens** (`races.distance_m`) — via VDOT-Prognose individuell (5k schneller,
+  Marathon langsamer). Neue Vorlagen **`race_pace_long`** (3–4×2–3 km für HM/Marathon) und **`long_mp_segments`**
+  (Longrun mit Marathon-Pace-Blöcken). Die **Race-Specific-Auswahl** passt sich der Distanz an: ≤10k → VO2-lastig;
+  HM → Schwelle + Renntempo-Blöcke; Marathon → Schwelle/MP-lastig mit MP-Longrun, VO2 reduziert. Ohne Renn-Eintrag
+  bleibt das bisherige CS-Verhalten.
+
+## [1.6.1] – 2026-06-24 — Trainings-Einheiten-Bibliothek (Variety-Engine), VO2max-Gate & HTML-Cleanup
+
+Der automatische Block-Vorschlag erzeugt jetzt **echte Abwechslung** statt immer „3×12' Threshold". Neue,
+sportwissenschaftlich fundierte Einheiten-Bibliothek (Daniels T/I/R · Bakken/Casado Norwegian-LGTIT · Seiler ·
+Billat · neuromuskuläre Hügelläufe), aus der die Engine je Phase **rotierende + progressive**, **fitness-
+skalierte** Einheiten wählt — mit Pace-**Bereich** (verankert an LT1/LT2/CS) + HF-Spanne + Pausen-Empfehlung.
+
+### Hinzugefügt
+- **Einheiten-Bibliothek (`server/workouts.ts`, neu, pure):** ~23 Vorlagen mit Metadaten (Familie, Phase,
+  Anstrengung 1–5, Nutzen, Synergie, Quelle) — LT1 (kont./Reps), LT2 (Tempo, Cruise, 1000er, Norwegian 400er,
+  Sub-T-6'-Reps, **Doppel-Schwelle AM+PM**), VO2max (3', 4–5', 1000er, 400er, Billat 30/30), Berg (Sprints,
+  Hügel-Reps kurz/lang), Speed (R-Pace-Reps, Steigerungen), Renntempo, Easy/Long (inkl. Fast-Finish).
+- **`fitnessLevel()`** (CTL/CS → low/mid/high) skaliert die Wiederholungszahlen — z.B. **20–25×400 nur bei
+  hoher Fitness**, weniger bei niedriger.
+- **`pickWeekWorkouts()`** komponiert die Woche je Phase + **rotiert** die Qualitäts-Slots Woche für Woche;
+  **Doppel-Schwellen-Tage** in Build/Belastung, wenn das Verfügbarkeitsprofil Doubles erlaubt.
+- **`renderWorkout()`** rendert mit **Pace-Bereich** (Anker LT1/LT2/CS ± Fenster) + **HF-Spanne** (aus den
+  Zonen) + **Pausen** (Dauer + Trab/Stehen) je Intervall. Berg = Aufwand + HF (keine Pace). Hybrid: Reps
+  fitness-/progressionsbasiert, Easy/Long gleichen die Wochen-TSS-Differenz aus.
+- **Block-Verdrahtung (`blockPlan`):** Phasen-Progression über `phaseProgress`; Routen reichen aktuelle
+  **CS-Pace** + **HF-Zonen** in die Zonen-Eingabe. `concretizeSession` bleibt als Fallback (Einzel-Vorschlag/Coach).
+
+### Geändert / Behoben
+- **Effective-VO2max-Gate:** nur noch Läufe **> 30 min** UND gleichmäßige Typen (Dauerläufe + kontinuierliche
+  Tempo/Schwelle; **Intervalle/VO2/Berg/Race raus**) — die submaximale HF↔Pace-Schätzung gilt nur für stetige
+  aerobe Läufe. Nach dem Update **„TSS neu berechnen"** drücken (Backfill).
+- **HTML-Cleanup:** veraltete `client/public/changelog.html` + `readme.html` (Stand v1.1.0, nur sich selbst
+  verlinkt) entfernt + die Nav-Links in `usage.html`. Aktuell bleiben Root-`README.html`/`CHANGELOG.html` + `usage.html`.
+
+## [1.6.0] – 2026-06-24 — Methoden-Findung (N-of-1), Periodisierung, Intervall-Pausen & Fixes
+
+Dritter Pfeiler der Meta-Studie: **Methoden-Findung (N-of-1)** — findet mit Koljas eigenen Daten heraus,
+welche Trainingsmethode den größten Benefit bringt (geführte Experimente + passive Inferenz). Plus echte
+Periodisierung im Block-Vorschlag, Intervall-Pausen-Tracking und vier Fixes. Alles additiv auf v1.5.0,
+Vorschlag-Modus, lokal, erklärbar; N-of-1-Grenzen (kleine n, Korrelation≠Kausalität) sichtbar gemacht.
+Evidenz: Bakken/Casado et al. 2023 (Norwegian/LGTIT), Casado 2022 (Periodisierung), Treff 2019 (PI).
+
+### Hinzugefügt
+
+**Block N — Methoden-Findung (N-of-1, Flaggschiff)**
+- **Marker-Batterie (`markerSnapshot`, `server/analysis.ts`):** pure Funktion über ein Rückblick-Fenster
+  (Default 14 Tage). Marker: Critical Speed (Primär), VDOT, Threshold-Pace/HF, aerobe Entkopplung,
+  Submax-EF (neuer Helfer `efficiencyFactor` in `load.ts`), Effective VO2max, Laktat-an-Pace (aus Feldtests
+  interpoliert), Polarisierungs-Index + Zeit-Verteilung. Maximal aus vorhandener Mathe wiederverwendet
+  (`fitCriticalSpeed`/`vdot`/`effectiveVo2max`/`physioTimeZones`/`polarizationIndex`).
+- **Vorher/Nachher-Vergleich (`compareMarkers`):** Marker-Deltas + Verdikt aus dem Primär-Marker CS
+  (besser/flach/schlechter gegen MCID-Rauschen) + Konfidenz (n + Konsistenz); kleine n als „explorativ".
+- **Passive Inferenz (`methodInference` + `classifyWeekRegime`):** bucketet Wochen nach Regime
+  (polarisiert/pyramidal/threshold/**Norwegian Double-Threshold**, aus PI + Session-Struktur) und misst die
+  vorwärtsgerichtete CS/VDOT-Reaktion über 2–4 Folgewochen. **Strenge Confounder-Kontrolle:** Krank/Taper/
+  Race-Wochen raus, nur Paare mit stabiler CTL (|ΔCTL| ≤ 8). Ranking der Regimes + advisory Note.
+- **Engine-Kopplung (advisory):** beste Methode nudgt das Verteilungsziel in `weekStructureRecommendation`/
+  `blockPlan` sanft Richtung favorisiertes Regime — nur ab Konfidenz ≥ mittel, nie erzwingend.
+- **DB:** neue additive Tabelle `method_experiments` (Methoden-Block-Zeiträume). Snapshots on-the-fly.
+- **Endpoints:** CRUD `/api/method-experiments`, `/api/method-experiments/:id/evaluation`,
+  `/api/markers`, `/api/method-inference`. `block-/week-suggestion` liefern jetzt `methodPreference`.
+- **UI:** neue Seite **„Methodik"** (`pages/Methodik.tsx`, Nav) — aktuelle Marker, passive Inferenz-Karte,
+  Experiment-Liste/Anlegen, Vorher/Nachher-Auswertung (Tabelle + `charts/MarkerDelta.tsx`).
+
+**Block P — Periodisierung des Block-Vorschlags**
+- **`derivePhaseSequence()`:** leitet Phasen rückwärts vom Renntag ab (Base→Belastung→Race-Specific→Race
+  Week) + automatische 3:1-Entlastung — **füllt nur leere Wochen, manuelle Phasen übersteuern immer** und
+  der Vorschlag passt sich an. 3:1-`weekNo`-Deload aktiviert.
+- **Evidenzbasierte Einheiten je Phase:** Base = LT1-Volumen + lockere LT2; Belastung = 2 kontrollierte
+  Sub-Threshold-Einheiten (Norwegian, Doppel-Schwellen-Tag) + Long; Race-Specific = VO2max + Renntempo,
+  polarisiert; Taper = Steigerungen. Wochen-zu-Wochen-Variation der Schlüsseleinheiten.
+
+**Block I — Intervall-Pausen im Tracking**
+- `Effort` um `rest_s`/`rest_type` (Trab/Stehen)/`hr_recovery` erweitert (additiv im JSON). Eingabe im
+  `EffortBuilder` (Spalten Pause/Art). Strava `extractWorkLaps` füllt Pause + HF-Erholung automatisch aus
+  der folgenden Recovery-Runde.
+
+### Geändert / Behoben (Fixes)
+- **F1 Wochencheck-Ampeln:** `--warn` → klares Gelb (passt nicht ganz), `--info`/`.flag.info` → neutrales
+  Grau, `--ok` grün (gut), `--danger` rot (Warnung). TSS-Rec-Badge „unter" → neutral, Adherence-Mittelfeld → gelb.
+- **F2 Zonen-Plausibilität:** `ZoneSets` warnt, wenn HF/Power nicht je Zone steigen oder Pace nicht je Zone
+  schneller wird (Z3 nicht schneller als Z4).
+
 ## [1.5.0] – 2026-06-24 — Effective VO2max, adaptiver Coach & Anreicherungs-Fortschritt
 
 Zweiter Pfeiler der Meta-Studie (Intelligenz & Steuerung), Teil 1. Block V (tägliches, am Labor

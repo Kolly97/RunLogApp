@@ -11,12 +11,18 @@ export interface ZonesInput {
   pace_zones: number[];        // Obergrenzen je Zone (s/km, absteigend; Index z-1)
   threshold_pace: number;      // LT2-Pace (s/km) — Bezug für IF
   lt1_pace?: number | null;    // aerobe Schwelle (s/km), optional
+  hr_zones?: { z: number; min: number; max: number }[]; // v1.6.1: HF-Spanne je Zone (für Anzeige)
+  cs_pace?: number | null;     // v1.6.1: Critical-Speed-Pace (s/km) — Anker für VO2/Renntempo
+  rep_pace?: number | null;    // v1.6.1: R-Pace (s/km, schneller als CS) — Anker für 200–400er
+  goal_distance_m?: number | null; // v1.6.2: Zieldistanz des angesteuerten Rennens
+  goal_pace?: number | null;       // v1.6.2: individuelles Renntempo (s/km) via VDOT für die Zieldistanz
 }
 
 // Anzeige-Struktur einer Belastung (JSON; identisch zur Client-Effort-Form in lib/api.ts).
 export interface Effort {
   reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null;
   zone?: number | null; label?: string;
+  rest_s?: number | null; rest_type?: "jog" | "stand" | null; hr_recovery?: number | null; // v1.6.0: Intervall-Pause
 }
 
 export interface ConcreteSession {
@@ -30,22 +36,22 @@ export interface ConcreteSession {
 }
 
 /** Zonen-Pace (s/km) für Zone z, mit Default-Fallback — exakt wie rTssFromZones in load.ts. */
-function paceOf(z: number, zones: ZonesInput): number {
+export function paceOf(z: number, zones: ZonesInput): number {
   return zones.pace_zones?.[z - 1] || DEFAULT_ZONE_PACE[z - 1] || 230;
 }
 /** Bezugs-Schwellenpace (LT2). */
-function thrOf(zones: ZonesInput): number {
+export function thrOf(zones: ZonesInput): number {
   return zones.threshold_pace || paceOf(4, zones) || 230;
 }
 /** rTSS pro Minute in Zone z: (1/60)·IF²·100, IF = thr/zonePace. Linear → Basis der Invertierung. */
-function tssPerMin(z: number, zones: ZonesInput): number {
+export function tssPerMin(z: number, zones: ZonesInput): number {
   const ifr = thrOf(zones) / paceOf(z, zones);
   return (ifr * ifr * 100) / 60;
 }
 const r0 = (n: number) => Math.round(n);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 /** Pace s/km → "m:ss". */
-function paceStr(s: number): string {
+export function paceStr(s: number): string {
   const m = Math.floor(s / 60), sec = Math.round(s % 60);
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
@@ -136,11 +142,12 @@ export interface Availability {
   doubleDays?: number[];        // 0..6 (optional; sonst beliebiger Trainingstag mit Budget)
 }
 
-export interface PlannedUnit { type: string; targetTss: number; }
+export interface PlannedUnit { type: string; targetTss: number; ref?: unknown; }
 export interface ScheduledUnit {
   date: string; weekdayIdx: number; type: string; targetTss: number;
   budgetMin: number;  // Minuten-Budget je Einheit (bei Doppeleinheiten geteilt); 0 = unbegrenzt
   isSecond: boolean;  // zweite Einheit des Tages (Double)
+  ref?: unknown;      // v1.6.1: opaque Referenz (Workout-Template + Progression) für den Renderer
 }
 
 const HARD_TYPES = new Set(["threshold", "lt2", "vo2", "vo2max", "vo2short", "vo2long", "hill", "race"]);
@@ -156,7 +163,7 @@ const isLongType = (t: string) => (t || "").toLowerCase() === "long";
 export function scheduleWeek(units: PlannedUnit[], availability: Availability | null | undefined, weekDates: string[]): ScheduledUnit[] {
   const n = weekDates.length || 7;
   const mk = (idx: number, u: PlannedUnit, isSecond = false): ScheduledUnit =>
-    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond });
+    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond, ref: u.ref });
 
   // Fallback ohne (verwertbares) Profil: Round-Robin über alle Tage = heutiges Verhalten (keine Regression).
   if (!availability || !availability.minutesByWeekday?.some((m) => (m || 0) > 0)) {

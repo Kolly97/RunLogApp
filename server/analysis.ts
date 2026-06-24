@@ -1,6 +1,7 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
-import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, type HrZone } from "./load.ts";
+import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, fitCriticalSpeed, vdot, efficiencyFactor, type HrZone } from "./load.ts";
 import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort, type ConcreteSession } from "./planbuilder.ts";
+import { pickWeekWorkouts, renderWorkout, fitnessLevel, type WorkoutTemplate } from "./workouts.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
 const DEFAULT_BIKE_KMH = 25;
@@ -367,6 +368,350 @@ export function polarizationFlag(dist: PhysioDist | null, target: DistTarget, pi
   return { level: "ok", code: "pol_ontarget", message: `Zeit-Verteilung nahe Phasen-Ziel — ${note}.`, params };
 }
 
+// ===================== Block N (v1.6.0) — Methoden-Findung (N-of-1) =====================
+// Marker-Batterie + Vorher/Nachher-Vergleich. Pure: die Route holt die Daten (activities-Fenster, Zonen,
+// Laktat-Tests) und ruft markerSnapshot/compareMarkers. Maximal aus vorhandener Mathe wiederverwendet
+// (fitCriticalSpeed/vdot/effectiveVo2max/efficiencyFactor/physioTimeZones/polarizationIndex).
+
+/** Aktivität, reduziert auf die für die Marker-Batterie nötigen Felder (Route füllt sie). */
+export interface MarkerActivity {
+  date: string;
+  sport: string;
+  type?: string | null;
+  best_efforts?: Record<string, number> | null; // distance_m -> time_s (Strava-Bestleistungen)
+  ngp?: number | null;        // grade-adjusted Pace s/km
+  avg_hr?: number | null;
+  decoupling?: number | null; // %
+  eff_vo2max?: number | null;
+  zoneMin?: Record<number, number> | null; // HF-Zonen-Minuten dieser Einheit
+}
+
+/** Schwellen-/Zonen-Kontext (aus effectiveZoneSet) für die Marker-Batterie. */
+export interface MarkerZones { hr_zones: HrZone[]; threshold_pace: number; lthr: number; lt1_hr: number }
+
+/** Laktat-Feldtest reduziert auf Datum + Stufenpunkte (für Laktat-an-Pace). */
+export interface MarkerLactateTest { date: string; points: { pace_s?: number | null; speed_kmh?: number | null; lactate: number }[] }
+
+export interface Markers {
+  date: string; windowDays: number; n: number;
+  csPace: number | null; csConfidence: "hoch" | "mittel" | "niedrig" | null;
+  vdot: number | null;
+  thresholdPace: number | null; thresholdHr: number | null;
+  decoupling: number | null;
+  submaxEf: number | null;
+  effVo2max: number | null;
+  lactateAtPace: number | null; // mmol bei thresholdPace, aus nächstem Feldtest interpoliert
+  pi: number | null;
+  dist: PhysioDist | null;
+}
+
+function meanRound(xs: number[], dp: number): number {
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const f = Math.pow(10, dp);
+  return Math.round(m * f) / f;
+}
+function daysBetweenIso(a: string, b: string): number {
+  return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
+}
+
+/** Blut-Laktat (mmol) an einer Referenz-Pace aus dem nächstgelegenen Stufentest, linear interpoliert (keine Extrapolation). */
+function lactateAtReferencePace(tests: MarkerLactateTest[], endDate: string, refPaceS: number | null): number | null {
+  if (!refPaceS || !tests.length) return null;
+  const sorted = [...tests].filter((t) => t.points && t.points.length >= 2)
+    .sort((a, b) => Math.abs(daysBetweenIso(a.date, endDate)) - Math.abs(daysBetweenIso(b.date, endDate)));
+  const t = sorted[0];
+  if (!t) return null;
+  const pts = t.points
+    .map((p) => ({ pace: p.pace_s && p.pace_s > 0 ? p.pace_s : p.speed_kmh && p.speed_kmh > 0 ? 3600 / p.speed_kmh : null, lac: p.lactate }))
+    .filter((p): p is { pace: number; lac: number } => p.pace != null && p.lac != null)
+    .sort((a, b) => b.pace - a.pace); // langsam -> schnell (Pace s/km absteigend)
+  if (pts.length < 2) return null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const hi = pts[i], lo = pts[i + 1]; // hi.pace > lo.pace
+    if (refPaceS <= hi.pace && refPaceS >= lo.pace) {
+      const f = (hi.pace - refPaceS) / (hi.pace - lo.pace || 1);
+      return Math.round((hi.lac + f * (lo.lac - hi.lac)) * 100) / 100;
+    }
+  }
+  return null; // Referenz-Pace außerhalb der getesteten Spanne → nicht extrapolieren
+}
+
+/**
+ * Marker-Batterie für einen Stichtag über ein Rückblick-Fenster (Default 14 Tage). Alle Marker null-tolerant
+ * (dünne Historik → Strava-Backfill füllt nach). Primär-Marker fürs Verdikt ist die Critical Speed (csPace).
+ */
+export function markerSnapshot(args: {
+  endDate: string; windowDays: number;
+  activities: MarkerActivity[]; // bereits aufs Fenster [endDate-windowDays, endDate] gefiltert
+  zones: MarkerZones;
+  lactateTests?: MarkerLactateTest[];
+}): Markers {
+  const { endDate, windowDays, zones } = args;
+  const runs = args.activities.filter((a) => /run/i.test(a.sport));
+
+  // ---- CS + VDOT aus aggregierten Bestleistungen im Fenster ----
+  const bestByDist = new Map<number, number>(); // distance_m -> bestes (kleinstes) time_s
+  for (const a of runs) {
+    if (!a.best_efforts) continue;
+    for (const [dStr, tRaw] of Object.entries(a.best_efforts)) {
+      const d = Number(dStr), t = Number(tRaw);
+      if (!(d > 0) || !(t > 0)) continue;
+      const cur = bestByDist.get(d);
+      if (cur == null || t < cur) bestByDist.set(d, t);
+    }
+  }
+  const allPts = [...bestByDist.entries()].map(([d, t]) => ({ distance_m: d, time_s: t }));
+  const csPts = allPts.filter((p) => p.time_s >= 120 && p.time_s <= 1800); // aerobe Efforts 2–30 min (wie /api/bests)
+  const cs = fitCriticalSpeed(csPts);
+  let csConfidence: Markers["csConfidence"] = null;
+  if (cs) {
+    csConfidence = cs.n >= 4 && (cs.rSquared ?? 0) >= 0.99 ? "hoch"
+      : cs.n >= 3 && (cs.rSquared ?? 0) >= 0.95 ? "mittel" : "niedrig";
+  }
+  let vd = 0;
+  for (const p of allPts) {
+    if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 2400) {
+      const v = vdot(p.distance_m, p.time_s);
+      if (v > vd) vd = v;
+    }
+  }
+
+  // ---- Submax-EF (Easy/Long) + Ø Decoupling + Ø Effective VO2max ----
+  const efVals: number[] = [];
+  for (const a of runs) {
+    const ty = (a.type || "").toLowerCase();
+    if (ty.includes("easy") || ty.includes("long")) {
+      const ef = efficiencyFactor(a.ngp, a.avg_hr);
+      if (ef != null) efVals.push(ef);
+    }
+  }
+  const submaxEf = efVals.length ? meanRound(efVals, 3) : null;
+  const decVals = runs.map((a) => a.decoupling).filter((x): x is number => x != null);
+  const decoupling = decVals.length ? meanRound(decVals, 1) : null;
+  const evVals = runs.map((a) => a.eff_vo2max).filter((x): x is number => x != null);
+  const effVo2max = evVals.length ? meanRound(evVals, 1) : null;
+
+  // ---- PI + Zeit-Verteilung über aggregierte HF-Zonen-Minuten ----
+  const aggZone: Record<number, number> = {};
+  for (const a of runs) {
+    if (!a.zoneMin) continue;
+    for (const [z, m] of Object.entries(a.zoneMin)) aggZone[Number(z)] = (aggZone[Number(z)] || 0) + (Number(m) || 0);
+  }
+  const dist = Object.keys(aggZone).length ? physioTimeZones(aggZone, zones.hr_zones, zones.lt1_hr, zones.lthr) : null;
+  const pi = dist ? polarizationIndex(dist.z1, dist.z2, dist.z3) : null;
+
+  const thresholdPace = zones.threshold_pace > 0 ? zones.threshold_pace : null;
+  const lactateAtPace = lactateAtReferencePace(args.lactateTests || [], endDate, thresholdPace);
+
+  return {
+    date: endDate, windowDays, n: runs.length,
+    csPace: cs?.cs_pace_s ?? null, csConfidence,
+    vdot: vd > 0 ? round1(vd) : null,
+    thresholdPace, thresholdHr: zones.lthr > 0 ? zones.lthr : null,
+    decoupling, submaxEf, effVo2max, lactateAtPace, pi, dist,
+  };
+}
+
+export interface MarkerDelta {
+  key: string; label: string; unit: string;
+  start: number | null; end: number | null; delta: number | null;
+  direction: "besser" | "flach" | "schlechter" | null; // null = informativ/nicht bewertbar
+}
+export interface MethodEvaluation {
+  primary: "csPace";
+  verdict: "besser" | "flach" | "schlechter" | "unklar";
+  confidence: "hoch" | "mittel" | "niedrig";
+  exploratory: boolean;
+  deltas: MarkerDelta[];
+  note: string;
+}
+
+// Marker-Spezifikation: MCID (minimal bedeutsame Änderung gegen Tagesrauschen), Richtung, ob verdikt-relevant.
+// Quellen: Test-Retest-Variabilität CS/VDOT (~1 %), EF-Drift, Laktat-Messrauschen. Richtungsbewusst.
+const MARKER_SPEC: { key: keyof Markers; label: string; unit: string; mcid: number; relMcid?: number; lowerBetter: boolean; scored: boolean }[] = [
+  { key: "csPace", label: "Critical Speed", unit: "s/km", mcid: 1.5, lowerBetter: true, scored: true },
+  { key: "vdot", label: "VDOT", unit: "", mcid: 0.5, lowerBetter: false, scored: true },
+  { key: "thresholdPace", label: "Threshold-Pace", unit: "s/km", mcid: 2, lowerBetter: true, scored: true },
+  { key: "thresholdHr", label: "Threshold-HF", unit: "bpm", mcid: 3, lowerBetter: false, scored: false },
+  { key: "decoupling", label: "Aerobe Entkopplung", unit: "%", mcid: 1.5, lowerBetter: true, scored: true },
+  { key: "submaxEf", label: "Submax-EF", unit: "m/min/bpm", mcid: 0, relMcid: 0.02, lowerBetter: false, scored: true },
+  { key: "effVo2max", label: "Effective VO2max", unit: "", mcid: 1.0, lowerBetter: false, scored: true },
+  { key: "lactateAtPace", label: "Laktat @ Schwellen-Pace", unit: "mmol", mcid: 0.3, lowerBetter: true, scored: true },
+  { key: "pi", label: "Polarisierungs-Index", unit: "", mcid: 0.3, lowerBetter: false, scored: false },
+];
+
+/** Vorher/Nachher-Vergleich zweier Snapshots → Marker-Deltas + Verdikt (Primär = CS) + Konfidenz (n + Konsistenz). */
+export function compareMarkers(start: Markers, end: Markers): MethodEvaluation {
+  const deltas: MarkerDelta[] = [];
+  for (const spec of MARKER_SPEC) {
+    const s = start[spec.key] as number | null;
+    const e = end[spec.key] as number | null;
+    let delta: number | null = null;
+    let direction: MarkerDelta["direction"] = null;
+    if (typeof s === "number" && typeof e === "number") {
+      delta = Math.round((e - s) * 100) / 100;
+      if (spec.scored) {
+        const mcid = spec.relMcid ? Math.max(spec.mcid, spec.relMcid * Math.abs(s)) : spec.mcid;
+        const improve = spec.lowerBetter ? s - e : e - s; // >0 = besser
+        direction = improve > mcid ? "besser" : improve < -mcid ? "schlechter" : "flach";
+      }
+    }
+    deltas.push({ key: spec.key, label: spec.label, unit: spec.unit, start: s, end: e, delta, direction });
+  }
+  const cs = deltas.find((d) => d.key === "csPace")!;
+  const minN = Math.min(start.n, end.n);
+  const exploratory = minN < 4 || cs.direction == null;
+  const scored = deltas.filter((d) => d.direction);
+  let verdict: MethodEvaluation["verdict"];
+  if (cs.direction) verdict = cs.direction;
+  else {
+    const up = scored.filter((d) => d.direction === "besser").length;
+    const down = scored.filter((d) => d.direction === "schlechter").length;
+    verdict = up > down ? "besser" : down > up ? "schlechter" : scored.length ? "flach" : "unklar";
+  }
+  const agree = scored.filter((d) => d.direction === verdict).length;
+  const consistency = scored.length ? agree / scored.length : 0;
+  let confidence: MethodEvaluation["confidence"] = "niedrig";
+  if (!exploratory && minN >= 8 && consistency >= 0.6) confidence = "hoch";
+  else if (!exploratory && minN >= 4 && consistency >= 0.5) confidence = "mittel";
+  const note = exploratory
+    ? `Explorativ (n=${minN} Läufe je Fenster${cs.direction == null ? ", CS fehlt" : ""}) — Trend, kein belastbares Urteil.`
+    : `Primär-Marker Critical Speed; ${agree}/${scored.length} bewertbare Marker stützen das Urteil. Korrelation, nicht Kausalität.`;
+  return { primary: "csPace", verdict, confidence, exploratory, deltas, note };
+}
+
+// ---- Passive Inferenz: Wochen nach Regime bucketn → vorwärtsgerichtete Marker-Reaktion ranken ----
+
+export type Regime = "polarized" | "pyramidal" | "threshold" | "norwegian" | "mixed";
+
+export interface WeekRegimeInput {
+  week_no: number;
+  start_date: string;
+  phase?: string | null;
+  dist: PhysioDist | null;     // Zeit-Verteilung der Woche
+  pi: number | null;
+  ctl: number | null;          // CTL am Wochenstart (für CTL-Band-Confounder-Kontrolle)
+  sessions: { type: string; subThreshold?: boolean }[]; // getrackte Qualitäts-Einheiten der Woche
+  doubleThresholdDays: number; // Tage mit ≥2 Schwellen-Einheiten (Norwegian-Erkennung)
+  excluded: boolean;           // Krank/Taper/Race → aus Inferenz raus
+  csPace: number | null;       // Marker am Wochenende (Rolling)
+  vdot: number | null;
+}
+
+/**
+ * Regime einer Woche aus Verteilung (PI/Zeit-in-Zone) UND Session-Struktur (Q5). Norwegian = Doppel-Schwellen-
+ * Tag oder ≥3 Sub-LT2-Schwellen-Einheiten; polarisiert = PI≥2 mit wenig Grey-Zone; threshold = ≥2 Schwellen +
+ * spürbare Z2; pyramidal = substanzielle Z2 ohne Schwellen-Dominanz; sonst mixed.
+ */
+export function classifyWeekRegime(w: WeekRegimeInput): Regime {
+  const thr = w.sessions.filter((s) => s.subThreshold || /threshold|lt2|sub|tempo|schwelle/i.test(s.type)).length;
+  const z2 = w.dist?.z2 ?? null;
+  if (w.doubleThresholdDays >= 1 || thr >= 3) return "norwegian";
+  if (w.pi != null && w.pi >= 2.0 && (z2 == null || z2 < 12)) return "polarized";
+  if (thr >= 2 && (z2 == null || z2 >= 12)) return "threshold";
+  if (z2 != null && z2 >= 12) return "pyramidal";
+  if (w.pi != null && w.pi >= 1.5) return "polarized";
+  return "mixed";
+}
+
+export interface RegimeStat {
+  regime: Regime;
+  nWeeks: number;            // verwendbare Regime-Wochen (mit gültigem Forward-Paar)
+  csChange: number | null;   // Ø CS-Pace-Veränderung über Lag (s/km, negativ = schneller = besser)
+  vdotChange: number | null; // Ø VDOT-Veränderung (positiv = besser)
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+export interface MethodInferenceResult {
+  regimes: RegimeStat[];
+  best: Regime | null;       // null wenn keine belastbare Aussage
+  lagWeeks: number;
+  note: string;
+  confidence: "hoch" | "mittel" | "niedrig";
+}
+
+const REGIME_LABEL: Record<Regime, string> = {
+  polarized: "polarisiert", pyramidal: "pyramidal", threshold: "Threshold", norwegian: "Norwegian Double-Threshold", mixed: "gemischt",
+};
+
+function weekAtLag(sorted: WeekRegimeInput[], i: number, lagWeeks: number): WeekRegimeInput | null {
+  const target = addDaysIsoLocal(sorted[i].start_date, lagWeeks * 7);
+  for (let j = i + 1; j < sorted.length; j++) {
+    const d = Math.abs(daysBetweenIso(sorted[j].start_date, target));
+    if (d <= 3) return sorted[j];
+    if (daysBetweenIso(target, sorted[j].start_date) > 3) break; // schon über dem Ziel
+  }
+  return null;
+}
+
+/**
+ * Passive Methoden-Inferenz: jedes Wochen-Regime gegen seine Marker-Reaktion über `lagWeeks` (Default 3, also
+ * 2–4) Folgewochen. Strenge Confounder-Kontrolle (Q4): Krank/Taper/Race-Wochen raus; nur Paare mit annähernd
+ * stabiler CTL über das Lag (|ΔCTL| ≤ ctlBand) — so wird die Marker-Änderung dem Regime und nicht einem
+ * Last-Sprung zugeschrieben. Ausgabe advisory: Korrelation, nicht Kausalität; kleine n sichtbar.
+ */
+export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: number; ctlBand?: number }): MethodInferenceResult {
+  const lagWeeks = opts?.lagWeeks ?? 3;
+  const ctlBand = opts?.ctlBand ?? 8;
+  const sorted = [...weeks].sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const buckets = new Map<Regime, { cs: number[]; vd: number[] }>();
+  for (let i = 0; i < sorted.length; i++) {
+    const w = sorted[i];
+    if (w.excluded) continue;
+    const later = weekAtLag(sorted, i, lagWeeks);
+    if (!later || later.excluded) continue;
+    // CTL-Band-Confounder-Kontrolle: nur Paare mit stabiler Last.
+    if (w.ctl != null && later.ctl != null && Math.abs(later.ctl - w.ctl) > ctlBand) continue;
+    const regime = classifyWeekRegime(w);
+    const b = buckets.get(regime) ?? { cs: [], vd: [] };
+    if (w.csPace != null && later.csPace != null) b.cs.push(later.csPace - w.csPace);
+    if (w.vdot != null && later.vdot != null) b.vd.push(later.vdot - w.vdot);
+    buckets.set(regime, b);
+  }
+  const regimes: RegimeStat[] = [];
+  for (const [regime, b] of buckets) {
+    const nWeeks = Math.max(b.cs.length, b.vd.length);
+    if (nWeeks === 0) continue;
+    const confidence: RegimeStat["confidence"] = nWeeks >= 6 ? "hoch" : nWeeks >= 4 ? "mittel" : "niedrig";
+    regimes.push({
+      regime, nWeeks,
+      csChange: b.cs.length ? meanRound(b.cs, 1) : null,
+      vdotChange: b.vd.length ? meanRound(b.vd, 1) : null,
+      confidence,
+    });
+  }
+  // Ranken nach CS-Reaktion (negativ = schneller = besser); nur Regimes mit CS-Signal werten.
+  const ranked = regimes.filter((r) => r.csChange != null).sort((a, b) => (a.csChange! - b.csChange!));
+  regimes.sort((a, b) => (a.csChange ?? 999) - (b.csChange ?? 999));
+  // „Best" nur, wenn ≥4 Regime-Wochen (Q6) und tatsächlich eine Verbesserung (negativ).
+  const top = ranked[0];
+  const best = top && top.nWeeks >= 4 && (top.csChange ?? 0) < -1.5 ? top.regime : null;
+  const overallConf: MethodInferenceResult["confidence"] = best && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
+  let note: string;
+  if (!ranked.length) {
+    note = "Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine Methoden-Aussage.";
+  } else if (best) {
+    const runner = ranked[1];
+    const csTxt = (v: number) => `${v <= 0 ? "" : "+"}${v} s/km CS`;
+    note = `Bei dir korrelierte ${REGIME_LABEL[best]} mit ${csTxt(top.csChange!)} (n=${top.nWeeks} Wochen, ${lagWeeks}-Wochen-Lag)` +
+      (runner ? `; ${REGIME_LABEL[runner.regime]} ${csTxt(runner.csChange!)} (n=${runner.nWeeks})` : "") +
+      ". Korrelation, nicht Kausalität — kleine n beachten.";
+  } else {
+    note = `Trend, aber (noch) nicht belastbar: bestes Regime ${REGIME_LABEL[top.regime]} (${top.csChange} s/km CS, n=${top.nWeeks}). Mehr Wochen/Daten nötig.`;
+  }
+  return { regimes, best, lagWeeks, note, confidence: overallConf };
+}
+
+/** Kanonische Zeit-Verteilung je Regime (für den advisory N-of-1-Nudge in weekStructureRecommendation). */
+function regimeDistTarget(regime: Regime): { z1: number; z2: number; z3: number; label: string } | null {
+  switch (regime) {
+    case "polarized": return { z1: 80, z2: 5, z3: 15, label: "polarisiert" };
+    case "pyramidal": return { z1: 80, z2: 15, z3: 5, label: "pyramidal" };
+    case "threshold":
+    case "norwegian": return { z1: 75, z2: 22, z3: 3, label: "threshold-betont" };
+    default: return null;
+  }
+}
+
 /**
  * Trainings-Monotonie & -Strain (Foster, v1.2.0): `Monotonie = Ø(Tageslast)/SD(Tageslast)`,
  * `Strain = Wochenlast × Monotonie`. Hohe Monotonie bei hoher Last → mehr Infekte/Übertraining.
@@ -602,11 +947,12 @@ export function weekStructureRecommendation(args: {
   phase: string | null | undefined;
   weekNo?: number | null;   // für 3:1 Modulo (jede 4. Woche Deload)
   readinessLevel: ReadinessLevel | null;
+  methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory Nudge
 }): WeekStructureRec {
   const reasons: { code: string; text: string }[] = [];
   const p = (args.phase || "").toLowerCase();
   const tssRange = tssRecommendation(args.ctl, args.phase);
-  const distTarget = phaseDistributionTarget(args.phase);
+  let distTarget = phaseDistributionTarget(args.phase);
   let confidence: WeekStructureRec["confidence"] = "mittel";
   let periodizationModel: WeekStructureRec["periodizationModel"] = "traditional";
   let headline = "";
@@ -618,6 +964,7 @@ export function weekStructureRecommendation(args: {
   const isSick = p.includes("krank");
   const isBase = p.includes("base") || p.includes("aufbau") || p.includes("belast");
   const isSpecific = p.includes("specific") || p.includes("spec");
+  const autoDeload = !p && args.weekNo != null && args.weekNo % 4 === 0; // 3:1-Rhythmus ohne explizite Phase (weekNo aktiviert)
   const weakForm = args.tsb != null && args.tsb < -15;
   const freshForm = args.tsb != null && args.tsb > 5;
 
@@ -628,7 +975,7 @@ export function weekStructureRecommendation(args: {
     return { headline, periodizationModel, tssRange, sessions, distTarget, reasons, confidence: "hoch" };
   }
 
-  if (isDeload || isRaceWeek) {
+  if (isDeload || isRaceWeek || autoDeload) {
     headline = isRaceWeek ? "Race Week — Taper, Frische maximieren" : "Entlastungswoche (3:1) — Umfang −40 %, Intensität zurück";
     sessions.push({ type: "Easy", count: 3, tssShare: 70, hint: "Lockere Z1/Z2-Läufe, kurz halten" });
     if (isRaceWeek) sessions.push({ type: "Easy", count: 1, tssShare: 20, hint: "Steigerungen (5×80 m), nicht mehr" });
@@ -648,39 +995,63 @@ export function weekStructureRecommendation(args: {
     reasons.push({ code: "ramp_high", text: `CTL-Ramp ${args.ctlRamp}/Woche hoch — ggf. Woche beschränken` });
   }
 
+  // ---- N-of-1-Kopplung (advisory, Q7): beste Methode nudgt das Verteilungsziel sanft, nie erzwingend ----
+  if (args.methodPreference && args.methodPreference.confidence !== "niedrig") {
+    const rt = regimeDistTarget(args.methodPreference.regime);
+    if (rt) {
+      distTarget = {
+        model: distTarget.model,
+        z1: Math.round((distTarget.z1 + rt.z1) / 2),
+        z2: Math.round((distTarget.z2 + rt.z2) / 2),
+        z3: Math.round((distTarget.z3 + rt.z3) / 2),
+        label: `${distTarget.label} · N-of-1→${rt.label}`,
+      };
+      reasons.push({ code: "method_pref", text: `N-of-1: ${REGIME_LABEL[args.methodPreference.regime]} korrelierte bei dir mit Fortschritt → Verteilung sanft angepasst (advisory).` });
+    }
+  }
+
   // ---- Phase-spezifische Wochenstruktur ----
   if (isSpecific) {
     // Race-Specific: Block-Periodisierung, polarisierte Verteilung — qualitätsdichte Woche
     periodizationModel = "block";
-    headline = "Race-Specific-Block — 2 Schlüsseleinheiten, polarisiert";
-    sessions.push({ type: "Threshold", count: 1, tssShare: 30, hint: "Tempo/Renntempo-Einheit, 20–40 min im Bereich LT2" });
-    sessions.push({ type: "VO2", count: 1, tssShare: 25, hint: "VO2max-Intervalle (4–6×3–5 min mit Pause)" });
-    sessions.push({ type: "Long", count: 1, tssShare: 25, hint: "Langer Lauf Z1/Z2 (auch aerobe Basis erhalten)" });
-    sessions.push({ type: "Easy", count: 2, tssShare: 20, hint: "Locker Z1/Z2 als Auflockerung/Recovery" });
-    reasons.push({ code: "specific_block", text: "Race Specific → Block-Periodisierung: Qualitäts-Cluster + aerobe Basis (Issurin)" });
+    const rot = (args.weekNo ?? 0) % 2; // Wochen-zu-Wochen-Variation (P4)
+    headline = "Race-Specific-Block — VO2 + Renntempo, polarisiert";
+    sessions.push({ type: "VO2", count: 1, tssShare: 26, hint: rot === 0
+      ? "VO2max: 5×3 min @ 3–5k-Pace (>4.5 mmol), Trab-Pause 2–3 min"
+      : "VO2max: 4×4 min @ ~3k-Pace, Trab-Pause 3 min" });
+    sessions.push({ type: "Threshold", count: 1, tssShare: 28, hint: rot === 0
+      ? "Renntempo: 5×1 km @ Renntempo (höheres Laktat 5–10 mmol), 1–2 min Pause"
+      : "Renntempo: 3×2 km @ 10k/HM-Tempo, 2–3 min Pause" });
+    sessions.push({ type: "Long", count: 1, tssShare: 24, hint: "Langer Lauf Z1/Z2 — aerobe Basis erhalten" });
+    sessions.push({ type: "Easy", count: 2, tssShare: 22, hint: "Locker Z1 (Recovery), polarisiert" });
+    reasons.push({ code: "specific_block", text: "Race Specific → Block-Periodisierung: VO2max + Renntempo-Cluster, Schwellen-Volumen zurück, Verteilung polarisiert (Casado 2022)" });
     confidence = freshForm ? "hoch" : "mittel";
   } else if (isBase) {
-    // Belastungsphase: traditionell pyramidal, 1 Schlüsseleinheit
-    headline = "Aufbau-/Belastungswoche — pyramidal, 1 Schlüsseleinheit";
-    sessions.push({ type: "Long", count: 1, tssShare: 30, hint: "Langer Lauf (20–35 % Wochen-km, Z1/Z2)" });
+    // Belastungsphase: pyramidal, Schwellen-Volumen (Sub-Threshold/Norwegian) aufbauen
+    const rot = (args.weekNo ?? 0) % 2; // Variation (P4)
+    headline = "Aufbau-/Belastungswoche — pyramidal, Schwellen-Volumen";
+    sessions.push({ type: "Long", count: 1, tssShare: 26, hint: "Langer Lauf 90–150 min Z1/Z2 (aerobe Basis, Fettstoffwechsel)" });
     if (!weakForm && args.readinessLevel !== "red") {
-      sessions.push({ type: "Threshold", count: 1, tssShare: 25, hint: "Schwellen-Einheit (3×10–20 min LT2-Pace), Z4" });
-      reasons.push({ code: "build_quality", text: "Aufbau → 1 Schlüsseleinheit (Schwelle) + langer Lauf + Grundlage" });
+      sessions.push({ type: "Threshold", count: 2, tssShare: 40, hint: rot === 0
+        ? "2× Sub-Threshold (Norwegian): z.B. 5×6 min / 6×5 min @ LT2, Laktat 2.5–3.5 mmol, kurze Pause (45–90 s) — ideal als Doppel-Schwellen-Tag"
+        : "2× Sub-Threshold: 20–25×400 m @ ~LT2-Pace, 30–60 s Trab — kontrolliert (<4 mmol)" });
+      sessions.push({ type: "Easy", count: 2, tssShare: 34, hint: "Grundlage Z1/Z2, Umfang halten/aufbauen" });
+      reasons.push({ code: "build_quality", text: "Aufbau → 2 kontrollierte Sub-Threshold-Einheiten (Norwegian) + langer Lauf; Ziel: schneller bei gleichem Laktat" });
     } else {
-      sessions.push({ type: "Easy", count: 1, tssShare: 25, hint: "Locker statt Qualität (Form/Readiness)" });
-      reasons.push({ code: "build_reduced", text: "Aufbau, aber Form/Readiness beeinträchtigt → Qualität zurückgenommen" });
+      sessions.push({ type: "Threshold", count: 1, tssShare: 22, hint: "1 Sub-Threshold (LT2, kontrolliert) statt 2 — Form/Readiness" });
+      sessions.push({ type: "Easy", count: 3, tssShare: 52, hint: "Locker Z1/Z2 — Regeneration priorisieren" });
+      reasons.push({ code: "build_reduced", text: "Aufbau, aber Form/Readiness beeinträchtigt → Schwellen-Volumen reduziert" });
     }
-    sessions.push({ type: "Easy", count: 3, tssShare: 45, hint: "Grundlage Z1/Z2, Umfang aufbauen" });
     confidence = "hoch";
   } else {
-    // Base / Erhalt / Standard (unbekannte Phase)
-    headline = "Grundlagen-/Erhaltswoche — Z1/Z2-Fokus";
-    sessions.push({ type: "Long", count: 1, tssShare: 30, hint: "Langer Lauf Z1/Z2 (aerobe Basis)" });
+    // Base / Erhalt / Standard (unbekannte Phase): LT1-Volumen, aerobe Ökonomie
+    headline = "Base/Grundlage — LT1-Volumen, aerobe Ökonomie";
+    sessions.push({ type: "Long", count: 1, tssShare: 30, hint: "Langer Lauf Z1/Z2 — LT1-Entwicklung, Fettstoffwechsel, Ökonomie" });
     if (freshForm && args.readinessLevel !== "red") {
-      sessions.push({ type: "Threshold", count: 1, tssShare: 20, hint: "1 moderate Schwelleneinheit (2×15 min)" });
+      sessions.push({ type: "Threshold", count: 1, tssShare: 20, hint: "1 lockere LT2-Einheit (2×15 min @ Schwelle, kontrolliert <4 mmol)" });
     }
-    sessions.push({ type: "Easy", count: 3, tssShare: 50, hint: "Locker Z1/Z2, ggf. Steigerungen einbauen" });
-    reasons.push({ code: "base_standard", text: "Base/Erhalt → Volumen Z1/Z2-Fokus, 1 langer Lauf" });
+    sessions.push({ type: "Easy", count: 3, tssShare: 50, hint: "Lockeres Z1/Z2-Volumen + Steigerungen (Ökonomie)" });
+    reasons.push({ code: "base_standard", text: "Base/Erhalt → Z1/Z2-Volumen (LT1), 1 langer Lauf, pyramidal" });
     confidence = "mittel";
   }
 
@@ -718,6 +1089,60 @@ function addDaysIsoLocal(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Leitet je Woche eine Phase ab, wenn keine explizit gesetzt ist (P1, v1.6.0). Rückwärts vom Renntag:
+ * Race Week (letzte) → Race Specific (2 davor) → Aufbau-Span mit Base (frühe ~45 %) / Belastung + 3:1-
+ * Entlastung jede 4. Aufbauwoche. Ohne Renntag rollender Block (Base→Belastung, 3:1). **Manuell gesetzte
+ * Phasen bleiben unangetastet** — der Vorschlag passt sich an Koljas Edits an.
+ */
+export function derivePhaseSequence(
+  weeks: { week_no: number; start_date: string; phase: string | null }[],
+  raceDate: string | null,
+): (string | null)[] {
+  const n = weeks.length;
+  const out: (string | null)[] = weeks.map((w) => (w.phase && w.phase.trim() ? w.phase : null));
+  const set = (i: number, phase: string) => { if (i >= 0 && i < n && out[i] == null) out[i] = phase; };
+  let raceIdx = -1;
+  if (raceDate) {
+    for (let i = 0; i < n; i++) {
+      const end = addDaysIsoLocal(weeks[i].start_date, 6);
+      if (raceDate >= weeks[i].start_date && raceDate <= end) { raceIdx = i; break; }
+    }
+    if (raceIdx < 0 && raceDate >= (weeks[n - 1]?.start_date ?? "")) raceIdx = n - 1; // Rennen ≥ letzte Woche
+  }
+  if (raceIdx >= 0) {
+    set(raceIdx, "Race Week");
+    const specificStart = Math.max(0, raceIdx - 2);
+    for (let i = specificStart; i < raceIdx; i++) set(i, "Race Specific");
+    const spanEnd = specificStart - 1; // Aufbau-Span [0 .. spanEnd]
+    if (spanEnd >= 0) {
+      const baseCut = Math.floor((spanEnd + 1) * 0.45); // erste ~45 % Base, Rest Belastung
+      let wk = 0;
+      for (let i = 0; i <= spanEnd; i++) {
+        wk++;
+        if (wk % 4 === 0) { set(i, "Entlastung"); continue; } // 3:1
+        set(i, i < baseCut ? "Base" : "Belastung");
+      }
+    }
+  } else {
+    // kein Renntag: rollender Block
+    for (let i = 0; i < n; i++) {
+      if (out[i] != null) continue;
+      if ((i + 1) % 4 === 0) out[i] = "Entlastung";
+      else out[i] = i < 3 ? "Base" : "Belastung";
+    }
+  }
+  return out;
+}
+
+/** Position der Woche innerhalb ihres zusammenhängenden Phasen-Blocks (für Rotation + Progression). */
+function phaseProgress(phases: (string | null)[], wi: number): { weekInPhase: number; phaseLen: number } {
+  const cur = phases[wi];
+  let start = wi; while (start > 0 && phases[start - 1] === cur) start--;
+  let end = wi; while (end < phases.length - 1 && phases[end + 1] === cur) end++;
+  return { weekInPhase: wi - start, phaseLen: end - start + 1 };
+}
+
 export function blockPlan(args: {
   weeks: BlockWeekInput[];
   historicalDailyTss: Map<string, number>;
@@ -727,12 +1152,17 @@ export function blockPlan(args: {
   zones: ZonesInput;
   availability: Availability | null;
   readinessLevel: ReadinessLevel | null;
+  methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory
+  goalDistanceM?: number | null; // v1.6.2: Zieldistanz → distanzgerechte Race-Specific-Auswahl
 }): BlockPlan {
   const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
   const outWeeks: BlockWeek[] = [];
   let lowConf = false;
+  // P1: Phasen ableiten (nur leere füllen) — manuelle Phasen gewinnen.
+  const phases = derivePhaseSequence(args.weeks.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase })), args.raceDate);
 
   args.weeks.forEach((w, wi) => {
+    const phase = phases[wi] ?? w.phase;
     // Form zu Beginn der Woche: PMC aus historischem + bisher generiertem Plan-TSS bis zum Vortag.
     const merged = new Map(args.historicalDailyTss);
     for (const [d, t] of projected) merged.set(d, (merged.get(d) ?? 0) + t);
@@ -745,26 +1175,42 @@ export function blockPlan(args: {
 
     // Readiness fließt nur in die unmittelbar nächste Woche ein (Zukunft unbekannt).
     const rec = weekStructureRecommendation({
-      ctl, tsb, ctlRamp: ramp, phase: w.phase, weekNo: w.week_no,
+      ctl, tsb, ctlRamp: ramp, phase, weekNo: w.week_no,
       readinessLevel: wi === 0 ? args.readinessLevel : null,
+      methodPreference: args.methodPreference ?? null,
     });
     const target = rec.tssRange.target;
 
-    // rec.sessions (Typ/Anzahl/Anteil) → einzelne Einheiten mit Ziel-TSS.
-    const units: PlannedUnit[] = [];
-    for (const s of rec.sessions) {
-      const per = s.count > 0 ? Math.round((target * (s.tssShare / 100)) / s.count) : 0;
-      for (let i = 0; i < s.count; i++) units.push({ type: s.type, targetTss: per });
-    }
+    // v1.6.1: konkrete Einheiten aus der Workout-Bibliothek — Rotation + Progression + Fitness-Skalierung.
+    const { weekInPhase, phaseLen } = phaseProgress(phases, wi);
+    const progress = phaseLen > 1 ? weekInPhase / (phaseLen - 1) : 0.5;
+    const fitness = fitnessLevel(ctl, args.zones.cs_pace ?? null);
+    const picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null);
 
-    // Auf Wochentage verteilen + konkretisieren.
+    // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
+    let qTss = 0;
+    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: args.zones, fitness, progress }).planned_tss;
+    const remaining = Math.max(0, target - qTss);
+    const longs = picks.filter((p) => p.role === "long");
+    const easies = picks.filter((p) => p.role === "easy");
+    const longShare = longs.length ? (remaining * 0.45) / longs.length : 0;
+    const easyShare = easies.length ? (remaining * 0.55) / easies.length : 0;
+    const units: PlannedUnit[] = picks.map((p) => {
+      const tgt = p.role === "long" ? Math.round(longShare) : p.role === "easy" ? Math.round(easyShare) : 0;
+      return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress, targetTss: tgt } };
+    });
+
+    // Auf Wochentage verteilen + je Einheit rendern.
     const scheduled = scheduleWeek(units, args.availability, w.dates);
     const days: BlockDay[] = [];
     let tssActual = 0;
     for (const su of scheduled) {
-      const c = concretizeSession(su.type, su.targetTss, args.zones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+      const c = ref?.tpl
+        ? renderWorkout(ref.tpl, { zones: args.zones, fitness, progress: ref.progress, targetTss: ref.targetTss, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined })
+        : concretizeSession(su.type, su.targetTss, args.zones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
       days.push({
-        date: su.date, weekdayIdx: su.weekdayIdx, type: su.type, isSecond: su.isSecond,
+        date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond,
         planned_min: c.planned_min, planned_tss: c.planned_tss, description: c.description,
         zone_alloc: c.zone_alloc, efforts: c.efforts, paceTarget: c.paceTarget,
       });
@@ -776,7 +1222,7 @@ export function blockPlan(args: {
     const pl = (rec.headline || "").toLowerCase();
     const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
     outWeeks.push({
-      week_no: w.week_no, start_date: w.start_date, phase: w.phase,
+      week_no: w.week_no, start_date: w.start_date, phase,
       headline: rec.headline, periodizationModel: rec.periodizationModel,
       tssTarget: Math.round(target), tssActual: Math.round(tssActual),
       ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null,
