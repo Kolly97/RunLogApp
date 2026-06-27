@@ -18,6 +18,7 @@ import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels,
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import ZoneHistogram from "../charts/ZoneHistogram.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
@@ -265,6 +266,7 @@ export default function LongTerm() {
       <div className="spread no-print">
         <div>
           <h1 className="lt-title" style={{ marginBottom: 2 }}><T k="lt.title">Langzeit-Übersicht</T></h1>
+          <span className="tiny muted" style={{ display: "block" }}><T k="lt.role">Jahres-Trends — Form, Fitness, Intensität & Wellness im Verlauf.</T></span>
           {range && <span className="tiny muted">Zeitraum: {fmtDateY(range.from)} – {fmtDateY(range.to)}</span>}
         </div>
         <div className="row" style={{ width: "auto", gap: 8 }}>
@@ -294,9 +296,9 @@ export default function LongTerm() {
       )}</EgItem>
 
       {/* Intensity-Trend (ATL/CTL) — separater Graph, v0.15.0 (O3) */}
-      <EgItem id="intensity" title={t("lt.block.intensity.title", "Intensity-Trend")} defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
+      <EgItem id="intensity" title={t("lt.block.intensity.title", "Last-Trend (ATL/CTL)")} defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
       <div className="card">
-        <div className="spread"><h2><T k="lt.block.intensity.title">Intensity-Trend</T></h2><span className="tiny muted"><T k="lt.block.intensity.sub">Load Impact / Base Fitness = ATL/CTL</T></span></div>
+        <div className="spread"><h2><T k="lt.block.intensity.title">Last-Trend (ATL/CTL)</T></h2><span className="tiny muted"><T k="lt.block.intensity.sub">akute vs. chronische Last (ATL/CTL) — nicht die Zonen-Intensität</T></span></div>
         <IntensityRatio data={pmc} height={h ?? 240} />
       </div>
       )}</EgItem>
@@ -661,6 +663,7 @@ export default function LongTerm() {
         )}</EgItem>
       )}
       </EditableGrid>
+      <PageHelp page="longterm" />
     </div>
   );
 }

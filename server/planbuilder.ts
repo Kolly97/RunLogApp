@@ -16,6 +16,7 @@ export interface ZonesInput {
   rep_pace?: number | null;    // v1.6.1: R-Pace (s/km, schneller als CS) — Anker für 200–400er
   goal_distance_m?: number | null; // v1.6.2: Zieldistanz des angesteuerten Rennens
   goal_pace?: number | null;       // v1.6.2: individuelles Renntempo (s/km) via VDOT für die Zieldistanz
+  cp?: number | null;              // v1.7.0: Critical Power (W) — optionaler Watt-Zusatzanker (Coros/Stryd)
 }
 
 // Anzeige-Struktur einer Belastung (JSON; identisch zur Client-Effort-Form in lib/api.ts).
@@ -28,7 +29,7 @@ export interface Effort {
 export interface ConcreteSession {
   type: string;
   planned_min: number;                       // Gesamtdauer (min, gerundet)
-  zone_alloc: { byMin: Record<number, number> }; // TSS-tragend (Server rechnet daraus planned_tss)
+  zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; // TSS-tragend (v1.7: byKm für die Modal-Felder)
   efforts: Effort[] | null;                  // Intervall-Struktur (Anzeige); null bei Dauerläufen
   description: string;                        // kurze Klartext-Beschreibung (Pace/Struktur)
   planned_tss: number;                        // erwarteter Plan-TSS (≈ target) — zur Anzeige/Konfidenz
@@ -140,19 +141,30 @@ export interface Availability {
   hardDays?: number[];          // 0..6
   allowDoubles?: boolean;
   doubleDays?: number[];        // 0..6 (optional; sonst beliebiger Trainingstag mit Budget)
+  hillDay?: number | null;      // v1.7.0: bevorzugter Berglauf-Tag (0..6)
+  corePerWeek?: number | null;  // v1.7.0: Anzahl Stabi/Core-Einheiten pro Woche (0..3)
+  coreDays?: number[];          // v1.7.0: bevorzugte Core-Tage; sonst an Easy-Tage angehängt
+  // v1.8.0 Block-Präferenzen (advisory; Periodisierung + Erholungsregeln bleiben verbindlich):
+  emphasis?: string | null;     // "ausgewogen"|"schwelle"|"vo2"|"berg"|"norwegian"|"fartlek" — Schwerpunkt
+  favoriteWorkouts?: string[];  // Template-IDs, die häufiger vorkommen sollen
+  avoidWorkouts?: string[];     // Template-IDs, die vermieden werden sollen
 }
 
-export interface PlannedUnit { type: string; targetTss: number; ref?: unknown; }
+export interface PlannedUnit { type: string; targetTss: number; ref?: unknown; pair?: string; }
 export interface ScheduledUnit {
   date: string; weekdayIdx: number; type: string; targetTss: number;
   budgetMin: number;  // Minuten-Budget je Einheit (bei Doppeleinheiten geteilt); 0 = unbegrenzt
   isSecond: boolean;  // zweite Einheit des Tages (Double)
   ref?: unknown;      // v1.6.1: opaque Referenz (Workout-Template + Progression) für den Renderer
+  downgrade?: boolean; // v1.7.0: keine spacing-konforme Platzierung → als Easy rendern (Erholung schützen)
+  pair?: string;       // v1.7.0: Doppel-Schwellen-Tag (AM+PM teilen denselben Tag)
 }
 
 const HARD_TYPES = new Set(["threshold", "lt2", "vo2", "vo2max", "vo2short", "vo2long", "hill", "race"]);
 const isHardType = (t: string) => HARD_TYPES.has((t || "").toLowerCase());
 const isLongType = (t: string) => (t || "").toLowerCase() === "long";
+const isCoreType = (t: string) => /strength|stabi|core/i.test(t || "");
+const isHillUnit = (t: string) => (t || "").toLowerCase() === "hill";
 
 /**
  * Konkrete Einheiten auf Wochentage verteilen — nach Verfügbarkeits-/Präferenz-Profil.
@@ -162,8 +174,8 @@ const isLongType = (t: string) => (t || "").toLowerCase() === "long";
  */
 export function scheduleWeek(units: PlannedUnit[], availability: Availability | null | undefined, weekDates: string[]): ScheduledUnit[] {
   const n = weekDates.length || 7;
-  const mk = (idx: number, u: PlannedUnit, isSecond = false): ScheduledUnit =>
-    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond, ref: u.ref });
+  const mk = (idx: number, u: PlannedUnit, isSecond = false, downgrade = false): ScheduledUnit =>
+    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond, ref: u.ref, downgrade, pair: u.pair });
 
   // Fallback ohne (verwertbares) Profil: Round-Robin über alle Tage = heutiges Verhalten (keine Regression).
   if (!availability || !availability.minutesByWeekday?.some((m) => (m || 0) > 0)) {
@@ -179,7 +191,8 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
 
   const longs = units.filter((u) => isLongType(u.type));
   const hards = units.filter((u) => isHardType(u.type));
-  const easies = units.filter((u) => !isLongType(u.type) && !isHardType(u.type));
+  const cores = units.filter((u) => isCoreType(u.type));
+  const easies = units.filter((u) => !isLongType(u.type) && !isHardType(u.type) && !isCoreType(u.type));
 
   // 1) Longrun: bevorzugt longRunDay, sonst erster freier Trainingstag.
   for (const u of longs) {
@@ -189,16 +202,41 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
     used.add(idx); out.push(mk(idx, u));
   }
 
-  // 2) Qualität: auf hardDays (oder beliebige Trainingstage), ≥48 h Abstand (nicht an aufeinanderfolgenden Tagen).
-  const hardDays = (availability.hardDays?.length ? availability.hardDays : trainingDays)
+  // 2) Qualität: STRIKT kein harter Tag an einem Folgetag (v1.7.0). Hügel bevorzugt hillDay.
+  //    Findet kein spacing-konformer Tag → Einheit wird abgestuft (downgrade → rendert als Easy).
+  const hardDayPref = (availability.hardDays?.length ? availability.hardDays : trainingDays)
     .filter((d) => (budget[d] || 0) > 0).sort((a, b) => a - b);
-  let lastHard = -10;
-  for (const u of hards) {
-    let idx = hardDays.find((d) => !used.has(d) && Math.abs(d - lastHard) >= 2);
-    if (idx == null) idx = hardDays.find((d) => !used.has(d)); // Abstand notfalls aufweichen
-    if (idx == null) idx = pickFree();
-    if (idx == null) idx = trainingDays[0];
-    used.add(idx); lastHard = idx; out.push(mk(idx, u));
+  const placedHard = new Set<number>();
+  const spacingOk = (d: number) => !used.has(d) && (budget[d] || 0) > 0 && !placedHard.has(d - 1) && !placedHard.has(d + 1);
+
+  // 2a) Doppel-Schwellen-Tage (v1.7.0): gepaarte Einheiten teilen EINEN harten Tag (AM + PM); zählt als ein harter Tag.
+  const pairGroups = new Map<string, PlannedUnit[]>();
+  const soloHards: PlannedUnit[] = [];
+  for (const u of hards) { if (u.pair) { const g = pairGroups.get(u.pair) ?? []; g.push(u); pairGroups.set(u.pair, g); } else soloHards.push(u); }
+  for (const group of pairGroups.values()) {
+    const idx = hardDayPref.find(spacingOk) ?? trainingDays.find(spacingOk);
+    if (idx != null) {
+      used.add(idx); placedHard.add(idx);
+      group.forEach((u, i) => out.push(mk(idx, u, i > 0)));        // 2. Hälfte = isSecond (PM)
+    } else {
+      const d = pickFree() ?? trainingDays.find((x) => !used.has(x)) ?? trainingDays[0];
+      used.add(d); group.forEach((u, i) => out.push(mk(d, u, i > 0, true))); // kein spacing-konformer Tag → abstufen
+    }
+  }
+
+  // 2b) Einzel-Qualität: STRIKT kein harter Tag an einem Folgetag. Hügel bevorzugt hillDay.
+  for (const u of soloHards) {
+    const wish = isHillUnit(u.type) && availability.hillDay != null ? availability.hillDay : null;
+    let idx: number | undefined;
+    if (wish != null && spacingOk(wish)) idx = wish;
+    if (idx == null) idx = hardDayPref.find(spacingOk);
+    if (idx == null) idx = trainingDays.find(spacingOk);
+    if (idx != null) { used.add(idx); placedHard.add(idx); out.push(mk(idx, u)); }
+    else {
+      // Kein Tag ohne harten Nachbarn frei → Erholung schützen: als Easy abstufen.
+      const d = pickFree() ?? trainingDays.find((x) => !used.has(x)) ?? trainingDays[0];
+      used.add(d); out.push(mk(d, u, false, true));
+    }
   }
 
   // 3) Easy: restliche Trainingstage; Überhang als Doppeleinheit (wenn erlaubt), sonst auf vollsten freien Tag.
@@ -221,7 +259,20 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
     }
   }
 
-  // Budget je Einheit: Tagesbudget durch Anzahl Einheiten des Tages teilen (Doubles).
+  // 4) Stabi/Core (v1.7.0): leichte Zusatz-Einheit — bevorzugt coreDays, sonst an einen Easy-Tag angehängt
+  //    (nicht an harte/Long-Tage, um die Qualität nicht zu belasten).
+  for (const u of cores) {
+    const coreDays = (availability.coreDays?.length ? availability.coreDays : []).filter((d) => (budget[d] || 0) > 0);
+    const dayUnits = (d: number) => out.filter((o) => o.weekdayIdx === d).length;
+    const easyOccupied = trainingDays.filter((d) => out.some((o) => o.weekdayIdx === d && !isHardType(o.type) && !isLongType(o.type)));
+    const d = coreDays.find((x) => dayUnits(x) < 2)
+      ?? easyOccupied.find((x) => dayUnits(x) < 2)
+      ?? trainingDays.find((x) => !placedHard.has(x))
+      ?? trainingDays[0];
+    out.push(mk(d, u, true)); // isSecond = leichte Zusatz-Einheit
+  }
+
+  // Budget je Einheit: Tagesbudget durch Anzahl Einheiten des Tages teilen (Doubles/Core).
   for (const o of out) {
     const k = out.filter((x) => x.weekdayIdx === o.weekdayIdx).length;
     o.budgetMin = k > 0 ? Math.round((budget[o.weekdayIdx] || 0) / k) : (budget[o.weekdayIdx] || 0);

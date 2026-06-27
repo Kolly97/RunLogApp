@@ -1,6 +1,6 @@
 {
   "name": "runlog",
-  "version": "1.6.2",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",

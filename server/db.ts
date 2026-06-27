@@ -233,6 +233,11 @@ function migrate(): void {
   // v1.5.0: Effective VO2max je Lauf (Runalyze-Stil, aus NGP + Ø-HF + Entkopplung), backfillbar via Recompute.
   addColumn("activities", "eff_vo2max", "REAL");
 
+  // v1.7.0: Lauf-Power (Coros-Watt via Strava, Stryd-Stil). run_np = Normalized Power des Laufs;
+  // power_curve = JSON {dauer_s: beste_mittlere_Watt}. '{}' = Streams geholt, aber keine Watt (kein Re-Fetch).
+  addColumn("activities", "run_np", "REAL");
+  addColumn("activities", "power_curve", "TEXT");
+
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
     CREATE TABLE IF NOT EXISTS options (
@@ -362,6 +367,11 @@ function migrate(): void {
   addColumn("races", "avg_hr", "INTEGER");
   // v0.14.0 (ToDo 3): Verknüpfung Race ↔ getrackte Aktivität (Race aus Tracking).
   addColumn("races", "activity_id", "INTEGER");
+  // v1.7.0: Wunsch-Zielzeit (s) für ein Ziel-Rennen → treibt die Pace-Progression der Block-Einheiten.
+  addColumn("races", "goal_time_s", "INTEGER");
+  // v1.7.0: Live-Resolution — gespeicherte Einheit hält ihre Intention (Workout-Template + Progression),
+  // damit Pace/HF bei Fitness-Änderung neu berechnet werden können. JSON {templateId, progress, raceId}.
+  addColumn("planned_sessions", "prescription", "TEXT");
   // v1.0.1: Manuelle PB-Overrides (eigene Bestzeiten editierbar).
   db.exec(`CREATE TABLE IF NOT EXISTS pb_overrides (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

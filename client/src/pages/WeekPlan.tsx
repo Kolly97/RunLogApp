@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay } from "../lib/api.ts";
+import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay, type GoalGap } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num, paceStr,
@@ -11,6 +11,7 @@ import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 import TemplateManager from "../components/TemplateManager.tsx";
 import T from "../components/T.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
 export default function WeekPlan() {
@@ -48,24 +49,37 @@ export default function WeekPlan() {
     finally { setSuggBusy(false); }
   }
 
-  async function applyDays(days: BlockDay[], wkNo: number) {
+  async function applyDays(days: BlockDay[], wkNo: number, phase?: string | null) {
     for (const d of days) {
       await api.addSession({
         week_no: wkNo, date: d.date, sport: "Run", type: d.type,
         planned_min: d.planned_min, zone_alloc: d.zone_alloc,
         efforts: d.efforts ?? null, description: d.description,
+        prescription: d.prescription ?? null, // v1.7.0: Intention für Live-Resolution mitschreiben
       });
     }
+    if (phase) { await api.setWeekPhase(wkNo, phase).catch(() => {}); reloadSeason(); } // v1.7.0: Phase aus dem Block setzen
     reload();
     setSuggMsg(`${days.length} Einheiten angelegt.`);
   }
 
+  // v1.7.0: alle abgeleiteten Phasen des Block-Vorschlags in den Saisonplan schreiben (ohne Einheiten anzulegen).
+  async function applyPhases() {
+    if (!blockPlan?.weeks.length) return;
+    setSuggBusy(true);
+    try {
+      for (const bw of blockPlan.weeks) if (bw.phase) await api.setWeekPhase(bw.week_no, bw.phase);
+      reloadSeason();
+      setSuggMsg(`Phasen für ${blockPlan.weeks.length} Wochen übernommen.`);
+    } finally { setSuggBusy(false); }
+  }
+
   async function applySuggestion() {
     if (!week) return;
-    const curWeekDays = blockPlan?.weeks.find((w) => w.week_no === week.week_no)?.days;
-    if (curWeekDays?.length) {
+    const curWeek = blockPlan?.weeks.find((w) => w.week_no === week.week_no);
+    if (curWeek?.days?.length) {
       setSuggOpen(false);
-      await applyDays(curWeekDays, week.week_no);
+      await applyDays(curWeek.days, week.week_no, curWeek.phase);
       return;
     }
     // Fallback: abstrakte Verteilung (kein Block-Plan geladen)
@@ -225,6 +239,9 @@ export default function WeekPlan() {
         </div>
       </div>
 
+      {/* Soll/Ist-Abgleich zum Ziel-Rennen (v1.7.0) */}
+      <GoalGapCard />
+
       {/* Engine: Wochen-Vorschlag + Block-Vorschau (v1.3.0/v1.4.0, Vorschlag-Modus) */}
       <div className="card tight no-print" style={{ marginBottom: 8 }}>
         <div className="spread">
@@ -305,7 +322,10 @@ export default function WeekPlan() {
               <strong style={{ fontSize: 13 }}>Block-Vorschau</strong>
               <span className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}</span>
             </div>
-            <button className="sm ghost" onClick={() => setBlockOpen(false)}>▲ schließen</button>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="sm ghost" onClick={applyPhases} disabled={suggBusy} title="Schreibt die abgeleiteten Phasen aller Vorschau-Wochen in den Saisonplan (manuell gesetzte Phasen bleiben).">Phasen übernehmen</button>
+              <button className="sm ghost" onClick={() => setBlockOpen(false)}>▲ schließen</button>
+            </div>
           </div>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             {blockPlan.weeks.map((bw) => {
@@ -319,7 +339,7 @@ export default function WeekPlan() {
                     <span style={{ color: confCol }}>{bw.headline}</span>
                     <span className="tiny muted">{bw.tssActual} TSS · {bw.isDeload ? "Deload" : bw.phase ?? ""}</span>
                     <button className="sm ghost" style={{ marginLeft: "auto" }}
-                      onClick={(e) => { e.preventDefault(); applyDays(bw.days, bw.week_no).then(() => setSuggMsg(`Woche ${bw.week_no}: ${bw.days.length} Einheiten angelegt.`)); }}>
+                      onClick={(e) => { e.preventDefault(); applyDays(bw.days, bw.week_no, bw.phase).then(() => setSuggMsg(`Woche ${bw.week_no}: ${bw.days.length} Einheiten angelegt.`)); }}>
                       Übernehmen
                     </button>
                   </summary>
@@ -436,6 +456,7 @@ export default function WeekPlan() {
       {showManager && (
         <TemplateManager templates={templates} onClose={() => setShowManager(false)} onChange={reloadTemplates} />
       )}
+      <PageHelp page="plan" />
     </div>
   );
 }
@@ -446,6 +467,41 @@ function Stat({ label, value, sub, color }: { label: string; value: number | str
       <div className="label">{label}</div>
       <div className="value" style={{ fontSize: 22, color }}>{value}</div>
       {sub && <div className="sub">{sub}</div>}
+    </div>
+  );
+}
+
+/** Soll/Ist-Karte zum Ziel-Rennen (v1.7.0): Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit. */
+function GoalGapCard() {
+  const [g, setG] = useState<GoalGap | null>(null);
+  useEffect(() => { api.goalGap().then(setG).catch(() => setG(null)); }, []);
+  if (!g || !g.race) return null;
+  const fmtT = (s: number | null) => {
+    if (s == null) return "—";
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.round(s % 60);
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+  };
+  const km = Math.round((g.race.distance_m / 1000) * 10) / 10;
+  const head = `🎯 Ziel: ${g.race.name || "Rennen"} · ${km} km · ${g.race.date} · noch ${g.weeks} Wochen`;
+  if (!g.goalTimeS) return (
+    <div className="card tight no-print" style={{ marginBottom: 8 }}>
+      <div className="tiny muted">{head}</div>
+      <div className="tiny">Prognose aktuell: <strong>{fmtT(g.predictedTimeS)}</strong> · keine Wunsch-Zielzeit gesetzt — in <a href="/races">Races</a> eintragen, dann passen sich die Paces der Progression an.</div>
+    </div>
+  );
+  const gap = g.gapS ?? 0;
+  const col = g.feasible ? "var(--ok)" : "var(--danger)";
+  const gapTxt = gap <= 2 ? "im Ziel" : `${fmtT(gap)} über Ziel`;
+  return (
+    <div className="card tight no-print" style={{ marginBottom: 8, borderLeft: `4px solid ${col}` }}>
+      <div className="tiny muted">{head}</div>
+      <div className="row" style={{ gap: 14, flexWrap: "wrap", alignItems: "baseline", marginTop: 2 }}>
+        <span>Prognose <strong>{fmtT(g.predictedTimeS)}</strong> → Wunsch <strong>{fmtT(g.goalTimeS)}</strong></span>
+        <span className="tiny" style={{ color: col, fontWeight: 700 }}>{gapTxt}</span>
+        {g.reqVdotPerWeek != null && g.reqVdotPerWeek > 0 && <span className="tiny muted">nötig: +{g.reqVdotPerWeek} VDOT/Woche</span>}
+        <span className="pill" style={{ background: col, color: "#fff" }}>{g.feasible ? "machbar" : "sehr ambitioniert"}</span>
+      </div>
+      {!g.feasible && <div className="tiny muted" style={{ marginTop: 2 }}>Realistische Prognose-Endzeit bei gedeckelter Progression: <strong>{fmtT(g.projEndTimeS)}</strong>. Ziel ggf. anpassen oder Vorbereitungszeit verlängern.</div>}
     </div>
   );
 }

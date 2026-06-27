@@ -9,6 +9,7 @@ import {
 import { useOptions, type Option } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "../components/EffortBuilder.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 import "./track.css";
@@ -105,6 +106,7 @@ export default function WeekTrack() {
       ) : (
         days.map((d) => dayCard(d))
       )}
+      <PageHelp page="track" />
     </div>
   );
 }

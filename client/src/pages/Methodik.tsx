@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { api, type MethodExperiment, type Markers, type MethodEvaluationResult, type MethodInferenceResult, type MarkerDelta as MarkerDeltaT } from "../lib/api.ts";
 import { paceStr } from "../lib/util.ts";
 import MarkerDeltaChart from "../charts/MarkerDelta.tsx";
+import ConfidenceBadge, { type ConfLevel } from "../components/ConfidenceBadge.tsx";
+import ExpertDetails from "../components/ExpertDetails.tsx";
+import OnboardingTour from "../components/OnboardingTour.tsx";
+import PageHelp from "../components/PageHelp.tsx";
+
+const METHODIK_TOUR = [
+  { title: "Methodik — was bei DIR wirkt", body: "Trainingslehre ist im Mittel erforscht, aber deine optimale Methode ist individuell. Diese Seite findet mit deinen eigenen Daten heraus, welches Training dir am meisten bringt (N-of-1)." },
+  { title: "Die Marker oben", body: "Die Marker-Batterie zeigt deinen aktuellen Fitness-Status. Primär ist die Critical Speed; die übrigen (VDOT, Schwelle, Entkopplung, eff. VO2max, Polarisierungs-Index) stützen oder widersprechen." },
+  { title: "Experimente anlegen", body: "Lege einen Methoden-Block an (z.B. 4 Wochen polarisiert). Die Seite vergleicht deine Marker vorher/nachher und gibt ein Verdikt mit Konfidenz." },
+  { title: "Passive Inferenz", body: "Ganz automatisch: welches Wochen-Regime korrelierte bei dir mit Fortschritt? Wichtig: Korrelation, nicht Kausalität — kleine Stichproben sind als explorativ markiert." },
+];
 
 const METHODS = [
   { v: "polarized", l: "Polarisiert" },
@@ -78,8 +89,24 @@ export default function Methodik() {
       <p className="tiny muted" style={{ marginTop: -4, maxWidth: 720 }}>
         Findet mit deinen eigenen Daten heraus, welche Trainingsmethode dir den größten Benefit bringt.
         Primär-Marker ist die <strong>Critical Speed</strong>; alle Marker werden gezeigt. Wichtig:
-        <strong> Korrelation, nicht Kausalität</strong> — kleine Stichproben sind als „explorativ" markiert.
+        <strong> Korrelation, nicht Kausalität</strong> — kleine Stichproben sind als 'explorativ' markiert.
       </p>
+
+      <OnboardingTour storageKey="tour-methodik" steps={METHODIK_TOUR} />
+
+      {/* Einführung (ausklappbar, v1.8.0) */}
+      <details className="card" open style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>So nutzt du die Methodik-Seite</summary>
+        <div style={{ marginTop: 8, fontSize: 13.5, lineHeight: 1.55 }}>
+          <p style={{ marginTop: 0 }}><strong>Idee:</strong> Trainingslehre ist im Mittel erforscht — aber deine beste Methode ist individuell. Diese Seite vergleicht, wie deine Leistungsmarker auf verschiedene Trainings-Regimes reagieren.</p>
+          <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+            <li><strong>Marker</strong> (oben): aktueller Status — Critical Speed (primär), VDOT, Schwelle, Entkopplung, Submax-Effizienz, eff. VO2max, Laktat-an-Pace, Polarisierungs-Index.</li>
+            <li><strong>Experimente</strong>: lege einen Methoden-Block an (z.B. 4 Wochen polarisiert) — die Seite vergleicht die Marker vorher/nachher und gibt ein Verdikt mit Konfidenz.</li>
+            <li><strong>Passive Inferenz</strong>: erkennt automatisch, welches Wochen-Regime bei dir mit Fortschritt korrelierte (mit Confounder-Kontrolle).</li>
+          </ul>
+          <p style={{ marginBottom: 0 }}><strong>Wichtig:</strong> Es sind Korrelationen, keine Beweise — kleine Stichproben sind als 'explorativ' markiert. Nutze es als Entscheidungshilfe, nicht als Gesetz.</p>
+        </div>
+      </details>
 
       {/* Aktuelle Marker */}
       <div className="card" style={{ marginTop: 12 }}>
@@ -106,11 +133,12 @@ export default function Methodik() {
               {inference.best
                 ? <><strong style={{ color: "var(--ok)" }}>{REGIME_LABEL[inference.best]}</strong> korreliert bei dir am stärksten mit Fortschritt. </>
                 : <span className="muted">Noch keine belastbare Methoden-Präferenz. </span>}
-              <span className="tiny muted">({CONF_LABEL[inference.confidence]}, {inference.lagWeeks}-Wochen-Lag)</span>
+              <ConfidenceBadge level={inference.confidence as ConfLevel} title={`${CONF_LABEL[inference.confidence]} · ${inference.lagWeeks}-Wochen-Lag`} />
             </p>
             <p className="tiny muted" style={{ marginTop: -6 }}>{inference.note}</p>
             {inference.regimes.length > 0 && (
-              <table className="table" style={{ width: "100%", marginTop: 6 }}>
+              <ExpertDetails summary={`Regime-Details (${inference.regimes.length}) — Korrelation, nicht Kausalität`}>
+              <table className="table" style={{ width: "100%" }}>
                 <thead><tr><th>Regime</th><th>Wochen</th><th>Δ CS</th><th>Δ VDOT</th><th>Konfidenz</th></tr></thead>
                 <tbody>
                   {inference.regimes.map((r) => (
@@ -126,6 +154,7 @@ export default function Methodik() {
                   ))}
                 </tbody>
               </table>
+              </ExpertDetails>
             )}
           </>
         )}
@@ -196,6 +225,7 @@ export default function Methodik() {
           </div>
         </div>
       )}
+      <PageHelp page="methodik" />
     </div>
   );
 }

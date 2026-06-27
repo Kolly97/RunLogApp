@@ -11,6 +11,7 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
@@ -94,6 +95,9 @@ export default function Dashboard() {
         <h1>Dashboard</h1>
         <span className="muted tiny">{fmtDate(todayIso())} · {todayIso().slice(0, 4)}</span>
       </div>
+      <p className="muted tiny" style={{ marginTop: -6, marginBottom: 6 }}>
+        <T k="dashboard.role">Status heute — aktuelle Form, Readiness und Ziel-Abgleich. Lange Verläufe siehe Langzeit.</T>
+      </p>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
         <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} />
@@ -110,6 +114,7 @@ export default function Dashboard() {
       </div>
 
       <EditableGrid page="dashboard" blocks={dashBlocks} />
+      <PageHelp page="dashboard" />
     </div>
   );
 
@@ -225,12 +230,12 @@ export default function Dashboard() {
         ),
       },
       {
-        id: "intensity", title: t("dashboard.block.intensity.title", "Intensity-Trend"), defaultSpan: 6, defaultHeight: 240,
+        id: "intensity", title: t("dashboard.block.intensity.title", "Last-Trend (ATL/CTL)"), defaultSpan: 6, defaultHeight: 240,
         render: (h) => (
           <div className="card">
             <div className="spread">
-              <h2><T k="dashboard.block.intensity.title">Intensity-Trend</T></h2>
-              <span className="tiny muted"><T k="dashboard.block.intensity.sub">ATL/CTL</T></span>
+              <h2><T k="dashboard.block.intensity.title">Last-Trend (ATL/CTL)</T></h2>
+              <span className="tiny muted"><T k="dashboard.block.intensity.sub">akute vs. chronische Last — nicht die Zonen-Intensität</T></span>
             </div>
             <IntensityRatio data={pmc?.pmc ?? []} height={h ?? 240} />
           </div>

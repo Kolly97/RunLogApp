@@ -1,7 +1,7 @@
 // Verfügbarkeits-/Präferenz-Profil (v1.4.0, A1): Wochentag-Budgets, Longrun-Tag, Harttage, Doubles.
 // Gespeichert als Setting-JSON `availability_<pid>` — additiv, kein Schema.
 import { useEffect, useState } from "react";
-import { api, type Availability } from "../lib/api.ts";
+import { api, type Availability, type WorkoutInfo } from "../lib/api.ts";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -13,13 +13,20 @@ function toMinutes(v: string): number {
   return v.trim() && isFinite(n) && n >= 0 ? Math.round(n) : 0;
 }
 
+const EMPHASIS = [
+  { v: "ausgewogen", l: "Ausgewogen" }, { v: "schwelle", l: "Schwelle (LT2)" }, { v: "vo2", l: "VO2max" },
+  { v: "berg", l: "Berg" }, { v: "norwegian", l: "Norwegian (sub-T)" }, { v: "fartlek", l: "Fartlek" },
+];
+
 export default function AvailabilityCard() {
   const [av, setAv] = useState<Availability>(EMPTY);
   const [saved, setSaved] = useState(false);
+  const [workouts, setWorkouts] = useState<WorkoutInfo[]>([]); // v1.8.0: Bibliothek für Lieblings/Vermeiden
   const t = useT();
 
   useEffect(() => {
     api.availability().then((r) => { if (r) setAv(r); }).catch(() => {});
+    api.workouts().then(setWorkouts).catch(() => {});
   }, []);
 
   const persist = (next: Availability) => {
@@ -45,6 +52,24 @@ export default function AvailabilityCard() {
     const cur = av.doubleDays ?? [];
     const next = cur.includes(i) ? cur.filter((d) => d !== i) : [...cur, i].sort((a, b) => a - b);
     persist({ ...av, doubleDays: next });
+  };
+
+  const toggleCore = (i: number) => {
+    const cur = av.coreDays ?? [];
+    const next = cur.includes(i) ? cur.filter((d) => d !== i) : [...cur, i].sort((a, b) => a - b);
+    persist({ ...av, coreDays: next });
+  };
+
+  // v1.8.0 Block-Präferenzen: Favorit/Vermeiden sind gegenseitig ausschließend.
+  const toggleFav = (id: string) => {
+    const fav = av.favoriteWorkouts ?? [];
+    const next = fav.includes(id) ? fav.filter((x) => x !== id) : [...fav, id];
+    persist({ ...av, favoriteWorkouts: next, avoidWorkouts: (av.avoidWorkouts ?? []).filter((x) => x !== id) });
+  };
+  const toggleAvoid = (id: string) => {
+    const avo = av.avoidWorkouts ?? [];
+    const next = avo.includes(id) ? avo.filter((x) => x !== id) : [...avo, id];
+    persist({ ...av, avoidWorkouts: next, favoriteWorkouts: (av.favoriteWorkouts ?? []).filter((x) => x !== id) });
   };
 
   const budget = av.minutesByWeekday ?? [0, 0, 0, 0, 0, 0, 0];
@@ -88,6 +113,29 @@ export default function AvailabilityCard() {
           </select>
         </label>
 
+        {/* Berglauf-Tag (v1.7.0) */}
+        <label className="field" style={{ margin: 0, width: 160 }}>
+          <span><T k="availability.hillDay">Berglauf-Tag</T></span>
+          <select
+            value={av.hillDay ?? ""}
+            onChange={(e) => persist({ ...av, hillDay: e.target.value !== "" ? Number(e.target.value) : null })}
+          >
+            <option value="">{t("availability.none", "—")}</option>
+            {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </select>
+        </label>
+
+        {/* Stabi/Core pro Woche (v1.7.0) */}
+        <label className="field" style={{ margin: 0, width: 160 }}>
+          <span><T k="availability.core">Stabi/Core pro Woche</T></span>
+          <select
+            value={av.corePerWeek ?? 0}
+            onChange={(e) => persist({ ...av, corePerWeek: Number(e.target.value) })}
+          >
+            {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+
         {/* Doubles */}
         <label className="field" style={{ margin: 0, minWidth: 160 }}>
           <span><T k="availability.doubles">Doppeleinheiten erlauben</T></span>
@@ -97,6 +145,14 @@ export default function AvailabilityCard() {
           >
             <option value="no">{t("availability.doubles.no", "Nein")}</option>
             <option value="yes">{t("availability.doubles.yes", "Ja")}</option>
+          </select>
+        </label>
+
+        {/* Block-Schwerpunkt (v1.8.0) */}
+        <label className="field" style={{ margin: 0, width: 180 }}>
+          <span><T k="availability.emphasis">Schwerpunkt im Block</T></span>
+          <select value={av.emphasis ?? "ausgewogen"} onChange={(e) => persist({ ...av, emphasis: e.target.value })}>
+            {EMPHASIS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
           </select>
         </label>
       </div>
@@ -147,6 +203,57 @@ export default function AvailabilityCard() {
             })}
           </div>
         </div>
+      )}
+
+      {/* Bevorzugte Core-Tage (v1.7.0, nur wenn Core aktiv) */}
+      {(av.corePerWeek ?? 0) > 0 && trainingDays.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="tiny muted" style={{ marginBottom: 4 }}>
+            <T k="availability.coreDays">Bevorzugte Stabi/Core-Tage (sonst an Easy-Tage angehängt)</T>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {trainingDays.map(({ i }) => {
+              const isCore = (av.coreDays ?? []).includes(i);
+              return (
+                <button key={i} className={`sm ${isCore ? "" : "ghost"}`} onClick={() => toggleCore(i)} title={DAYS[i]}>
+                  {DAYS[i]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Lieblings-/Vermeiden-Einheiten (v1.8.0) — advisory: gewichtet die Auswahl, Periodisierung bleibt. */}
+      {workouts.length > 0 && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)" }}>
+            <T k="availability.fav.title">Lieblings- &amp; Vermeiden-Einheiten</T>
+            {((av.favoriteWorkouts?.length ?? 0) + (av.avoidWorkouts?.length ?? 0)) > 0 &&
+              <span> · ♥ {av.favoriteWorkouts?.length ?? 0} · ⊘ {av.avoidWorkouts?.length ?? 0}</span>}
+          </summary>
+          <p className="tiny muted" style={{ margin: "6px 0" }}>
+            <T k="availability.fav.hint">♥ = häufiger, ⊘ = vermeiden. Wirkt beratend auf die Auswahl — Phasen &amp; Erholungsregeln bleiben verbindlich.</T>
+          </p>
+          {Object.entries(workouts.reduce((acc, w) => { (acc[w.family] ??= []).push(w); return acc; }, {} as Record<string, WorkoutInfo[]>)).map(([fam, list]) => (
+            <div key={fam} style={{ marginBottom: 6 }}>
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{fam}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {list.map((w) => {
+                  const fav = (av.favoriteWorkouts ?? []).includes(w.id);
+                  const avo = (av.avoidWorkouts ?? []).includes(w.id);
+                  return (
+                    <span key={w.id} title={w.purpose} style={{ display: "inline-flex", alignItems: "center", gap: 2, border: "1px solid var(--border)", borderRadius: 7, padding: "1px 4px", fontSize: 11, opacity: avo ? 0.55 : 1 }}>
+                      <span>{w.name}</span>
+                      <button className="sm ghost" style={{ padding: "0 3px", color: fav ? "var(--ok)" : "var(--muted)" }} onClick={() => toggleFav(w.id)} title="Favorit">♥</button>
+                      <button className="sm ghost" style={{ padding: "0 3px", color: avo ? "var(--danger)" : "var(--muted)" }} onClick={() => toggleAvoid(w.id)} title="Vermeiden">⊘</button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </details>
       )}
     </div>
   );

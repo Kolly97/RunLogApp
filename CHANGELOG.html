@@ -193,6 +193,8 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <h4>Versionen</h4>
+    <a href="#v180"><span class="v-badge">1.8.0</span>2026-06-27</a>
+    <a href="#v170"><span class="v-badge">1.7.0</span>2026-06-26</a>
     <a href="#v162"><span class="v-badge">1.6.2</span>2026-06-24</a>
     <a href="#v161"><span class="v-badge">1.6.1</span>2026-06-24</a>
     <a href="#v160"><span class="v-badge">1.6.0</span>2026-06-24</a>
@@ -222,13 +224,101 @@
   <main>
     <!-- stats -->
     <div class="stats">
-      <div class="stat"><div class="stat-num">24</div><div class="stat-label">Versionen</div></div>
-      <div class="stat"><div class="stat-num">14</div><div class="stat-label">Tage Entwicklung</div></div>
-      <div class="stat"><div class="stat-num">v1.6.2</div><div class="stat-label">Aktuelle Release</div></div>
+      <div class="stat"><div class="stat-num">26</div><div class="stat-label">Versionen</div></div>
+      <div class="stat"><div class="stat-num">17</div><div class="stat-label">Tage Entwicklung</div></div>
+      <div class="stat"><div class="stat-num">v1.8.0</div><div class="stat-label">Aktuelle Release</div></div>
+    </div>
+
+    <!-- ═══════════════════ 1.8.0 ═══════════════════ -->
+    <div class="version open" id="v180">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.8.0</span>
+        <span class="version-title">Polish-Release: Aufgeräumte Analytik, Coach-Variation, Tutorial &amp; Watt-Analytik</span>
+        <span class="version-date">2026-06-27</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Großes Polish-Update in vier Bausteinen: die Oberfläche wird <strong>aufgeräumt und entwirrt</strong>, der Trainings-Vorschlag bekommt deutlich <strong>mehr Abwechslung</strong>, ein <strong>Tutorial-Profil + Seiten-Hilfe</strong> führen neue Nutzer ein, und die Lauf-Watt werden tiefer ausgewertet.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — UX &amp; Polish</div>
+          <ul class="changes">
+            <li><strong>Klare Seiten-Rollen + Captions:</strong> Dashboard = Status heute · Langzeit = Jahres-Trends · Wochenbericht = diese Woche; doppelte Darstellungen entwirrt.</li>
+            <li><strong>Konfidenz-Pattern:</strong> unsichere/explorative Werte (eff. VO2max, N-of-1) stehen hinter „Experten-Details" + Konfidenz-Badge — die Hauptansicht zeigt nur robuste Kennzahlen.</li>
+            <li><strong>Bestzeiten modular</strong> (verschieb-/ausblendbare Kacheln wie das Dashboard) und <strong>Profil aufgeräumt</strong> (Bereichs-Navigation wie die Auswahllisten).</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Coach-Variation</div>
+          <ul class="changes">
+            <li><strong>8 neue kuratierte Einheiten:</strong> Fartlek (strukturiert + nach Gefühl), Schwellen-Ladder (2000-1000-600-400), Cut-down-1000er, Mixed 1000+400, gebrochener Tempolauf, lange Bergintervalle (3–4'), Renntempo-Float. Neues <strong>mehrsegmentiges Workout-Modell</strong>, TSS-neutral.</li>
+            <li><strong>Coach-Matrix Distanz × Niveau:</strong> Einsteiger einfache gleiche Reps, Fortgeschrittene Ladder/Cut-down/Mixed; distanzgerecht (5–10k VO2/Renntempo · HM/M Renntempo + Float).</li>
+            <li><strong>Block-Präferenzen (Profil):</strong> Schwerpunkt + Lieblings-/Vermeiden-Einheiten; die Engine gewichtet <strong>beratend &amp; phasengerecht</strong> — Periodisierung + Erholungsregeln bleiben verbindlich.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Tutorial, Hilfe &amp; Watt</div>
+          <ul class="changes">
+            <li><strong>Tutorial-Profil:</strong> beim ersten Start ein eigenes Profil „Tutorial" mit komplettem, erfundenem Beispieljahr („Alex Demo", 10-km-Fokus) — alle Funktionen mit Daten; idempotent, löschbar, strikt eigenes <code>profile_id</code> (echte Daten unberührt).</li>
+            <li><strong>Seiten-Hilfe</strong> („!"-Button je Seite + Anleitungslink) und <strong>Methodik-Einführung</strong> (Intro-Karte + Onboarding-Tour beim ersten Besuch).</li>
+            <li><strong>Running Effectiveness</strong> (Ökonomie-Trend, Speed pro Watt) und <strong>W′-bal im Intervall</strong> (Skiba — Entleerung/Erholung der anaeroben Reserve, aus der Intervall-Struktur + CP rekonstruiert). Relativ zu deinen Coros-Watt.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert</div>
+          <ul class="changes">
+            <li><strong>Intensität entwirrt:</strong> der ATL/CTL-„Intensity-Trend" heißt jetzt <strong>„Last-Trend (ATL/CTL)"</strong>; Leit-Intensität ist die <strong>Zeit-in-Zone</strong> + Polarisierungs-Index, der Typ-Donut ist als ergänzende Sicht gekennzeichnet.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">⛁ Datenbank</div>
+          <ul class="changes">
+            <li><strong>Keine Schema-Änderung.</strong> Block-Präferenzen liegen im Availability-Setting (JSON); das Tutorial-Profil nutzt nur bestehende Tabellen auf einem eigenen <code>profile_id</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.7.0 ═══════════════════ -->
+    <div class="version" id="v170">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.7.0</span>
+        <span class="version-title">Adaptive Pace-Progression, Zielzeit-Steuerung &amp; Lauf-Power</span>
+        <span class="version-date">2026-06-26</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Großes Coach-Update in drei Bausteinen: Trainings-Paces <strong>wachsen mit deiner projizierten Fitness</strong> Richtung Wunsch-Zielzeit, das Scheduling <strong>schützt die Erholung</strong>, und Coros-Laufwatt werden <strong>Stryd-artig</strong> ausgewertet.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Wunsch-Zielzeit + Soll/Ist-Abgleich:</strong> Am Ziel-Rennen eine Wunsch-Zielzeit eintragen (<code>races.goal_time_s</code>). Eine Gap-Karte in der Wochenplanung zeigt Prognose vs. Wunsch, die nötige Progression (VDOT/Woche) und eine Machbarkeits-Ampel (machbar / sehr ambitioniert mit realistischer End-Prognose).</li>
+            <li><strong>Adaptive, projizierte Paces:</strong> Eine Fitness-Projektion (<code>projectVdot</code>, gedeckelt auf ~0,4 VDOT/Woche) interpoliert von heute Richtung Ziel-VDOT. Block-Einheiten ankern ihre Paces je Woche an der projizierten Fitness (Daniels E/M/T/I/R) — die Intervall-Tempi <strong>wachsen Woche für Woche</strong> Richtung Zielpace statt einzufrieren.</li>
+            <li><strong>Live-Resolution gelockter Einheiten:</strong> Übernommene Block-Einheiten speichern ihre Intention (<code>planned_sessions.prescription</code>); beim Anzeigen werden Pace/HF aus aktueller + projizierter Fitness <strong>neu berechnet</strong> — eine in 8 Wochen geplante Einheit zeigt automatisch das dann passende (schnellere) Tempo. Manuelles Bearbeiten „pinnt" die Einheit.</li>
+            <li><strong>Lauf-Power (Coros via Strava, Stryd-Stil):</strong> Laufwatt aus den Streams → Normalized Power + Power-Duration-Kurve (<code>activities.run_np</code>, <code>power_curve</code>). Daraus <strong>Critical Power</strong> (CP/W′-Fit), <strong>%CP-Power-Zonen</strong> und <strong>RSS</strong> + Power-Sektion in den Bestzeiten (CP, Power-Kurve, CP-Trend, Zonen, RSS). Intervalle zeigen optional ein <strong>Watt-Ziel</strong> neben Pace/HF. Coros-Watt sind gerätespezifisch → relativ lesen.</li>
+            <li><strong>Profil:</strong> Berglauf-Tag, Stabi/Core-Frequenz und bevorzugte Core-Tage in der Verfügbarkeit.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert</div>
+          <ul class="changes">
+            <li><strong>Scheduling — Erholung zuerst:</strong> Zwei harte Einheiten liegen <strong>nie</strong> an Folgetagen; passt nichts spacing-konform, wird eine Qualität automatisch zu Easy abgestuft (+ Begründung). <strong>Stabi/Core</strong> an Easy-Tage; <strong>Berglauf-Tag</strong> bevorzugt.</li>
+            <li><strong>Doppel-Schwelle = zwei Einheiten:</strong> Norwegian-Doppeltage erscheinen als <strong>zwei</strong> Einheiten am selben Tag (AM 6'-Reps + PM 400er) statt einer kombinierten — je eigene Pausen; der Tag zählt als ein harter Tag.</li>
+            <li><strong>Aerobe Entkopplung = GAP, nur gleichmäßige Läufe:</strong> nutzt die steigungs-adjustierte Geschwindigkeit (statt roher Pace) und wird nur für Easy/Long/Steady berechnet (Intervalle ausgeschlossen).</li>
+            <li><strong>Einheiten füllen die Felder:</strong> Vorgeschlagene Einheiten schreiben km je Zone + Intervalle in die <strong>editierbaren Felder</strong> des „Einheit bearbeiten"-Dialogs (TSS-neutral), nicht nur in die Beschreibung.</li>
+            <li><strong>Wochenphasen aus dem Block-Vorschlag:</strong> Beim Übernehmen wird die abgeleitete Phase mitgesetzt; Knopf „Phasen übernehmen" schreibt alle Phasen (manuelle bleiben).</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">⛁ Datenbank (additiv)</div>
+          <ul class="changes">
+            <li><code>races.goal_time_s</code>, <code>planned_sessions.prescription</code>, <code>activities.run_np</code>, <code>activities.power_curve</code>. Lauf-Power füllt sich über die Strava-Syncs; adaptive Paces brauchen Wunsch-Zielzeit + VDOT.</li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════════════ 1.6.2 ═══════════════════ -->
-    <div class="version open" id="v162">
+    <div class="version" id="v162">
       <div class="version-header" onclick="toggle(this)">
         <span class="version-num">1.6.2</span>
         <span class="version-title">N-of-1-Inferenz-Performance &amp; Renntempo nach Zieldistanz</span>

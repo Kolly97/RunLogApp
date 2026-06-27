@@ -4,6 +4,105 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.8.0] – 2026-06-27 — Polish-Release: Aufgeräumte Analytik, Coach-Variation, Tutorial-Onboarding & Watt-Analytik
+
+Großes Polish-Update in vier Bausteinen: die Oberfläche wird aufgeräumt und entwirrt, der Trainings-Vorschlag
+bekommt deutlich mehr sportwissenschaftliche Abwechslung, ein vollständiges Tutorial-Profil + Seiten-Hilfe
+führen neue Nutzer ein, und die Lauf-Watt werden tiefer ausgewertet (Ökonomie + anaerobe Reserve).
+
+### Hinzugefügt
+
+**UX-Rationalisierung & Polish**
+- **Klare Seiten-Rollen + Captions:** Dashboard = Status heute · Langzeit = Jahres-Trends · Wochenbericht =
+  diese Woche. Jede Seite trägt eine Rollen-Zeile; doppelte Darstellungen sind entwirrt.
+- **Konfidenz-Pattern (`ConfidenceBadge` + `ExpertDetails`):** unsichere/explorative Werte (eff. VO2max,
+  N-of-1) stehen hinter „Experten-Details" mit Konfidenz-Badge — die Hauptansicht zeigt nur robuste Kennzahlen.
+- **Bestzeiten modular:** PB-Tabelle, VDOT/VO2max, Race-Prognose und Power sind verschieb-/ausblendbare Kacheln
+  (wie das Dashboard, `EditableGrid`).
+- **Profil aufgeräumt:** Bereichs-Navigation (wie die Auswahllisten) — Athlet · Zonen & Schwellen ·
+  Verfügbarkeit & Block-Präferenzen · Leistungstests · Profile/Accounts.
+
+**Coach-Variation**
+- **8 neue, sportwissenschaftlich kuratierte Einheiten:** Fartlek (strukturiert + nach Gefühl), Schwellen-Ladder
+  (2000-1000-600-400), Cut-down-1000er, Mixed 1000+400, gebrochener Tempolauf, lange Bergintervalle (3–4'),
+  Renntempo-Float. Neues **mehrsegmentiges Workout-Modell** (gemischte Distanzen + progressiv schnellere Reps),
+  TSS-neutral zum bestehenden Modell.
+- **Coach-Matrix Distanz × Niveau:** Einsteiger bekommen einfache gleiche Reps, Fortgeschrittene Ladder/
+  Cut-down/Mixed; die Auswahl ist distanzgerecht (5–10k VO2/Renntempo · HM/M Renntempo-Blöcke + Float).
+- **Block-Präferenzen (Profil):** Schwerpunkt (Schwelle/VO2/Berg/Norwegian/Fartlek) + Lieblings-/Vermeiden-
+  Einheiten. Die Engine gewichtet **beratend** und **phasengerecht** — Periodisierung + Erholungsregeln bleiben verbindlich.
+
+**Tutorial & Hilfe**
+- **Tutorial-Profil:** beim ersten Start wird ein eigenes Profil „Tutorial" mit einem kompletten, erfundenen
+  Beispieljahr („Alex Demo", 10-km-Fokus) angelegt — Phasen, alle Einheitstypen, Wettkämpfe mit Splits,
+  Wellness, Laktattest, Wunsch-Zielzeit. Zum gefahrlosen Ausprobieren aller Funktionen; idempotent,
+  neu erzeugbar/löschbar im Profil; strikt auf eigenem `profile_id` (echte Daten unberührt).
+- **Seiten-Hilfe:** dezenter „!"-Button unten auf jeder Seite erklärt die Diagramme + verlinkt die Anleitung.
+- **Methodik-Einführung:** ausklappbare Intro-Karte + geführte Onboarding-Tour beim ersten Besuch.
+
+**Watt-Analytik (relativ zu deinen Coros-Watt)**
+- **Running Effectiveness:** Lauf-Ökonomie als Speed pro Watt (masseunabhängiger Trend) — wird die gleiche Pace
+  mit weniger Watt erreicht?
+- **W′-bal im Intervall (Skiba):** Verlauf der anaeroben Reserve W′ über eine Einheit (Entleerung über CP,
+  exponentielle Erholung darunter), aus der Intervall-Struktur + CP rekonstruiert — zeigt, ob die Pausen reichen.
+
+### Geändert
+- **Intensität entwirrt:** der ATL/CTL-„Intensity-Trend" heißt jetzt **„Last-Trend (ATL/CTL)"** (klar als
+  Last-Kennzahl, nicht Zonen-Intensität). Leit-Intensität ist die **Zeit-in-Zone** + Polarisierungs-Index;
+  der Typ-Donut ist als ergänzende Sicht gekennzeichnet.
+
+### Datenbank
+- **Keine Schema-Änderung.** Block-Präferenzen liegen im Availability-Setting (JSON); das Tutorial-Profil nutzt
+  ausschließlich bestehende Tabellen auf einem eigenen `profile_id`.
+
+### Hinweise
+- Das **Tutorial-Profil** erscheint im Profil-Umschalter (zum Ansehen darauf wechseln). **Watt-Analysen**
+  brauchen Watt-Daten (CP) — im Tutorial sofort, sonst nach dem Power-Backfill der Strava-Syncs.
+
+## [1.7.0] – 2026-06-26 — Adaptive Pace-Progression, Zielzeit-Steuerung & Lauf-Power
+
+Großes Coach-Update in drei Bausteinen: Trainings-Paces wachsen mit deiner projizierten Fitness Richtung
+Wunsch-Zielzeit, das Scheduling schützt die Erholung, und Coros-Laufwatt werden Stryd-artig ausgewertet.
+
+### Hinzugefügt
+- **Wunsch-Zielzeit + Soll/Ist-Abgleich:** Am Ziel-Rennen lässt sich eine Wunsch-Zielzeit eintragen
+  (`races.goal_time_s`). Eine Gap-Karte in der Wochenplanung zeigt Prognose vs. Wunsch, die nötige Progression
+  (VDOT/Woche) und eine Machbarkeits-Ampel (machbar / sehr ambitioniert mit realistischer End-Prognose).
+- **Adaptive, projizierte Paces:** Eine Fitness-Projektion (`projectVdot`, gedeckelt auf ~0,4 VDOT/Woche)
+  interpoliert von heute Richtung Ziel-VDOT. Die Block-Einheiten ankern ihre Paces je Woche an der projizierten
+  Fitness (Daniels-Paces E/M/T/I/R) — die Intervall-Tempi **wachsen Woche für Woche** Richtung Zielpace, statt
+  auf der heutigen Prognose einzufrieren.
+- **Live-Resolution gelockter Einheiten:** Übernommene Block-Einheiten speichern ihre Intention
+  (`planned_sessions.prescription`); beim Anzeigen werden Pace/HF aus aktueller + projizierter Fitness **neu
+  berechnet** — eine in 8 Wochen geplante Einheit zeigt automatisch das dann passende (schnellere) Tempo.
+  Manuelles Bearbeiten „pinnt" die Einheit (keine Live-Anpassung mehr).
+- **Lauf-Power (Coros via Strava, Stryd-Stil):** Laufwatt werden aus den Strava-Streams erfasst → Normalized
+  Power je Lauf + Power-Duration-Kurve (`activities.run_np`, `power_curve`). Daraus **Critical Power** (2-Param
+  CP/W′-Fit), **%CP-Power-Zonen** (Stryd-nah) und **RSS** (Running Stress Score) sowie eine Power-Sektion in der
+  Bestzeiten-Seite (CP-Wert, Power-Kurve, CP-Trend, Zonen, RSS-Liste). Intervalle zeigen optional ein
+  **Watt-Ziel** neben Pace/HF. Hinweis: Coros-Watt sind gerätespezifisch → Werte relativ zu deinen Coros-Watt.
+- **Profil:** Berglauf-Tag, Stabi/Core-Frequenz und bevorzugte Core-Tage in der Verfügbarkeit.
+
+### Geändert
+- **Scheduling — Erholung zuerst:** Zwei harte Einheiten liegen **nie** an Folgetagen; passt nichts spacing-
+  konform, wird eine Qualität automatisch zu Easy abgestuft (+ Begründung). **Stabi/Core** wird an Easy-Tage
+  gehängt; der **Berglauf-Tag** wird bevorzugt belegt.
+- **Doppel-Schwelle = zwei Einheiten:** Norwegian-Doppeltage erscheinen jetzt als **zwei** Einheiten am selben
+  Tag (AM 6'-Reps + PM 400er) statt einer kombinierten — je eigene Pausen; der Tag zählt als ein harter Tag.
+- **Aerobe Entkopplung = GAP, nur gleichmäßige Läufe:** Die Entkopplung nutzt jetzt die steigungs-adjustierte
+  Geschwindigkeit (statt roher Pace) und wird nur für Easy/Long/Steady berechnet (Intervalle ausgeschlossen).
+- **Einheiten füllen die Felder:** Vorgeschlagene Einheiten schreiben ihre Werte (km je Zone + Intervalle) jetzt
+  in die **editierbaren Felder** des „Einheit bearbeiten"-Dialogs, nicht nur in die Beschreibung (TSS-neutral).
+- **Wochenphasen aus dem Block-Vorschlag:** Beim Übernehmen wird die abgeleitete Phase mitgesetzt; ein Knopf
+  „Phasen übernehmen" schreibt alle Phasen des Vorschlags (manuell gesetzte Phasen bleiben).
+
+### Datenbank (additiv)
+- `races.goal_time_s`, `planned_sessions.prescription`, `activities.run_np`, `activities.power_curve`.
+
+### Hinweise
+- **Lauf-Power** füllt sich erst über die Strava-Syncs — Watt-Streams werden budget-schonend nachgezogen
+  (Läufe ≥ 10 min). **Adaptive Paces** brauchen eine Wunsch-Zielzeit am Ziel-Rennen + genug Bestzeiten für ein VDOT.
+
 ## [1.6.2] – 2026-06-24 — N-of-1-Inferenz-Performance & Renntempo nach Zieldistanz
 
 Zwei Folge-Fixes: der Wochen-/Block-Vorschlag lädt deutlich schneller, und das vorgeschlagene Renntempo

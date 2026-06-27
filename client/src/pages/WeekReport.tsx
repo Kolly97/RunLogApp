@@ -17,6 +17,7 @@ import { useOptions, typeIntensity } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WeekdayBars from "../charts/WeekdayBars.tsx";
@@ -222,7 +223,10 @@ export default function WeekReport() {
   return (
     <div>
       <div className="spread no-print">
-        <h1><T k="report.title">Wochenbericht</T></h1>
+        <div>
+          <h1><T k="report.title">Wochenbericht</T></h1>
+          <span className="tiny muted" style={{ display: "block", marginTop: -2 }}><T k="report.role">Diese Woche im Detail — geplant vs. real, Zonen und Wochen-Checks.</T></span>
+        </div>
         <div className="row">
           <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo}
             jumpTo={{ href: `/track?date=${week.start_date}`, title: t("report.toTracking.title", "Zur gleichen Woche im Tracking"), label: t("report.toTracking.label", "→ Tracking") }} />
@@ -418,8 +422,11 @@ export default function WeekReport() {
         <EgItem id="tssdist" title={t("report.tile.tss", "Intensität (TSS)")} defaultSpan={6} defaultHeight={220}>{() => (
             <div className="card chart-card">
               <h3 style={{ textAlign: "center" }}>
-                <T k="report.tss.title">Intensität (TSS) — geplant vs. real</T>
+                <T k="report.tss.title">TSS-Anteil nach Einheitstyp — geplant vs. real</T>
               </h3>
+              <div className="tiny muted center" style={{ marginTop: -4, marginBottom: 4 }}>
+                <T k="report.tss.sub">ergänzende Sicht; die Leit-Intensität ist die Zeit-in-Zone unten</T>
+              </div>
               {analyze && (
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -667,6 +674,7 @@ function PhysioDistTile({ pd, tgt, pi, t }: {
           </div>
         </>
       )}
+      <PageHelp page="report" />
     </div>
   );
 }

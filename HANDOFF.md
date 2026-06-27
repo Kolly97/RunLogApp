@@ -2,7 +2,43 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v1.6.2** (24.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v1.8.0** (27.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+
+### Neu in v1.8.0 (Kurz)
+- **UX-Rationalisierung:** klare Seiten-Rollen + Captions; **Zeit-in-Zone** ist Leit-Intensität (ATL/CTL →
+  „Last-Trend" umbenannt); Konfidenz-Pattern (`components/ConfidenceBadge.tsx` + `ExpertDetails.tsx`) versteckt
+  unsichere Werte hinter „Experten-Details". **Bestzeiten modular** (`EditableGrid` page="bests"), **Profil**
+  über `opt-nav` aufgeräumt.
+- **Coach-Variation:** mehrsegmentiges Workout-Modell (`WorkoutSegment`/`segments`/`setsByFitness` in
+  `workouts.ts`, Render-Zweig TSS-neutral) + 8 neue Templates (Fartlek, Ladder, Cut-down, Mixed, gebrochener
+  Tempolauf, lange Bergintervalle, Renntempo-Float). **Coach-Matrix** Distanz×Niveau in `pickWeekWorkouts`.
+  **Block-Präferenzen** (`Availability.emphasis/favoriteWorkouts/avoidWorkouts`) gewichten advisory +
+  phasengerecht; `GET /api/workouts`.
+- **Tutorial-Profil:** `server/tutorial.ts` (`ensureTutorialProfile`/`regenerate`/`delete`) erzeugt beim ersten
+  Start ein eigenes Profil „Tutorial" mit vollem Beispieljahr (eigenes `profile_id`, idempotent, löschbar).
+  Hook in `index.ts`-Startup; `GET/POST/DELETE /api/tutorial[...]`. **Seiten-Hilfe** (`components/PageHelp.tsx`)
+  + **Methodik-Intro/Tour** (`components/OnboardingTour.tsx`).
+- **Watt-Analytik:** `runningEffectiveness` (Speed/Watt, Ökonomie-Trend) + `wPrimeBalance` (Skiba W′-bal) in
+  `load.ts`; `GET /api/run-effectiveness`, `GET /api/wprime/latest` (rekonstruiert die Watt-Kurve aus `efforts`+CP).
+  Anzeige in `charts/PowerCard.tsx`.
+- **DB:** keine Schema-Änderung (Block-Präferenzen im Availability-JSON; Tutorial auf eigenem `profile_id`).
+
+### Neu in v1.7.0 (Kurz)
+- **Adaptive Paces + Zielzeit:** Wunsch-Zielzeit am Ziel-Rennen (`races.goal_time_s`) → Fitness-Projektion
+  (`projectVdot`, gedeckelt) → Block-Paces ankern je Woche an der projizierten Fitness (`zonesForWeek` +
+  `danielsPaces`) und wachsen Richtung Zielpace. **Gelockte Einheiten** speichern ihre Intention
+  (`planned_sessions.prescription`) und werden beim Laden **live neu gerendert** (`resolvePlannedSession`,
+  Hook in `GET /api/sessions`). Gap-Karte `GET /api/plan/goal-gap` + `GoalGapCard` in WeekPlan.
+- **Scheduling:** `scheduleWeek` legt **nie zwei harte Tage hintereinander** (sonst Easy-Downgrade + Reason),
+  bevorzugt den **Berglauf-Tag** und hängt **Stabi/Core** an Easy-Tage. Doppel-Schwelle = **zwei** Einheiten am
+  selben Tag (`pair`-Marker). Profil-Felder: `hillDay`, `corePerWeek`, `coreDays`.
+- **Lauf-Power (Coros/Stryd-Stil):** Enrich zieht `watts` → `run_np` + `power_curve`; `fitCriticalPower`,
+  `powerZonesFromCp`, `runningStressScore` (load.ts); `GET /api/power-curve` + `/api/cp-trend`; `PowerCard`
+  in Bestzeiten; optionaler Watt-Anker in `renderWorkout` (`zones.cp`).
+- **Entkopplung = GAP** (steigungs-adjustiert) und nur für gleichmäßige Läufe. **Einheiten füllen jetzt die
+  Felder** (`renderWorkout` gibt `zone_alloc.byKm`, TSS-neutral). Phasen aus dem Block-Vorschlag setzbar
+  (`PUT /api/season/week/:no/phase` + „Phasen übernehmen").
+- **DB additiv:** `races.goal_time_s`, `planned_sessions.prescription`, `activities.run_np`, `activities.power_curve`.
 
 ---
 
@@ -52,6 +88,12 @@
   Sonst `DEFAULT_ZONE_PACE/SPEED`, `round1`. Typen `HrZone`/`PmcPoint`/`CsFit`. (`parseCorosLoad` entfernt.)
   **v1.5.0:** `effectiveVo2max({ngpSec,avgPaceSec,avgHr,decoupling,hrRest,hrMax})` → Pro-Lauf-VO2max
   (Daniels-Kosten + %VO2R≈%HRR), aggregat-basiert/backfillbar; Typ `EffVo2max`.
+  **v1.7.0:** `aerobicDecoupling(vel,hr,time,grade?)` jetzt **GAP** (steigungs-adjustiert). `danielsPaces(vdot)`
+  → E/M/T/I/R-Paces (s/km, validiert). Lauf-Power: `powerDurationCurve(watts,time)`, `fitCriticalPower(pts)`
+  (2-Param Work=CP·t+W′, Spiegel von `fitCriticalSpeed`), `powerZonesFromCp(cp)` (%CP, Stryd-nah),
+  `runningStressScore(np,cp,sec)` (RSS). `POWER_CURVE_DURATIONS`.
+  **v1.8.0:** `runningEffectiveness(distM,movS,powerW,massKg)` (Speed/Watt, Ökonomie), `wPrimeBalance(power[],time[],cp,wPrime)`
+  (Skiba W′-bal: Entleerung über CP, exp. Erholung darunter → Verlauf + min-Stand + Defizit-Zeit).
 - `analysis.ts` — `weekTotals`, `plannedSessionTss`, `typeIntensityShares` (Donut **nach Einheitstyp**),
   `zoneKmOf`/`zoneKmIntensityOf`, `classifyTss`, `weekRatingLevel`, `weekLoadFlag` + `kmPolarizationFlag`,
   **`sessionCompletion`** (Plan-% = TSS-Treffer + Pace-Zonen-Overlap), `intervalEffortStat`, `analyzeWeek`
@@ -60,6 +102,11 @@
   +5–7 CTL/Woche; Entlastung 55–65 %; Race-Week ~50 %; Krank 0–40 %); `analyzeWeek` liefert `tssRec`.
   **v1.5.0:** `adjustTodaySession(planned, ctx)` → `SessionAdjustment` (adaptiver Coach: TSB/Ramp/Readiness/Risiko
   → heutige Einheit re-konkretisieren; advisory|gate); in `/api/today` als `adjustment`.
+  **v1.7.0:** `projectVdot(curVdot, goalVdot, weeks, cap≈0.4)` → wöchentliche Fitness-Projektion (+`infeasible`);
+  `zonesForWeek(base, projVdot, goalDistanceM)` → projizierte Pace-Anker je Block-Woche; `resolvePlannedSession(presc,
+  date, ctx)` → Live-Render gelockter Einheiten aus aktueller+projizierter Fitness. `blockPlan` nimmt `curVdot`/
+  `goalTimeS` und rendert jede Woche mit `weekZones`; `BlockDay.prescription` trägt die Intention; `scheduleWeek`
+  spacing/`pair`/`downgrade` (s. planbuilder).
 - `index.ts` — alle Routen. `pid()`, `effectiveZoneSet`, `thresholds()` (+ `raceweek_tss_max_pct`), `dailyTssMap`,
   `earliestDataDate`, `avgPlannedWeeklyTss`/`avgWeeklyTss`, `addDaysIso`, **`ensureSeasonWeeks`** (2 Zukunftswochen
   + bis Renntag), **`syncRaceFromActivity`** (Race aus Tracking), `activityTssToStore`. Endpunkte u.a.:
@@ -69,11 +116,22 @@
   **v0.15 neu:** `GET /api/fitness-trend?from&to` (VDOT + CS-Prognosen je Wochenpunkt, Alters-Norm aus
   `server/norms.ts`); `POST /api/activities/:id/relink-efforts` (setzt `efforts_locked=0, laps_fetched=0,
   efforts=NULL` → nächster Sync zieht Laps neu); `PUT /api/activities/:id` setzt jetzt `efforts_locked=1`.
+  **v1.7.0:** `GET /api/plan/goal-gap` (Soll/Ist), `GET /api/power-curve` + `GET /api/cp-trend` (+ Helfer
+  `currentCp`/`aggregatePowerCurve`/`cpFromAgg`), `PUT /api/season/week/:no/phase` (Teil-Update); `GET /api/sessions`
+  rendert zukünftige Einheiten mit `prescription` live (`buildResolveCtx`); Block-/Resolver-Zonen tragen `cp`.
+  **v1.8.0:** `GET /api/workouts` (Bibliothek für Block-Präferenzen), `GET/POST/DELETE /api/tutorial[/regenerate]`
+  (Startup-Hook `ensureTutorialProfile`), `GET /api/run-effectiveness`, `GET /api/wprime/latest` (W′-bal aus
+  `efforts`+CP rekonstruiert); `currentCpFit` (cp+W′). Neues Modul **`server/tutorial.ts`** (Beispieljahr-Generator,
+  eigenes `profile_id`). Block-/Wochen-Route reicht `prefs` (emphasis/favorite/avoid) an `pickWeekWorkouts`.
 - `zones.ts` — `effectiveZoneSet(date)` / `effectiveZoneSetForSeed()` (profil-gefiltert; hr/pace/power-zones,
   lthr/ftp/threshold_pace, **`lt1_hr`/`lt1_pace`** — LT1-Anker; Default aus Z2/Z3-Grenze, von G3 überschreibbar).
 - `planbuilder.ts` (**neu v1.4.0**) — pure Modul (keine DB): `concretizeSession(type, targetTss, zones, opts)` →
   `ConcreteSession` (planned_min, zone_alloc.byMin, efforts, description, paceTarget). Invertiert exakt
   `rTssFromZones`. `scheduleWeek(units, availability, weekDates)` → `ScheduledUnit[]` (Tagesplaner).
+  **v1.7.0:** `scheduleWeek` strikt **kein harter Folgetag** (sonst `downgrade`→Easy), Hügel auf `availability.hillDay`,
+  Core an Easy-Tage/`coreDays`, Doppel-Schwelle via `pair` (AM+PM selber Tag, zählt als ein harter Tag).
+  `ConcreteSession.zone_alloc` jetzt `{byKm?|byMin?}`. (Workout-Bibliothek + Renderer: `server/workouts.ts`,
+  `renderWorkout` gibt `byKm`, optionaler Watt-Anker via `zones.cp`.)
 - `pacing.ts` (**neu v1.4.0**) — pure Modul: `pacingPlan({distanceM, targetTimeS, profile?, negativeSplit?})`
   → km-Splits mit GAP (Minetti-Gradient). Σ(pace_i·dist_i) == targetTimeS exakt.
 - `lactate.ts` (**neu v1.3.0**) — pure Modul (keine DB): `lactateThresholds(points)` → LT1 (Baseline+0.4 mmol/L
@@ -88,6 +146,8 @@
   **v0.15:** `extractWorkLaps` nutzt bei Bike-Aktivitäten `hr_zones_bike` (falls vorhanden); Auto-Labels
   (Z5+ → VO2long/VO2max, Z4 → LT2, sonst → LT1); `enrichBudgeted`-Kandidaten-Query schließt
   `efforts_locked=1` aus (Spalte `activities.efforts_locked`).
+  **v1.7.0:** Lauf-Streams ziehen jetzt `watts` mit → `run_np` (NP) + `power_curve` (Power-Duration);
+  `'{}'`-Sentinel verhindert Re-Fetch bei Läufen ohne Watt. Decoupling-Backfill = GAP + nur gleichmäßige Läufe.
 - `norms.ts` (**neu**) — `vo2maxLevel(value, age, sex)`: ACSM/Cooper-Perzentile je Altersband+Geschlecht →
   „Elite" | „Exzellent" | „Sehr gut" | „Durchschnitt" | „Unter Durchschnitt".
 - `import-scans.ts` (historisch), `reset-db.ts` (leere Vorlage). (`import-docx.ts`/Seed in v0.12.0 entfernt.)

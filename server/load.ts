@@ -262,11 +262,12 @@ export function paceZoneSplit(vel: number[], time: number[], paceZones?: number[
 }
 
 /**
- * Aerobe Entkopplung (Pa:HR, Friel — v1.2.0): %-Abweichung der Effizienz (Speed/HF) zweite vs. erste
- * Lauf-Hälfte. <5 % = solide aerobe Haltbarkeit, 5–10 % mittel, >10 % schwach. Positiv = Pace fällt
- * relativ zur HF (Ermüdung). Nur für längere (≥ 20 min) gleichmäßige Läufe sinnvoll; sonst null.
+ * Aerobe Entkopplung (Pa:HR, Friel — v1.2.0; v1.7.0 GAP): %-Abweichung der Effizienz (Speed/HF) zweite vs.
+ * erste Lauf-Hälfte. <5 % = solide aerobe Haltbarkeit, 5–10 % mittel, >10 % schwach. Positiv = Pace fällt
+ * relativ zur HF (Ermüdung). Mit `grade[]` (% je Sample) wird die **grade-adjustierte** Geschwindigkeit
+ * (Minetti, wie NGP) genutzt → an Hügeln nicht mehr verzerrt. Nur für gleichmäßige Läufe ≥ 20 min sinnvoll.
  */
-export function aerobicDecoupling(velocity: number[], hr: number[], time: number[]): number | null {
+export function aerobicDecoupling(velocity: number[], hr: number[], time: number[], grade?: number[]): number | null {
   const n = Math.min(velocity.length, hr.length, time.length);
   if (n < 60) return null;
   const total = (time[n - 1] ?? 0) - (time[0] ?? 0);
@@ -278,8 +279,9 @@ export function aerobicDecoupling(velocity: number[], hr: number[], time: number
     if (dt <= 0 || dt > 30) continue; // Lücken/Pausen überspringen
     const v = velocity[i] ?? 0, b = hr[i] ?? 0;
     if (v <= 0.3 || b <= 0) continue; // in Bewegung + gültige HF
-    if ((time[i] ?? 0) < mid) { s1 += v * dt; c1 += dt; h1 += b * dt; hc1 += dt; }
-    else { s2 += v * dt; c2 += dt; h2 += b * dt; hc2 += dt; }
+    const gv = grade ? v * gradeFactor((grade[i] ?? 0) / 100) : v; // grade-adjustierte Geschwindigkeit (GAP)
+    if ((time[i] ?? 0) < mid) { s1 += gv * dt; c1 += dt; h1 += b * dt; hc1 += dt; }
+    else { s2 += gv * dt; c2 += dt; h2 += b * dt; hc2 += dt; }
   }
   if (c1 < 60 || c2 < 60 || hc1 < 60 || hc2 < 60) return null;
   const ef1 = (s1 / c1) / (h1 / hc1); // Speed/HF erste Hälfte
@@ -483,6 +485,114 @@ export function fitCriticalSpeed(pts: { time_s: number; distance_m: number }[]):
   };
 }
 
+// ===================== v1.7.0 — Lauf-Power (Coros via Strava, Stryd-Stil) =====================
+
+/** Standard-Dauern (s) der Power-Duration-Kurve: 1/2/5/10/20/30/60 min. */
+export const POWER_CURVE_DURATIONS = [60, 120, 300, 600, 1200, 1800, 3600];
+
+/**
+ * Lauf-Power-Duration-Kurve: beste mittlere Leistung (W) je Dauer-Fenster aus Watt+Zeit-Stream.
+ * Annahme ~1 Hz (Strava-Streams) → Fenster = `dur` Samples, Bestmittel via Präfixsumme (O(n·|durs|)).
+ */
+export function powerDurationCurve(watts: number[], time: number[], durations: number[] = POWER_CURVE_DURATIONS): Record<number, number> {
+  const n = Math.min(watts.length, time.length);
+  const out: Record<number, number> = {};
+  if (n < 2) return out;
+  const totalDur = (time[n - 1] ?? n - 1) - (time[0] ?? 0);
+  const pre = new Array<number>(n + 1).fill(0);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + (watts[i] ?? 0);
+  for (const dur of durations) {
+    if (totalDur < dur * 0.9) continue;          // Aktivität zu kurz für dieses Fenster
+    const w = Math.min(n, Math.max(2, Math.round(dur)));
+    let best = 0;
+    for (let i = w; i <= n; i++) best = Math.max(best, (pre[i] - pre[i - w]) / w);
+    if (best > 0) out[dur] = Math.round(best);
+  }
+  return out;
+}
+
+export interface CpFit { cp: number; wPrime: number; rSquared: number | null; n: number }
+
+/**
+ * Critical Power (2-Parameter, Monod/Scherrer): Arbeit = CP·t + W′ → lineare Regression Arbeit über Zeit.
+ * Spiegel von `fitCriticalSpeed` (Distanz→Arbeit, CS→CP, D′→W′). `pts` = (Dauer s, mittlere Leistung W).
+ */
+export function fitCriticalPower(pts: { time_s: number; power_w: number }[]): CpFit | null {
+  if (pts.length < 2) return null;
+  const work = pts.map((p) => ({ t: p.time_s, w: p.power_w * p.time_s }));
+  const n = work.length;
+  const sx = work.reduce((s, p) => s + p.t, 0);
+  const sy = work.reduce((s, p) => s + p.w, 0);
+  const sxx = work.reduce((s, p) => s + p.t * p.t, 0);
+  const sxy = work.reduce((s, p) => s + p.t * p.w, 0);
+  const denom = n * sxx - sx * sx;
+  const cp = denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+  if (!(cp > 0)) return null;
+  const wPrime = (sy - cp * sx) / n;
+  const meanY = sy / n;
+  const ssTot = work.reduce((s, p) => s + (p.w - meanY) ** 2, 0);
+  const ssRes = work.reduce((s, p) => s + (p.w - (cp * p.t + wPrime)) ** 2, 0);
+  return { cp: Math.round(cp), wPrime: Math.round(wPrime), rSquared: ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 1000) / 1000 : null, n };
+}
+
+/** %CP-Power-Zonen (Stryd-nah): <81 / 81–90 / 90–100 / 100–110 / >110 % CP. */
+export function powerZonesFromCp(cp: number): { z: number; name: string; lo: number; hi: number | null }[] {
+  const p = (f: number) => Math.round(cp * f);
+  return [
+    { z: 1, name: "Locker", lo: 0, hi: p(0.81) },
+    { z: 2, name: "Moderat", lo: p(0.81), hi: p(0.90) },
+    { z: 3, name: "Schwelle", lo: p(0.90), hi: p(1.0) },
+    { z: 4, name: "VO2max", lo: p(1.0), hi: p(1.10) },
+    { z: 5, name: "Anaerob", lo: p(1.10), hi: null },
+  ];
+}
+
+/** Running Stress Score (Stryd): RSS = (Dauer h)·(NP/CP)²·100 — Power-Pendant zum rTSS. */
+export function runningStressScore(np: number, cp: number, seconds: number): number {
+  if (!(np > 0 && cp > 0 && seconds > 0)) return 0;
+  const intensity = np / cp;
+  return Math.round((seconds / 3600) * intensity * intensity * 100 * 10) / 10;
+}
+
+/**
+ * Running Effectiveness (Stryd-Stil, v1.8.0): Geschwindigkeit pro spezifischer Leistung = (m/s)·kg / W ≈ 1,0.
+ * Steigt RE bei gleicher Pace, läufst du ökonomischer. Masse ist ~konstant → der TREND ist masseunabhängig.
+ */
+export function runningEffectiveness(distanceM: number, movingS: number, powerW: number, massKg: number): number | null {
+  if (!(distanceM > 0 && movingS > 0 && powerW > 0 && massKg > 0)) return null;
+  const speed = distanceM / movingS; // m/s
+  return Math.round((speed * massKg / powerW) * 1000) / 1000;
+}
+
+export interface WPrimeResult { curve: { t: number; bal: number }[]; minBal: number; timeInDeficitS: number; wPrime: number; cp: number; tau: number }
+
+/**
+ * Skiba W′-bal (differenzielles Modell, v1.8.0): die anaerobe Reserve W′ entleert sich, wenn die Leistung über CP
+ * liegt, und erholt sich exponentiell (Zeitkonstante τ), wenn sie darunter liegt. `power`/`time` = Sekunden-Stream
+ * (echt oder aus der Intervall-Struktur rekonstruiert). Zeigt, ob die Pausen reichen (W′ nie tief negativ).
+ */
+export function wPrimeBalance(power: number[], time: number[], cp: number, wPrime: number): WPrimeResult {
+  const n = Math.min(power.length, time.length);
+  // τ nach Skiba 2012: DCP = CP − mittlere Erholungsleistung (Leistung unter CP).
+  let recSum = 0, recN = 0;
+  for (let i = 0; i < n; i++) if ((power[i] ?? 0) < cp) { recSum += power[i] ?? 0; recN += 1; }
+  const dcp = recN ? cp - recSum / recN : cp * 0.5;
+  const tau = 546 * Math.exp(-0.01 * dcp) + 316;
+  let bal = wPrime, minBal = wPrime, deficit = 0;
+  const curve: { t: number; bal: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const dt = i > 0 ? Math.max(1, (time[i] ?? i) - (time[i - 1] ?? i - 1)) : 1;
+    const p = power[i] ?? 0;
+    if (p > cp) bal -= (p - cp) * dt;
+    else bal += (wPrime - bal) * (1 - Math.exp(-dt / tau));
+    bal = Math.min(bal, wPrime);
+    if (bal < minBal) minBal = bal;
+    if (bal < 0) deficit += dt;
+    curve.push({ t: time[i] ?? i, bal: Math.round(bal) });
+  }
+  return { curve, minBal: Math.round(minBal), timeInDeficitS: deficit, wPrime, cp, tau: Math.round(tau) };
+}
+
 /** Renn-Prognosen t = (d − D′)/CS für die gegebenen Distanzen (m). */
 export function predictFromCs(csMps: number, dPrimeM: number, distances: number[]): { distance_m: number; time_s: number }[] {
   const out: { distance_m: number; time_s: number }[] = [];
@@ -520,4 +630,27 @@ export function predictFromVdot(targetVdot: number, distances: number[]): { dist
     if (t && t > 0) out.push({ distance_m: D, time_s: t });
   }
   return out;
+}
+
+/**
+ * Daniels-Trainingspaces (s/km) aus einem VDOT (v1.7.0): Easy/Marathon/Threshold/Interval/Rep.
+ * Inversion der Daniels-Laufkosten `VO2 = -4.6 + 0.182258·v + 0.000104·v²` (v in m/min) für die Ziel-VO2
+ * = %VO2max × VDOT je Zone (E 70 % · M 84 % · T 88 % · I 98 % · R 107 %). Validiert gegen Daniels-Tabellen.
+ */
+export function danielsPaces(vdotVal: number): { easy: number; marathon: number; threshold: number; interval: number; rep: number } {
+  const paceForPct = (pct: number): number => {
+    const vo2 = pct * vdotVal;                 // Ziel-VO2 (ml/kg/min)
+    const a = 0.000104, b = 0.182258, c = -4.6 - vo2;
+    const disc = b * b - 4 * a * c;
+    if (disc <= 0) return 0;
+    const v = (-b + Math.sqrt(disc)) / (2 * a); // m/min
+    return v > 0 ? Math.round(60000 / v) : 0;   // s/km
+  };
+  return {
+    easy: paceForPct(0.70),
+    marathon: paceForPct(0.84),
+    threshold: paceForPct(0.88),
+    interval: paceForPct(0.98),
+    rep: paceForPct(1.07),
+  };
 }

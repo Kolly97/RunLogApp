@@ -121,7 +121,8 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
     setBusy(true);
     setResult("Details/Splits werden nachgezogen…");
     try {
-      const r = await fetch("/api/strava/enrich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ after: seasonStart }) });
+      // v1.6.3: ab dem Import-Startdatum anreichern (nicht ab Saisonstart) → erfasst den ganzen Altbestand.
+      const r = await fetch("/api/strava/enrich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ after: syncFrom || seasonStart }) });
       const j = await r.json();
       setResult(r.ok ? `✓ ${j.enriched} Aktivitäten angereichert (Details, Streams, Intervalle aus Laps).` : `Fehler: ${j.error || r.status}`);
       loadProgress();

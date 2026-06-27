@@ -9,6 +9,9 @@ import { useSeason } from "../lib/hooks.ts";
 import { paceStr, secToClock, clockToSec, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
+import PowerCard from "../charts/PowerCard.tsx";
+import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 
 const PRED_LINES = [
   { key: "p5000", label: "5 km", color: "#0ea5e9", dist: 5000 },
@@ -93,9 +96,8 @@ export default function Bests() {
         </div>
       )}
 
-      {pbs.length > 0 && (
-        <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", alignItems: "start" }}>
-          {/* PB-Tabelle */}
+      <EditableGrid page="bests">
+        {pbs.length > 0 && <EgItem id="pb-table" title="Persönliche Bestzeiten" defaultSpan={6}>{() => (
           <div className="card">
             <div className="spread">
               <h2><T k="bests.pb.title">Persönliche Bestzeiten</T></h2>
@@ -151,8 +153,8 @@ export default function Bests() {
               </tbody>
             </table>
           </div>
-
-          {/* VO₂max (VDOT) + Renn-Prognose (Daniels) */}
+        )}</EgItem>}
+        {pbs.length > 0 && <EgItem id="vdot" title="VO₂max & Prognose" defaultSpan={6}>{() => (
           <div className="card">
             <h2><T k="bests.vdot.title">VO₂max & Prognose</T></h2>
             {vdot == null && <p className="tiny muted"><T k="bests.vdot.empty">Zu wenige Renndaten (≥1500 m, 3–30 min) für eine VDOT-Schätzung — kommt mit mehr Syncs.</T></p>}
@@ -182,13 +184,10 @@ export default function Bests() {
               </>
             )}
           </div>
-
-        </div>
-      )}
-
-      {(() => {
+        )}</EgItem>}
+        {pbs.length > 0 && <EgItem id="prediction" title="Renn-Prognose im Verlauf" defaultSpan={12} defaultHeight={300}>{() => {
         const predPoints = (fit?.points ?? []).filter((p) => p.p5000 != null || p.p10000 != null || p.p21097 != null || p.p42195 != null);
-        if (predPoints.length < 2) return null;
+        if (predPoints.length < 2) return <div className="card"><div className="spread"><h2><T k="bests.pred.title">Renn-Prognose im Verlauf</T></h2></div><p className="tiny muted">Noch kein Verlauf — kommt mit mehr Renndaten.</p></div>;
         // Y-Achse = Prognose-Pace (s/km) je Distanz → über die Strecken vergleichbar; die Zielzeit erscheint im Tooltip.
         const paceData = predPoints.map((p) => {
           const row: Record<string, number | string | null> = { date: p.date };
@@ -229,7 +228,10 @@ export default function Bests() {
             </ResponsiveContainer>
           </div>
         );
-      })()}
+      }}</EgItem>}
+        <EgItem id="power" title="Lauf-Power" defaultSpan={12}>{() => <PowerCard />}</EgItem>
+      </EditableGrid>
+      <PageHelp page="bests" />
     </div>
   );
 }

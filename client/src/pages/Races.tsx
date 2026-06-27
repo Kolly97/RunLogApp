@@ -5,6 +5,7 @@ import { api, type Race, type RaceSplit, type PacingResult } from "../lib/api.ts
 import { fmtDateY, paceStr, todayIso, num } from "../lib/util.ts";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import T from "../components/T.tsx";
+import PageHelp from "../components/PageHelp.tsx";
 import { useT } from "../lib/i18n.tsx";
 
 // "mm:ss" oder "h:mm:ss" -> Sekunden
@@ -71,6 +72,7 @@ export default function Races() {
           </tbody>
         </table>
       )}
+      <PageHelp page="races" />
     </div>
   );
 }
@@ -79,6 +81,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
   const [e, setE] = useState<Race>(race);
   const [kmStr, setKmStr] = useState(race.distance_m ? String(race.distance_m / 1000) : "");
   const [timeStr, setTimeStr] = useState(fmtTime(race.time_s));
+  const [goalStr, setGoalStr] = useState(fmtTime(race.goal_time_s)); // v1.7.0 Wunsch-Zielzeit
   const set = (p: Partial<Race>) => setE((x) => ({ ...x, ...p }));
   const splits = e.splits || [];
 
@@ -90,7 +93,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
   const delSplit = (i: number) => set({ splits: splits.filter((_, j) => j !== i) });
 
   async function save() {
-    const body: Race = { ...e, distance_m: kmStr ? Number(kmStr) * 1000 : null, time_s: parseTime(timeStr) };
+    const body: Race = { ...e, distance_m: kmStr ? Number(kmStr) * 1000 : null, time_s: parseTime(timeStr), goal_time_s: parseTime(goalStr) };
     if (e.id) await api.updateRace(e.id, body); else await api.addRace(body);
     onSaved();
   }
@@ -106,6 +109,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
         <label className="field"><span><T k="races.form.name">Name</T></span><input value={e.name ?? ""} onChange={(x) => set({ name: x.target.value })} placeholder="z.B. Olympia" /></label>
         <label className="field" style={{ gridColumn: "span 1" }}><span><T k="races.form.dist">Distanz (km)</T></span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10" /></label>
         <label className="field"><span><T k="races.form.time">Endzeit (h:mm:ss)</T></span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="26:20" /></label>
+        <label className="field"><span><T k="races.form.goalTime">Wunsch-Zielzeit (h:mm:ss)</T></span><input value={goalStr} onChange={(x) => setGoalStr(x.target.value)} placeholder="z.B. 36:00" title="Treibt die Pace-Progression der Trainings-Einheiten + den Soll/Ist-Abgleich" /></label>
         <label className="field"><span><T k="races.form.place">Platzierung</T></span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
         <label className="field"><span><T k="races.form.avgHr">Ø-HF (bpm)</T></span><input type="number" min="0" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} placeholder="z.B. 172" /></label>
         <label className="field"><span><T k="races.form.maxHr">Max-HF (bpm)</T></span><input type="number" min="0" value={e.max_hr ?? ""} onChange={(x) => set({ max_hr: num(x.target.value) })} placeholder="z.B. 188" /></label>

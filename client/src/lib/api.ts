@@ -8,6 +8,29 @@ export interface Race {
   placement?: string; notes?: string; splits?: RaceSplit[];
   max_hr?: number | null; avg_hr?: number | null; elevation_m?: number | null; source?: string;
   activity_id?: number | null; // v0.14.0: verknüpfte getrackte Einheit (Race aus Tracking)
+  goal_time_s?: number | null;  // v1.7.0: Wunsch-Zielzeit → treibt die Pace-Progression
+}
+export interface GoalGap {
+  race: { id: number; name: string; date: string; distance_m: number } | null;
+  weeks: number; curVdot: number | null; goalVdot: number | null;
+  predictedTimeS: number | null; goalTimeS: number | null; gapS: number | null;
+  reqVdotPerWeek: number | null; feasible: boolean | null; projEndTimeS: number | null;
+}
+// Lauf-Power (Coros via Strava, Stryd-Stil) — v1.7.0
+export interface PowerZoneBand { z: number; name: string; lo: number; hi: number | null }
+export interface PowerCurve {
+  window: number; n: number; curve: Record<number, number>; durations: number[];
+  cp: number | null; wPrime: number | null; rSquared: number | null;
+  zones: PowerZoneBand[];
+  recent: { date: string; name: string | null; runNp: number | null; rss: number | null }[];
+}
+export interface CpTrend { points: { date: string; cp: number }[] }
+export interface RunEffectiveness { window: number; mass: number; n: number; points: { date: string; re: number }[]; early: number | null; late: number | null; deltaPct: number | null }
+export interface WPrimeLatest {
+  available: boolean;
+  activity?: { id: number; date: string; name: string | null; type: string };
+  cp?: number; wPrime?: number; minBal?: number; minPct?: number; timeInDeficitS?: number; tau?: number;
+  curve?: { t: number; bal: number }[]; verdict?: string;
 }
 
 // Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
@@ -42,6 +65,7 @@ export interface PlannedSession {
   id?: number; date: string; week_no?: number | null; sport: string; type: string;
   planned_km?: number | null; planned_min?: number | null; zone_alloc?: ZoneAlloc | null;
   description?: string; structured?: unknown; efforts?: Effort[] | null; planned_tss?: number | null; sort_order?: number;
+  prescription?: Prescription | null; // v1.7.0 Live-Resolution-Intention
 }
 // Einheiten-Vorlage = Inhalt einer PlannedSession ohne Datum/Woche (per Klick in einen Tag einsetzbar).
 export interface SessionTemplate {
@@ -153,7 +177,14 @@ export interface Availability {
   hardDays?: number[];
   allowDoubles?: boolean;
   doubleDays?: number[];
+  hillDay?: number | null;      // v1.7.0: bevorzugter Berglauf-Tag
+  corePerWeek?: number | null;  // v1.7.0: Stabi/Core-Einheiten pro Woche
+  coreDays?: number[];          // v1.7.0: bevorzugte Core-Tage
+  emphasis?: string | null;     // v1.8.0: Block-Schwerpunkt
+  favoriteWorkouts?: string[];  // v1.8.0: bevorzugte Einheiten-IDs
+  avoidWorkouts?: string[];     // v1.8.0: zu vermeidende Einheiten-IDs
 }
+export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number }
 
 // v1.3.0 (Engine) — Wochen-/Block-Empfehlungs-Engine.
 export interface WeekSessionRec { type: string; count: number; tssShare: number; hint: string; }
@@ -192,10 +223,12 @@ export interface PacingResult {
 }
 
 // v1.4.0 (A5) — Block-/Mesoplaner: konkrete Tage + Wochen-Zusammenfassungen.
+export interface Prescription { templateId: string; progress: number; targetTss: number }
 export interface BlockDay {
   date: string; weekdayIdx: number; type: string; isSecond: boolean;
   planned_min: number; planned_tss: number; description: string;
-  zone_alloc: { byMin: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
+  zone_alloc: ZoneAlloc; efforts: Effort[] | null; paceTarget: number | null;
+  prescription?: Prescription | null; // v1.7.0 Live-Resolution
 }
 export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
@@ -341,6 +374,7 @@ export const api = {
 
   season: () => j<SeasonWeek[]>("/api/season"),
   saveWeek: (no: number, b: Partial<SeasonWeek>) => j(`/api/season/week/${no}`, { method: "PUT", body: JSON.stringify(b) }),
+  setWeekPhase: (no: number, phase: string) => j(`/api/season/week/${no}/phase`, { method: "PUT", body: JSON.stringify({ phase }) }), // v1.7.0
   deleteWeek: (no: number) => j(`/api/season/week/${no}`, { method: "DELETE" }),
 
   sessions: (q: { week?: number; from?: string; to?: string }) => {
@@ -399,6 +433,11 @@ export const api = {
   },
   addRace: (b: Race) => j<{ id: number }>("/api/races", { method: "POST", body: JSON.stringify(b) }),
   updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  goalGap: () => j<GoalGap>("/api/plan/goal-gap"),
+  powerCurve: (window = 90) => j<PowerCurve>(`/api/power-curve?window=${window}`), // v1.7.0
+  cpTrend: (months = 12) => j<CpTrend>(`/api/cp-trend?months=${months}`),
+  runEffectiveness: (window = 90) => j<RunEffectiveness>(`/api/run-effectiveness?window=${window}`), // v1.8.0
+  wprimeLatest: () => j<WPrimeLatest>("/api/wprime/latest"),
   deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
   importRacesFromSeason: () => j<{ created: number }>("/api/races/import-from-season", { method: "POST" }),
   racePacing: (id: number, q?: { target?: number; neg?: boolean }) => {
@@ -442,6 +481,10 @@ export const api = {
   // v1.4.0 (A1) — Verfügbarkeits-/Präferenz-Profil
   availability: () => j<Availability | null>("/api/availability"),
   saveAvailability: (b: Availability) => j<{ ok: boolean }>("/api/availability", { method: "PUT", body: JSON.stringify(b) }),
+  workouts: () => j<WorkoutInfo[]>("/api/workouts"), // v1.8.0 Bibliothek für Block-Präferenzen
+  tutorialStatus: () => j<{ id: number | null }>("/api/tutorial"), // v1.8.0 Tutorial-Profil
+  regenerateTutorial: () => j<{ ok: boolean; id: number }>("/api/tutorial/regenerate", { method: "POST" }),
+  deleteTutorial: () => j<{ ok: boolean }>("/api/tutorial", { method: "DELETE" }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),
