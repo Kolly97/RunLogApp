@@ -11,7 +11,6 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
-import OptimalZonesCard from "../charts/OptimalZonesCard.tsx";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
@@ -255,8 +254,6 @@ export default function Dashboard() {
         ),
       });
     }
-    // v1.9.0: berechnete optimale Zonen (Pace/HF/Watt) als Übersicht + Vorschlag.
-    list.push({ id: "optimal-zones", title: t("dashboard.block.optimalZones.title", "Optimale Zonen"), defaultSpan: 12, render: () => <OptimalZonesCard /> });
     return list;
   }
 }

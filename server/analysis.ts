@@ -45,7 +45,7 @@ export interface WeekTotals {
   byCategory: CategoryTotals; // ToDo 21: geplante Summen je Kategorie
 }
 
-const HARD_TYPES = new Set(["Threshold", "VO2", "Race", "Hill"]);
+const HARD_TYPES = new Set(["Threshold", "VO2", "Race", "Renntempo", "Hill"]);
 
 function isBikeSport(sport?: string | null): boolean {
   return !!sport && sport.startsWith("Bike");
@@ -92,7 +92,7 @@ export function sessionZoneMinutes(s: PlannedSession, zones: HrZone[], paceZones
   else if (s.type === "Threshold") {
     out[2] += min * 0.4;
     out[4] += min * 0.6;
-  } else if (s.type === "VO2" || s.type === "Race") {
+  } else if (s.type === "VO2" || s.type === "Race" || s.type === "Renntempo") {
     out[2] += min * 0.4;
     out[5] += min * 0.6;
   } else if (s.type === "Hill") {
@@ -620,6 +620,8 @@ export interface RegimeStat {
   csChange: number | null;   // Ø CS-Pace-Veränderung über Lag (s/km, negativ = schneller = besser)
   vdotChange: number | null; // Ø VDOT-Veränderung (positiv = besser)
   confidence: "hoch" | "mittel" | "niedrig";
+  fromDate: string | null;   // v1.10.0: Spanne der Wochen dieses Regimes (von)
+  toDate: string | null;     // … bis (Ende der letzten Woche)
 }
 export interface MethodInferenceResult {
   regimes: RegimeStat[];
@@ -653,7 +655,7 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
   const lagWeeks = opts?.lagWeeks ?? 3;
   const ctlBand = opts?.ctlBand ?? 8;
   const sorted = [...weeks].sort((a, b) => a.start_date.localeCompare(b.start_date));
-  const buckets = new Map<Regime, { cs: number[]; vd: number[] }>();
+  const buckets = new Map<Regime, { cs: number[]; vd: number[]; dates: string[] }>();
   for (let i = 0; i < sorted.length; i++) {
     const w = sorted[i];
     if (w.excluded) continue;
@@ -662,9 +664,10 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
     // CTL-Band-Confounder-Kontrolle: nur Paare mit stabiler Last.
     if (w.ctl != null && later.ctl != null && Math.abs(later.ctl - w.ctl) > ctlBand) continue;
     const regime = classifyWeekRegime(w);
-    const b = buckets.get(regime) ?? { cs: [], vd: [] };
+    const b = buckets.get(regime) ?? { cs: [], vd: [], dates: [] };
     if (w.csPace != null && later.csPace != null) b.cs.push(later.csPace - w.csPace);
     if (w.vdot != null && later.vdot != null) b.vd.push(later.vdot - w.vdot);
+    b.dates.push(w.start_date);
     buckets.set(regime, b);
   }
   const regimes: RegimeStat[] = [];
@@ -672,11 +675,14 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
     const nWeeks = Math.max(b.cs.length, b.vd.length);
     if (nWeeks === 0) continue;
     const confidence: RegimeStat["confidence"] = nWeeks >= 6 ? "hoch" : nWeeks >= 4 ? "mittel" : "niedrig";
+    const ds = [...b.dates].sort();
     regimes.push({
       regime, nWeeks,
       csChange: b.cs.length ? meanRound(b.cs, 1) : null,
       vdotChange: b.vd.length ? meanRound(b.vd, 1) : null,
       confidence,
+      fromDate: ds[0] ?? null,
+      toDate: ds.length ? addDaysIsoLocal(ds[ds.length - 1], 6) : null,
     });
   }
   // Ranken nach CS-Reaktion (negativ = schneller = besser); nur Regimes mit CS-Signal werten.
@@ -1244,6 +1250,7 @@ export function blockPlan(args: {
   goalDistanceM?: number | null; // v1.6.2: Zieldistanz → distanzgerechte Race-Specific-Auswahl
   curVdot?: number | null;       // v1.7.0: aktuelles VDOT (Start der Projektion)
   goalTimeS?: number | null;     // v1.7.0: Wunsch-Zielzeit → Ziel-VDOT (treibt die Pace-Progression)
+  tuneups?: { date: string; distanceM: number | null; goalTimeS: number | null }[]; // v1.10.0: Test-/Aufbauwettkämpfe
 }): BlockPlan {
   const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
   const outWeeks: BlockWeek[] = [];
@@ -1350,6 +1357,44 @@ export function blockPlan(args: {
       if (exist >= 0) days[exist] = raceEntry; else days.push(raceEntry);
       tssActual += raceTss - prevTss;
       projected.set(args.raceDate, (projected.get(args.raceDate) ?? 0) - prevTss + raceTss);
+    }
+
+    // v1.10.0: Test-/Aufbauwettkampf in dieser Woche — Mini-Taper (1–2 Tage davor locker) + 1 lockerer Tag danach,
+    // KEIN voller Taper/keine Recovery-Kaskade. Der Block läuft regulär Richtung Hauptrennen weiter.
+    for (const tu of args.tuneups ?? []) {
+      if (!w.dates.includes(tu.date)) continue;
+      const idx = w.dates.indexOf(tu.date);
+      // 1–2 Tage davor + 1 Tag danach: harte Einheiten entschärfen (locker).
+      for (let d = 0; d < days.length; d++) {
+        const di = w.dates.indexOf(days[d].date);
+        if (di < 0) continue;
+        const taper = di === idx - 1 || di === idx - 2 || di === idx + 1;
+        if (taper && HARD_TYPES.has(days[d].type)) {
+          const easyTss = Math.round(days[d].planned_tss * 0.5);
+          tssActual += easyTss - days[d].planned_tss;
+          projected.set(days[d].date, (projected.get(days[d].date) ?? 0) + easyTss - days[d].planned_tss);
+          days[d] = { ...days[d], type: "Easy", planned_tss: easyTss, planned_min: Math.round(days[d].planned_min * 0.7),
+            description: di > idx ? "Locker — Erholung nach Test-Wettkampf" : "Locker — Mini-Taper vor Test-Wettkampf",
+            zone_alloc: { byKm: {} }, efforts: null, prescription: null };
+        }
+      }
+      // Test-Rennen als Einheit setzen.
+      const tuTss = raceTssEstimate(tu.distanceM, tu.goalTimeS);
+      const tuKm = tu.distanceM && tu.distanceM > 0 ? Math.round(tu.distanceM / 100) / 10 : null;
+      const tuPaceS = tu.distanceM && tu.goalTimeS ? Math.round(tu.goalTimeS / (tu.distanceM / 1000)) : null;
+      const tuPs = tuPaceS ? `${Math.floor(tuPaceS / 60)}:${String(Math.round(tuPaceS % 60)).padStart(2, "0")}` : null;
+      const tuEntry: BlockDay = {
+        date: tu.date, weekdayIdx: idx, type: "Race", isSecond: false,
+        planned_min: tuKm && tuPaceS ? Math.round((tuKm * tuPaceS) / 60) : (tu.goalTimeS ? Math.round(tu.goalTimeS / 60) : 30),
+        planned_tss: tuTss,
+        description: `🏁 TEST-WETTKAMPF${tuKm ? ` · ${tuKm} km` : ""}${tuPs ? ` @ ${tuPs}/km` : ""}`,
+        zone_alloc: { byKm: tuKm ? { 4: tuKm } : {} }, efforts: null, paceTarget: tuPaceS, prescription: null,
+      };
+      const tui = days.findIndex((d) => d.date === tu.date);
+      const tuPrev = tui >= 0 ? days[tui].planned_tss : 0;
+      if (tui >= 0) days[tui] = tuEntry; else days.push(tuEntry);
+      tssActual += tuTss - tuPrev;
+      projected.set(tu.date, (projected.get(tu.date) ?? 0) - tuPrev + tuTss);
     }
 
     if (rec.confidence === "niedrig") lowConf = true;
@@ -1492,7 +1537,7 @@ export function zoneKmOf(sessions: PlannedSession[], zones: HrZone[], paceZones?
     }
     if (s.type === "Easy" || s.type === "Long") zk[2] += km;
     else if (s.type === "Threshold") { zk[2] += km * 0.4; zk[4] += km * 0.6; }
-    else if (s.type === "VO2" || s.type === "Race") { zk[2] += km * 0.4; zk[5] += km * 0.6; }
+    else if (s.type === "VO2" || s.type === "Race" || s.type === "Renntempo") { zk[2] += km * 0.4; zk[5] += km * 0.6; }
     else if (s.type === "Hill") { zk[2] += km * 0.5; zk[4] += km * 0.5; }
     else zk[2] += km;
   }

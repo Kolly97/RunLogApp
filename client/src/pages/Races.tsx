@@ -108,6 +108,10 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
         <label className="field" style={{ gridColumn: "span 1" }}><span><T k="races.form.dist">Distanz (km)</T></span><input type="number" step="0.1" min="0" value={kmStr} onChange={(x) => setKmStr(x.target.value)} placeholder="z.B. 10" /></label>
         <label className="field"><span><T k="races.form.time">Endzeit (h:mm:ss)</T></span><input value={timeStr} onChange={(x) => setTimeStr(x.target.value)} placeholder="26:20" /></label>
         <label className="field"><span><T k="races.form.goalTime">Wunsch-Zielzeit (h:mm:ss)</T></span><input value={goalStr} onChange={(x) => setGoalStr(x.target.value)} placeholder="z.B. 36:00" title="Treibt die Pace-Progression der Trainings-Einheiten + den Soll/Ist-Abgleich" /></label>
+        <label className="field"><span><T k="races.form.tuneup">Wettkampf-Art</T></span>
+          <select value={e.is_tuneup ? "yes" : "no"} onChange={(x) => set({ is_tuneup: x.target.value === "yes" })} title="Test-/Aufbauwettkampf: der Block plant mit Mini-Taper (kein voller Taper) drumherum und liefert einen Fortschritts-Check.">
+            <option value="no">Hauptrennen</option><option value="yes">Test-/Aufbauwettkampf</option>
+          </select></label>
         <label className="field"><span><T k="races.form.place">Platzierung</T></span><input value={e.placement ?? ""} onChange={(x) => set({ placement: x.target.value })} placeholder="z.B. 12. AK / 45. gesamt" /></label>
         <label className="field"><span><T k="races.form.avgHr">Ø-HF (bpm)</T></span><input type="number" min="0" value={e.avg_hr ?? ""} onChange={(x) => set({ avg_hr: num(x.target.value) })} placeholder="z.B. 172" /></label>
         <label className="field"><span><T k="races.form.maxHr">Max-HF (bpm)</T></span><input type="number" min="0" value={e.max_hr ?? ""} onChange={(x) => set({ max_hr: num(x.target.value) })} placeholder="z.B. 188" /></label>

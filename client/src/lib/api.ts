@@ -9,6 +9,11 @@ export interface Race {
   max_hr?: number | null; avg_hr?: number | null; elevation_m?: number | null; source?: string;
   activity_id?: number | null; // v0.14.0: verknüpfte getrackte Einheit (Race aus Tracking)
   goal_time_s?: number | null;  // v1.7.0: Wunsch-Zielzeit → treibt die Pace-Progression
+  is_tuneup?: number | boolean | null; // v1.10.0: Test-/Aufbauwettkampf (Mini-Taper statt voller Taper)
+}
+export interface TuneupProgress {
+  tuneup: { date: string; name: string | null; distanceM: number; timeS: number; vdot: number; expectedTimeS: number | null; vsExpectedS: number | null } | null;
+  goal?: { date: string; distanceM: number; goalTimeS: number; goalVdot: number; weeksTo: number; predictedTimeS: number | null; deltaS: number | null; status: "ahead" | "on_track" | "behind" | "unknown" };
 }
 export interface GoalGap {
   race: { id: number; name: string; date: string; distance_m: number } | null;
@@ -162,11 +167,19 @@ export interface LactateTestPoint {
   speed_kmh?: number | null; pace_s?: number | null; power_w?: number | null;
   hr?: number | null; lactate: number; rpe?: number | null;
 }
+export interface LactateThresholdPoint { speed_kmh: number; pace_s: number; hr: number | null; lactate: number }
+export interface LactateAnalysis {
+  lt1: LactateThresholdPoint | null; lt2: LactateThresholdPoint | null;
+  baseline: number; method: string; confidence: string; warnings: string[];
+  fixed2: LactateThresholdPoint | null; fixed4: LactateThresholdPoint | null; fatmax: LactateThresholdPoint | null;
+  r2: number | null; curve: { speed_kmh: number; pace_s: number; lactate: number }[];
+}
 export interface LactateTest {
   id: number; profile_id: number; date: string; sport: string; kind?: string | null; notes?: string | null;
   lt1_hr?: number | null; lt1_pace?: number | null; lt2_hr?: number | null; lt2_pace?: number | null;
   confidence?: string | null; warnings: string[]; created_at: string;
   points?: LactateTestPoint[];
+  analysis?: LactateAnalysis | null; // v1.10.0 volle Auswertung (vom GET /:id)
 }
 export interface LactateThresholdResult {
   lt1: { speed_kmh: number; pace_s: number; hr: number | null; lactate: number } | null;
@@ -196,7 +209,7 @@ export interface Availability {
   favoriteWorkouts?: string[];  // v1.8.0: bevorzugte Einheiten-IDs
   avoidWorkouts?: string[];     // v1.8.0: zu vermeidende Einheiten-IDs
 }
-export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number; custom?: boolean }
+export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number; custom?: boolean; workZone?: number; anchor?: string | null; kind?: string }
 // Eigene Einheiten (v1.9.0, Z14)
 export type CustomFamily = "Easy" | "Long" | "LT1" | "LT2" | "VO2" | "Hill" | "Speed";
 export interface CustomInput {
@@ -312,7 +325,7 @@ export interface MethodEvaluation {
   note: string;
 }
 export interface MethodEvaluationResult {
-  experiment: MethodExperiment;
+  experiment?: MethodExperiment; // bei Regime-/Range-Auswertung nicht gesetzt (v1.10.0)
   window: number;
   start: Markers;
   end: Markers;
@@ -324,6 +337,8 @@ export interface RegimeStat {
   csChange: number | null;
   vdotChange: number | null;
   confidence: "hoch" | "mittel" | "niedrig";
+  fromDate?: string | null; // v1.10.0 Zeitraum der Regime-Wochen
+  toDate?: string | null;
 }
 export interface MethodInferenceResult {
   regimes: RegimeStat[];
@@ -384,6 +399,8 @@ export const api = {
   deleteMethodExperiment: (id: number) => j<{ ok: true }>(`/api/method-experiments/${id}`, { method: "DELETE" }),
   methodEvaluation: (id: number, window?: number) =>
     j<MethodEvaluationResult>(`/api/method-experiments/${id}/evaluation${window ? `?window=${window}` : ""}`),
+  rangeEvaluation: (from: string, to: string, window = 14) => // v1.10.0: Auswertung eines Regime-Abschnitts
+    j<MethodEvaluationResult>(`/api/range-evaluation?from=${from}&to=${to}&window=${window}`),
   markers: (date?: string, window?: number) => {
     const p = new URLSearchParams();
     if (date) p.set("date", date);
@@ -455,6 +472,7 @@ export const api = {
   addRace: (b: Race) => j<{ id: number }>("/api/races", { method: "POST", body: JSON.stringify(b) }),
   updateRace: (id: number, b: Race) => j(`/api/races/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   goalGap: () => j<GoalGap>("/api/plan/goal-gap"),
+  tuneupProgress: () => j<TuneupProgress>("/api/tuneup-progress"), // v1.10.0
   powerCurve: (window = 90) => j<PowerCurve>(`/api/power-curve?window=${window}`), // v1.7.0
   cpTrend: (months = 12) => j<CpTrend>(`/api/cp-trend?months=${months}`),
   optimalZones: () => j<OptimalZonesResult>("/api/optimal-zones"), // v1.9.0

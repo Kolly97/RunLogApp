@@ -13,6 +13,11 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
     "'Phasen übernehmen' schreibt die Periodisierung in den Saisonplan. Die Phase-Pille ist klickbar.",
     "Die Paces der übernommenen Einheiten passen sich live an deine projizierte Fitness Richtung Wunsch-Zielzeit an.",
   ] },
+  coach: { title: "Coach — Training gestalten", bullets: [
+    "Wettkampf-Block: kompletter Mesozyklus bis zum Renntag (inkl. Taper + Erholung) — pro Woche selektiv in die Wochenplanung übernehmbar; 'Phasen übernehmen' schreibt die Periodisierung in den Saisonplan.",
+    "Optimale Zonen (Pace/HF/Watt) aus deinen Laufwerten + Verfügbarkeit & Einheiten-Vorlieben (Schwerpunkt, Lieblings/Vermeiden) + eigene Einheiten.",
+    "Der wöchentliche Vorschlag bleibt in der Wochenplanung — hier planst du den großen Bogen.",
+  ] },
   track: { title: "Tracking — gelaufene Einheiten", bullets: [
     "Hier erscheinen Strava-Importe und manuelle Einträge. Intervalle inkl. Pausen sind erfassbar.",
     "TSS wird geräteneutral aus Pace/NGP gegen deine Schwelle berechnet — unabhängig vom Uhren-Wert.",

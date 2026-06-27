@@ -15,6 +15,7 @@ import Settings from "./pages/Settings.tsx";
 import ProfilePage from "./pages/Profile.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
 import Lernen from "./pages/Lernen.tsx";
+import Coach from "./pages/Coach.tsx";
 import { PageActionsProvider, PageActionsBar } from "./components/PageActionsBar.tsx";
 import Coachmark from "./components/Coachmark.tsx";
 import pkg from "../../package.json";
@@ -25,6 +26,7 @@ const BUILD_DATE = "27.06.2026"; // v1.8.0
 const NAV = [
   { to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true },
   { to: "/plan", ico: "✎", tk: "nav.plan", label: "Wochenplanung" },
+  { to: "/coach", ico: "🧭", tk: "nav.coach", label: "Coach" },
   { to: "/track", ico: "✓", tk: "nav.track", label: "Tracking" },
   { to: "/report", ico: "🖨", tk: "nav.report", label: "Wochenbericht" },
   { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
@@ -60,6 +62,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/plan" element={<WeekPlan />} />
+            <Route path="/coach" element={<Coach />} />
             <Route path="/track" element={<WeekTrack />} />
             <Route path="/report" element={<WeekReport />} />
             <Route path="/longterm" element={<LongTerm />} />

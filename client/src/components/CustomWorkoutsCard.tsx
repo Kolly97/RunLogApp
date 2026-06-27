@@ -1,8 +1,10 @@
 // Eigene Einheiten (v1.9.0, Z14): Coach-Formular → die App schätzt Familie/Anstrengung/TSS vor → anlegen.
 // Angelegte Einheiten erscheinen im Lieblings/Vermeiden-Picker und (als Favorit) im Wochen-Vorschlag.
-import { useEffect, useState } from "react";
-import { api, type CustomInput, type CustomEstimate, type CustomWorkout, type CustomFamily } from "../lib/api.ts";
+import { Fragment, useEffect, useState } from "react";
+import { api, type CustomInput, type CustomEstimate, type CustomWorkout, type CustomFamily, type WorkoutInfo } from "../lib/api.ts";
 
+const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO2max", "Anaerob"]; // Z1..Z6
+const FAMILY_ORDER = ["Easy", "Long", "LT1", "LT2", "VO2", "Hill", "Speed", "Race"]; // Sortierung der Katalog-Tabelle
 const FAMILIES: { v: CustomFamily; l: string }[] = [
   { v: "Easy", l: "Easy" }, { v: "Long", l: "Long" }, { v: "LT1", l: "LT1 · sub-Schwelle" },
   { v: "LT2", l: "LT2 · Schwelle" }, { v: "VO2", l: "VO2max" }, { v: "Hill", l: "Berg" }, { v: "Speed", l: "Schnelligkeit" },
@@ -10,11 +12,15 @@ const FAMILIES: { v: CustomFamily; l: string }[] = [
 
 export default function CustomWorkoutsCard() {
   const [list, setList] = useState<CustomWorkout[]>([]);
+  const [catalog, setCatalog] = useState<WorkoutInfo[]>([]); // v1.10.0: ganzer Katalog (Bibliothek + eigene)
   const [form, setForm] = useState<CustomInput>({ name: "", family: "LT2", kind: "intervals", workZone: 4, reps: 5, repSec: 600, restSec: 90 });
   const [repUnit, setRepUnit] = useState<"sec" | "dist">("sec");
   const [est, setEst] = useState<CustomEstimate | null>(null);
   const [msg, setMsg] = useState("");
-  const load = () => api.customWorkouts().then(setList).catch(() => setList([]));
+  const load = () => {
+    api.customWorkouts().then(setList).catch(() => setList([]));
+    api.workouts().then(setCatalog).catch(() => setCatalog([]));
+  };
   useEffect(() => { load(); }, []);
 
   // Live-Schätzung (debounced), sobald ein Name steht.
@@ -42,7 +48,7 @@ export default function CustomWorkoutsCard() {
         <label className="field" style={fld}><span>Name</span><input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="z. B. Mein 8×400 Berg" /></label>
         <label className="field" style={fld}><span>Familie</span><select value={form.family} onChange={(e) => set({ family: e.target.value as CustomFamily })}>{FAMILIES.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}</select></label>
         <label className="field" style={fld}><span>Art</span><select value={form.kind} onChange={(e) => set({ kind: e.target.value as "steady" | "intervals" })}><option value="intervals">Intervalle</option><option value="steady">Dauerlauf</option></select></label>
-        <label className="field" style={fld}><span>Intensitäts-Zone</span><select value={form.workZone} onChange={(e) => set({ workZone: Number(e.target.value) })}>{[1, 2, 3, 4, 5, 6].map((z) => <option key={z} value={z}>Z{z}</option>)}</select></label>
+        <label className="field" style={fld}><span>Intensitäts-Zone</span><select value={form.workZone} onChange={(e) => set({ workZone: Number(e.target.value) })}>{ZONE_NAMES.map((nm, i) => <option key={i + 1} value={i + 1}>Z{i + 1} · {nm}</option>)}</select></label>
       </div>
 
       {form.kind === "steady" ? (
@@ -74,20 +80,45 @@ export default function CustomWorkoutsCard() {
         {msg && <span className="tiny" style={{ color: "var(--ok)" }}>{msg}</span>}
       </div>
 
-      {list.length > 0 && (
-        <div style={{ marginTop: 12, borderTop: "1px solid #eef2f7", paddingTop: 8 }}>
-          <div className="tiny muted" style={{ marginBottom: 4 }}>Angelegt ({list.length}):</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {list.map((w) => (
-              <span key={w.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--border, #e3e8ef)", borderRadius: 8, padding: "3px 8px", fontSize: 12 }}>
-                <span style={{ fontWeight: 600 }}>{w.name}</span>
-                <span className="muted tiny">{w.family} · Z{w.template?.workZone} · {w.template?.effort}/5</span>
-                <button className="sm ghost" style={{ padding: "0 5px", color: "var(--danger)" }} onClick={() => del(w.id)} title="Löschen">✕</button>
-              </span>
-            ))}
+      {/* Ganzer Katalog (Bibliothek + eigene), nach Familie/Zone — Doppelte vermeiden, Lücken sehen (v1.10.0). */}
+      {catalog.length > 0 && (() => {
+        const famRank = (f: string) => { const i = FAMILY_ORDER.indexOf(f); return i < 0 ? 99 : i; };
+        const fams = Array.from(new Set(catalog.map((w) => w.family))).sort((a, b) => famRank(a) - famRank(b) || a.localeCompare(b));
+        const custCount = catalog.filter((w) => w.custom).length;
+        const delId = (info: WorkoutInfo) => list.find((c) => c.template?.id === info.id)?.id ?? null;
+        return (
+          <div style={{ marginTop: 12, borderTop: "1px solid #eef2f7", paddingTop: 8 }}>
+            <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 4 }}>Alle Einheiten ({catalog.length}, davon {custCount} eigene) — nach Familie &amp; Zone</div>
+            <div style={{ maxHeight: 320, overflow: "auto" }}>
+              <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                <thead><tr style={{ color: "var(--muted)", textAlign: "left", position: "sticky", top: 0, background: "var(--bg, #fff)" }}>
+                  <th style={{ padding: "2px 6px" }}>Name</th><th>Zone</th><th>Anstr.</th><th>Anker</th><th>Quelle</th><th />
+                </tr></thead>
+                <tbody>
+                  {fams.map((fam) => {
+                    const rows = catalog.filter((w) => w.family === fam).sort((a, b) => (a.workZone ?? 0) - (b.workZone ?? 0) || a.name.localeCompare(b.name));
+                    return (
+                      <Fragment key={fam}>
+                        <tr><td colSpan={6} style={{ fontWeight: 700, padding: "6px 6px 2px", color: "var(--text)" }}>{fam}</td></tr>
+                        {rows.map((w) => (
+                          <tr key={w.id} style={{ borderTop: "1px solid var(--border-faint,#f0f2f5)", background: w.custom ? "rgba(16,185,129,0.06)" : undefined }}>
+                            <td style={{ padding: "3px 6px" }} title={w.purpose}>{w.name}</td>
+                            <td className="muted nowrap">{w.workZone ? `Z${w.workZone} · ${ZONE_NAMES[w.workZone - 1] ?? ""}` : "—"}</td>
+                            <td className="muted">{w.effort}/5</td>
+                            <td className="muted">{w.anchor ?? "—"}</td>
+                            <td className="tiny">{w.custom ? <span style={{ color: "var(--ok)", fontWeight: 600 }}>eigen</span> : <span className="muted">Bibliothek</span>}</td>
+                            <td>{w.custom && delId(w) != null && <button className="sm ghost" style={{ padding: "0 5px", color: "var(--danger)" }} onClick={() => del(delId(w)!)} title="Löschen">✕</button>}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

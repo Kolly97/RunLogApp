@@ -5,8 +5,6 @@ import { api, type Profile } from "../lib/api.ts";
 import ZoneSets from "../components/ZoneSets.tsx";
 import LactateTests from "../components/LactateTests.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
-import AvailabilityCard from "../components/AvailabilityCard.tsx";
-import CustomWorkoutsCard from "../components/CustomWorkoutsCard.tsx";
 import Vo2maxLabCard from "../components/Vo2maxLab.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
@@ -51,7 +49,6 @@ export default function ProfilePage() {
   const SECTIONS = [
     { key: "athlete", title: t("profile.sec.athlete", "Athlet") },
     { key: "zones", title: t("profile.sec.zones", "Zonen & Schwellen") },
-    { key: "availability", title: t("profile.sec.availability", "Verfügbarkeit & Block-Präferenzen") },
     { key: "tests", title: t("profile.sec.tests", "Leistungstests") },
     { key: "accounts", title: t("profile.sec.accounts", "Profile / Accounts") },
   ];
@@ -60,7 +57,7 @@ export default function ProfilePage() {
     <div>
       <h1><T k="profile.title">Profil</T></h1>
       <p className="muted tiny" style={{ marginTop: -4 }}>
-        <T k="profile.hint">Athlet, Zonen, Verfügbarkeit, Block-Präferenzen und Leistungstests des aktiven Profils — links den Bereich wählen.</T>
+        <T k="profile.hint">Athlet, Zonen/Schwellen und Leistungstests des aktiven Profils — Verfügbarkeit, Vorlieben & eigene Einheiten findest du jetzt im Coach.</T>
       </p>
       {msg && <div className="flag ok"><span className="dot" /><span>{msg}</span></div>}
 
@@ -75,7 +72,6 @@ export default function ProfilePage() {
         <div className="opt-panel" key={section}>
           {section === "athlete" && <AthleteCard />}
           {section === "zones" && <ZoneSets />}
-          {section === "availability" && <><AvailabilityCard /><CustomWorkoutsCard /></>}
           {section === "tests" && <><LactateTests /><Vo2maxLabCard /></>}
           {section === "accounts" && (
             <div className="card">

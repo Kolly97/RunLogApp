@@ -7,7 +7,7 @@
 // Zeitraum über RangeSelector (Default 6 Monate); „Drucken/PDF" druckt den eingestellten Zeitraum.
 import { useEffect, useState, Fragment } from "react";
 import {
-  ComposedChart, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
 import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend } from "../lib/api.ts";
@@ -44,6 +44,22 @@ const METRICS: { key: string; title: string; color: string; fmt?: Fmt; refY?: nu
 ];
 
 interface WPoint { date: string; [k: string]: number | string | null; }
+
+// v1.10.0: 7-Tage-gleitendes Mittel + Streuband (Min/Max im Fenster) je Metrik — für lange Zeiträume (image-19),
+// damit nicht jeder Tag als Rauschen geplottet wird.
+function rollingSeries(points: WPoint[], key: string): { date: string; avg: number; lo: number; hi: number }[] {
+  const withVal = points.filter((p) => typeof p[key] === "number").map((p) => ({ date: p.date, v: p[key] as number }));
+  const out: { date: string; avg: number; lo: number; hi: number }[] = [];
+  let lo = 0;
+  for (let i = 0; i < withVal.length; i++) {
+    const cutoff = addDays(withVal[i].date, -6);
+    while (lo < i && withVal[lo].date < cutoff) lo++;
+    const win = withVal.slice(lo, i + 1).map((w) => w.v);
+    const avg = win.reduce((a, b) => a + b, 0) / win.length;
+    out.push({ date: withVal[i].date, avg: Math.round(avg * 100) / 100, lo: Math.min(...win), hi: Math.max(...win) });
+  }
+  return out;
+}
 
 function wellnessPoints(daily: DailyLog[]): WPoint[] {
   return [...daily]
@@ -178,19 +194,24 @@ export default function LongTerm() {
       return inRange.length ? { x1: inRange[0], x2: inRange[inRange.length - 1] } : null;
     })
     .filter((x): x is { x1: string; x2: string } => x != null);
-  // 8-Wochen-Referenz: Mittelwert + ±1σ aus den letzten 56 Tagen je Wellness-Metrik.
-  const refCutoff = addDays(todayIso(), -56);
-  const wellnessRef = new Map<string, { mean: number; lo: number; hi: number }>();
+  // Normal-Bereich (v1.10.0, image-18): Mittelwert ± 1σ aus den letzten 30 Tagen je Wellness-Metrik + aktueller
+  // Wert/Status (niedrig/normal/hoch). Lange Zeiträume (≥ ~6 Monate) werden zusätzlich auf 7-Tage-Mittel geglättet.
+  const refCutoff = addDays(todayIso(), -30);
+  const wellnessRef = new Map<string, { mean: number; lo: number; hi: number; latest: number | null; status: "niedrig" | "normal" | "hoch" | null }>();
   for (const m of METRICS) {
-    const vals = points
-      .filter((p) => p.date >= refCutoff && p[m.key] != null)
-      .map((p) => p[m.key] as number);
-    if (vals.length >= 4) {
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
-      wellnessRef.set(m.key, { mean, lo: mean - std, hi: mean + std });
+    const recent = points.filter((p) => p.date >= refCutoff && typeof p[m.key] === "number").map((p) => p[m.key] as number);
+    if (recent.length >= 4) {
+      const mean = recent.reduce((a, b) => a + b, 0) / recent.length;
+      const std = Math.sqrt(recent.reduce((a, b) => a + (b - mean) ** 2, 0) / recent.length);
+      const lo = mean - std, hi = mean + std;
+      const latestPt = [...points].reverse().find((p) => typeof p[m.key] === "number");
+      const latest = latestPt ? (latestPt[m.key] as number) : null;
+      const status = latest == null ? null : latest < lo ? "niedrig" : latest > hi ? "hoch" : "normal";
+      wellnessRef.set(m.key, { mean, lo, hi, latest, status });
     }
   }
+  const spanDays = points.length >= 2 ? (Date.parse(points[points.length - 1].date) - Date.parse(points[0].date)) / 86400000 : 0;
+  const longView = spanDays >= 175; // ab ~6 Monaten: 7-Tage-Mittel + Streuband statt Tagespunkte
 
   const eff = easyRunWeeks(acts);
   // Krank-Wochen ohne Easy-Lauf haben keinen Punkt → die Wochen-Montage als leere Punkte ergänzen, damit die
@@ -323,9 +344,39 @@ export default function LongTerm() {
       {visibleMetrics.map((m) => (
         <EgItem key={m.key} id={`wellness-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={150}>{() => (
             <div className="card chart-card tight">
-              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>
+                {m.title}
+                {wellnessRef.has(m.key) && (() => {
+                  const r = wellnessRef.get(m.key)!;
+                  const fv = (v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10));
+                  const sc = r.status === "normal" ? "var(--ok)" : "var(--warn)";
+                  return (
+                    <span style={{ fontWeight: 400 }}> · Normal {fv(r.lo)}–{fv(r.hi)}
+                      {r.latest != null && <> · <span style={{ color: sc, fontWeight: 600 }}>aktuell {fv(r.latest)} {r.status}</span></>}
+                    </span>
+                  );
+                })()}
+              </div>
               {m.key === "bed_dev" ? (
                 <SleepWindow data={sleepRows} xTickFormatter={fmtDate} height={135} />
+              ) : longView ? (
+                <ResponsiveContainer width="100%" height={135}>
+                  <ComposedChart data={rollingSeries(points, m.key).map((p) => ({ date: p.date, avg: p.avg, band: [p.lo, p.hi] }))} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
+                    <CartesianGrid stroke="#eef1f5" vertical={false} />
+                    {sickSegments.map((s, i) => <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />)}
+                    <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]} reversed={m.reversed} tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))} />
+                    <Tooltip labelFormatter={(d) => fmtDateY(String(d))} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                      formatter={(v: number | number[], n: string) => {
+                        const fv = (x: number) => (m.fmt ? m.fmt(x) : String(Math.round(x * 10) / 10));
+                        if (Array.isArray(v)) return [`${fv(v[0])}–${fv(v[1])}`, "Streuband"]; // Band-Wert = [lo, hi]
+                        return [fv(v), n === "avg" ? "7-Tage-Ø" : n];
+                      }} />
+                    <Area dataKey="band" stroke="none" fill={m.color} fillOpacity={0.13} isAnimationActive={false} legendType="none" name="Streuband" />
+                    <Line type="monotone" dataKey="avg" stroke={m.color} strokeWidth={1.8} dot={false} connectNulls isAnimationActive={false} />
+                    <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} years={wellnessYears} />} />
+                  </ComposedChart>
+                </ResponsiveContainer>
               ) : (
               <ResponsiveContainer width="100%" height={135}>
                 <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>

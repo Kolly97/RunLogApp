@@ -385,6 +385,8 @@ function migrate(): void {
   addColumn("races", "activity_id", "INTEGER");
   // v1.7.0: Wunsch-Zielzeit (s) für ein Ziel-Rennen → treibt die Pace-Progression der Block-Einheiten.
   addColumn("races", "goal_time_s", "INTEGER");
+  // v1.10.0: Test-/Aufbauwettkampf-Flag — der Block plant mit Mini-Taper (kein voller Taper) drumherum.
+  addColumn("races", "is_tuneup", "INTEGER DEFAULT 0");
   // v1.7.0: Live-Resolution — gespeicherte Einheit hält ihre Intention (Workout-Template + Progression),
   // damit Pace/HF bei Fitness-Änderung neu berechnet werden können. JSON {templateId, progress, raceId}.
   addColumn("planned_sessions", "prescription", "TEXT");

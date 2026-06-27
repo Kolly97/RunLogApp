@@ -30,6 +30,12 @@ export interface LactateThresholds {
   method: "modified-dmax" | "dmax";       // welche Sekante für LT2 genutzt wurde
   confidence: "hoch" | "mittel" | "niedrig";
   warnings: string[];
+  // v1.10.0 — Zusatz-Angaben
+  fixed2: ThresholdPoint | null;          // fixe 2-mmol-Schwelle (aerob)
+  fixed4: ThresholdPoint | null;          // fixe 4-mmol-Schwelle (OBLA/anaerob)
+  fatmax: ThresholdPoint | null;          // FatMax (geschätzt: Laktat-Minimum unterhalb LT1)
+  r2: number | null;                      // Fit-Güte des Kurvenfits (R²)
+  curve: { speed_kmh: number; pace_s: number; lactate: number }[]; // gefittete Laktat-Kurve für den Chart
 }
 
 /** s/km ↔ km/h. */
@@ -114,7 +120,7 @@ export function lactateThresholds(pointsIn: LactatePoint[], opts?: { deltaLt1?: 
     .sort((a, b) => a.sp - b.sp);
 
   if (pts.length < 3) {
-    return { lt1: null, lt2: null, baseline: pts[0]?.lac ?? 0, method: "dmax", confidence: "niedrig", warnings: ["Zu wenige gültige Stufen (<3) — keine Schwellenberechnung."] };
+    return { lt1: null, lt2: null, baseline: pts[0]?.lac ?? 0, method: "dmax", confidence: "niedrig", warnings: ["Zu wenige gültige Stufen (<3) — keine Schwellenberechnung."], fixed2: null, fixed4: null, fatmax: null, r2: null, curve: [] };
   }
 
   const xs = pts.map((p) => p.sp);
@@ -176,12 +182,45 @@ export function lactateThresholds(pointsIn: LactatePoint[], opts?: { deltaLt1?: 
     lt2 = mkPoint(x2, hrAtSpeed(xs, hrs, x2), y2);
   }
 
+  // ---- Fixe Schwellen 2 & 4 mmol/L (erste Überschreitung, aus Rohpunkten interpoliert — robust) ----
+  const crossSpeed = (target: number): number | null => {
+    if (ys[0] >= target) return xs[0];
+    for (let i = 1; i < n; i++) if (ys[i] >= target) return lerp(target, ys[i - 1], ys[i], xs[i - 1], xs[i]);
+    return null; // nie erreicht
+  };
+  const at2 = crossSpeed(2), at4 = crossSpeed(4);
+  const fixed2 = at2 != null ? mkPoint(at2, hrAtSpeed(xs, hrs, at2), 2) : null;
+  const fixed4 = at4 != null ? mkPoint(at4, hrAtSpeed(xs, hrs, at4), 4) : null;
+
+  // ---- FatMax (geschätzt): Laktat-Minimum im aeroben Bereich unterhalb LT1 ----
+  let fatmax: ThresholdPoint | null = null;
+  {
+    const upper = lt1 ? lt1.speed_kmh : xs[Math.max(1, Math.floor(n / 2))];
+    let fmX = xmin, fmY = Infinity;
+    for (let s = 0; s <= 120; s++) { const x = xmin + ((upper - xmin) * s) / 120; const yy = yhat(x); if (yy < fmY) { fmY = yy; fmX = x; } }
+    fatmax = mkPoint(fmX, hrAtSpeed(xs, hrs, fmX), Math.max(baseline, fmY));
+  }
+
+  // ---- Fit-Güte R² (Bestimmtheitsmaß des Kurvenfits) ----
+  const meanY = ys.reduce((s, y) => s + y, 0) / n;
+  const ssTot = ys.reduce((s, y) => s + (y - meanY) ** 2, 0) || 1;
+  const ssRes = ys.reduce((s, y, i) => s + (y - yhat(xs[i])) ** 2, 0);
+  const r2fit = Math.round((1 - ssRes / ssTot) * 1000) / 1000;
+
+  // ---- Gefittete Kurve (40 Samples über den Messbereich) für den Chart ----
+  const curve: { speed_kmh: number; pace_s: number; lactate: number }[] = [];
+  const STEPS = 40;
+  for (let s = 0; s <= STEPS; s++) {
+    const x = xmin + (span * s) / STEPS;
+    curve.push({ speed_kmh: r2(x), pace_s: Math.round(speedToPace(x)), lactate: r2(Math.max(0, yhat(x))) });
+  }
+
   // Konfidenz
   let confidence: LactateThresholds["confidence"] = "hoch";
   if (n < 4 || method === "dmax" || warnings.some((w) => w.startsWith("LT1 nicht") || w.startsWith("LT2 ≤"))) confidence = "niedrig";
   else if (n < 5 || hrs.some((h) => h == null) || warnings.length > 0) confidence = "mittel";
 
-  return { lt1, lt2, baseline: r2(baseline), method, confidence, warnings };
+  return { lt1, lt2, baseline: r2(baseline), method, confidence, warnings, fixed2, fixed4, fatmax, r2: r2fit, curve };
 }
 
 function mkPoint(speed: number, hr: number | null, lac: number): ThresholdPoint {

@@ -21,6 +21,7 @@ import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WeekdayBars from "../charts/WeekdayBars.tsx";
 import { wellnessTrendData, WellnessTrendChart } from "../charts/WellnessTrends.tsx";
+import WeekPmcStrip from "../components/WeekPmcStrip.tsx";
 import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
@@ -75,6 +76,7 @@ export default function WeekReport() {
   const [sessions, setSessions] = useState<PlannedSession[]>([]);
   const [acts, setActs] = useState<Activity[]>([]);
   const [daily, setDaily] = useState<DailyLog[]>([]);
+  const [bandDaily, setBandDaily] = useState<DailyLog[]>([]); // v1.10.0: 30-Tage-Fenster für den Normalbereich
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [wlog, setWlog] = useState<any>({});
   const [pmcWin, setPmcWin] = useState<PmcPoint[]>([]);
@@ -86,14 +88,15 @@ export default function WeekReport() {
 
   async function reload() {
     if (!week) return;
-    const [s, a, d, an, w] = await Promise.all([
+    const [s, a, d, an, w, bd] = await Promise.all([
       api.sessions({ week: week.week_no }),
       api.activities({ from: week.start_date, to: week.end_date }),
       api.daily({ from: week.start_date, to: week.end_date }),
       api.analyzeWeek(week.week_no),
       api.weeklog(week.week_no),
+      api.daily({ from: addDays(week.end_date, -29), to: week.end_date }), // 30-Tage-Normalbereich
     ]);
-    setSessions(s); setActs(a); setDaily(d); setAnalyze(an); setWlog(w || {});
+    setSessions(s); setActs(a); setDaily(d); setAnalyze(an); setWlog(w || {}); setBandDaily(bd);
     api.settings().then((cfg) => setBikeFactor(cfg?.run_equiv_bike_factor ?? 0.25)).catch(() => {});
   }
   useEffect(() => {
@@ -212,6 +215,19 @@ export default function WeekReport() {
 
   const wellness = avgWellness(daily);
   const wtrend = wellnessTrendData(daily, days);
+  // v1.10.0: 30-Tage-Normalbereich (Mittel ± 1σ) je Wellness-Metrik aus dem Fenster bis zum Wochenende.
+  const wellnessBands = (() => {
+    const m = new Map<string, { lo: number; hi: number; mean: number }>();
+    for (const k of ["hrv", "resting_hr", "recovery", "strain", "sleep_h"]) {
+      const vals = bandDaily.map((d) => (d as Record<string, unknown>)[k]).filter((v): v is number => typeof v === "number" && isFinite(v));
+      if (vals.length >= 4) {
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+        m.set(k, { lo: mean - std, hi: mean + std, mean });
+      }
+    }
+    return m;
+  })();
   const saveW = (patch: Record<string, unknown>) => { const n = { ...wlog, ...patch }; setWlog(n); api.saveWeeklog(week.week_no, n); };
   const saveCheck = (k: string, val: boolean) => saveW({ checks: { ...(wlog.checks || {}), [k]: val } });
   const saveRefl = (k: string, val: string) => saveW({ refl_extra: { ...(wlog.refl_extra || {}), [k]: val } });
@@ -235,35 +251,37 @@ export default function WeekReport() {
 
       <EditableGrid page="weekreport" paged>
         {/* Kopf */}
-        <EgItem id="head" title={t("report.tile.head", "Kopf")} defaultSpan={12} defaultHeight={84} reserve={100}>{() => (
-          <div className="card spread report-head">
-            <div>
-              <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
-              <div className="muted tiny">
-                {fmtDateY(week.start_date)} – {fmtDateY(week.end_date)} · Ziel {week.target_km ?? "–"} km
-                {week.goal_race ? ` · ${week.goal_race}` : ""}{week.notes ? ` · ${week.notes}` : ""}
+        <EgItem id="head" title={t("report.tile.head", "Kopf")} defaultSpan={12} defaultHeight={132} reserve={100}>{() => (
+          <div className="card report-head">
+            <div className="spread">
+              <div>
+                <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
+                <div className="muted tiny">
+                  {fmtDateY(week.start_date)} – {fmtDateY(week.end_date)} · Ziel {week.target_km ?? "–"} km
+                  {week.goal_race ? ` · ${week.goal_race}` : ""}{week.notes ? ` · ${week.notes}` : ""}
+                </div>
+              </div>
+              <div className="row" style={{ gap: 18, alignItems: "flex-start" }}>
+                {(() => {
+                  const v = analyze?.vo2max;
+                  const d = v && v.prev != null ? Math.round((v.now - v.prev) * 10) / 10 : null;
+                  return (
+                    <div style={{ textAlign: "center", paddingRight: 4 }} title="VO₂max (VDOT-basiert, 90-Tage-Fenster) zum Wochenstand — Δ gegenüber der Vorwoche.">
+                      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{v?.now ?? "–"}</div>
+                      <div className="tiny muted">VO₂max</div>
+                      {d != null && (
+                        <div className="tiny" style={{ fontWeight: 700, color: d > 0 ? "var(--ok)" : d < 0 ? "var(--danger)" : "var(--muted)" }}>
+                          {d > 0 ? `↗ +${d}` : d < 0 ? `↘ ${d}` : "→ ±0"}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                <Mini label={t("report.head.run", "Lauf")} v={`${actualKm} km`} sub={`${t("report.head.target", "Ziel")} ${week.target_km ?? "–"}`} />
+                <Mini label={t("report.head.tss", "TSS")} v={`${Math.round(actualTss)}`} />
               </div>
             </div>
-            <div className="row" style={{ gap: 18, alignItems: "flex-start" }}>
-              {(() => {
-                const v = analyze?.vo2max;
-                const d = v && v.prev != null ? Math.round((v.now - v.prev) * 10) / 10 : null;
-                return (
-                  <div style={{ textAlign: "center", paddingRight: 4 }} title="VO₂max (VDOT-basiert, 90-Tage-Fenster) zum Wochenstand — Δ gegenüber der Vorwoche.">
-                    <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{v?.now ?? "–"}</div>
-                    <div className="tiny muted">VO₂max</div>
-                    {d != null && (
-                      <div className="tiny" style={{ fontWeight: 700, color: d > 0 ? "var(--ok)" : d < 0 ? "var(--danger)" : "var(--muted)" }}>
-                        {d > 0 ? `↗ +${d}` : d < 0 ? `↘ ${d}` : "→ ±0"}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              <Mini label={t("report.head.run", "Lauf")} v={`${actualKm} km`} sub={`${t("report.head.target", "Ziel")} ${week.target_km ?? "–"}`} />
-              <Mini label={t("report.head.tss", "TSS")} v={`${Math.round(actualTss)}`} />
-              <Mini label={t("report.head.form", "Form (TSB)")} v={`${analyze?.projectedTsb ?? "–"}`} />
-            </div>
+            {analyze?.pmc && <WeekPmcStrip pmc={analyze.pmc} />}
           </div>
         )}</EgItem>
 
@@ -579,8 +597,11 @@ export default function WeekReport() {
         {wtrend.visible.map((m) => (
           <EgItem key={m.key} id={`wtrend-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={120} reserve={42}>{(h) => (
             <div className="card chart-card tight">
-              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{m.title}</div>
-              <WellnessTrendChart metric={m} points={wtrend.points} sleepRows={wtrend.sleepRows} height={h ?? 110} />
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>
+                {m.title}
+                {wellnessBands.has(m.key) && (() => { const b = wellnessBands.get(m.key)!; const fv = (v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10)); return <span style={{ fontWeight: 400 }}> · Normal {fv(b.lo)}–{fv(b.hi)}</span>; })()}
+              </div>
+              <WellnessTrendChart metric={m} points={wtrend.points} sleepRows={wtrend.sleepRows} height={h ?? 110} band={wellnessBands.get(m.key) ?? null} />
             </div>
           )}</EgItem>
         ))}

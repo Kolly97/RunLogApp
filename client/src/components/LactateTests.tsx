@@ -1,9 +1,9 @@
 // G3 (v1.3.0): Laktat-/Feldtest-Diagnostik — Eingabe, LT1/LT2-Ergebnis, Trend, Zonen-Vorschlag.
 import { useEffect, useRef, useState } from "react";
-import { api, type LactateTest, type LactateTestPoint, type LactateZoneProposal } from "../lib/api.ts";
+import { api, type LactateTest, type LactateTestPoint, type LactateZoneProposal, type LactateAnalysis, type LactateThresholdPoint } from "../lib/api.ts";
 import { todayIso } from "../lib/util.ts";
 import T from "./T.tsx";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
+import { ResponsiveContainer, LineChart, ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 
 function fmtPace(sec?: number | null): string {
   if (!sec) return "—";
@@ -13,6 +13,20 @@ function fmtPace(sec?: number | null): string {
 function mkRow(): LactateTestPoint {
   return { speed_kmh: null, pace_s: null, hr: null, lactate: 0 };
 }
+
+// Pace-Eingabe als mm:ss (z. B. „3:45") parsen; reine Sekunden bleiben erlaubt.
+function parsePaceInput(v: string): number | null {
+  const s = v.trim();
+  if (!s) return null;
+  if (s.includes(":")) { const [m, sec] = s.split(":"); const mm = Number(m), ss = Number(sec); return isFinite(mm) && isFinite(ss) ? mm * 60 + ss : null; }
+  const n = Number(s); return isFinite(n) && n > 0 ? n : null;
+}
+function paceInputStr(sec?: number | null): string {
+  if (!sec) return "";
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+}
+
+const NUM_IN = { width: 84, padding: "7px 9px", fontSize: 14, textAlign: "right" as const };
 
 function PointsTable({
   points, onChange,
@@ -24,34 +38,42 @@ function PointsTable({
     const n = [...points];
     const num = val === "" ? null : Number(val);
     (n[i] as any)[key] = num;
-    if (key === "pace_s" && num) n[i].speed_kmh = Math.round(3600 / num * 100) / 100;
     if (key === "speed_kmh" && num) n[i].pace_s = Math.round(3600 / num);
     onChange(n);
   };
+  const updPace = (i: number, val: string) => {
+    const n = [...points];
+    const sec = parsePaceInput(val);
+    n[i].pace_s = sec;
+    if (sec) n[i].speed_kmh = Math.round(3600 / sec * 100) / 100;
+    onChange(n);
+  };
+  const th = { textAlign: "right" as const, padding: "0 9px 4px", fontWeight: 600 };
   return (
-    <table style={{ fontSize: 12, borderCollapse: "collapse", width: "100%", marginTop: 6 }}>
+    <table style={{ fontSize: 13, borderCollapse: "separate", borderSpacing: "0 6px", width: "100%", marginTop: 8 }}>
       <thead>
-        <tr style={{ color: "var(--muted)", textAlign: "right" }}>
-          <th style={{ textAlign: "left" }}>#</th>
-          <th>km/h</th><th>Pace</th><th>HF</th><th>Laktat</th><th>RPE</th><th />
+        <tr style={{ color: "var(--muted)", fontSize: 11 }}>
+          <th style={{ textAlign: "left", paddingBottom: 4 }}>Stufe</th>
+          <th style={th}>km/h</th><th style={th}>Pace (min:s/km)</th><th style={th}>HF (bpm)</th>
+          <th style={th}>Laktat (mmol/l)</th><th style={th}>RPE (1–10)</th><th />
         </tr>
       </thead>
       <tbody>
         {points.map((p, i) => (
           <tr key={i}>
-            <td style={{ color: "var(--muted)", paddingRight: 4 }}>{i + 1}</td>
-            <td><input type="number" step="0.1" style={{ width: 56, textAlign: "right" }}
+            <td style={{ color: "var(--muted)", paddingRight: 8, fontWeight: 600 }}>{i + 1}</td>
+            <td style={{ padding: "0 4px" }}><input type="number" step="0.1" placeholder="km/h" style={NUM_IN}
               value={p.speed_kmh ?? ""} onChange={(e) => upd(i, "speed_kmh", e.target.value)} /></td>
-            <td><input type="number" step="1" style={{ width: 52, textAlign: "right" }} title="Pace s/km"
-              value={p.pace_s ?? ""} onChange={(e) => upd(i, "pace_s", e.target.value)} /></td>
-            <td><input type="number" step="1" style={{ width: 44, textAlign: "right" }}
+            <td style={{ padding: "0 4px" }}><input type="text" inputMode="numeric" placeholder="mm:ss" style={NUM_IN}
+              key={`pace-${i}-${p.pace_s ?? ""}`} defaultValue={paceInputStr(p.pace_s)} onBlur={(e) => updPace(i, e.target.value)} title="Pace als mm:ss, z. B. 3:45" /></td>
+            <td style={{ padding: "0 4px" }}><input type="number" step="1" placeholder="bpm" style={NUM_IN}
               value={p.hr ?? ""} onChange={(e) => upd(i, "hr", e.target.value)} /></td>
-            <td><input type="number" step="0.1" style={{ width: 52, textAlign: "right" }}
+            <td style={{ padding: "0 4px" }}><input type="number" step="0.1" placeholder="mmol" style={NUM_IN}
               value={p.lactate || ""} onChange={(e) => upd(i, "lactate", e.target.value)} /></td>
-            <td><input type="number" step="1" min="1" max="10" style={{ width: 36, textAlign: "right" }}
+            <td style={{ padding: "0 4px" }}><input type="number" step="1" min="1" max="10" placeholder="1–10" style={{ ...NUM_IN, width: 64 }}
               value={p.rpe ?? ""} onChange={(e) => upd(i, "rpe", e.target.value)} /></td>
             <td>
-              <button className="sm ghost danger" style={{ padding: "2px 6px", fontSize: 11 }}
+              <button className="sm ghost danger" style={{ padding: "4px 8px", fontSize: 12 }}
                 onClick={() => onChange(points.filter((_, j) => j !== i))}>✕</button>
             </td>
           </tr>
@@ -192,6 +214,78 @@ function TrendChart({ tests }: { tests: LactateTest[] }) {
   );
 }
 
+function fmtPaceShort(sec?: number | null): string {
+  if (!sec) return "—";
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+}
+
+// Volle Laktat-Auswertung (v1.10.0): Kurve + Schwellen (LT1/LT2/2/4 mmol/FatMax) + Fit-Güte + Trainingsempfehlungen.
+function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: LactateTestPoint[] }) {
+  const raw = points.filter((p) => p.speed_kmh != null && p.lactate != null).map((p) => ({ speed_kmh: p.speed_kmh!, lactate: p.lactate }));
+  const rows = ([
+    a.fatmax && { k: "FatMax", p: a.fatmax, sub: "geschätzt" },
+    a.lt1 && { k: "LT1 · aerob", p: a.lt1 },
+    a.fixed2 && { k: "2 mmol/l", p: a.fixed2 },
+    a.lt2 && { k: "LT2 · Schwelle", p: a.lt2 },
+    a.fixed4 && { k: "4 mmol/l · OBLA", p: a.fixed4 },
+  ].filter(Boolean) as { k: string; p: LactateThresholdPoint; sub?: string }[]).sort((x, y) => x.p.speed_kmh - y.p.speed_kmh);
+  const confCol = a.confidence === "hoch" ? "var(--ok)" : a.confidence === "mittel" ? "var(--warn)" : "var(--danger)";
+  const recs: { zone: string; pace: string; hr: string }[] = [];
+  if (a.lt1) recs.push({ zone: "Easy / Grundlage", pace: `langsamer als ${fmtPaceShort(a.lt1.pace_s)}`, hr: a.lt1.hr ? `< ${a.lt1.hr} bpm` : "—" });
+  if (a.lt1 && a.lt2) recs.push({ zone: "Tempo (LT1–LT2)", pace: `${fmtPaceShort(a.lt2.pace_s)}–${fmtPaceShort(a.lt1.pace_s)}`, hr: a.lt1.hr && a.lt2.hr ? `${a.lt1.hr}–${a.lt2.hr} bpm` : "—" });
+  if (a.lt2) recs.push({ zone: "Schwelle (LT2)", pace: `~ ${fmtPaceShort(a.lt2.pace_s)}`, hr: a.lt2.hr ? `~ ${a.lt2.hr} bpm` : "—" });
+  if (a.lt2) recs.push({ zone: "VO2max", pace: `schneller als ${fmtPaceShort(a.lt2.pace_s - 15)}`, hr: a.lt2.hr ? `> ${a.lt2.hr} bpm` : "—" });
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <ResponsiveContainer width="100%" height={210}>
+        <ComposedChart margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
+          <XAxis type="number" dataKey="speed_kmh" domain={["dataMin - 0.3", "dataMax + 0.3"]} unit=" km/h" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={30} />
+          <Tooltip formatter={(v: number, n: string) => [n === "Laktat" ? `${v} mmol/l` : v, n]} labelFormatter={(v) => `${v} km/h`} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+          <Line data={a.curve} dataKey="lactate" name="Fit" stroke="#2b6cb0" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+          <Scatter data={raw} dataKey="lactate" name="Laktat" fill="#2b6cb0" />
+          {a.lt1 && <ReferenceLine x={a.lt1.speed_kmh} stroke="#22c55e" strokeWidth={1.5} label={{ value: "LT1", fontSize: 10, fill: "#22c55e", position: "top" }} />}
+          {a.lt2 && <ReferenceLine x={a.lt2.speed_kmh} stroke="#eab308" strokeWidth={1.5} label={{ value: "LT2", fontSize: 10, fill: "#eab308", position: "top" }} />}
+          {a.fatmax && <ReferenceLine x={a.fatmax.speed_kmh} stroke="#0891b2" strokeDasharray="3 3" label={{ value: "FatMax", fontSize: 9, fill: "#0891b2", position: "insideTopLeft" }} />}
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", marginTop: 6 }}>
+        <thead><tr style={{ color: "var(--muted)", textAlign: "right" }}>
+          <th style={{ textAlign: "left" }}>Marker</th><th>km/h</th><th>Pace</th><th>HF</th><th>Laktat</th>
+        </tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.k} style={{ borderTop: "1px solid var(--border-faint,#eee)" }}>
+              <td style={{ fontWeight: 600 }}>{r.k} {r.sub && <span className="tiny muted" style={{ fontWeight: 400 }}>({r.sub})</span>}</td>
+              <td style={{ textAlign: "right" }}>{r.p.speed_kmh.toFixed(1)}</td>
+              <td style={{ textAlign: "right" }}>{fmtPaceShort(r.p.pace_s)}/km</td>
+              <td style={{ textAlign: "right" }}>{r.p.hr ?? "—"}</td>
+              <td style={{ textAlign: "right" }}>{r.p.lactate.toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="tiny muted" style={{ marginTop: 4 }}>Fit-Güte R² {a.r2 != null ? a.r2.toFixed(3) : "—"} · Konfidenz <span style={{ color: confCol, fontWeight: 600 }}>{a.confidence}</span> · Methode {a.method}</div>
+
+      {recs.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 3 }}>Trainingsempfehlungen aus dem Test</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 6 }}>
+            {recs.map((r) => (
+              <div key={r.zone} style={{ border: "1px solid var(--border,#e3e8ef)", borderRadius: 8, padding: "5px 8px" }}>
+                <div style={{ fontWeight: 600, fontSize: 12 }}>{r.zone}</div>
+                <div className="tiny">{r.pace}/km · {r.hr}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LactateTests() {
   const [tests, setTests] = useState<LactateTest[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -276,6 +370,8 @@ export default function LactateTests() {
                   {t.warnings.join(" · ")}
                 </div>
               )}
+              {fullTest.analysis && <LactateAnalysisPanel a={fullTest.analysis} points={fullTest.points} />}
+              <div className="tiny muted" style={{ fontWeight: 600, margin: "10px 0 2px" }}>Gemessene Stufen</div>
               <table style={{ borderCollapse: "collapse", width: "100%", color: "var(--muted)" }}>
                 <thead>
                   <tr><th style={{ textAlign: "left" }}>#</th><th>km/h</th><th>Pace</th><th>HF</th><th>Laktat</th><th>RPE</th></tr>

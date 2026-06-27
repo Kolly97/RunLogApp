@@ -11,6 +11,7 @@ import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 import TemplateManager from "../components/TemplateManager.tsx";
 import T from "../components/T.tsx";
+import WeekPmcStrip from "../components/WeekPmcStrip.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
 export default function WeekPlan() {
@@ -31,13 +32,12 @@ export default function WeekPlan() {
   const [suggestion, setSuggestion] = useState<WeekSuggestionResult | null>(null);
   const [blockPlan, setBlockPlan] = useState<BlockPlan | null>(null);
   const [suggOpen, setSuggOpen] = useState(false);
-  const [blockOpen, setBlockOpen] = useState(false);
   const [suggBusy, setSuggBusy] = useState(false);
   const [suggMsg, setSuggMsg] = useState("");
 
   async function loadSuggestion() {
     if (weekNo == null || suggBusy) return;
-    setSuggBusy(true); setSuggMsg(""); setBlockOpen(false);
+    setSuggBusy(true); setSuggMsg("");
     try {
       const [ws, bp] = await Promise.all([api.weekSuggestion(weekNo), api.blockSuggestion(weekNo)]);
       setSuggestion(ws);
@@ -60,17 +60,6 @@ export default function WeekPlan() {
     if (phase) { await api.setWeekPhase(wkNo, phase).catch(() => {}); reloadSeason(); } // v1.7.0: Phase aus dem Block setzen
     reload();
     setSuggMsg(`${days.length} Einheiten angelegt.`);
-  }
-
-  // v1.7.0: alle abgeleiteten Phasen des Block-Vorschlags in den Saisonplan schreiben (ohne Einheiten anzulegen).
-  async function applyPhases() {
-    if (!blockPlan?.weeks.length) return;
-    setSuggBusy(true);
-    try {
-      for (const bw of blockPlan.weeks) if (bw.phase) await api.setWeekPhase(bw.week_no, bw.phase);
-      reloadSeason();
-      setSuggMsg(`Phasen für ${blockPlan.weeks.length} Wochen übernommen.`);
-    } finally { setSuggBusy(false); }
   }
 
   async function applySuggestion() {
@@ -250,7 +239,7 @@ export default function WeekPlan() {
             </label>
           </div>
         </div>
-        {analyze?.pmc && <WeekPmcStrip pmc={analyze.pmc} />}
+        {analyze?.pmc && <WeekPmcStrip pmc={analyze.pmc} tourAnchor />}
       </div>
 
       {/* Soll/Ist-Abgleich zum Ziel-Rennen (v1.7.0) */}
@@ -264,11 +253,7 @@ export default function WeekPlan() {
             <button className="sm ghost" onClick={loadSuggestion} disabled={suggBusy} title="Regelbasierter Wochen-Vorschlag mit konkreten Einheiten (Tag + Dauer + Pace)">
               {suggBusy ? "…" : "▶ Wochen-Vorschlag"}
             </button>
-            {blockPlan && !blockOpen && (
-              <button className="sm ghost" onClick={() => setBlockOpen(true)} title="Mesozyklus-Vorschau bis Renntag">
-                Block-Vorschau ({blockPlan.weeks.length} Wo.)
-              </button>
-            )}
+            <a className="sm ghost" href="/coach" style={{ textDecoration: "none" }} title="Kompletter Wettkampf-Block bis Renntag im Coach-Modus">🧭 Block-Planung im Coach</a>
             {suggMsg && <span style={{ fontSize: 12, color: "var(--ok-color, #22c55e)" }}>{suggMsg}</span>}
           </div>
           {suggOpen && suggestion && <button className="sm ghost" onClick={() => setSuggOpen(false)}>▲ schließen</button>}
@@ -328,52 +313,6 @@ export default function WeekPlan() {
           );
         })()}
       </div>
-
-      {/* Block-Vorschau (v1.4.0, A5) — Mesozyklus bis Renntag, selektive Übernahme je Woche */}
-      {blockOpen && blockPlan && blockPlan.weeks.length > 0 && (
-        <div className="card tight no-print" style={{ marginBottom: 8 }}>
-          <div className="spread">
-            <div className="row" style={{ gap: 8 }}>
-              <strong style={{ fontSize: 13 }}>Block-Vorschau</strong>
-              <span className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}</span>
-            </div>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="sm ghost" onClick={applyPhases} disabled={suggBusy} title="Schreibt die abgeleiteten Phasen aller Vorschau-Wochen in den Saisonplan (manuell gesetzte Phasen bleiben).">Phasen übernehmen</button>
-              <button className="sm ghost" onClick={() => setBlockOpen(false)}>▲ schließen</button>
-            </div>
-          </div>
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            {blockPlan.weeks.map((bw) => {
-              const confCol = bw.confidence === "hoch" ? "var(--ok)" : bw.confidence === "mittel" ? "var(--warn)" : "#888";
-              const isCurrent = bw.week_no === weekNo;
-              return (
-                <details key={bw.week_no} open={isCurrent} style={{ borderLeft: `3px solid ${isCurrent ? "var(--primary, #3b82f6)" : "var(--border)"}`, paddingLeft: 8 }}>
-                  <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontSize: 12, listStyle: "none" }}>
-                    <strong>Wo. {bw.week_no}</strong>
-                    <span className="muted">{bw.start_date}</span>
-                    <span style={{ color: confCol }}>{bw.headline}</span>
-                    <span className="tiny muted">{bw.tssActual} TSS · {bw.isDeload ? "Deload" : bw.phase ?? ""}</span>
-                    <button className="sm ghost" style={{ marginLeft: "auto" }}
-                      onClick={(e) => { e.preventDefault(); applyDays(bw.days, bw.week_no, bw.phase).then(() => setSuggMsg(`Woche ${bw.week_no}: ${bw.days.length} Einheiten angelegt.`)); }}>
-                      Übernehmen
-                    </button>
-                  </summary>
-                  <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
-                    {bw.days.map((d, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-                        <span style={{ width: 22, color: "var(--muted)", flexShrink: 0 }}>{DAY_NAMES[d.weekdayIdx]}</span>
-                        <span className="type-pill" style={{ background: typeColor(d.type), fontSize: 9, padding: "1px 5px" }}>{typeLabel(d.type)}</span>
-                        <span style={{ flex: 1, color: "var(--text)" }}>{d.description}</span>
-                        <span className="tiny muted nowrap">{d.planned_min}' · {Math.round(d.planned_tss)} TSS</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="grid" style={{ gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", alignItems: "start" }}>
         {/* Tage */}
@@ -486,38 +425,6 @@ function Stat({ label, value, sub, color }: { label: string; value: number | str
 }
 
 /** Soll/Ist-Karte zum Ziel-Rennen (v1.7.0): Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit. */
-/** Wochen-Header-PMC (v1.9.0): Fitness (CTL) · Fatigue (ATL) · Form (TSB) + CTL-Ramp/Woche + Mini-CTL-Sparkline. */
-function WeekPmcStrip({ pmc }: { pmc: NonNullable<AnalyzeResult["pmc"]> }) {
-  const tsbCol = pmc.tsb > 5 ? "var(--ok)" : pmc.tsb < -25 ? "var(--danger)" : pmc.tsb < -10 ? "var(--warn)" : "var(--form, #2563eb)";
-  const rampCol = pmc.ramp == null ? "var(--muted)" : pmc.ramp > 8 ? "var(--warn)" : pmc.ramp < -3 ? "var(--info, #0891b2)" : "var(--ok)";
-  const sp = pmc.spark ?? [];
-  const W = 132, H = 30, P = 3;
-  const ctls = sp.map((s) => s.ctl);
-  const min = Math.min(...ctls), max = Math.max(...ctls), span = Math.max(1, max - min);
-  const pts = sp.map((s, i) => `${(P + (i / Math.max(1, sp.length - 1)) * (W - 2 * P)).toFixed(1)},${(H - P - ((s.ctl - min) / span) * (H - 2 * P)).toFixed(1)}`).join(" ");
-  const Stat = ({ label, val, col, title }: { label: string; val: string | number; col?: string; title?: string }) => (
-    <div title={title} style={{ lineHeight: 1.1 }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{val}</div>
-      <div className="tiny muted">{label}</div>
-    </div>
-  );
-  return (
-    <div className="row" data-tour="week-pmc" style={{ gap: 20, alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid #eef2f7", flexWrap: "wrap" }}>
-      <Stat label="Fitness CTL" val={pmc.ctl} title="CTL — chronische Last (42-Tage-EWMA): deine Fitness/Belastbarkeit." />
-      <Stat label="Fatigue ATL" val={pmc.atl} title="ATL — akute Last (7-Tage-EWMA): aktuelle Ermüdung." />
-      <Stat label="Form TSB" val={`${pmc.tsb > 0 ? "+" : ""}${pmc.tsb}`} col={tsbCol} title="TSB = CTL − ATL: > +5 frisch · −10 bis −25 produktiv müde · < −25 Risiko." />
-      <Stat label="CTL-Ramp/Wo" val={pmc.ramp != null ? `${pmc.ramp > 0 ? "+" : ""}${pmc.ramp}` : "—"} col={rampCol} title="Wöchentlicher CTL-Aufbau — > +8 zu steil (Verletzungsrisiko), 3–6 nachhaltig." />
-      {sp.length > 1 && (
-        <div style={{ marginLeft: "auto" }} title="CTL-Verlauf der letzten ~6 Wochen">
-          <svg width={W} height={H} style={{ display: "block" }}>
-            <polyline points={pts} fill="none" stroke="var(--primary, #2563eb)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-          </svg>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Readiness-Karte (v1.9.0): zeigt die nächste harte Einheit + Readiness. Bei schwachen HRV/Schlaf-Werten
  *  Vorschlag, die Einheit zu entschärfen / Recovery zu empfehlen (advisory, 1-Klick). Sonst „wie geplant". */
 function ReadinessCard() {

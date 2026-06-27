@@ -37,6 +37,7 @@ export const DEFAULT_SESSION_TYPES: Option[] = [
   { kind: "sessionType", value: "Threshold", label: "Schwelle / Sub-T", color: "#eab308", intensity: "hard" },
   { kind: "sessionType", value: "VO2", label: "VO2max", color: "#f97316", intensity: "hard" },
   { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7", intensity: "hard" },
+  { kind: "sessionType", value: "Renntempo", label: "Renntempo", color: "#c2410c", intensity: "hard" },
   { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444", intensity: "hard" },
   { kind: "sessionType", value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
   { kind: "sessionType", value: "Physio", label: "KG / Physio", color: "#64748b" },

@@ -437,10 +437,10 @@ app.get("/api/races", (req, res) => {
 app.post("/api/races", (req, res) => {
   const b = req.body || {};
   const r = db.prepare(
-    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, avg_hr, elevation_m, source, goal_time_s)
-     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, max_hr, avg_hr, elevation_m, source, goal_time_s, is_tuneup)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(pid(), b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
-    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.source || "manual", b.goal_time_s ?? null);
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.source || "manual", b.goal_time_s ?? null, b.is_tuneup ? 1 : 0);
   // v0.14.0 (ToDo 3): neuer Wettkampf → fehlende Wochen bis zum Renntag herstellen (Wettkampf-Planung).
   ensureSeasonWeeks(pid());
   res.json({ id: Number(r.lastInsertRowid) });
@@ -449,9 +449,9 @@ app.post("/api/races", (req, res) => {
 app.put("/api/races/:id", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=?, max_hr=?, avg_hr=?, elevation_m=?, goal_time_s=? WHERE id=? AND profile_id=?`,
+    `UPDATE races SET date=?, name=?, distance_m=?, time_s=?, placement=?, notes=?, splits=?, max_hr=?, avg_hr=?, elevation_m=?, goal_time_s=?, is_tuneup=? WHERE id=? AND profile_id=?`,
   ).run(b.date, b.name || "", b.distance_m ?? null, b.time_s ?? null, b.placement || "", b.notes || "",
-    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.goal_time_s ?? null, req.params.id, pid());
+    JSON.stringify(b.splits || []), b.max_hr ?? null, b.avg_hr ?? null, b.elevation_m ?? null, b.goal_time_s ?? null, b.is_tuneup ? 1 : 0, req.params.id, pid());
   res.json({ ok: true });
 });
 
@@ -501,7 +501,9 @@ app.get("/api/lactate-tests/:id", (req, res) => {
   const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
   if (!test) return res.status(404).json({ error: "Test nicht gefunden" });
   const points = db.prepare("SELECT * FROM lactate_points WHERE test_id=? ORDER BY stage, speed_kmh").all(test.id) as any[];
-  res.json({ ...test, warnings: parseJson(test.warnings, []), points });
+  // v1.10.0: volle Auswertung (LT1/LT2 + 2/4 mmol + FatMax + Fit + Kurve) aus den gespeicherten Stufen rechnen.
+  const analysis = points.length >= 3 ? lactateThresholds(points as LacPoint[]) : null;
+  res.json({ ...test, warnings: parseJson(test.warnings, []), points, analysis });
 });
 
 app.post("/api/lactate-tests", (req, res) => {
@@ -698,8 +700,9 @@ app.get("/api/plan/block-suggestion", (req, res) => {
     : db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND end_date>=? ORDER BY start_date LIMIT 1").get(pid(), today) as any;
   if (!startWk) return res.json({ weeks: [], raceDate: null, reasons: [{ code: "no_weeks", text: "Kein Saisonplan vorhanden." }], confidence: "niedrig" });
 
-  // Nächster Renntag ab Startwoche (Races-Tabelle bevorzugt, sonst goal_race-Woche).
-  const raceRow = db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? ORDER BY date LIMIT 1").get(pid(), startWk.start_date) as { date: string; distance_m: number | null; goal_time_s: number | null } | undefined;
+  // Nächster Renntag ab Startwoche — das HAUPT-Rennen (Test-/Aufbauwettkämpfe ausgenommen, sonst würde voll
+  // dorthin getapert). Races-Tabelle bevorzugt, sonst goal_race-Woche.
+  const raceRow = db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), startWk.start_date) as { date: string; distance_m: number | null; goal_time_s: number | null } | undefined;
   let raceDate = raceRow?.date ?? null;
 
   // Wochen ab Startwoche; bei Renntag bis zur Renn-Woche, sonst rollend 6 Wochen.
@@ -712,6 +715,12 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   if (raceDate) weeksRaw = allWeeks.filter((w) => w.start_date <= raceDate!);
   else weeksRaw = allWeeks.slice(0, 6);
   if (!weeksRaw.length) weeksRaw = [startWk];
+
+  // v1.10.0: Test-/Aufbauwettkämpfe im Vorbereitungsfenster (vor dem Hauptrennen) → Mini-Taper im Block.
+  const tuneups = (raceDate
+    ? db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=1 AND date>=? AND date<=? ORDER BY date").all(pid(), startWk.start_date, raceDate)
+    : db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=1 AND date>=? ORDER BY date").all(pid(), startWk.start_date)) as { date: string; distance_m: number | null; goal_time_s: number | null }[];
+  const tuneupArgs = tuneups.map((r) => ({ date: r.date, distanceM: r.distance_m && r.distance_m > 0 ? Number(r.distance_m) : null, goalTimeS: r.goal_time_s ? Number(r.goal_time_s) : null }));
 
   const weeks: BlockWeekInput[] = weeksRaw.map((w) => ({
     week_no: w.week_no, phase: w.phase ?? null, start_date: w.start_date,
@@ -751,14 +760,14 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const inf = buildMethodInference();
   const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
   const goalTimeS = raceRow?.goal_time_s && raceRow.goal_time_s > 0 ? Number(raceRow.goal_time_s) : null; // v1.7.0 Wunsch-Zielzeit
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM, curVdot: cur.vdot, goalTimeS });
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs });
   res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS });
 });
 
 // v1.7.0: Soll/Ist-Abgleich zum Ziel-Rennen — Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit.
 app.get("/api/plan/goal-gap", (_req, res) => {
   const today = todayIso();
-  const race = db.prepare("SELECT id, name, date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL ORDER BY date LIMIT 1").get(pid(), today) as any;
+  const race = db.prepare("SELECT id, name, date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), today) as any;
   if (!race) return res.json({ race: null });
   const cur = rollingCsVdot(loadProfileRuns(), today, 90);
   const predicted = cur.vdot ? predictFromVdot(cur.vdot, [race.distance_m]) : [];
@@ -781,6 +790,35 @@ app.get("/api/plan/goal-gap", (_req, res) => {
     weeks, curVdot: cur.vdot ? Math.round(cur.vdot * 10) / 10 : null, goalVdot: goalVdot ? Math.round(goalVdot * 10) / 10 : null,
     predictedTimeS, goalTimeS, gapS, reqVdotPerWeek, feasible, projEndTimeS,
   });
+});
+
+// v1.10.0: Fortschritts-Check aus dem letzten Test-/Aufbauwettkampf — Ergebnis vs. Erwartung + Hauptrennen-Prognose.
+app.get("/api/tuneup-progress", (_req, res) => {
+  const today = todayIso();
+  const tu = db.prepare("SELECT date, name, distance_m, time_s, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=1 AND date<=? AND time_s IS NOT NULL AND distance_m>0 ORDER BY date DESC LIMIT 1").get(pid(), today) as { date: string; name: string | null; distance_m: number; time_s: number; goal_time_s: number | null } | undefined;
+  if (!tu) return res.json({ tuneup: null });
+  const tuVdot = vdot(Number(tu.distance_m), Number(tu.time_s));
+  const out: Record<string, unknown> = {
+    tuneup: {
+      date: tu.date, name: tu.name, distanceM: Number(tu.distance_m), timeS: Number(tu.time_s), vdot: Math.round(tuVdot * 10) / 10,
+      expectedTimeS: tu.goal_time_s ? Number(tu.goal_time_s) : null,
+      vsExpectedS: tu.goal_time_s ? Math.round(Number(tu.time_s) - Number(tu.goal_time_s)) : null, // <0 = schneller als erwartet
+    },
+  };
+  const main = db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=0 AND date>=? AND goal_time_s IS NOT NULL AND distance_m>0 ORDER BY date LIMIT 1").get(pid(), today) as { date: string; distance_m: number; goal_time_s: number } | undefined;
+  if (main) {
+    const goalDist = Number(main.distance_m), goalTime = Number(main.goal_time_s);
+    const goalVdot = vdot(goalDist, goalTime);
+    const remW = Math.max(0, Math.round((Date.parse(main.date + "T00:00:00Z") - Date.parse(tu.date + "T00:00:00Z")) / (7 * 86400000)));
+    const need = goalVdot - tuVdot;
+    const projVdot = tuVdot + Math.min(Math.max(0, need), 0.4 * remW); // realistischer Cap 0.4 VDOT/Woche bis Renntag
+    const pe = predictFromVdot(projVdot, [goalDist]);
+    const predicted = pe.length ? Math.round(pe[0].time_s) : null;
+    const deltaPct = predicted != null ? ((predicted - goalTime) / goalTime) * 100 : null;
+    const status = deltaPct == null ? "unknown" : deltaPct <= 0.3 ? "ahead" : deltaPct <= 2 ? "on_track" : "behind";
+    out.goal = { date: main.date, distanceM: goalDist, goalTimeS: goalTime, goalVdot: Math.round(goalVdot * 10) / 10, weeksTo: remW, predictedTimeS: predicted, deltaS: predicted != null ? predicted - goalTime : null, status };
+  }
+  res.json(out);
 });
 
 // ===================== v1.7.0 — Lauf-Power (Coros via Strava, Stryd-Stil) =====================
@@ -823,8 +861,9 @@ app.get("/api/power-curve", (req, res) => {
 
 // v1.8.0: Workout-Bibliothek (für Block-Präferenzen — Lieblings/Vermeiden-Auswahl im Profil).
 app.get("/api/workouts", (_req, res) => {
-  const lib = WORKOUT_LIBRARY.filter((t) => t.kind !== "core").map((t) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom: false }));
-  const cust = customWorkoutList().map((t) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom: true }));
+  const map = (t: WorkoutTemplate, custom: boolean) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom, workZone: t.workZone, anchor: t.anchor ?? null, kind: t.kind });
+  const lib = WORKOUT_LIBRARY.filter((t) => t.kind !== "core").map((t) => map(t, false));
+  const cust = customWorkoutList().map((t) => map(t, true));
   res.json([...lib, ...cust]);
 });
 
@@ -885,7 +924,7 @@ const ZONE_CP_PCT: Record<number, number> = { 1: 0.65, 2: 0.78, 3: 0.88, 4: 0.96
 app.get("/api/wprime/latest", (_req, res) => {
   const fit = currentCpFit();
   if (!fit?.cp || !fit.wPrime || fit.wPrime <= 0) return res.json({ available: false });
-  const row = db.prepare("SELECT id, date, name, type, efforts FROM activities WHERE profile_id=? AND sport='Run' AND efforts IS NOT NULL AND efforts NOT IN ('','[]','null') AND COALESCE(type,'') IN ('VO2','Race') ORDER BY date DESC LIMIT 1").get(pid()) as { id: number; date: string; name: string | null; type: string; efforts: string } | undefined;
+  const row = db.prepare("SELECT id, date, name, type, efforts FROM activities WHERE profile_id=? AND sport='Run' AND efforts IS NOT NULL AND efforts NOT IN ('','[]','null') AND COALESCE(type,'') IN ('VO2','Race','Renntempo') ORDER BY date DESC LIMIT 1").get(pid()) as { id: number; date: string; name: string | null; type: string; efforts: string } | undefined;
   if (!row) return res.json({ available: false });
   const efforts = parseJson<{ reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null; zone?: number | null; rest_s?: number | null; rest_type?: string | null }[]>(row.efforts, []);
   const power: number[] = [], time: number[] = []; let t = 0;
@@ -1086,6 +1125,18 @@ app.get("/api/method-experiments/:id/evaluation", (req, res) => {
   const start = buildMarkerSnapshot(exp.start_date, w);
   const end = buildMarkerSnapshot(endDate, w);
   res.json({ experiment: exp, window: w, start, end, evaluation: compareMarkers(start, end) });
+});
+
+// v1.10.0: Vorher→Nachher-Auswertung für eine beliebige Zeitspanne (z.B. ein erkannter Regime-Abschnitt) —
+// gleiche Logik wie die Experiment-Auswertung, aber mit freien from/to-Daten.
+app.get("/api/range-evaluation", (req, res) => {
+  const from = String((req.query as Record<string, string>).from || "");
+  const to = String((req.query as Record<string, string>).to || "");
+  if (!from || !to) return res.status(400).json({ error: "from/to erforderlich" });
+  const w = Math.max(7, Math.min(60, req.query.window ? Number(req.query.window) || 14 : 14));
+  const start = buildMarkerSnapshot(from, w);
+  const end = buildMarkerSnapshot(to, w);
+  res.json({ window: w, start, end, evaluation: compareMarkers(start, end) });
 });
 
 // Passive Methoden-Inferenz
@@ -2382,7 +2433,7 @@ app.get("/api/today", (req, res) => {
   // Entschärfen-/Recovery-Vorschlag, sonst „wie geplant". Immer geliefert, damit die Karte sichtbar ist.
   let nextHard: { date: string; type: string; adjustment: NonNullable<typeof adjustment> } | null = null;
   const hardRow = db.prepare(
-    "SELECT id, type, planned_tss, date FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ? AND sport='Run' AND type IN ('Threshold','VO2','VO2short','VO2long','LT2','Hill','Race') ORDER BY date LIMIT 1",
+    "SELECT id, type, planned_tss, date FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ? AND sport='Run' AND type IN ('Threshold','VO2','VO2short','VO2long','LT2','Hill','Race','Renntempo') ORDER BY date LIMIT 1",
   ).get(pid(), date, addDaysIso(date, 7)) as { id: number; type: string; planned_tss: number; date: string } | undefined;
   if (hardRow) {
     const adjH = adjustTodaySession({ type: hardRow.type, planned_tss: hardRow.planned_tss }, adjCtx(effectiveZoneSet(hardRow.date)));
@@ -2420,7 +2471,7 @@ app.get("/api/intervals/trend", (req, res) => {
   // Abgeleitete Einheit: geplante Session am selben Tag mit gleichem Sport, harte Typen zuerst.
   const byDate = db.prepare(
     `SELECT type FROM planned_sessions WHERE date=? AND sport=? AND profile_id=? AND type != 'Rest'
-     ORDER BY CASE WHEN type IN ('Threshold','VO2','Race','Hill','LT1','LT2','VO2short','VO2long') THEN 0 ELSE 1 END, sort_order LIMIT 1`,
+     ORDER BY CASE WHEN type IN ('Threshold','VO2','Race','Renntempo','Hill','LT1','LT2','VO2short','VO2long') THEN 0 ELSE 1 END, sort_order LIMIT 1`,
   );
 
   const out: IntervalEffortStat[] = [];

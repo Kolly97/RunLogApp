@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MethodExperiment, type Markers, type MethodEvaluationResult, type MethodInferenceResult, type MarkerDelta as MarkerDeltaT } from "../lib/api.ts";
-import { paceStr } from "../lib/util.ts";
+import { paceStr, fmtDate } from "../lib/util.ts";
 import MarkerDeltaChart from "../charts/MarkerDelta.tsx";
 import ConfidenceBadge, { type ConfLevel } from "../components/ConfidenceBadge.tsx";
 import ExpertDetails from "../components/ExpertDetails.tsx";
@@ -138,11 +138,12 @@ export default function Methodik() {
             {inference.regimes.length > 0 && (
               <ExpertDetails summary={`Regime-Details (${inference.regimes.length}) — Korrelation, nicht Kausalität`}>
               <table className="table" style={{ width: "100%" }}>
-                <thead><tr><th>Regime</th><th>Wochen</th><th>Δ CS</th><th>Δ VDOT</th><th>Konfidenz</th></tr></thead>
+                <thead><tr><th>Regime</th><th>Zeitraum</th><th>Wochen</th><th>Δ CS</th><th>Δ VDOT</th><th>Konfidenz</th></tr></thead>
                 <tbody>
                   {inference.regimes.map((r) => (
                     <tr key={r.regime}>
                       <td><strong>{REGIME_LABEL[r.regime]}</strong></td>
+                      <td className="tiny muted nowrap">{r.fromDate && r.toDate ? `${fmtDate(r.fromDate)} – ${fmtDate(r.toDate)}` : "—"}</td>
                       <td>{r.nWeeks}</td>
                       <td style={{ color: r.csChange != null && r.csChange < 0 ? "var(--ok)" : r.csChange != null && r.csChange > 0 ? "var(--danger)" : undefined }}>
                         {r.csChange != null ? `${r.csChange > 0 ? "+" : ""}${r.csChange} s/km` : "—"}
@@ -153,6 +154,13 @@ export default function Methodik() {
                   ))}
                 </tbody>
               </table>
+              {/* v1.10.0: Vorher→Nachher-Auswertung je erkanntem Regime-Abschnitt (image-20) — lazy beim Aufklappen. */}
+              <div style={{ marginTop: 8 }}>
+                <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>Auswertung je Regime-Abschnitt</div>
+                {inference.regimes.filter((r) => r.fromDate && r.toDate).map((r) => (
+                  <RegimeEvaluation key={r.regime} label={REGIME_LABEL[r.regime]} from={r.fromDate!} to={r.toDate!} />
+                ))}
+              </div>
               </ExpertDetails>
             )}
           </>
@@ -192,38 +200,56 @@ export default function Methodik() {
       </div>
 
       {/* Auswertung des gewählten Experiments */}
-      {evalR && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Auswertung <span className="tiny muted">({evalR.window}-Tage-Fenster, Vorher → Nachher)</span></h3>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <span className="pill" style={{ background: VERDICT_COLOR[evalR.evaluation.verdict], color: "#fff" }}>
-              CS {evalR.evaluation.verdict}
-            </span>
-            <span className="tiny muted">{CONF_LABEL[evalR.evaluation.confidence]}{evalR.evaluation.exploratory ? " · explorativ" : ""}</span>
-          </div>
-          <p className="tiny muted" style={{ marginTop: 0 }}>{evalR.evaluation.note}</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
-            <table className="table" style={{ width: "100%" }}>
-              <thead><tr><th>Marker</th><th>Vorher</th><th>Nachher</th><th>Δ</th><th>Richtung</th></tr></thead>
-              <tbody>
-                {evalR.evaluation.deltas.map((d) => (
-                  <tr key={d.key}>
-                    <td>{d.label}</td>
-                    <td className="muted">{fmtVal(d.key, d.start)}</td>
-                    <td>{fmtVal(d.key, d.end)}</td>
-                    <td>{fmtDelta(d)}</td>
-                    <td style={{ color: dirColor(d.direction), fontWeight: 600 }}>{d.direction ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div>
-              <div className="tiny muted" style={{ marginBottom: 4 }}>Zeit-Verteilung Vorher/Nachher</div>
-              <MarkerDeltaChart start={evalR.start.dist} end={evalR.end.dist} />
-            </div>
-          </div>
-        </div>
-      )}
+      {evalR && <div className="card" style={{ marginTop: 12 }}><EvaluationView ev={evalR} title="Auswertung" /></div>}
     </div>
+  );
+}
+
+/** Wiederverwendbare Vorher→Nachher-Auswertung (Experiment ODER Regime-Abschnitt, v1.10.0). */
+function EvaluationView({ ev, title }: { ev: MethodEvaluationResult; title?: string }) {
+  return (
+    <>
+      {title && <h3 style={{ marginTop: 0 }}>{title} <span className="tiny muted">({ev.window}-Tage-Fenster, Vorher → Nachher)</span></h3>}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span className="pill" style={{ background: VERDICT_COLOR[ev.evaluation.verdict], color: "#fff" }}>CS {ev.evaluation.verdict}</span>
+        <span className="tiny muted">{CONF_LABEL[ev.evaluation.confidence]}{ev.evaluation.exploratory ? " · explorativ" : ""}</span>
+      </div>
+      <p className="tiny muted" style={{ marginTop: 0 }}>{ev.evaluation.note}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+        <table className="table" style={{ width: "100%" }}>
+          <thead><tr><th>Marker</th><th>Vorher</th><th>Nachher</th><th>Δ</th><th>Richtung</th></tr></thead>
+          <tbody>
+            {ev.evaluation.deltas.map((d) => (
+              <tr key={d.key}>
+                <td>{d.label}</td>
+                <td className="muted">{fmtVal(d.key, d.start)}</td>
+                <td>{fmtVal(d.key, d.end)}</td>
+                <td>{fmtDelta(d)}</td>
+                <td style={{ color: dirColor(d.direction), fontWeight: 600 }}>{d.direction ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div>
+          <div className="tiny muted" style={{ marginBottom: 4 }}>Zeit-Verteilung Vorher/Nachher</div>
+          <MarkerDeltaChart start={ev.start.dist} end={ev.end.dist} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Auswertung eines erkannten Regime-Abschnitts — lazy beim Aufklappen geladen (v1.10.0, image-20). */
+function RegimeEvaluation({ label, from, to }: { label: string; from: string; to: string }) {
+  const [ev, setEv] = useState<MethodEvaluationResult | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const onToggle = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
+    if (e.currentTarget.open && !loaded) { setLoaded(true); api.rangeEvaluation(from, to, 14).then(setEv).catch(() => setEv(null)); }
+  };
+  return (
+    <details onToggle={onToggle} style={{ borderLeft: "3px solid var(--border)", paddingLeft: 8, marginTop: 6 }}>
+      <summary style={{ cursor: "pointer", fontSize: 12 }}><strong>{label}</strong> <span className="muted">{from} – {to}</span></summary>
+      <div style={{ marginTop: 6 }}>{ev ? <EvaluationView ev={ev} /> : <span className="tiny muted">{loaded ? "Lädt…" : ""}</span>}</div>
+    </details>
   );
 }

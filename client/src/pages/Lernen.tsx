@@ -84,7 +84,10 @@ export default function Lernen() {
           <h1>Lernen &amp; Glossar</h1>
           <span className="tiny muted" style={{ display: "block", marginTop: -2 }}>Alle Kennzahlen, Richtwerte und ihr Zusammenspiel — zum Nachschlagen.</span>
         </div>
-        <button className="primary" onClick={() => startTour()} title="Geführte Tour durch die echten Marker der App">▶ Geführte Tour starten</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="primary" onClick={() => startTour("whatis")} title="Jede Grafik & Tabelle einmal erklärt">▶ Tour „Was ist was"</button>
+          <button className="primary" onClick={() => startTour("profit")} title="Am Beispiel Alex Demo: Daten lesen & Training steuern">▶ Tour „Wie profitiere ich"</button>
+        </div>
       </div>
 
       <div className="card tight" style={{ marginBottom: 12, borderLeft: "3px solid var(--primary, #2563eb)" }}>

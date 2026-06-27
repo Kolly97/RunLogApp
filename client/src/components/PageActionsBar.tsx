@@ -14,7 +14,7 @@ export function PageActionsProvider({ children }: { children: ReactNode }) {
 export const usePageActions = () => useContext(Ctx);
 
 const PATH_HELP: Record<string, string> = {
-  "/": "dashboard", "/plan": "plan", "/track": "track", "/report": "report", "/longterm": "longterm",
+  "/": "dashboard", "/plan": "plan", "/coach": "coach", "/track": "track", "/report": "report", "/longterm": "longterm",
   "/races": "races", "/bests": "bests", "/methodik": "methodik", "/profile": "profile",
 };
 

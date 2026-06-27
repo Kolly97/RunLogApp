@@ -2,7 +2,7 @@
 // HRV, Ruhepuls, Recovery, Strain, Schlaf (h), Bettzeit — als kleine Einzel-Charts (Mo–So).
 // Bettzeit wird als Abweichung von 23:30 geplottet, Achse/Tooltip zeigen die Uhrzeit.
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from "recharts";
 import type { DailyLog } from "../lib/api.ts";
 import { DAY_NAMES } from "../lib/util.ts";
@@ -60,9 +60,9 @@ export function wellnessTrendData(daily: DailyLog[], days: string[]): { points: 
   return { points, visible, sleepRows };
 }
 
-/** Ein einzelner Wellness-Verlaufs-Chart (eine Kennzahl). */
-export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100 }: {
-  metric: MetricDef; points: Point[]; sleepRows: SleepRow[]; height?: number;
+/** Ein einzelner Wellness-Verlaufs-Chart (eine Kennzahl). `band` = 30-Tage-Normalbereich (v1.10.0). */
+export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100, band }: {
+  metric: MetricDef; points: Point[]; sleepRows: SleepRow[]; height?: number; band?: { lo: number; hi: number; mean: number } | null;
 }) {
   if (m.key === "bed_dev") return <SleepWindow data={sleepRows} height={height} />;
   return (
@@ -85,6 +85,10 @@ export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100 
           <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"
             label={{ value: m.refLabel, fontSize: 9, fill: "#94a3b8", position: "right" }} />
         )}
+        {band && (<>
+          <ReferenceArea y1={band.lo} y2={band.hi} fill={m.color} fillOpacity={0.08} ifOverflow="hidden" />
+          <ReferenceLine y={band.mean} stroke={m.color} strokeDasharray="5 3" strokeOpacity={0.4} strokeWidth={1.1} />
+        </>)}
         <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.8}
           dot={{ r: 2.5, fill: m.color, strokeWidth: 0 }} connectNulls />
       </LineChart>
