@@ -23,20 +23,33 @@ import pkg from "../../package.json";
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
 const BUILD_DATE = "27.06.2026"; // v1.8.0
 
-const NAV = [
-  { to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true },
-  { to: "/plan", ico: "✎", tk: "nav.plan", label: "Wochenplanung" },
-  { to: "/coach", ico: "🧭", tk: "nav.coach", label: "Coach" },
-  { to: "/track", ico: "✓", tk: "nav.track", label: "Tracking" },
-  { to: "/report", ico: "🖨", tk: "nav.report", label: "Wochenbericht" },
-  { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
-  { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
-  { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
-  { to: "/methodik", ico: "🔬", tk: "nav.methodik", label: "Methodik" },
-  { to: "/lernen", ico: "🎓", tk: "nav.lernen", label: "Lernen" },
-  { to: "/profile", ico: "👤", tk: "nav.profile", label: "Profil" },
-  { to: "/settings", ico: "⚙", tk: "nav.settings", label: "Einstellungen" },
-  { to: "/options", ico: "🏷", tk: "nav.options", label: "Auswahllisten" },
+// v1.10.0 UI-Konzept A2: Navigation in 5 Gruppen entlang der echten Nutzungs-Schleifen (Heute · Planen · Tracken ·
+// Analysieren · Lernen) + Einstellungen separat. Routen unverändert.
+type NavItem = { to: string; ico: string; tk: string; label: string; end?: boolean };
+const NAV_GROUPS: { label?: string; tk?: string; items: NavItem[] }[] = [
+  { items: [{ to: "/", ico: "▣", tk: "nav.dashboard", label: "Dashboard", end: true }] },
+  { label: "Planen", tk: "nav.group.plan", items: [
+    { to: "/plan", ico: "✎", tk: "nav.plan", label: "Wochenplanung" },
+    { to: "/coach", ico: "🧭", tk: "nav.coach", label: "Coach" },
+  ] },
+  { label: "Tracken", tk: "nav.group.track", items: [
+    { to: "/track", ico: "✓", tk: "nav.track", label: "Tracking" },
+  ] },
+  { label: "Analysieren", tk: "nav.group.analyze", items: [
+    { to: "/report", ico: "🖨", tk: "nav.report", label: "Wochenbericht" },
+    { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
+    { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
+    { to: "/methodik", ico: "🔬", tk: "nav.methodik", label: "Methodik" },
+    { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
+  ] },
+  { label: "Lernen", tk: "nav.group.learn", items: [
+    { to: "/lernen", ico: "🎓", tk: "nav.lernen", label: "Lernen" },
+  ] },
+  { label: "Einstellungen", tk: "nav.group.settings", items: [
+    { to: "/profile", ico: "👤", tk: "nav.profile", label: "Profil" },
+    { to: "/settings", ico: "⚙", tk: "nav.settings", label: "Einstellungen" },
+    { to: "/options", ico: "🏷", tk: "nav.options", label: "Auswahllisten" },
+  ] },
 ];
 
 export default function App() {
@@ -50,10 +63,15 @@ export default function App() {
         <ProfileSwitcher />
         <LangSwitcher />
         <nav className="nav">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? "active" : "")}>
-              <span className="ico">{n.ico}</span> <T k={n.tk}>{n.label}</T>
-            </NavLink>
+          {NAV_GROUPS.map((g, gi) => (
+            <div key={gi} className="nav-group">
+              {g.label && <div className="nav-group-label">{g.tk ? <T k={g.tk}>{g.label}</T> : g.label}</div>}
+              {g.items.map((n) => (
+                <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? "active" : "")}>
+                  <span className="ico">{n.ico}</span> <T k={n.tk}>{n.label}</T>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>

@@ -126,6 +126,7 @@
   "modal.session.zoneKmHint": "Leave blank if you don't set zone targets — the app will estimate by type.",
   "nav.bests": "Personal Bests",
   "nav.dashboard": "Dashboard",
+  "nav.group.analyze": "Analyses",
   "nav.longterm": "Long-term Report",
   "nav.methodik": "Methodology",
   "nav.options": "Lists",

@@ -55,6 +55,9 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 .nav a.active { background: var(--accent); color: #fff; }
 .nav a.active::before { height: 56%; opacity: 1; }
 .nav .ico { width: 18px; text-align: center; opacity: 0.9; }
+/* v1.10.0 UI A2: gruppierte Navigation — dezente Gruppen-Labels im dunklen Sidebar. */
+.nav-group { margin-bottom: 4px; }
+.nav-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7890; font-weight: 700; padding: 9px 11px 3px; }
 .main { flex: 1; padding: 24px 30px 72px; max-width: 1180px; } /* +Platz für die fixierte Aktionsleiste */
 
 /* Fixierte Aktionsleiste (v1.9.0): „Layout bearbeiten" + „Hilfe & Tipps" gemeinsam, klebt unten, druckt nicht. */
