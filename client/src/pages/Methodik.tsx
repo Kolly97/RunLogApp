@@ -5,7 +5,6 @@ import MarkerDeltaChart from "../charts/MarkerDelta.tsx";
 import ConfidenceBadge, { type ConfLevel } from "../components/ConfidenceBadge.tsx";
 import ExpertDetails from "../components/ExpertDetails.tsx";
 import OnboardingTour from "../components/OnboardingTour.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 
 const METHODIK_TOUR = [
   { title: "Methodik — was bei DIR wirkt", body: "Trainingslehre ist im Mittel erforscht, aber deine optimale Methode ist individuell. Diese Seite findet mit deinen eigenen Daten heraus, welches Training dir am meisten bringt (N-of-1)." },
@@ -225,7 +224,6 @@ export default function Methodik() {
           </div>
         </div>
       )}
-      <PageHelp page="methodik" />
     </div>
   );
 }

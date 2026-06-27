@@ -4,6 +4,75 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.9.0] – 2026-06-27 — Plan rund ums Rennen, optimale Zonen, UI-Politur, Lern-Tutorial & Erweiterbarkeit
+
+Fünf-Phasen-Update aus der ToDo-Liste: der Trainingsplan wird **um das Rennen herum vollständig** (echtes Rennen
+am Renntag + adaptive Erholung danach), die **Plan-Erfüllung ordnet Aktivität ↔ Einheit korrekt zu**, das Training
+passt sich auf Wunsch an **HRV/Schlaf** an, **optimale Zonen** (Pace/HF/Watt) werden sportwissenschaftlich berechnet,
+die **Oberfläche wirkt deutlich polierter** (fixierte Hilfe-/Bearbeiten-Leiste, Wochen-Header mit Form), ein
+**interaktives Lern-Tutorial + Glossar** führt durch die echten Marker, und **eigene Einheiten + ein Rad-Ziel**
+machen den Plan erweiterbar.
+
+### Hinzugefügt
+
+**Trainingsplan rund ums Rennen**
+- **Echtes Ziel-Rennen am Renntag:** In der Race-Week steht statt einer generischen Einheit das tatsächliche
+  Rennen (Distanz, Zielpace, geschätzte Renn-TSS) am korrekten Renntag.
+- **Adaptive Erholung nach dem Rennen:** Der Plan endet nicht am Renntag — es werden so lange Recovery-Wochen
+  angehängt, bis die Form (TSB) wieder in einem sicheren Band ist. **Distanzabhängig:** Marathon → mehr/tiefere
+  Erholung (≈ 3 Wochen), Halbmarathon ≈ 2, 5–10 km ≈ 1 Woche; PMC-gesteuert, damit der Wiedereinstieg nicht ins
+  Verletzungsrisiko führt.
+
+**Plan-Erfüllung korrekt zugeordnet**
+- **Robustes Auto-Matching** Aktivität ↔ geplante Einheit (Datum + Typ/TSS/Dauer-Best-Match) — falsche
+  Niedrig-Prozente (z. B. eine Recovery-Runde auf eine harte Einheit gerechnet) entfallen.
+- **Manuelle Überschreibung** je Aktivität im Tracking („Gehört zu geplanter Einheit") — die Auto-Zuordnung lässt
+  sich pro Lauf gezielt korrigieren. Plan-% erscheinen jetzt auch für automatisch gematchte (Strava-)Aktivitäten.
+
+**Readiness-Anpassung (beratend)**
+- Bei schwachen HRV-/Schlaf-Werten schlägt RunLog vor, die **nächste harte Einheit** (heute … +3 Tage) zu
+  entschärfen bzw. eine Recovery-Einheit zu wählen — 1-Klick-Übernahme, nie automatisch. Eigene Karte in der
+  Wochenplanung mit Readiness-Status + nächster harter Einheit.
+
+**Optimale Zonen (Pace/HF/Watt)**
+- **Berechnung aus etablierten Modellen:** Pace aus VDOT (Daniels) bzw. Critical Speed · HF aus LT1/LT2
+  (Laktattest bevorzugt, sonst %LTHR/Friel aus LTHR bzw. Max-HF) · Watt aus Critical Power (%CP).
+- **Dashboard-Übersichtskarte** (Pace · HF · Watt nebeneinander, mit Quelle je Achse) + Knopf „Als aktives
+  Zonen-Set übernehmen" (Vorschlag-Modus, manuelle Zonen bleiben erhalten).
+- **Langzeit-Schwellen-Trend:** Schwellen-Pace und Critical Power über die Zeit als verschieb-/ausblendbare Kachel.
+
+**UI-/UX-Politur**
+- **Fixierte Aktionsleiste:** „Layout bearbeiten" + „Hilfe & Tipps" teilen sich eine am Viewport-Boden klebende,
+  nicht druckende Bande — kein Scrollen, auf jeder Seite gleich.
+- **Wochen-Header mit Form:** Fitness (CTL) · Ermüdung (ATL) · Form (TSB) + CTL-Ramp + Mini-CTL-Sparkline der Woche.
+- **Wochenbericht-Kopf:** aktuelle VO₂max (VDOT-basiert) prominent + darunter die Veränderung zur Vorwoche (Δ, grün ↗/rot ↘).
+- **Präferenzen-Picker neu:** Schwerpunkt als prominentes Segmented-Control; Lieblings/Vermeiden in einem
+  aufgeräumten Panel mit Familie-Tabs + Suchfeld und klaren ♥/⊘-Toggles.
+
+**Lern-Tutorial & Glossar**
+- **Lern-/Glossar-Seite („🎓 Lernen"):** alle Kennzahlen mit Bedeutung, **Richtwerten** (TSB-Bänder, CTL-Ramp,
+  PI ≥ 2, Entkopplung < 5 %, CP/W′ …) und ihrem Zusammenspiel — zum Nachschlagen.
+- **Coachmark-Tour:** seitenübergreifende geführte Tour, die echte Marker hervorhebt (PMC · optimale Zonen ·
+  Wochen-Form · Readiness · Lauf-Power · Schwellen-Trend · Methodik) und ihre Bedeutung erklärt. Auto-Start beim
+  ersten Tutorial-Besuch, jederzeit per Knopf neu startbar; robuster Fallback, wenn ein Element fehlt.
+- **Tutorial-Daten stimmig:** geplante Einheiten mit km je Zone, Aktivitäten mit Zonen-km, Wochen-Checks der
+  abgeschlossenen Wochen passend abgehakt, heutige Wellness für die Readiness.
+
+**Eigene Einheiten & Rad**
+- **Eigene Einheiten:** Coach-Formular (Struktur eingeben) → die App schätzt **Familie/Anstrengung/TSS** vor →
+  anlegen. Als ♥ markiert erscheinen sie im Wochen-Vorschlag; sie laufen durch denselben Renderer wie die
+  Bibliothek (Intervalle, Pace-Bereich, HF, Zonen-km). Profil-scoped, überschreiben nie die Bibliothek.
+- **Rad-km-Wochenziel:** optionales Rad-km-Ziel je Woche (Saisonplan + Wochenplanung) inkl. Anzeige „Rad X / Ziel Y km".
+
+### Geändert
+- Die optimalen Pace-Zonen verankern die Endurance-Zone (Z2) an der Easy-Pace (statt Marathon-Pace) — praxisnähere,
+  breitere Zonen.
+- Die Seiten-Hilfe wandert von einzelnen Buttons je Seite in die gemeinsame fixierte Aktionsleiste.
+
+### Datenbank (additiv)
+- `season_weeks_v2.target_km_bike` (Rad-km-Ziel) und neue Tabelle `custom_workouts` (eigene Einheiten je Profil).
+  Beides additiv — Bestandsdaten unberührt.
+
 ## [1.8.0] – 2026-06-27 — Polish-Release: Aufgeräumte Analytik, Coach-Variation, Tutorial-Onboarding & Watt-Analytik
 
 Großes Polish-Update in vier Bausteinen: die Oberfläche wird aufgeräumt und entwirrt, der Trainings-Vorschlag

@@ -17,7 +17,6 @@ import { useOptions, typeIntensity } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import ZoneDistribution from "../charts/ZoneDistribution.tsx";
 import IntensityDonut from "../charts/IntensityDonut.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import WeekdayBars from "../charts/WeekdayBars.tsx";
@@ -236,7 +235,7 @@ export default function WeekReport() {
 
       <EditableGrid page="weekreport" paged>
         {/* Kopf */}
-        <EgItem id="head" title={t("report.tile.head", "Kopf")} defaultSpan={12} defaultHeight={68} reserve={100}>{() => (
+        <EgItem id="head" title={t("report.tile.head", "Kopf")} defaultSpan={12} defaultHeight={84} reserve={100}>{() => (
           <div className="card spread report-head">
             <div>
               <h2 style={{ margin: 0 }}>{weekLabel(week)} — {phaseLabel(week.phase)}</h2>
@@ -245,7 +244,22 @@ export default function WeekReport() {
                 {week.goal_race ? ` · ${week.goal_race}` : ""}{week.notes ? ` · ${week.notes}` : ""}
               </div>
             </div>
-            <div className="row" style={{ gap: 18 }}>
+            <div className="row" style={{ gap: 18, alignItems: "flex-start" }}>
+              {(() => {
+                const v = analyze?.vo2max;
+                const d = v && v.prev != null ? Math.round((v.now - v.prev) * 10) / 10 : null;
+                return (
+                  <div style={{ textAlign: "center", paddingRight: 4 }} title="VO₂max (VDOT-basiert, 90-Tage-Fenster) zum Wochenstand — Δ gegenüber der Vorwoche.">
+                    <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{v?.now ?? "–"}</div>
+                    <div className="tiny muted">VO₂max</div>
+                    {d != null && (
+                      <div className="tiny" style={{ fontWeight: 700, color: d > 0 ? "var(--ok)" : d < 0 ? "var(--danger)" : "var(--muted)" }}>
+                        {d > 0 ? `↗ +${d}` : d < 0 ? `↘ ${d}` : "→ ±0"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <Mini label={t("report.head.run", "Lauf")} v={`${actualKm} km`} sub={`${t("report.head.target", "Ziel")} ${week.target_km ?? "–"}`} />
               <Mini label={t("report.head.tss", "TSS")} v={`${Math.round(actualTss)}`} />
               <Mini label={t("report.head.form", "Form (TSB)")} v={`${analyze?.projectedTsb ?? "–"}`} />
@@ -674,7 +688,6 @@ function PhysioDistTile({ pd, tgt, pi, t }: {
           </div>
         </>
       )}
-      <PageHelp page="report" />
     </div>
   );
 }

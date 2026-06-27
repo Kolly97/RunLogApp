@@ -11,7 +11,7 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
-import PageHelp from "../components/PageHelp.tsx";
+import OptimalZonesCard from "../charts/OptimalZonesCard.tsx";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
@@ -114,7 +114,6 @@ export default function Dashboard() {
       </div>
 
       <EditableGrid page="dashboard" blocks={dashBlocks} />
-      <PageHelp page="dashboard" />
     </div>
   );
 
@@ -186,7 +185,7 @@ export default function Dashboard() {
       {
         id: "pmc", title: t("dashboard.block.pmc.title", "Performance Management Chart"), defaultSpan: 8, defaultHeight: 360,
         render: (h) => (
-          <div className="card">
+          <div className="card" data-tour="pmc">
             <div className="spread">
               <h2><T k="dashboard.block.pmc.title">Performance Management Chart</T></h2>
               <span className="tiny muted"><T k="dashboard.block.pmc.sub">Fitness · Fatigue · Form</T></span>
@@ -256,6 +255,8 @@ export default function Dashboard() {
         ),
       });
     }
+    // v1.9.0: berechnete optimale Zonen (Pace/HF/Watt) als Übersicht + Vorschlag.
+    list.push({ id: "optimal-zones", title: t("dashboard.block.optimalZones.title", "Optimale Zonen"), defaultSpan: 12, render: () => <OptimalZonesCard /> });
     return list;
   }
 }

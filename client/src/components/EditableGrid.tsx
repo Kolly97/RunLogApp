@@ -7,6 +7,7 @@
 import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
 import GridLayout, { WidthProvider, type Layout } from "react-grid-layout";
 import { api, type LayoutMap } from "../lib/api.ts";
+import { usePageActions } from "./PageActionsBar.tsx";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
@@ -146,24 +147,20 @@ export default function EditableGrid({ page, blocks, children, paged }: {
     saveTimer.current = setTimeout(() => { api.setLayout(page, next).catch(() => {}); }, 350);
   };
 
+  // v1.9.0: „Bearbeiten" wandert in die fixierte Aktionsleiste (PageActionsBar). WICHTIG: vor dem early-return
+  // unten, sonst ändert sich die Hook-Anzahl zwischen Renders (weißer Bildschirm).
+  const { setEdit } = usePageActions();
+  useEffect(() => {
+    if (!loaded) return;
+    setEdit({ editing, toggle: () => setEditing((v) => !v), reset: () => { persist({}); setExtraPages(1); } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, loaded]);
+  useEffect(() => () => setEdit(null), [setEdit]); // beim Verlassen der Seite die Leiste leeren
+
   if (!loaded) return null;
 
   const visible = blocks2.filter((b) => !layout[b.id]?.hidden);
   const hidden = blocks2.filter((b) => layout[b.id]?.hidden);
-
-  const editbar = (
-    <div className="eg-editbar no-print">
-      {editing ? (
-        <>
-          <span className="tiny muted">Layout-Bearbeitung — pro Profil gespeichert</span>
-          <button onClick={() => { persist({}); setExtraPages(1); }} className="tiny">Zurücksetzen</button>
-          <button onClick={() => setEditing(false)} className="primary tiny">Fertig</button>
-        </>
-      ) : (
-        <button onClick={() => setEditing(true)} className="tiny">✎ Layout bearbeiten</button>
-      )}
-    </div>
-  );
 
   const tray = editing && hidden.length > 0 && (
     <div className="eg-tray no-print">
@@ -272,7 +269,6 @@ export default function EditableGrid({ page, blocks, children, paged }: {
           </div>
         )}
         {tray}
-        {editbar}
       </>
     );
   }
@@ -327,7 +323,6 @@ export default function EditableGrid({ page, blocks, children, paged }: {
         </AutoGrid>
       </div>
       {tray}
-      {editbar}
     </>
   );
 }

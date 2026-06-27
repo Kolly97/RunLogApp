@@ -36,7 +36,7 @@ export default function PowerCard() {
   const trendData = (trend?.points ?? []).map((p) => ({ date: p.date, cp: p.cp }));
 
   return (
-    <div className="card">
+    <div className="card" data-tour="power">
       <div className="spread">
         <h2>Lauf-Power (Critical Power)</h2>
         <span className="pill" style={{ background: "#64748b", color: "#fff" }} title="Coros-Laufwatt sind gerätespezifisch — Werte relativ zu deinen Coros-Watt interpretieren.">relativ zu deinen Coros-Watt</span>

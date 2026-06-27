@@ -41,7 +41,7 @@ export default function SeasonPlan() {
         {!season.length && <p className="muted"><T k="season.empty">Noch keine Wochen. Lege mit „+ Woche" eine an.</T></p>}
         {season.length > 0 && (
           <table>
-            <thead><tr><th><T k="season.col.phase">Phase</T></th><th><T k="season.col.kw">KW</T></th><th><T k="season.col.year">Jahr</T></th><th><T k="season.col.date">Datum (Mo–So)</T></th><th><T k="season.col.targetKm">Ziel km</T></th><th><T k="season.col.race">Race</T></th><th></th></tr></thead>
+            <thead><tr><th><T k="season.col.phase">Phase</T></th><th><T k="season.col.kw">KW</T></th><th><T k="season.col.year">Jahr</T></th><th><T k="season.col.date">Datum (Mo–So)</T></th><th><T k="season.col.targetKm">Ziel km</T></th><th><T k="season.col.targetKmBike">Rad km</T></th><th><T k="season.col.race">Race</T></th><th></th></tr></thead>
             {groupByYear(season).map(({ year, items }) => {
               const isOpen = openYears.has(year);
               const sumKm = items.reduce((s, w) => s + (w.target_km || 0), 0);
@@ -99,6 +99,7 @@ function WeekRow({ w, onChange }: { w: SeasonWeek; onChange: () => void }) {
       </td>
       <td className="tiny muted nowrap">{fmtDate(e.start_date)} – {fmtDate(e.end_date)}</td>
       <td style={{ width: 80 }}><input type="number" value={e.target_km ?? ""} onChange={(x) => save({ target_km: num(x.target.value) })} /></td>
+      <td style={{ width: 80 }}><input type="number" value={e.target_km_bike ?? ""} onChange={(x) => save({ target_km_bike: num(x.target.value) })} title="Optionales Wochen-km-Ziel Rad" /></td>
       <td><input value={e.goal_race ?? ""} onChange={(x) => save({ goal_race: x.target.value })} /></td>
       <td><button className="sm ghost danger" onClick={remove}>✕</button></td>
     </tr>

@@ -77,6 +77,8 @@ function generateTutorial(today: string): number {
   // Zonen (10-km-Sportler, Schwelle ~4:00/km).
   const hrZones = DEFAULT_HR_ZONES.map((z, i) => ({ ...z, min: [0, 131, 151, 162, 173, 185][i], max: [130, 150, 161, 172, 184, 999][i] }));
   const paceZones = [330, 285, 258, 244, 222, 150];
+  // Repräsentative Pace je Zone (s/km) für TSS-neutrale km-Aufteilung: byKm[z] = byMin[z]·60 / repPace[z].
+  const repPace = paceZones.map((p, i) => (i === 0 ? p + 25 : Math.round((paceZones[i - 1] + p) / 2))); // [355,307,271,251,233,186]
   db.prepare(`INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, lthr, ftp, threshold_pace, source, note, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
     .run(pid, addDays(today, -400), JSON.stringify(hrZones), JSON.stringify(paceZones), 168, 250, 244, "Tutorial", "Demo-Zonen (Alex Demo)", nowIso);
 
@@ -91,6 +93,7 @@ function generateTutorial(today: string): number {
   const insWeek = db.prepare(`INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes) VALUES(?,?,?,?,?,?,?,?,?)`);
   const insPlan = db.prepare(`INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, planned_tss, sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
   const insLog = db.prepare(`INSERT INTO daily_log_v2(profile_id, date, hrv, resting_hr, recovery, sleep_h, soreness, motivation, rpe) VALUES(?,?,?,?,?,?,?,?,?)`);
+  const insWeekLog = db.prepare(`INSERT INTO week_log_v2(profile_id, week_no, run_km, week_tss, checks) VALUES(?,?,?,?,?)`); // v1.9.0 Wochen-Checks
 
   const DAY_NAME = ["Lockerer Dauerlauf", "Schwellenlauf", "Lockerer Dauerlauf", "Tempo/Intervalle", "Regeneration", "", "Longrun"];
   db.exec("BEGIN");
@@ -108,13 +111,14 @@ function generateTutorial(today: string): number {
         w === 0 ? "Saisonstart — ruhiger Wiedereinstieg." : phase === "Specific" ? "Wettkampfspezifik, polarisiert." : "");
 
       const keys = weekKeys(phase, w);
+      let weekKm = 0, weekTss = 0; // für die Wochen-Checks (week_log_v2)
       for (let d = 0; d < 7; d++) {
         const date = addDays(start, d);
         const k = keys[d];
         const isPast = date < today;
         const isRecent = date >= addDays(today, -8 * 7); // letzte 8 Wochen → auch Plan (für Adherence)
-        // Wellness (nur Vergangenheit, leichte Schwankung; ein paar müde Tage).
-        if (isPast) insLog.run(pid, date, Math.round(jit(62, 6)), Math.round(jit(46, 3)), Math.round(jit(70, 14)), Math.round(jit(7.4, 0.8) * 10) / 10, clamp(Math.round(jit(2, 1.5)), 0, 6), clamp(Math.round(jit(7, 2)), 1, 10), k ? clamp(Math.round(jit(SESS[k].if * 10, 1)), 1, 10) : 1);
+        // Wellness (Vergangenheit + HEUTE, damit Readiness rechnet; leichte Schwankung, ein paar müde Tage).
+        if (date <= today) insLog.run(pid, date, Math.round(jit(62, 6)), Math.round(jit(46, 3)), Math.round(jit(70, 14)), Math.round(jit(7.4, 0.8) * 10) / 10, clamp(Math.round(jit(2, 1.5)), 0, 6), clamp(Math.round(jit(7, 2)), 1, 10), k ? clamp(Math.round(jit(SESS[k].if * 10, 1)), 1, 10) : 1);
         if (!k) continue;
         const s = SESS[k];
         const ifv = clamp(jit(s.if, 0.02), 0.6, 1.05);
@@ -125,8 +129,12 @@ function generateTutorial(today: string): number {
         const tss = Math.round((movingS / 3600) * ifv * ifv * 100 * 10) / 10;
         const avgHr = clamp(Math.round(jit(s.hr, 3)), 100, 195);
         const maxHr = clamp(avgHr + Math.round(jit(k === "vo2" ? 14 : k === "long" ? 10 : 12, 3)), avgHr + 4, 198);
-        const zoneMin: Record<number, number> = {}, paceZoneMin: Record<number, number> = {};
-        for (const [z, frac] of Object.entries(s.z)) { zoneMin[+z] = Math.round(dur * frac * 10) / 10; paceZoneMin[+z] = Math.round(dur * frac * 10) / 10; }
+        const zoneMin: Record<number, number> = {}, paceZoneMin: Record<number, number> = {}, zoneKm: Record<number, number> = {};
+        for (const [z, frac] of Object.entries(s.z)) {
+          const zi = +z, mins = Math.round(dur * frac * 10) / 10;
+          zoneMin[zi] = mins; paceZoneMin[zi] = mins;
+          zoneKm[zi] = Math.round((mins * 60 / repPace[zi - 1]) * 100) / 100; // km in Zone (TSS-neutral)
+        }
         const wp = tp + (s.work ?? 0);
         const bests = s.eff ? JSON.stringify({ 1000: Math.round(wp), 3000: Math.round(wp * 3 * 1.01), 5000: Math.round(wp * 5 * 1.02) }) : null;
         const np = Math.round(jit(MASS * 4.0 * ifv + 25, 4));
@@ -137,13 +145,19 @@ function generateTutorial(today: string): number {
         const efforts = (k === "vo2" || k === "threshold" || k === "fartlek")
           ? JSON.stringify([{ reps: k === "vo2" ? 5 : k === "fartlek" ? 8 : 4, sec: k === "vo2" ? 180 : k === "fartlek" ? 60 : 480, dist_m: null, zone: k === "vo2" || k === "fartlek" ? 5 : 4, pace_s: wp, rest_s: k === "fartlek" ? 60 : 90, rest_type: "jog", label: s.type }]) : null;
         if (isPast) {
-          insAct.run(pid, date, "Run", "tutorial", `${DAY_NAME[d] || s.type} (Alex Demo)`, s.type, distM, movingS, movingS + Math.round(jit(120, 60)), avgHr, maxHr, np, Math.round(jit(k === "long" ? 180 : 60, 40)), Math.round(jit(172, 6)), tss, null, JSON.stringify(zoneMin), null, JSON.stringify(paceZoneMin), avgPace, decoup, effV, np, pc, bests, efforts);
+          insAct.run(pid, date, "Run", "tutorial", `${DAY_NAME[d] || s.type} (Alex Demo)`, s.type, distM, movingS, movingS + Math.round(jit(120, 60)), avgHr, maxHr, np, Math.round(jit(k === "long" ? 180 : 60, 40)), Math.round(jit(172, 6)), tss, null, JSON.stringify(zoneMin), JSON.stringify(zoneKm), JSON.stringify(paceZoneMin), avgPace, decoup, effV, np, pc, bests, efforts);
+          weekKm += distM / 1000; weekTss += tss;
         }
         // Plan: kommende Wochen + jüngste Vergangenheit (für Plan-Erfüllung). Beschreibung kurz.
         if (!isPast || isRecent) {
           const desc = k === "threshold" ? `${dur}' inkl. 4×8' @ ${paceStr(wp)}/km` : k === "vo2" ? `${dur}' inkl. 5×3' @ ${paceStr(wp)}/km` : k === "fartlek" ? `${dur}' Fartlek 8×1'` : k === "long" ? `${dur}' Longrun ruhig` : `${dur}' ${s.type}`;
-          insPlan.run(pid, date, w + 1, "Run", s.type, Math.round(distM / 100) / 10, dur, JSON.stringify({ byMin: zoneMin }), desc, tss, d);
+          insPlan.run(pid, date, w + 1, "Run", s.type, Math.round(distM / 100) / 10, dur, JSON.stringify({ byMin: zoneMin, byKm: zoneKm }), desc, tss, d);
         }
+      }
+      // Wochen-Checks für abgeschlossene Wochen abhaken (passend zur realen Trainingswoche).
+      if (end < today) {
+        const checks = { mileage: true, threshold2x: phase !== "Entlastung" && phase !== "Race-Week", longrun: true, plyo: true, physio: (w % 3) !== 0 };
+        insWeekLog.run(pid, w + 1, Math.round(weekKm * 10) / 10, Math.round(weekTss), JSON.stringify(checks));
       }
     }
 

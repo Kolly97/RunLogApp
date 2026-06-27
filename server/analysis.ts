@@ -1219,6 +1219,18 @@ function phaseProgress(phases: (string | null)[], wi: number): { weekInPhase: nu
   return { weekInPhase: wi - start, phaseLen: end - start + 1 };
 }
 
+/**
+ * Grobe Renn-TSS aus Distanz + Zielzeit (v1.9.0): rTSS = (Dauer h)·IF²·100 mit distanzabhängigem Intensitäts-
+ * faktor (5k ~1.04 · 10k ~1.0 · HM ~0.98 · Marathon ~0.92). Ohne Zielzeit: distanzbasierter Fallback.
+ * Treibt die PMC-Projektion + die adaptive Recovery nach dem Rennen (Marathon → tiefer → längere Erholung).
+ */
+export function raceTssEstimate(distanceM: number | null, timeS: number | null): number {
+  const d = distanceM ?? 0;
+  const ifr = d >= 38000 ? 0.92 : d >= 18000 ? 0.98 : d >= 12000 ? 1.0 : 1.04;
+  if (timeS && timeS > 0) return Math.round((timeS / 3600) * ifr * ifr * 100);
+  return d >= 38000 ? 270 : d >= 18000 ? 150 : d >= 8000 ? 90 : d >= 4000 ? 55 : 40;
+}
+
 export function blockPlan(args: {
   weeks: BlockWeekInput[];
   historicalDailyTss: Map<string, number>;
@@ -1320,6 +1332,26 @@ export function blockPlan(args: {
     }
     if (downgraded) rec.reasons.push({ code: "hard_spacing", text: "Erholung geschützt: eine Qualitätseinheit zu locker umgewandelt (kein harter Folgetag im Profil möglich)." });
 
+    // v1.9.0: in der Race-Week das ECHTE Ziel-Rennen am Renntag einsetzen (statt generischer Einheit).
+    if (args.raceDate && w.dates.includes(args.raceDate)) {
+      const raceTss = raceTssEstimate(args.goalDistanceM ?? null, args.goalTimeS ?? null);
+      const distKm = args.goalDistanceM && args.goalDistanceM > 0 ? Math.round(args.goalDistanceM / 100) / 10 : null;
+      const goalPaceS = args.goalDistanceM && args.goalTimeS ? Math.round(args.goalTimeS / (args.goalDistanceM / 1000)) : (weekZones.goal_pace ?? null);
+      const ps = goalPaceS ? `${Math.floor(goalPaceS / 60)}:${String(Math.round(goalPaceS % 60)).padStart(2, "0")}` : null;
+      const raceEntry: BlockDay = {
+        date: args.raceDate, weekdayIdx: w.dates.indexOf(args.raceDate), type: "Race", isSecond: false,
+        planned_min: distKm && goalPaceS ? Math.round((distKm * goalPaceS) / 60) : (args.goalTimeS ? Math.round(args.goalTimeS / 60) : 40),
+        planned_tss: raceTss,
+        description: `🏁 WETTKAMPF${distKm ? ` · ${distKm} km` : ""}${ps ? ` @ ${ps}/km` : ""}`,
+        zone_alloc: { byKm: distKm ? { 4: distKm } : {} }, efforts: null, paceTarget: goalPaceS, prescription: null,
+      };
+      const exist = days.findIndex((d) => d.date === args.raceDate);
+      const prevTss = exist >= 0 ? days[exist].planned_tss : 0;
+      if (exist >= 0) days[exist] = raceEntry; else days.push(raceEntry);
+      tssActual += raceTss - prevTss;
+      projected.set(args.raceDate, (projected.get(args.raceDate) ?? 0) - prevTss + raceTss);
+    }
+
     if (rec.confidence === "niedrig") lowConf = true;
     const pl = (rec.headline || "").toLowerCase();
     const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
@@ -1331,6 +1363,61 @@ export function blockPlan(args: {
       isDeload, days, reasons: rec.reasons, confidence: rec.confidence,
     });
   });
+
+  // v1.9.0: adaptive Recovery NACH dem Rennen — Plan endet nicht am Renntag. Solange Recovery-Wochen anhängen,
+  // bis die Form (TSB) wieder in einem sicheren Band ist (≥ −5). Distanzabhängig (Marathon tiefer → länger).
+  if (args.raceDate && args.weeks.length) {
+    const csForFit = args.zones.cs_pace ?? null;
+    const lastInput = args.weeks[args.weeks.length - 1];
+    let recStart = addDaysIsoLocal(lastInput.start_date, 7);
+    let recNo = (outWeeks.length ? outWeeks[outWeeks.length - 1].week_no : 0) + 1;
+    // Mindest-Erholung distanzabhängig (Muskelschaden ≠ nur TSB): Marathon ≥ 3 Wo · HM 2 · sonst 1 Woche.
+    const rDist = args.goalDistanceM ?? 0;
+    const minRec = rDist >= 38000 ? 3 : rDist >= 18000 ? 2 : 1;
+    for (let i = 0; i < 4; i++) {
+      const dates = Array.from({ length: 7 }, (_, d) => addDaysIsoLocal(recStart, d));
+      const merged = new Map(args.historicalDailyTss);
+      for (const [d, t] of projected) merged.set(d, (merged.get(d) ?? 0) + t);
+      const pmc0 = computePmc(merged, args.from, addDaysIsoLocal(recStart, -1), args.today);
+      const last0 = pmc0.length ? pmc0[pmc0.length - 1] : null;
+      const ctl0 = last0?.ctl ?? 0, tsb0 = last0?.tsb ?? 0;
+      const fit0 = fitnessLevel(ctl0, csForFit);
+      const recTarget = Math.max(20, Math.round(ctl0 * 7 * (0.35 + 0.12 * i))); // locker, langsam wieder hochrampen
+      const picks = pickWeekWorkouts("recovery", i, fit0, false, args.goalDistanceM ?? null, 0);
+      const easies = picks.filter((p) => p.role === "easy");
+      const eShare = easies.length ? recTarget / easies.length : recTarget;
+      const units2: PlannedUnit[] = picks.map((p) => {
+        const tgt = p.role === "easy" ? Math.round(eShare) : 0;
+        return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress: 0.3, targetTss: tgt } };
+      });
+      const rdays: BlockDay[] = [];
+      let rtss = 0;
+      for (const su of scheduleWeek(units2, args.availability, dates)) {
+        const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+        const c = ref?.tpl
+          ? renderWorkout(ref.tpl, { zones: args.zones, fitness: fit0, progress: 0.3, targetTss: ref.targetTss, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined })
+          : concretizeSession(su.type, su.targetTss, args.zones);
+        const prescription = ref?.tpl ? { templateId: ref.tpl.id, progress: 0.3, targetTss: ref.targetTss } : null;
+        rdays.push({ date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond, planned_min: c.planned_min, planned_tss: c.planned_tss, description: c.description, zone_alloc: c.zone_alloc, efforts: c.efforts, paceTarget: c.paceTarget, prescription });
+        projected.set(su.date, (projected.get(su.date) ?? 0) + c.planned_tss);
+        rtss += c.planned_tss;
+      }
+      outWeeks.push({
+        week_no: recNo, start_date: recStart, phase: "Recovery",
+        headline: i === 0 ? "Regeneration nach dem Rennen" : "Wiedereinstieg", periodizationModel: "traditional",
+        tssTarget: recTarget, tssActual: Math.round(rtss), ctlStart: round1(ctl0), tsbStart: round1(tsb0),
+        isDeload: true, days: rdays, confidence: "mittel",
+        reasons: [{ code: "post_race_recovery", text: "Regeneration nach dem Wettkampf — Last bewusst niedrig, bis die Form (TSB) wieder im sicheren Bereich ist." }],
+      });
+      recNo++; recStart = addDaysIsoLocal(recStart, 7);
+      // Form am Ende dieser Recovery-Woche prüfen → bei sicherem Band (≥ −5) stoppen (mind. 1 Woche).
+      const mergedE = new Map(args.historicalDailyTss);
+      for (const [d, t] of projected) mergedE.set(d, (mergedE.get(d) ?? 0) + t);
+      const pmcE = computePmc(mergedE, args.from, dates[6], args.today);
+      const tsbE = pmcE.length ? (pmcE[pmcE.length - 1].tsb ?? 0) : 0;
+      if (i + 1 >= minRec && tsbE >= -5) break; // genug Wochen + Form wieder im sicheren Band
+    }
+  }
 
   const reasons: { code: string; text: string }[] = [
     { code: "block_horizon", text: args.raceDate ? `Mesozyklus bis Renntag ${args.raceDate}: 3:1-Rhythmus + Taper` : "Rollender Block (kein Renntag gesetzt)" },
@@ -1585,6 +1672,41 @@ export interface AnalyzeContext {
 
 /** Plan-Erfüllung einer Einheit (v0.14.0, ToDo 12): zusammengesetzt aus TSS-Treffer + Zeit-in-Ziel-Pace-Zone.
  *  `pct` = 100·(0.5·tssScore + 0.5·zoneScore); ohne Pace-Zonen-Daten nur TSS (`tssOnly`). Ohne geplantes TSS → null. */
+/**
+ * Aktivität ↔ geplante Einheit zuordnen (v1.9.0). Manuelle Zuordnung (`matched_session_id`) gewinnt immer;
+ * sonst greedy-Best-Match nach Datumnähe (±1 Tag) + Typ-Übereinstimmung + TSS-/Dauer-Nähe. Jede Aktivität und
+ * jede Einheit höchstens einmal. Liefert Map activityId → sessionId (für korrekte Plan-Erfüllung statt Fehl-%).
+ */
+export function matchActivities(
+  activities: { id: number; date: string; type: string | null; tss: number | null; moving_s: number | null; matched_session_id: number | null; sport: string }[],
+  sessions: { id: number; date: string; type: string; planned_tss: number | null; planned_min: number | null }[],
+): Map<number, number> {
+  const out = new Map<number, number>();
+  const usedSessions = new Set<number>();
+  const sessionIds = new Set(sessions.map((s) => s.id));
+  // 1) manuelle Zuordnungen fixieren.
+  for (const a of activities) if (a.matched_session_id != null && sessionIds.has(a.matched_session_id)) { out.set(a.id, a.matched_session_id); usedSessions.add(a.matched_session_id); }
+  // 2) auto: Score je (Aktivität, freie Einheit), beste Paare greedy zuerst.
+  const score = (a: typeof activities[number], s: typeof sessions[number]): number => {
+    const dd = Math.abs(Date.parse(a.date + "T00:00:00Z") - Date.parse(s.date + "T00:00:00Z")) / 86400000;
+    if (dd > 1.5) return -1;
+    let sc = 100 - dd * 45;
+    if (a.type && s.type && a.type.toLowerCase() === s.type.toLowerCase()) sc += 25;
+    if (a.tss && s.planned_tss) sc += 25 * (1 - Math.min(1, Math.abs(a.tss - s.planned_tss) / Math.max(40, s.planned_tss)));
+    if (a.moving_s && s.planned_min) sc += 15 * (1 - Math.min(1, Math.abs(a.moving_s / 60 - s.planned_min) / Math.max(20, s.planned_min)));
+    return sc;
+  };
+  const pairs: { a: number; s: number; sc: number }[] = [];
+  for (const a of activities) {
+    if (out.has(a.id) || a.sport !== "Run") continue;
+    for (const s of sessions) if (!usedSessions.has(s.id)) { const sc = score(a, s); if (sc > 0) pairs.push({ a: a.id, s: s.id, sc }); }
+  }
+  pairs.sort((x, y) => y.sc - x.sc);
+  const usedAct = new Set<number>();
+  for (const p of pairs) { if (usedAct.has(p.a) || usedSessions.has(p.s)) continue; out.set(p.a, p.s); usedAct.add(p.a); usedSessions.add(p.s); }
+  return out;
+}
+
 export function sessionCompletion(
   planned: { planned_tss?: number | null; zone_alloc?: { byKm?: Record<number, number> } | null },
   act: { tss?: number | null; pace_zone_min?: Record<number, number> | null },

@@ -22,6 +22,8 @@ export default function AvailabilityCard() {
   const [av, setAv] = useState<Availability>(EMPTY);
   const [saved, setSaved] = useState(false);
   const [workouts, setWorkouts] = useState<WorkoutInfo[]>([]); // v1.8.0: Bibliothek für Lieblings/Vermeiden
+  const [famTab, setFamTab] = useState("Alle"); // v1.9.0 Picker: Familie-Filter
+  const [q, setQ] = useState(""); // v1.9.0 Picker: Suche
   const t = useT();
 
   useEffect(() => {
@@ -148,13 +150,17 @@ export default function AvailabilityCard() {
           </select>
         </label>
 
-        {/* Block-Schwerpunkt (v1.8.0) */}
-        <label className="field" style={{ margin: 0, width: 180 }}>
-          <span><T k="availability.emphasis">Schwerpunkt im Block</T></span>
-          <select value={av.emphasis ?? "ausgewogen"} onChange={(e) => persist({ ...av, emphasis: e.target.value })}>
-            {EMPHASIS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-          </select>
-        </label>
+      </div>
+
+      {/* Block-Schwerpunkt (v1.9.0): prominent als Segmented-Control statt kleinem Dropdown. */}
+      <div style={{ marginBottom: 10 }}>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 4 }}><T k="availability.emphasis">Schwerpunkt im Block</T></div>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {EMPHASIS.map((o) => (
+            <button key={o.v} className={`sm ${(av.emphasis ?? "ausgewogen") === o.v ? "" : "ghost"}`}
+              style={{ padding: "6px 13px", fontWeight: 600 }} onClick={() => persist({ ...av, emphasis: o.v })}>{o.l}</button>
+          ))}
+        </div>
       </div>
 
       {/* Harttage */}
@@ -224,37 +230,49 @@ export default function AvailabilityCard() {
         </div>
       )}
 
-      {/* Lieblings-/Vermeiden-Einheiten (v1.8.0) — advisory: gewichtet die Auswahl, Periodisierung bleibt. */}
-      {workouts.length > 0 && (
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted)" }}>
-            <T k="availability.fav.title">Lieblings- &amp; Vermeiden-Einheiten</T>
-            {((av.favoriteWorkouts?.length ?? 0) + (av.avoidWorkouts?.length ?? 0)) > 0 &&
-              <span> · ♥ {av.favoriteWorkouts?.length ?? 0} · ⊘ {av.avoidWorkouts?.length ?? 0}</span>}
-          </summary>
-          <p className="tiny muted" style={{ margin: "6px 0" }}>
-            <T k="availability.fav.hint">♥ = häufiger, ⊘ = vermeiden. Wirkt beratend auf die Auswahl — Phasen &amp; Erholungsregeln bleiben verbindlich.</T>
-          </p>
-          {Object.entries(workouts.reduce((acc, w) => { (acc[w.family] ??= []).push(w); return acc; }, {} as Record<string, WorkoutInfo[]>)).map(([fam, list]) => (
-            <div key={fam} style={{ marginBottom: 6 }}>
-              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>{fam}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {list.map((w) => {
+      {/* Lieblings-/Vermeiden-Einheiten (v1.9.0 Redesign) — Familie-Tabs + Suche, klare ♥/⊘-Toggles, beratend. */}
+      {workouts.length > 0 && (() => {
+        const favC = av.favoriteWorkouts?.length ?? 0, avoC = av.avoidWorkouts?.length ?? 0;
+        const families = Array.from(new Set(workouts.map((w) => w.family)));
+        const ql = q.trim().toLowerCase();
+        const filtered = workouts.filter((w) => (famTab === "Alle" || w.family === famTab) && (!ql || w.name.toLowerCase().includes(ql) || (w.purpose ?? "").toLowerCase().includes(ql)));
+        return (
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              <T k="availability.fav.title">Lieblings- &amp; Vermeiden-Einheiten</T>
+              {(favC + avoC) > 0 && <span className="tiny muted" style={{ fontWeight: 400 }}> · ♥ {favC} · ⊘ {avoC}</span>}
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              <p className="tiny muted" style={{ margin: "0 0 8px" }}>
+                <T k="availability.fav.hint">♥ = häufiger, ⊘ = vermeiden. Wirkt beratend auf die Auswahl — Phasen &amp; Erholungsregeln bleiben verbindlich.</T>
+              </p>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                {["Alle", ...families].map((fam) => (
+                  <button key={fam} className={`sm ${famTab === fam ? "" : "ghost"}`} style={{ padding: "3px 10px" }} onClick={() => setFamTab(fam)}>{fam}</button>
+                ))}
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Einheit suchen…"
+                  style={{ marginLeft: "auto", width: 150, padding: "5px 9px", fontSize: 12, border: "1px solid var(--border)", borderRadius: 8 }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 6 }}>
+                {filtered.map((w) => {
                   const fav = (av.favoriteWorkouts ?? []).includes(w.id);
                   const avo = (av.avoidWorkouts ?? []).includes(w.id);
                   return (
-                    <span key={w.id} title={w.purpose} style={{ display: "inline-flex", alignItems: "center", gap: 2, border: "1px solid var(--border)", borderRadius: 7, padding: "1px 4px", fontSize: 11, opacity: avo ? 0.55 : 1 }}>
-                      <span>{w.name}</span>
-                      <button className="sm ghost" style={{ padding: "0 3px", color: fav ? "var(--ok)" : "var(--muted)" }} onClick={() => toggleFav(w.id)} title="Favorit">♥</button>
-                      <button className="sm ghost" style={{ padding: "0 3px", color: avo ? "var(--danger)" : "var(--muted)" }} onClick={() => toggleAvoid(w.id)} title="Vermeiden">⊘</button>
-                    </span>
+                    <div key={w.id} title={w.purpose} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${fav ? "var(--ok)" : avo ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, padding: "5px 8px", background: fav ? "rgba(16,185,129,0.08)" : avo ? "rgba(239,68,68,0.06)" : "#fff" }}>
+                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, opacity: avo ? 0.7 : 1 }}>{w.name}</span>
+                      <button className="sm ghost" onClick={() => toggleFav(w.id)} title="Favorit — häufiger vorschlagen"
+                        style={{ padding: "1px 6px", borderRadius: 6, fontWeight: 700, color: fav ? "#fff" : "var(--muted)", background: fav ? "var(--ok)" : "transparent" }}>♥</button>
+                      <button className="sm ghost" onClick={() => toggleAvoid(w.id)} title="Vermeiden"
+                        style={{ padding: "1px 6px", borderRadius: 6, fontWeight: 700, color: avo ? "#fff" : "var(--muted)", background: avo ? "var(--danger)" : "transparent" }}>⊘</button>
+                    </div>
                   );
                 })}
+                {filtered.length === 0 && <span className="tiny muted">Keine Einheit gefunden.</span>}
               </div>
             </div>
-          ))}
-        </details>
-      )}
+          </details>
+        );
+      })()}
     </div>
   );
 }

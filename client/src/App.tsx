@@ -14,6 +14,9 @@ import Methodik from "./pages/Methodik.tsx";
 import Settings from "./pages/Settings.tsx";
 import ProfilePage from "./pages/Profile.tsx";
 import OptionsConfig from "./pages/OptionsConfig.tsx";
+import Lernen from "./pages/Lernen.tsx";
+import { PageActionsProvider, PageActionsBar } from "./components/PageActionsBar.tsx";
+import Coachmark from "./components/Coachmark.tsx";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
@@ -28,6 +31,7 @@ const NAV = [
   { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
   { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
   { to: "/methodik", ico: "🔬", tk: "nav.methodik", label: "Methodik" },
+  { to: "/lernen", ico: "🎓", tk: "nav.lernen", label: "Lernen" },
   { to: "/profile", ico: "👤", tk: "nav.profile", label: "Profil" },
   { to: "/settings", ico: "⚙", tk: "nav.settings", label: "Einstellungen" },
   { to: "/options", ico: "🏷", tk: "nav.options", label: "Auswahllisten" },
@@ -37,6 +41,7 @@ export default function App() {
   useEffect(() => { api.cleanupOrphans().catch(() => {}); }, []);
   const location = useLocation();
   return (
+    <PageActionsProvider>
     <div className="app">
       <aside className="sidebar no-print">
         <div className="brand">Run<span>Log</span></div>
@@ -61,6 +66,7 @@ export default function App() {
             <Route path="/races" element={<Races />} />
             <Route path="/bests" element={<Bests />} />
             <Route path="/methodik" element={<Methodik />} />
+            <Route path="/lernen" element={<Lernen />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/options" element={<OptionsConfig />} />
@@ -70,8 +76,11 @@ export default function App() {
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
           <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a>
         </footer>
+        <PageActionsBar />
       </main>
+      <Coachmark />
     </div>
+    </PageActionsProvider>
   );
 }
 

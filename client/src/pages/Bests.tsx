@@ -11,7 +11,6 @@ import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 import PowerCard from "../charts/PowerCard.tsx";
 import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 
 const PRED_LINES = [
   { key: "p5000", label: "5 km", color: "#0ea5e9", dist: 5000 },
@@ -231,7 +230,6 @@ export default function Bests() {
       }}</EgItem>}
         <EgItem id="power" title="Lauf-Power" defaultSpan={12}>{() => <PowerCard />}</EgItem>
       </EditableGrid>
-      <PageHelp page="bests" />
     </div>
   );
 }

@@ -9,7 +9,6 @@ import {
 import { useOptions, type Option } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "../components/EffortBuilder.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 import "./track.css";
@@ -22,6 +21,7 @@ export default function WeekTrack() {
   const [zs, setZs] = useState<ZoneSet | null>(null);
   const [extra, setExtra] = useState(false); // „Zusätzliche Einheit" mit freiem Datum (v0.14.0)
   const [adh, setAdh] = useState<Record<number, { pct: number; tssOnly: boolean }>>({}); // Plan-Erfüllung je Einheit (v0.14.0)
+  const [matchBy, setMatchBy] = useState<Record<number, number>>({}); // v1.9.0: Auto-Match Aktivität→Einheit
   const [view, setView] = useState<"day" | "week">("day"); // Tages-Switcher (Default) vs. ganze Woche (v0.14.0, ToDo 13)
   const [selDate, setSelDate] = useState<string>(""); // gewählter Tag im Tag-Modus
 
@@ -40,6 +40,7 @@ export default function WeekTrack() {
     const map: Record<number, { pct: number; tssOnly: boolean }> = {};
     for (const p of an?.adherence?.perSession ?? []) map[p.session_id] = { pct: p.pct, tssOnly: p.tssOnly };
     setAdh(map);
+    setMatchBy(an?.adherence?.matchByActivity ?? {});
   }
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [week?.week_no]);
 
@@ -73,7 +74,7 @@ export default function WeekTrack() {
     <DayCard key={d} date={d} dayName={DAY_NAMES[days.indexOf(d)]}
       planned={sessions.filter((s) => s.date === d)}
       acts={acts.filter((a) => a.date === d)}
-      daily={daily[d]} zs={zs} adh={adh} onChange={reload} />
+      daily={daily[d]} zs={zs} adh={adh} matchBy={matchBy} onChange={reload} />
   );
 
   return (
@@ -106,7 +107,6 @@ export default function WeekTrack() {
       ) : (
         days.map((d) => dayCard(d))
       )}
-      <PageHelp page="track" />
     </div>
   );
 }
@@ -164,9 +164,9 @@ function WeekdayTabs({ days, sessions, acts, adh, selDate, onSelect }: {
   );
 }
 
-function DayCard({ date, dayName, planned, acts, daily, zs, adh, onChange }: {
+function DayCard({ date, dayName, planned, acts, daily, zs, adh, matchBy, onChange }: {
   date: string; dayName: string; planned: PlannedSession[]; acts: Activity[];
-  daily?: DailyLog; zs: ZoneSet | null; adh: Record<number, { pct: number; tssOnly: boolean }>; onChange: () => void;
+  daily?: DailyLog; zs: ZoneSet | null; adh: Record<number, { pct: number; tssOnly: boolean }>; matchBy: Record<number, number>; onChange: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [quick, setQuick] = useState(false);
@@ -202,8 +202,8 @@ function DayCard({ date, dayName, planned, acts, daily, zs, adh, onChange }: {
 
       {quick && <QuickCommute date={date} onChange={() => { setQuick(false); onChange(); }} />}
 
-      {acts.map((a) => <ActivityRow key={a.id} a={a} zs={zs} adh={adh} onChange={onChange} />)}
-      {adding && <ActivityRow a={newAct} zs={zs} adh={adh} onChange={() => { setAdding(false); onChange(); }} isNew />}
+      {acts.map((a) => <ActivityRow key={a.id} a={a} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={onChange} />)}
+      {adding && <ActivityRow a={newAct} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={() => { setAdding(false); onChange(); }} isNew />}
 
       <DailyForm date={date} daily={daily} />
     </div>
@@ -246,8 +246,8 @@ function defaultZoneUnit(x: Activity): "km" | "min" {
   return isBikeSport(x.sport) || x.distance_m == null ? "min" : "km";
 }
 
-function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
-  a: Activity; zs: ZoneSet | null; adh?: Record<number, { pct: number; tssOnly: boolean }>; onChange: () => void; isNew?: boolean; dateEditable?: boolean;
+function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditable }: {
+  a: Activity; zs: ZoneSet | null; adh?: Record<number, { pct: number; tssOnly: boolean }>; matchBy?: Record<number, number>; planned?: PlannedSession[]; onChange: () => void; isNew?: boolean; dateEditable?: boolean;
 }) {
   const [e, setE] = useState<Activity>({ ...a });
   const [open, setOpen] = useState(!!isNew);
@@ -306,7 +306,8 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
   if (!open) {
     // Zugeklappt direkt aus den Props rendern — zeigt nach reload() immer den Server-Stand.
     const tempo = a.distance_m && a.moving_s ? paceOrSpeed(a.sport, a.distance_m, a.moving_s) : "";
-    const pa = a.matched_session_id != null ? adh?.[a.matched_session_id] : undefined; // Plan-Erfüllung (v0.14.0)
+    const sid = a.matched_session_id ?? (a.id != null ? matchBy?.[a.id] : undefined); // v1.9.0: manuell ODER Auto-Match
+    const pa = sid != null ? adh?.[sid] : undefined; // Plan-Erfüllung (v0.14.0)
     const paColor = pa ? (pa.pct >= 90 ? "var(--ok)" : pa.pct >= 70 ? "var(--form)" : "var(--danger)") : "";
     return (
       <div className="sess" onClick={openForm} style={{ cursor: "pointer", borderLeft: `4px solid ${typeColor(a.type ?? "")}` }}>
@@ -333,6 +334,18 @@ function ActivityRow({ a, zs, adh, onChange, isNew, dateEditable }: {
       {dateEditable && (
         <label className="field" style={{ margin: "0 0 8px", maxWidth: 200 }}><span><T k="track.field.date">Datum</T></span>
           <input type="date" value={e.date} onChange={(x) => set({ date: x.target.value })} /></label>
+      )}
+      {/* v1.9.0: manuelle Zuordnung zu einer geplanten Einheit (überschreibt das Auto-Match). */}
+      {!isNew && a.id != null && (planned?.filter((p) => p.id != null && p.type !== "Rest").length ?? 0) > 0 && (
+        <label className="field" style={{ margin: "0 0 8px", maxWidth: 320 }}>
+          <span><T k="track.field.matchSession">Gehört zu geplanter Einheit</T></span>
+          <select value={a.matched_session_id ?? ""} onChange={async (x) => { await api.matchActivity(a.id!, x.target.value ? Number(x.target.value) : null).catch(() => {}); onChange(); }}>
+            <option value="">automatisch zuordnen</option>
+            {planned!.filter((p) => p.id != null && p.type !== "Rest").map((p) => (
+              <option key={p.id} value={p.id!}>{typeLabel(p.type)}{p.planned_tss ? ` · ${Math.round(p.planned_tss)} TSS` : ""}</option>
+            ))}
+          </select>
+        </label>
       )}
       {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
       <div className={`grid ${showTyp ? "cols-3" : "cols-2"}`} style={{ gap: 8 }}>

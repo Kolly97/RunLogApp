@@ -104,10 +104,21 @@ export const WORKOUT_LIBRARY: WorkoutTemplate[] = [
 ];
 
 /** Workout-Vorlage per id (für Live-Resolution + Downgrade-Fallback). */
-export function workoutById(id: string): WorkoutTemplate | undefined { return byId.get(id); }
+export function workoutById(id: string): WorkoutTemplate | undefined { return byId.get(id) ?? customById.get(id); }
 
 const byId = new Map(WORKOUT_LIBRARY.map((w) => [w.id, w]));
-const wk = (id: string): WorkoutTemplate => byId.get(id)!;
+// v1.9.0 (Z14): eigene Einheiten je Profil. index.ts ruft setCustomWorkouts() vor jeder Vorschlags-/Block-Anfrage.
+let CUSTOM: WorkoutTemplate[] = [];
+const customById = new Map<string, WorkoutTemplate>();
+export function setCustomWorkouts(list: WorkoutTemplate[]): void {
+  CUSTOM = list.filter((w) => w && w.id && !byId.has(w.id)); // Bibliothek nie überschreiben
+  customById.clear();
+  for (const w of CUSTOM) customById.set(w.id, w);
+}
+export function customWorkoutList(): WorkoutTemplate[] { return CUSTOM; }
+const hasWk = (id: string): boolean => byId.has(id) || customById.has(id);
+const getWk = (id: string): WorkoutTemplate | undefined => byId.get(id) ?? customById.get(id);
+const wk = (id: string): WorkoutTemplate => (byId.get(id) ?? customById.get(id))!;
 
 // ---------------- Fitness-Stufe ----------------
 export function fitnessLevel(ctl: number, csPace?: number | null): FitnessLevel {
@@ -135,7 +146,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
 
   // v1.8.0 Block-Präferenzen (advisory): Vermeiden raus, Schwerpunkt + Favoriten häufiger. Erholung/Phasen bleiben verbindlich.
   const avoid = new Set(prefs?.avoidWorkouts ?? []);
-  const favs = (prefs?.favoriteWorkouts ?? []).filter((id) => byId.has(id));
+  const favs = (prefs?.favoriteWorkouts ?? []).filter((id) => hasWk(id));
   const EMPH: Record<string, (t: WorkoutTemplate) => boolean> = {
     schwelle: (t) => t.family === "LT2", vo2: (t) => t.family === "VO2" && !t.id.startsWith("fartlek"),
     berg: (t) => t.family === "Hill", norwegian: (t) => t.id.startsWith("norw"), fartlek: (t) => t.id.startsWith("fartlek"),
@@ -159,7 +170,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     if (!emphMatch || !prefs?.emphasis) return picks;
     const ph = (phase || "").toLowerCase();
     if (!(ph.includes("belast") || ph.includes("build") || ph.includes("aufbau") || ph.includes("spec"))) return picks;
-    const pool = (EMPH_POOL[prefs.emphasis] ?? []).filter((id) => !avoid.has(id) && byId.has(id) && byId.get(id)!.phases.some((x) => ph.includes(x)));
+    const pool = (EMPH_POOL[prefs.emphasis] ?? []).filter((id) => !avoid.has(id) && hasWk(id) && getWk(id)!.phases.some((x) => ph.includes(x)));
     if (!pool.length) return picks;
     if (picks.some((p) => p.role === "quality" && !p.pair && emphMatch!(p.tpl))) return picks; // schon vertreten
     const idx = picks.map((p, i) => ({ p, i })).reverse().find(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides" && !emphMatch!(p.tpl))?.i;
@@ -193,6 +204,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   const hillPool = pref(fitness === "low" ? ["hill_reps_short", "hill_reps_long"] : ["hill_reps_xlong", "hill_reps_short", "hill_reps_long"]);
 
   if (p.includes("krank")) return [E("easy_recovery"), E("easy_recovery")];
+  if (p.includes("recovery") || p.includes("erholung")) return [E("easy_recovery"), E("easy_ga1"), E("easy_recovery"), Q("strides")];
 
   if (p.includes("race week") || p.includes("raceweek") || p.includes("race-week")) {
     return [Q("strides"), Q(rot(av(["race_pace", "vo2_400s"]), weekInPhase)), E("easy_ga1"), E("easy_recovery"), E("easy_recovery")];
@@ -462,4 +474,48 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
     efforts: [effort], paceTarget: tpl.kind === "hill" ? null : center ?? paceOf(z, zones),
     description, planned_tss: r1(z1Min * tpmE + workMin * tpmW),
   };
+}
+
+// ---------------- Eigene Einheiten (v1.9.0, Z14) ----------------
+const SESSION_TYPE: Record<Family, string> = { Easy: "Easy", Long: "Long", LT1: "Steady", LT2: "Threshold", VO2: "VO2", Hill: "Hill", Speed: "VO2", Race: "Race", Core: "Stabi" };
+const ANCHOR_BY_ZONE: Anchor[] = [null, "easy", "easy", "lt1", "lt2", "cs", "rep"]; // Index = Zone (1..6)
+const IF_BY_ZONE = [0, 0.65, 0.72, 0.85, 0.95, 1.05, 1.12];
+function hashStr(s: string): number { let h = 0; for (let i = 0; i < (s || "").length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
+export interface CustomInput {
+  name: string; family: Family; kind: "steady" | "intervals"; workZone: number;
+  minMin?: number; maxMin?: number; reps?: number; repSec?: number; repDist_m?: number; restSec?: number;
+  phases?: string[]; goalPaceS?: number;
+}
+
+/** Aus den Form-Eingaben eine gültige WorkoutTemplate bauen + Familie/Anstrengung/TSS vorschätzen (Z14). */
+export function estimateCustom(inp: CustomInput): { template: WorkoutTemplate; tssEstimate: number; durationMin: number } {
+  const z = Math.max(1, Math.min(6, Math.round(inp.workZone || 4)));
+  const anchor = ANCHOR_BY_ZONE[z];
+  const IF = IF_BY_ZONE[z];
+  const effort = (z <= 1 ? 1 : z >= 5 ? 5 : z) as 1 | 2 | 3 | 4 | 5;
+  const reps = Math.max(1, inp.reps ?? 5);
+  const id = "custom_" + ((inp.name || "einheit").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24) || "einheit") + "_" + Math.abs(hashStr(inp.name || "")).toString(36).slice(0, 4);
+  let tss: number, durationMin: number;
+  if (inp.kind === "steady") {
+    const dur = Math.round(((inp.minMin ?? 30) + (inp.maxMin ?? inp.minMin ?? 40)) / 2);
+    durationMin = dur; tss = Math.round((dur * IF * IF * 100) / 60);
+  } else {
+    const repMin = inp.repSec ? inp.repSec / 60 : (inp.repDist_m && inp.goalPaceS ? (inp.repDist_m / 1000) * (inp.goalPaceS / 60) : 3);
+    const restMin = (inp.restSec ?? 90) / 60;
+    const workMin = reps * repMin, recMin = reps * restMin, wucd = 26;
+    durationMin = Math.round(workMin + recMin + wucd);
+    tss = Math.round(((workMin * IF * IF + recMin * 0.3 + wucd * 0.36) * 100) / 60);
+  }
+  const template: WorkoutTemplate = {
+    id, family: inp.family, sessionType: SESSION_TYPE[inp.family] ?? "Steady", name: inp.name || "Eigene Einheit",
+    purpose: "Eigene Einheit", phases: inp.phases?.length ? inp.phases : ["base", "belast", "specific"],
+    effort, kind: inp.kind === "steady" ? "steady" : "intervals", workZone: z, anchor, paceWindow: inp.kind === "steady" ? 0 : 4,
+    minMin: inp.kind === "steady" ? (inp.minMin ?? 30) : undefined, maxMin: inp.kind === "steady" ? (inp.maxMin ?? 40) : undefined,
+    repSec: inp.kind === "intervals" ? inp.repSec : undefined, repDist_m: inp.kind === "intervals" ? inp.repDist_m : undefined,
+    restSec: inp.kind === "intervals" ? (inp.restSec ?? 90) : undefined, restType: "jog",
+    repsByFitness: inp.kind === "intervals" ? { low: [Math.max(1, reps - 1), reps], mid: [reps, reps], high: [reps, reps + 1] } : undefined,
+    synergy: "eigene Einheit", lit: "—",
+  };
+  return { template, tssEstimate: tss, durationMin };
 }

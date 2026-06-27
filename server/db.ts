@@ -344,6 +344,22 @@ function migrate(): void {
   // v0.12.0 (ToDo 12): eigene Tagesfaktoren (über die festen Spalten hinaus) als JSON.
   addColumn("daily_log_v2", "custom", "TEXT");
 
+  // v1.9.0 (Z6): optionales Wochen-km-Ziel fürs Rad (additiv, neben dem Lauf-Ziel target_km).
+  addColumn("season_weeks_v2", "target_km_bike", "REAL");
+
+  // v1.9.0 (Z14): eigene Einheiten je Profil — Struktur-JSON kompatibel zu WorkoutTemplate (workouts.ts).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_workouts (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      name        TEXT NOT NULL,
+      family      TEXT NOT NULL,
+      template    TEXT NOT NULL,
+      created_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_workouts_profile ON custom_workouts(profile_id);
+  `);
+
   // ToDo #24 (v0.5.0): Wettkämpfe mit Detail-Splits (eigene Seite + Bericht).
   db.exec(`
     CREATE TABLE IF NOT EXISTS races (

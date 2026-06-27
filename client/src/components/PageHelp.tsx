@@ -2,7 +2,7 @@
 // ('so liest du das, so hilft es dir') + Link zur vollständigen Anleitung. Druckt nicht mit.
 import { useState } from "react";
 
-const HELP: Record<string, { title: string; bullets: string[] }> = {
+export const HELP: Record<string, { title: string; bullets: string[] }> = {
   dashboard: { title: "Dashboard — dein Status heute", bullets: [
     "CTL = Fitness (42-Tage-Last), ATL = Ermüdung (7-Tage), TSB = Form (CTL−ATL): >+5 frisch, −10 bis −25 produktiv müde.",
     "Oben: Readiness, heutige Empfehlung und — falls ein Ziel-Rennen mit Wunschzeit gesetzt ist — der Soll/Ist-Abgleich.",

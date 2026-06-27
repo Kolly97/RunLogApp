@@ -6,8 +6,8 @@ import ZoneSets from "../components/ZoneSets.tsx";
 import LactateTests from "../components/LactateTests.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
 import AvailabilityCard from "../components/AvailabilityCard.tsx";
+import CustomWorkoutsCard from "../components/CustomWorkoutsCard.tsx";
 import Vo2maxLabCard from "../components/Vo2maxLab.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -75,7 +75,7 @@ export default function ProfilePage() {
         <div className="opt-panel" key={section}>
           {section === "athlete" && <AthleteCard />}
           {section === "zones" && <ZoneSets />}
-          {section === "availability" && <AvailabilityCard />}
+          {section === "availability" && <><AvailabilityCard /><CustomWorkoutsCard /></>}
           {section === "tests" && <><LactateTests /><Vo2maxLabCard /></>}
           {section === "accounts" && (
             <div className="card">
@@ -114,7 +114,6 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
-      <PageHelp page="profile" />
     </div>
   );
 }

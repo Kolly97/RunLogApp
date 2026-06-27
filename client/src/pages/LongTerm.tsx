@@ -18,7 +18,7 @@ import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels,
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import ZoneHistogram from "../charts/ZoneHistogram.tsx";
-import PageHelp from "../components/PageHelp.tsx";
+import ThresholdTrendChart from "../charts/ThresholdTrendChart.tsx";
 import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import { bedDeviation, devToClock } from "../charts/WellnessTrends.tsx";
 import Pmc from "../charts/Pmc.tsx";
@@ -300,6 +300,14 @@ export default function LongTerm() {
       <div className="card">
         <div className="spread"><h2><T k="lt.block.intensity.title">Last-Trend (ATL/CTL)</T></h2><span className="tiny muted"><T k="lt.block.intensity.sub">akute vs. chronische Last (ATL/CTL) — nicht die Zonen-Intensität</T></span></div>
         <IntensityRatio data={pmc} height={h ?? 240} />
+      </div>
+      )}</EgItem>
+
+      {/* Schwellen-Trend (Pace & CP) — v1.9.0 */}
+      <EgItem id="threshold-trend" title={t("lt.block.threshold.title", "Schwellen-Trend (Pace & CP)")} defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
+      <div className="card" data-tour="threshold-trend">
+        <div className="spread"><h2><T k="lt.block.threshold.title">Schwellen-Trend</T></h2><span className="tiny muted"><T k="lt.block.threshold.sub">Schwellen-Pace (links) &amp; Critical Power (rechts) über die Zeit</T></span></div>
+        <ThresholdTrendChart height={h} />
       </div>
       )}</EgItem>
 
@@ -663,7 +671,6 @@ export default function LongTerm() {
         )}</EgItem>
       )}
       </EditableGrid>
-      <PageHelp page="longterm" />
     </div>
   );
 }

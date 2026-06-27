@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay, type GoalGap } from "../lib/api.ts";
+import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay, type GoalGap, type TodayResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num, paceStr,
@@ -11,7 +11,6 @@ import WeekSelector from "../components/WeekSelector.tsx";
 import SessionModal from "../components/SessionModal.tsx";
 import TemplateManager from "../components/TemplateManager.tsx";
 import T from "../components/T.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
 export default function WeekPlan() {
@@ -179,6 +178,12 @@ export default function WeekPlan() {
     await reloadSeason();
     reload();
   }
+  async function saveTargetKmBike(v: number | null) {
+    if (!week) return;
+    await api.saveWeek(week.week_no, { ...week, target_km_bike: v });
+    await reloadSeason();
+    reload();
+  }
   async function savePhase(v: string) {
     if (!week) return;
     setEditingPhase(false);
@@ -230,17 +235,27 @@ export default function WeekPlan() {
               );
             })()}
           </div>
-          <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
-            <span><T k="plan.targetKm">Ziel km</T></span>
-            <input type="number" min="0" style={{ width: 72, padding: "4px 6px" }}
-              key={`tgt-${week.week_no}-${week.target_km ?? ""}`} defaultValue={week.target_km ?? ""}
-              onBlur={(e) => saveTargetKm(num(e.target.value))} title="Wochen-Ziel-km (wirkt auf den Volumen-Check; gleiche Quelle wie im Saisonplan)" />
-          </label>
+          <div className="row" style={{ gap: 12, width: "auto" }}>
+            <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
+              <span><T k="plan.targetKm">Ziel km</T></span>
+              <input type="number" min="0" style={{ width: 72, padding: "4px 6px" }}
+                key={`tgt-${week.week_no}-${week.target_km ?? ""}`} defaultValue={week.target_km ?? ""}
+                onBlur={(e) => saveTargetKm(num(e.target.value))} title="Wochen-Ziel-km (wirkt auf den Volumen-Check; gleiche Quelle wie im Saisonplan)" />
+            </label>
+            <label className="row tiny muted" style={{ gap: 6, width: "auto", margin: 0 }}>
+              <span><T k="plan.targetKmBike">Rad km</T></span>
+              <input type="number" min="0" style={{ width: 64, padding: "4px 6px" }}
+                key={`tgtb-${week.week_no}-${week.target_km_bike ?? ""}`} defaultValue={week.target_km_bike ?? ""}
+                onBlur={(e) => saveTargetKmBike(num(e.target.value))} title="Optionales Wochen-km-Ziel Rad" />
+            </label>
+          </div>
         </div>
+        {analyze?.pmc && <WeekPmcStrip pmc={analyze.pmc} />}
       </div>
 
       {/* Soll/Ist-Abgleich zum Ziel-Rennen (v1.7.0) */}
       <GoalGapCard />
+      <ReadinessCard />
 
       {/* Engine: Wochen-Vorschlag + Block-Vorschau (v1.3.0/v1.4.0, Vorschlag-Modus) */}
       <div className="card tight no-print" style={{ marginBottom: 8 }}>
@@ -426,7 +441,7 @@ export default function WeekPlan() {
               <Stat label={tr("plan.stat.sessions", "Einheiten")} value={t ? t.sessions : 0} sub={`${t?.hardSessions ?? 0} hart`} />
             </div>
             <div className="row tiny muted" style={{ marginTop: 6 }}>
-              <span>{tr("plan.stat.bikeLabel", "Rad")} {t?.bike_km ?? 0} km</span>·<span>{tr("plan.stat.longestRun", "längster Lauf")} {t?.longestKm ?? 0} km</span>
+              <span>{tr("plan.stat.bikeLabel", "Rad")} {t?.bike_km ?? 0}{week.target_km_bike ? ` / ${week.target_km_bike}` : ""} km</span>·<span>{tr("plan.stat.longestRun", "längster Lauf")} {t?.longestKm ?? 0} km</span>
               {analyze?.projectedTsb != null && <>·<span>Form Ende: {analyze.projectedTsb}</span></>}
             </div>
           </div>
@@ -456,7 +471,6 @@ export default function WeekPlan() {
       {showManager && (
         <TemplateManager templates={templates} onClose={() => setShowManager(false)} onChange={reloadTemplates} />
       )}
-      <PageHelp page="plan" />
     </div>
   );
 }
@@ -472,6 +486,82 @@ function Stat({ label, value, sub, color }: { label: string; value: number | str
 }
 
 /** Soll/Ist-Karte zum Ziel-Rennen (v1.7.0): Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit. */
+/** Wochen-Header-PMC (v1.9.0): Fitness (CTL) · Fatigue (ATL) · Form (TSB) + CTL-Ramp/Woche + Mini-CTL-Sparkline. */
+function WeekPmcStrip({ pmc }: { pmc: NonNullable<AnalyzeResult["pmc"]> }) {
+  const tsbCol = pmc.tsb > 5 ? "var(--ok)" : pmc.tsb < -25 ? "var(--danger)" : pmc.tsb < -10 ? "var(--warn)" : "var(--form, #2563eb)";
+  const rampCol = pmc.ramp == null ? "var(--muted)" : pmc.ramp > 8 ? "var(--warn)" : pmc.ramp < -3 ? "var(--info, #0891b2)" : "var(--ok)";
+  const sp = pmc.spark ?? [];
+  const W = 132, H = 30, P = 3;
+  const ctls = sp.map((s) => s.ctl);
+  const min = Math.min(...ctls), max = Math.max(...ctls), span = Math.max(1, max - min);
+  const pts = sp.map((s, i) => `${(P + (i / Math.max(1, sp.length - 1)) * (W - 2 * P)).toFixed(1)},${(H - P - ((s.ctl - min) / span) * (H - 2 * P)).toFixed(1)}`).join(" ");
+  const Stat = ({ label, val, col, title }: { label: string; val: string | number; col?: string; title?: string }) => (
+    <div title={title} style={{ lineHeight: 1.1 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{val}</div>
+      <div className="tiny muted">{label}</div>
+    </div>
+  );
+  return (
+    <div className="row" data-tour="week-pmc" style={{ gap: 20, alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid #eef2f7", flexWrap: "wrap" }}>
+      <Stat label="Fitness CTL" val={pmc.ctl} title="CTL — chronische Last (42-Tage-EWMA): deine Fitness/Belastbarkeit." />
+      <Stat label="Fatigue ATL" val={pmc.atl} title="ATL — akute Last (7-Tage-EWMA): aktuelle Ermüdung." />
+      <Stat label="Form TSB" val={`${pmc.tsb > 0 ? "+" : ""}${pmc.tsb}`} col={tsbCol} title="TSB = CTL − ATL: > +5 frisch · −10 bis −25 produktiv müde · < −25 Risiko." />
+      <Stat label="CTL-Ramp/Wo" val={pmc.ramp != null ? `${pmc.ramp > 0 ? "+" : ""}${pmc.ramp}` : "—"} col={rampCol} title="Wöchentlicher CTL-Aufbau — > +8 zu steil (Verletzungsrisiko), 3–6 nachhaltig." />
+      {sp.length > 1 && (
+        <div style={{ marginLeft: "auto" }} title="CTL-Verlauf der letzten ~6 Wochen">
+          <svg width={W} height={H} style={{ display: "block" }}>
+            <polyline points={pts} fill="none" stroke="var(--primary, #2563eb)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Readiness-Karte (v1.9.0): zeigt die nächste harte Einheit + Readiness. Bei schwachen HRV/Schlaf-Werten
+ *  Vorschlag, die Einheit zu entschärfen / Recovery zu empfehlen (advisory, 1-Klick). Sonst „wie geplant". */
+function ReadinessCard() {
+  const [td, setTd] = useState<TodayResult | null>(null);
+  const [msg, setMsg] = useState("");
+  const load = () => api.today().then(setTd).catch(() => setTd(null));
+  useEffect(() => { load(); }, []);
+  if (!td) return null;
+  const nh = td.nextHard ?? null;
+  const todayAdj = td.adjustment?.changed ? td.adjustment : null;
+  const adj = todayAdj ?? (nh?.adjustment?.changed ? nh.adjustment : null); // nur wenn wirklich geändert
+  // Karte zeigen, wenn es eine nächste harte Einheit ODER eine heutige Anpassung gibt.
+  if (!nh && !todayAdj) return null;
+  const r = td.readiness;
+  const rCol = r ? (r.level === "red" ? "var(--danger)" : r.level === "yellow" ? "var(--warn)" : "var(--ok)") : "var(--muted)";
+  const when = nh ? (nh.date === td.date ? "heute" : fmtDateLabel(nh.date)) : "heute";
+  const borderCol = adj ? (/red|recovery/.test(adj.action) ? "var(--danger)" : "var(--warn)") : "var(--ok)";
+  const apply = async () => { if (!adj?.adjusted) return; await api.applyAdjustment(adj.originalSessionId, adj.adjusted as object).catch(() => {}); setMsg("Übernommen ✓"); load(); };
+  return (
+    <div className="card tight no-print" data-tour="readiness" style={{ marginBottom: 8, borderLeft: `4px solid ${borderCol}` }}>
+      <div className="spread">
+        <strong style={{ fontSize: 13 }}>⚡ Readiness{nh ? ` — nächste harte Einheit (${when}, ${typeLabel(nh.type)})` : ""}</strong>
+        {r ? <span className="tiny" style={{ fontWeight: 700, color: rCol }}>Readiness {r.score} · {r.level === "red" ? "rot" : r.level === "yellow" ? "gelb" : "grün"}</span>
+          : <span className="tiny muted">keine HRV/Schlaf-Daten heute</span>}
+      </div>
+      {adj && adj.adjusted ? (
+        <>
+          <div className="tiny" style={{ marginTop: 2 }}>{adj.headline} — Vorschlag: <strong>{typeLabel(adj.adjusted.type)}</strong> ({Math.round(adj.adjusted.planned_tss)} statt {Math.round(adj.original.planned_tss)} TSS).</div>
+          {adj.reasons?.length > 0 && <div className="tiny muted" style={{ marginTop: 2 }}>{adj.reasons.map((x) => x.text).join(" · ")}</div>}
+          <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center" }}>
+            <button className="sm" onClick={apply}>Anpassung übernehmen</button>
+            <span className="tiny muted">{adj.mode === "advisory" ? "Vorschlag — nichts wird automatisch geändert." : "Empfehlung"}</span>
+            {msg && <span className="tiny" style={{ color: "var(--ok)" }}>{msg}</span>}
+          </div>
+        </>
+      ) : (
+        <div className="tiny muted" style={{ marginTop: 2 }}>{r ? "Werte gut — die Einheit passt wie geplant." : "Trage HRV/Schlaf in den Tagesfaktoren ein, damit die App harte Einheiten bei Bedarf entschärfen kann."}</div>
+      )}
+    </div>
+  );
+}
+
+const fmtDateLabel = (iso: string): string => { const d = new Date(iso + "T00:00:00Z"); return `${d.getUTCDate()}.${d.getUTCMonth() + 1}.`; };
+
 function GoalGapCard() {
   const [g, setG] = useState<GoalGap | null>(null);
   useEffect(() => { api.goalGap().then(setG).catch(() => setG(null)); }, []);

@@ -25,6 +25,14 @@ export interface PowerCurve {
   recent: { date: string; name: string | null; runNp: number | null; rss: number | null }[];
 }
 export interface CpTrend { points: { date: string; cp: number }[] }
+// Optimale Zonen (Pace/HF/Watt) — v1.9.0
+export interface OptimalZones {
+  pace_zones: number[]; hr_zones: HrZone[]; power_zones: number[] | null;
+  threshold_pace: number; lthr: number; cp: number | null;
+  sources: { pace: string; hr: string; power: string | null };
+}
+export interface OptimalZonesResult { zones: OptimalZones | null; vdot: number | null; today: string }
+export interface ThresholdTrend { points: { date: string; thrPace: number | null; cp: number | null }[] }
 export interface RunEffectiveness { window: number; mass: number; n: number; points: { date: string; re: number }[]; early: number | null; late: number | null; deltaPct: number | null }
 export interface WPrimeLatest {
   available: boolean;
@@ -50,7 +58,7 @@ export type LayoutMap = Record<string, BlockOverride>;
 
 export interface HrZone { z: number; min: number; max: number; label: string; color: string; }
 export interface ZoneSet { id: number; valid_from?: string; hr_zones: HrZone[]; hr_zones_bike?: HrZone[] | null; pace_zones: number[]; speed_zones?: number[]; power_zones?: number[]; lthr: number; ftp: number; threshold_pace: number; source?: string; note?: string; }
-export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; goal_race: string; notes: string; }
+export interface SeasonWeek { week_no: number; label: string; phase: string; start_date: string; end_date: string; target_km: number | null; target_km_bike?: number | null; goal_race: string; notes: string; }
 export interface ZoneAlloc { byKm?: Record<number, number>; byMin?: Record<number, number>; }
 /** Strukturierte Belastung (Intervall/Schwelle): pro Wiederholung Zeit/Distanz/Pace/HF — ToDo 1/20.
  *  v0.12.0 (ToDo 2): kann auch eine eine-Ebene-Gruppe sein (`group`, `reps`, `children`) für Coros-Sets
@@ -99,6 +107,8 @@ export interface WeekRating { level: "easy" | "moderate" | "hard"; weekTss: numb
 export interface AnalyzeResult {
   totals: WeekTotals; flags: Flag[]; zones: HrZone[]; week: SeasonWeek | null;
   projectedCtlRamp: number | null; projectedTsb: number | null;
+  pmc?: { ctl: number; atl: number; tsb: number; ramp: number | null; spark: { d: string; ctl: number; tsb: number }[] } | null; // v1.9.0 Wochen-Header-PMC
+  vo2max?: { now: number; prev: number | null } | null; // v1.9.0 Wochenbericht-Kopf
   // ToDo #7/#13 — TSS-basierte Intensität (optional, defensiv konsumieren)
   tssIntensity?: IntensityShare; zoneKmIntensity?: IntensityShare; weekRating?: WeekRating | null;
   // ToDo Z.7 — reale TSS-Intensität (hybrid) + reale Gesamt-TSS für den „Real"-Donut
@@ -110,7 +120,7 @@ export interface AnalyzeResult {
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
   realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
   // v0.14.0 (ToDo 12) — Plan-Erfüllung je gematchter Einheit + Wochenmittel
-  adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null };
+  adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity?: Record<number, number> };
   // v0.15.0 (O4) — TSS-Wochenempfehlung (Korridor) aus CTL + Saisonplan-Phase, 3:1-Prinzip
   tssRec?: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null;
   // v1.2.0 — Trainings-Monotonie & -Strain (Foster) der realen Woche
@@ -131,17 +141,19 @@ export interface TodayResult {
   readiness: { score: number; level: "green" | "yellow" | "red"; drivers: { code: string; text: string }[] } | null;
   plannedTypes: string[];
   recommendation: { headline: string; sessionType: string; doseHint: string; reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig" };
-  adjustment: {
-    changed: boolean;
-    action: string;
-    headline: string;
-    reasons: { code: string; text: string }[];
-    confidence: "hoch" | "mittel" | "niedrig";
-    mode: "advisory" | "gate";
-    original: { type: string; planned_tss: number };
-    adjusted: { type: string; planned_min: number; zone_alloc: { byMin: Record<number, number> }; efforts: unknown[] | null; description: string; planned_tss: number; paceTarget: number | null } | null;
-    originalSessionId: number;
-  } | null;
+  adjustment: SessionAdjustment | null;
+  nextHard?: { date: string; type: string; adjustment: SessionAdjustment } | null; // v1.9.0: nächste harte Einheit
+}
+export interface SessionAdjustment {
+  changed: boolean;
+  action: string;
+  headline: string;
+  reasons: { code: string; text: string }[];
+  confidence: "hoch" | "mittel" | "niedrig";
+  mode: "advisory" | "gate";
+  original: { type: string; planned_tss: number };
+  adjusted: { type: string; planned_min: number; zone_alloc: { byMin: Record<number, number> }; efforts: unknown[] | null; description: string; planned_tss: number; paceTarget: number | null } | null;
+  originalSessionId: number;
 }
 
 // v1.3.0 (G3) — Laktat-/Feldtest-Diagnostik.
@@ -184,7 +196,15 @@ export interface Availability {
   favoriteWorkouts?: string[];  // v1.8.0: bevorzugte Einheiten-IDs
   avoidWorkouts?: string[];     // v1.8.0: zu vermeidende Einheiten-IDs
 }
-export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number }
+export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number; custom?: boolean }
+// Eigene Einheiten (v1.9.0, Z14)
+export type CustomFamily = "Easy" | "Long" | "LT1" | "LT2" | "VO2" | "Hill" | "Speed";
+export interface CustomInput {
+  name: string; family: CustomFamily; kind: "steady" | "intervals"; workZone: number;
+  minMin?: number; maxMin?: number; reps?: number; repSec?: number; repDist_m?: number; restSec?: number; phases?: string[];
+}
+export interface CustomEstimate { template: { id: string; family: string; effort: number; anchor: string | null; sessionType: string }; tssEstimate: number; durationMin: number }
+export interface CustomWorkout { id: number; name: string; family: string; template: { id: string; effort: number; workZone: number; kind: string }; created_at: string }
 
 // v1.3.0 (Engine) — Wochen-/Block-Empfehlungs-Engine.
 export interface WeekSessionRec { type: string; count: number; tssShare: number; hint: string; }
@@ -395,6 +415,7 @@ export const api = {
   addActivity: (b: Activity) => j<{ id: number }>("/api/activities", { method: "POST", body: JSON.stringify(b) }),
   updateActivity: (id: number, b: Activity) => j(`/api/activities/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteActivity: (id: number) => j(`/api/activities/${id}`, { method: "DELETE" }),
+  matchActivity: (id: number, sessionId: number | null) => j(`/api/activities/${id}/match`, { method: "POST", body: JSON.stringify({ session_id: sessionId }) }), // v1.9.0
   relinkEfforts: (id: number) => j(`/api/activities/${id}/relink-efforts`, { method: "POST" }),
 
   daily: (q: { from?: string; to?: string }) => {
@@ -436,6 +457,8 @@ export const api = {
   goalGap: () => j<GoalGap>("/api/plan/goal-gap"),
   powerCurve: (window = 90) => j<PowerCurve>(`/api/power-curve?window=${window}`), // v1.7.0
   cpTrend: (months = 12) => j<CpTrend>(`/api/cp-trend?months=${months}`),
+  optimalZones: () => j<OptimalZonesResult>("/api/optimal-zones"), // v1.9.0
+  thresholdTrend: (months = 12) => j<ThresholdTrend>(`/api/threshold-trend?months=${months}`),
   runEffectiveness: (window = 90) => j<RunEffectiveness>(`/api/run-effectiveness?window=${window}`), // v1.8.0
   wprimeLatest: () => j<WPrimeLatest>("/api/wprime/latest"),
   deleteRace: (id: number) => j(`/api/races/${id}`, { method: "DELETE" }),
@@ -482,6 +505,10 @@ export const api = {
   availability: () => j<Availability | null>("/api/availability"),
   saveAvailability: (b: Availability) => j<{ ok: boolean }>("/api/availability", { method: "PUT", body: JSON.stringify(b) }),
   workouts: () => j<WorkoutInfo[]>("/api/workouts"), // v1.8.0 Bibliothek für Block-Präferenzen
+  customWorkouts: () => j<CustomWorkout[]>("/api/custom-workouts"), // v1.9.0 Z14
+  estimateCustomWorkout: (b: CustomInput) => j<CustomEstimate>("/api/custom-workouts/estimate", { method: "POST", body: JSON.stringify(b) }),
+  addCustomWorkout: (b: CustomInput) => j<{ id: number; tssEstimate: number }>("/api/custom-workouts", { method: "POST", body: JSON.stringify(b) }),
+  deleteCustomWorkout: (id: number) => j(`/api/custom-workouts/${id}`, { method: "DELETE" }),
   tutorialStatus: () => j<{ id: number | null }>("/api/tutorial"), // v1.8.0 Tutorial-Profil
   regenerateTutorial: () => j<{ ok: boolean; id: number }>("/api/tutorial/regenerate", { method: "POST" }),
   deleteTutorial: () => j<{ ok: boolean }>("/api/tutorial", { method: "DELETE" }),

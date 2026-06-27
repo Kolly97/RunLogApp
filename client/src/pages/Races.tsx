@@ -5,7 +5,6 @@ import { api, type Race, type RaceSplit, type PacingResult } from "../lib/api.ts
 import { fmtDateY, paceStr, todayIso, num } from "../lib/util.ts";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import T from "../components/T.tsx";
-import PageHelp from "../components/PageHelp.tsx";
 import { useT } from "../lib/i18n.tsx";
 
 // "mm:ss" oder "h:mm:ss" -> Sekunden
@@ -72,7 +71,6 @@ export default function Races() {
           </tbody>
         </table>
       )}
-      <PageHelp page="races" />
     </div>
   );
 }

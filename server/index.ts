@@ -20,6 +20,8 @@ import {
   runningStressScore,
   runningEffectiveness,
   wPrimeBalance,
+  computeOptimalZones,
+  danielsPaces,
   POWER_CURVE_DURATIONS,
   effectiveVo2max,
   paceToSecPerKm,
@@ -50,6 +52,7 @@ import {
   dailyRecommendation,
   tssRecommendation,
   sessionCompletion,
+  matchActivities,
   blockPlan,
   injuryRiskFlag,
   adjustTodaySession,
@@ -68,7 +71,7 @@ import {
   type WeekRegimeInput,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
-import { WORKOUT_LIBRARY } from "./workouts.ts";
+import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId } from "./tutorial.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
 
@@ -93,6 +96,15 @@ const addDaysIso = (iso: string, n: number): string => {
 };
 // Aktives Profil (leichter Account-Wechsel, ToDo #9): alle Daten-Queries filtern darauf.
 const pid = () => activeProfile();
+
+// v1.9.0 (Z14): eigene Einheiten des aktiven Profils laden + in die Engine spiegeln (vor jeder Anfrage aktuell).
+function loadCustomWorkouts(): WorkoutTemplate[] {
+  const rows = db.prepare("SELECT template FROM custom_workouts WHERE profile_id=?").all(pid()) as { template: string }[];
+  const out: WorkoutTemplate[] = [];
+  for (const r of rows) { const t = parseJson<WorkoutTemplate | null>(r.template, null); if (t && t.id) out.push(t); }
+  return out;
+}
+app.use((req, _res, next) => { if (req.path.startsWith("/api/")) { try { setCustomWorkouts(loadCustomWorkouts()); } catch { /* ignore */ } } next(); });
 
 // ---- helpers -----------------------------------------------------------
 
@@ -811,7 +823,28 @@ app.get("/api/power-curve", (req, res) => {
 
 // v1.8.0: Workout-Bibliothek (für Block-Präferenzen — Lieblings/Vermeiden-Auswahl im Profil).
 app.get("/api/workouts", (_req, res) => {
-  res.json(WORKOUT_LIBRARY.filter((t) => t.kind !== "core").map((t) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort })));
+  const lib = WORKOUT_LIBRARY.filter((t) => t.kind !== "core").map((t) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom: false }));
+  const cust = customWorkoutList().map((t) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom: true }));
+  res.json([...lib, ...cust]);
+});
+
+// v1.9.0 (Z14): eigene Einheiten CRUD. Anlegen schätzt Familie/Anstrengung/TSS vor (estimateCustom).
+app.get("/api/custom-workouts", (_req, res) => {
+  const rows = db.prepare("SELECT id, name, family, template, created_at FROM custom_workouts WHERE profile_id=? ORDER BY id DESC").all(pid()) as { id: number; name: string; family: string; template: string; created_at: string }[];
+  res.json(rows.map((r) => ({ id: r.id, name: r.name, family: r.family, template: parseJson(r.template, null), created_at: r.created_at })));
+});
+app.post("/api/custom-workouts/estimate", (req, res) => {
+  res.json(estimateCustom(req.body as CustomInput));
+});
+app.post("/api/custom-workouts", (req, res) => {
+  const { template, tssEstimate } = estimateCustom(req.body as CustomInput);
+  const r = db.prepare("INSERT INTO custom_workouts(profile_id, name, family, template, created_at) VALUES(?,?,?,?,?)")
+    .run(pid(), template.name, template.family, JSON.stringify(template), todayIso());
+  res.json({ id: Number(r.lastInsertRowid), template, tssEstimate });
+});
+app.delete("/api/custom-workouts/:id", (req, res) => {
+  db.prepare("DELETE FROM custom_workouts WHERE id=? AND profile_id=?").run(req.params.id, pid());
+  res.json({ ok: true });
 });
 
 // v1.8.0: Tutorial-Profil verwalten (Beispieljahr neu erzeugen / löschen). Berührt nur das eigene profile_id.
@@ -1384,12 +1417,12 @@ app.get("/api/season", (_req, res) => {
 app.put("/api/season/week/:no", (req, res) => {
   const b = req.body || {};
   db.prepare(
-    `INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes)
-     VALUES(?,?,?,?,?,?,?,?,?)
+    `INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, target_km_bike, goal_race, notes)
+     VALUES(?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(profile_id, week_no) DO UPDATE SET label=excluded.label, phase=excluded.phase,
-       start_date=excluded.start_date, end_date=excluded.end_date, target_km=excluded.target_km,
+       start_date=excluded.start_date, end_date=excluded.end_date, target_km=excluded.target_km, target_km_bike=excluded.target_km_bike,
        goal_race=excluded.goal_race, notes=excluded.notes`,
-  ).run(pid(), req.params.no, b.label || "", b.phase || "", b.start_date, b.end_date, b.target_km ?? null, b.goal_race || "", b.notes || "");
+  ).run(pid(), req.params.no, b.label || "", b.phase || "", b.start_date, b.end_date, b.target_km ?? null, b.target_km_bike ?? null, b.goal_race || "", b.notes || "");
   renumberWeeks();
   res.json({ ok: true });
 });
@@ -1781,6 +1814,48 @@ app.delete("/api/activities/:id", (req, res) => {
 // Intervalle EINER Aktivität sofort aus Strava neu erzeugen (holt die Laps direkt, regeneriert + labelt).
 app.post("/api/activities/:id/relink-efforts", stravaRelinkEfforts);
 
+// v1.9.0: Schwellen-Trend — Schwellen-Pace (aus VDOT/CS) + Critical Power über die Zeit (Langzeit-Verlauf).
+app.get("/api/threshold-trend", (req, res) => {
+  const months = Math.max(3, Math.min(36, Number((req.query as Record<string, string>).months) || 12));
+  const today = todayIso();
+  const runs = loadProfileRuns();
+  const pcRows = db.prepare("SELECT date, power_curve FROM activities WHERE profile_id=? AND sport='Run' AND power_curve IS NOT NULL AND power_curve!='{}' ORDER BY date").all(pid()) as { date: string; power_curve: string }[];
+  const points: { date: string; thrPace: number | null; cp: number | null }[] = [];
+  for (let m = months - 1; m >= 0; m--) {
+    const end = addDaysIso(today, -m * 30);
+    const cs = rollingCsVdot(runs, end, 90);
+    const thrPace = cs.vdot ? danielsPaces(cs.vdot).threshold : (cs.csPace ?? null);
+    const start = addDaysIso(end, -90);
+    const fit = cpFromAgg(aggregatePowerCurve(pcRows.filter((r) => r.date > start && r.date <= end)));
+    points.push({ date: end, thrPace, cp: fit?.cp ?? null });
+  }
+  res.json({ points });
+});
+
+// v1.9.0: optimale Zonen (Pace/HF/Watt) aus den Laufwerten berechnen — Vorschlag, der per addZoneset übernommen wird.
+app.get("/api/optimal-zones", (_req, res) => {
+  const today = todayIso();
+  const cur = rollingCsVdot(loadProfileRuns(), today, 90);
+  const athlete = getSetting("athlete", { max_hr: 196 }) as { max_hr?: number | null };
+  const zs = effectiveZoneSet(today);
+  const lac = db.prepare("SELECT lt1_hr, lt2_hr, lt1_pace, lt2_pace FROM lactate_tests WHERE profile_id=? ORDER BY date DESC LIMIT 1").get(pid()) as { lt1_hr: number | null; lt2_hr: number | null; lt1_pace: number | null; lt2_pace: number | null } | undefined;
+  const oz = computeOptimalZones({
+    vdot: cur.vdot, csPaceS: cur.csPace,
+    maxHr: athlete.max_hr ?? null, lthr: zs.lthr ?? null,
+    lactate: lac ? { lt1Hr: lac.lt1_hr, lt2Hr: lac.lt2_hr, lt1Pace: lac.lt1_pace, lt2Pace: lac.lt2_pace } : null,
+    cp: currentCp(),
+    hrLabels: DEFAULT_HR_ZONES,
+  });
+  res.json({ zones: oz, vdot: cur.vdot ? Math.round(cur.vdot * 10) / 10 : null, today });
+});
+
+// v1.9.0: Aktivität manuell einer geplanten Einheit zuordnen (oder Zuordnung lösen). Überschreibt das Auto-Match.
+app.post("/api/activities/:id/match", (req, res) => {
+  const sid = req.body?.session_id;
+  db.prepare("UPDATE activities SET matched_session_id=? WHERE id=? AND profile_id=?").run(sid != null ? Number(sid) : null, req.params.id, pid());
+  res.json({ ok: true });
+});
+
 // ---- daily log ---------------------------------------------------------
 
 const DAILY_COLS = [
@@ -1976,6 +2051,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Projektion CTL-Ramp & Form über die Woche
   let projectedCtlRamp: number | null = null;
   let projectedTsb: number | null = null;
+  let pmcHeader: { ctl: number; atl: number; tsb: number; ramp: number | null; spark: { d: string; ctl: number; tsb: number }[] } | null = null; // v1.9.0 Wochen-Header-PMC
+  let vo2max: { now: number; prev: number | null } | null = null; // v1.9.0 Wochenbericht-Kopf: VO2max (VDOT) + Δ Vorwoche
   // TSS-Wochenempfehlung (v0.15.0, O4) — Korridor aus CTL am Wochenstart + Phase.
   let tssRec: { min: number; max: number; target: number; level: "under" | "ok" | "over"; phaseLabel: string; basis: string } | null = null;
   // Race-Taper (v0.14.0, ToDo 4): bezieht sich auf die 7 Tage VOR dem Renntag, nicht die Kalenderwoche.
@@ -1990,6 +2067,14 @@ app.get("/api/analyze/week/:no", (req, res) => {
     const pmc = computePmc(map, from, wk.end_date, todayIso());
     projectedCtlRamp = ctlRamp(pmc, 7);
     projectedTsb = pmc.length ? pmc[pmc.length - 1].tsb : null;
+    const lastPt = pmc.length ? pmc[pmc.length - 1] : null;
+    if (lastPt) pmcHeader = { ctl: round1(lastPt.ctl), atl: round1(lastPt.atl), tsb: round1(lastPt.tsb), ramp: projectedCtlRamp, spark: pmc.slice(-42).map((p) => ({ d: p.date, ctl: round1(p.ctl), tsb: round1(p.tsb) })) };
+
+    // VO2max (VDOT, 90-Tage-Fenster) zum Wochenstand + Vorwoche → Δ im Wochenbericht-Kopf.
+    const vRuns = loadProfileRuns();
+    const vNow = rollingCsVdot(vRuns, wk.end_date, 90).vdot;
+    const vPrev = rollingCsVdot(vRuns, addDaysIso(wk.end_date, -7), 90).vdot;
+    if (vNow) vo2max = { now: Math.round(vNow * 10) / 10, prev: vPrev ? Math.round(vPrev * 10) / 10 : null };
 
     // CTL am Wochenstart → TSS-Empfehlung (O4). level vergleicht den geplanten Wochen-TSS mit dem Korridor.
     const startPt = pmc.find((p) => p.date === wk.start_date) ?? (pmc.length ? pmc[0] : null);
@@ -2071,10 +2156,10 @@ app.get("/api/analyze/week/:no", (req, res) => {
   const realByCategory: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } } =
     { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0 } };
   // Plan-Erfüllung je gematchter Einheit (v0.14.0, ToDo 12)
-  let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null } = { perSession: [], weekPct: null };
+  let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity: Record<number, number> } = { perSession: [], weekPct: null, matchByActivity: {} };
   if (wk) {
     const acts = db
-      .prepare("SELECT sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT id, date, sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -2144,11 +2229,17 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realByCategory.strength.min = r1(realByCategory.strength.min);
     realByCategory.strength.h = r1(realByCategory.strength.min / 60);
 
-    // Plan-Erfüllung je geplanter Einheit mit gematchter Aktivität (v0.14.0, ToDo 12).
+    // Plan-Erfüllung je geplanter Einheit (v1.9.0): robustes Auto-Match (manuelle Zuordnung gewinnt).
+    const matchMap = matchActivities(
+      acts.map((a) => ({ id: a.id, date: a.date, type: a.type ?? null, tss: a.tss ?? null, moving_s: a.moving_s ?? null, matched_session_id: a.matched_session_id ?? null, sport: a.sport })),
+      planned.filter((p) => p.id != null).map((p) => ({ id: p.id as number, date: p.date, type: p.type, planned_tss: p.planned_tss ?? null, planned_min: p.planned_min ?? null })),
+    );
+    const actBySession = new Map<number, typeof acts[number]>();
+    for (const a of acts) { const sid = matchMap.get(a.id); if (sid != null) actBySession.set(sid, a); }
     const perSession = planned
       .filter((p) => p.id != null)
       .map((p) => {
-        const a = acts.find((x) => x.matched_session_id === p.id);
+        const a = actBySession.get(p.id as number);
         if (!a) return null;
         const comp = sessionCompletion(
           { planned_tss: p.planned_tss, zone_alloc: p.zone_alloc },
@@ -2159,7 +2250,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
       })
       .filter((x): x is NonNullable<typeof x> => x != null);
     const weekPct = perSession.length ? Math.round(perSession.reduce((s, x) => s + x.pct, 0) / perSession.length) : null;
-    adherence = { perSession, weekPct };
+    adherence = { perSession, weekPct, matchByActivity: Object.fromEntries(matchMap) };
   }
 
   // Intensität & Wochen-Last (ToDo v0.7.0): Donut nach Einheitstyp, Polarisierung über km-in-Zone.
@@ -2223,7 +2314,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
   }
 
   res.json({
-    totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb,
+    totals, flags, zones: zs.hr_zones, week: wk, projectedCtlRamp, projectedTsb, pmc: pmcHeader, vo2max,
     realZoneMin, realZoneKm, realByCategory,
     tssIntensity, realTssIntensity, realTotalTss, zoneKmIntensity, realKmIntensity, plannedZoneKm, weekRating,
     realLoadFlag, realKmFlag, adherence, tssRec,
@@ -2273,28 +2364,35 @@ app.get("/api/today", (req, res) => {
   const todayMain = db.prepare(
     "SELECT id, type, planned_tss FROM planned_sessions WHERE profile_id=? AND date=? AND type!='Rest' AND sport='Run' ORDER BY planned_tss DESC LIMIT 1",
   ).get(pid(), date) as { id: number; type: string; planned_tss: number } | undefined;
+  const weekStart = wk?.start_date ?? date;
+  const weekRealized = (db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), weekStart, date) as { s: number }).s || 0;
+  const gateMode = (getSetting<string>("readiness_gate_mode", "advisory") === "gate" ? "gate" : "advisory") as "advisory" | "gate";
+  const adjCtx = (zsX: ReturnType<typeof effectiveZoneSet>) => ({
+    tsb, ctlRamp: ramp, readinessLevel: readiness?.level ?? null, injuryLevel: injuryRisk?.level ?? null,
+    weekTssRecMin: weekTssRec?.min ?? null, weekRealizedTss: round1(weekRealized),
+    zones: { pace_zones: zsX.pace_zones, threshold_pace: zsX.threshold_pace, lt1_pace: zsX.lt1_pace }, gateMode,
+  });
   let adjustment: ReturnType<typeof adjustTodaySession> & { originalSessionId?: number } | null = null;
   if (todayMain) {
-    const zsToday = effectiveZoneSet(date);
-    const weekStart = wk?.start_date ?? date;
-    const weekRealized = (db.prepare("SELECT SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").get(pid(), weekStart, date) as { s: number }).s || 0;
-    const gateMode = (getSetting<string>("readiness_gate_mode", "advisory") === "gate" ? "gate" : "advisory") as "advisory" | "gate";
-    const adj = adjustTodaySession(
-      { type: todayMain.type, planned_tss: todayMain.planned_tss },
-      {
-        tsb, ctlRamp: ramp, readinessLevel: readiness?.level ?? null, injuryLevel: injuryRisk?.level ?? null,
-        weekTssRecMin: weekTssRec?.min ?? null, weekRealizedTss: round1(weekRealized),
-        zones: { pace_zones: zsToday.pace_zones, threshold_pace: zsToday.threshold_pace, lt1_pace: zsToday.lt1_pace },
-        gateMode,
-      },
-    );
+    const adj = adjustTodaySession({ type: todayMain.type, planned_tss: todayMain.planned_tss }, adjCtx(effectiveZoneSet(date)));
     if (adj) adjustment = { ...adj, originalSessionId: todayMain.id };
+  }
+
+  // v1.9.0: nächste harte Einheit (heute..+7 Tage) + Readiness-Bewertung — bei schwachen HRV/Schlaf-Werten
+  // Entschärfen-/Recovery-Vorschlag, sonst „wie geplant". Immer geliefert, damit die Karte sichtbar ist.
+  let nextHard: { date: string; type: string; adjustment: NonNullable<typeof adjustment> } | null = null;
+  const hardRow = db.prepare(
+    "SELECT id, type, planned_tss, date FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ? AND sport='Run' AND type IN ('Threshold','VO2','VO2short','VO2long','LT2','Hill','Race') ORDER BY date LIMIT 1",
+  ).get(pid(), date, addDaysIso(date, 7)) as { id: number; type: string; planned_tss: number; date: string } | undefined;
+  if (hardRow) {
+    const adjH = adjustTodaySession({ type: hardRow.type, planned_tss: hardRow.planned_tss }, adjCtx(effectiveZoneSet(hardRow.date)));
+    if (adjH) nextHard = { date: hardRow.date, type: hardRow.type, adjustment: { ...adjH, originalSessionId: hardRow.id } };
   }
 
   res.json({
     date,
     form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp, acwr },
-    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk, adjustment,
+    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk, adjustment, nextHard,
   });
 });
 

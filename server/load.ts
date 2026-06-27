@@ -1,4 +1,5 @@
 // TrainingPeaks-Last-Modell: TSS (rTSS/hrTSS/sRPE), Zeit-in-Zone, CTL/ATL/TSB.
+import { proposedHrBounds, proposedPaceBounds } from "./lactate.ts";
 
 export interface HrZone {
   z: number;
@@ -653,4 +654,46 @@ export function danielsPaces(vdotVal: number): { easy: number; marathon: number;
     interval: paceForPct(0.98),
     rep: paceForPct(1.07),
   };
+}
+
+export interface OptimalZones {
+  pace_zones: number[];          // 6 Obergrenzen (s/km, absteigend)
+  hr_zones: HrZone[];            // 6 Zonen (min/max/Label/Farbe)
+  power_zones: number[] | null;  // 6 Obergrenzen (W) oder null
+  threshold_pace: number;        // LT2-Pace (s/km)
+  lthr: number;                  // LT2-HF (≈ LTHR)
+  cp: number | null;             // Critical Power (W)
+  sources: { pace: string; hr: string; power: string | null };
+}
+
+/**
+ * Optimale Trainingszonen (v1.9.0) aus etablierten Modellen: Pace aus VDOT (Daniels E/M/T/I/R) bzw. Critical
+ * Speed, HF aus LT1/LT2 (Laktattest bevorzugt, sonst %LTHR/Friel aus LTHR bzw. Max-HF), Power aus Critical
+ * Power (%CP). Nutzt die bestehenden Bound-Modelle `proposedPaceBounds`/`proposedHrBounds`. Liefert ein
+ * vollständiges Zonen-Set + Quelle je Achse; null, wenn weder Pace- noch HF-Anker bestimmbar ist.
+ */
+export function computeOptimalZones(input: {
+  vdot: number | null; csPaceS: number | null;
+  maxHr: number | null; lthr: number | null;
+  lactate?: { lt1Hr: number | null; lt2Hr: number | null; lt1Pace: number | null; lt2Pace: number | null } | null;
+  cp: number | null;
+  hrLabels: { z: number; label: string; color: string }[];
+}): OptimalZones | null {
+  // ---- Pace (LT1=Marathon/aerob, LT2=Threshold) ----
+  let lt1Pace: number | null = null, lt2Pace: number | null = null, paceSrc = "";
+  if (input.lactate?.lt1Pace && input.lactate.lt2Pace) { lt1Pace = input.lactate.lt1Pace; lt2Pace = input.lactate.lt2Pace; paceSrc = "Laktattest (LT1/LT2)"; }
+  else if (input.vdot && input.vdot > 0) { const dp = danielsPaces(input.vdot); lt1Pace = dp.easy; lt2Pace = dp.threshold; paceSrc = "VDOT (Daniels)"; } // LT1≈Easy/aerobe Schwelle, LT2=Threshold
+  else if (input.csPaceS && input.csPaceS > 0) { lt2Pace = input.csPaceS; lt1Pace = input.csPaceS + 25; paceSrc = "Critical Speed"; }
+  const pace_zones = lt1Pace && lt2Pace ? proposedPaceBounds(lt1Pace, lt2Pace) : [];
+  // ---- HF (LT1/LT2 oder %LTHR) ----
+  let lt1Hr: number | null = null, lt2Hr: number | null = null, hrSrc = "";
+  if (input.lactate?.lt1Hr && input.lactate.lt2Hr) { lt1Hr = input.lactate.lt1Hr; lt2Hr = input.lactate.lt2Hr; hrSrc = "Laktattest (LT1/LT2)"; }
+  else { lt2Hr = input.lthr ?? (input.maxHr ? Math.round(input.maxHr * 0.89) : null); lt1Hr = lt2Hr ? Math.round(lt2Hr * 0.92) : null; hrSrc = input.lthr ? "%LTHR (Friel)" : input.maxHr ? "Schätzung aus Max-HF" : ""; }
+  const hrBounds = lt1Hr && lt2Hr ? proposedHrBounds(lt1Hr, lt2Hr, input.maxHr) : [];
+  const hr_zones: HrZone[] = hrBounds.map((max, i) => ({ z: i + 1, min: i === 0 ? 0 : hrBounds[i - 1] + 1, max, label: input.hrLabels[i]?.label ?? `Z${i + 1}`, color: input.hrLabels[i]?.color ?? "#888" }));
+  // ---- Power (%CP, 6 Bänder) ----
+  const cp = input.cp && input.cp > 0 ? input.cp : null;
+  const power_zones = cp ? [0.80, 0.90, 1.0, 1.05, 1.15, 1.30].map((f) => Math.round(cp * f)) : null;
+  if (!pace_zones.length && !hr_zones.length) return null;
+  return { pace_zones, hr_zones, power_zones, threshold_pace: lt2Pace ?? 0, lthr: lt2Hr ?? 0, cp, sources: { pace: paceSrc, hr: hrSrc, power: cp ? "Critical Power (%CP)" : null } };
 }
