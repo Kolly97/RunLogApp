@@ -10,6 +10,7 @@ import {
   ComposedChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
@@ -366,7 +367,7 @@ export default function LongTerm() {
                     {sickSegments.map((s, i) => <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />)}
                     <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
                     <YAxis tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]} reversed={m.reversed} tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))} />
-                    <Tooltip labelFormatter={(d) => fmtDateY(String(d))} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    <Tooltip labelFormatter={(d) => fmtDateY(String(d))} contentStyle={TOOLTIP_STYLE}
                       formatter={(v: number | number[], n: string) => {
                         const fv = (x: number) => (m.fmt ? m.fmt(x) : String(Math.round(x * 10) / 10));
                         if (Array.isArray(v)) return [`${fv(v[0])}–${fv(v[1])}`, "Streuband"]; // Band-Wert = [lo, hi]
@@ -392,7 +393,7 @@ export default function LongTerm() {
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return p ? `${fmtDateY(String(d))} · ${p}` : fmtDateY(String(d)); }}
                     formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
                   {m.refY != null && (
                     <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"
@@ -435,7 +436,7 @@ export default function LongTerm() {
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => (n === "Ø-Pace" ? [`${paceStr(v)} /km`, n] : [Math.round(v), n])}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
                   <Line yAxisId="pace" type="monotone" dataKey="pace" name="Ø-Pace" stroke="#2b6cb0"
                     strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#2b6cb0", strokeWidth: 0 }} hide={effHidden.pace} />
@@ -474,7 +475,7 @@ export default function LongTerm() {
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number) => [v, "EF"]}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
                   <Line type="monotone" dataKey="ef" name="EF" stroke="#16a34a" strokeWidth={1.8}
                     connectNulls dot={{ r: 3, fill: "#16a34a", strokeWidth: 0 }} />
@@ -504,7 +505,7 @@ export default function LongTerm() {
                     const km = item?.payload?.distance_km;
                     return [`${v} %${km ? ` · ${km} km` : ""}`, "Entkopplung"];
                   }}
-                  contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                  contentStyle={TOOLTIP_STYLE}
                 />
                 <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
                 <ReferenceLine y={5} stroke="#f59e0b" strokeDasharray="4 3"
@@ -557,7 +558,7 @@ export default function LongTerm() {
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
                   <Line yAxisId="ctl" type="monotone" dataKey="ctl" name="CTL" stroke="#2b6cb0" strokeWidth={1.6}
                     dot={false} connectNulls />
@@ -597,7 +598,7 @@ export default function LongTerm() {
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
                   {effVo2.calibrated && (
                     <Line type="monotone" dataKey="est" name="Schätzung (roh)" stroke="#cbd5e1" strokeWidth={1.2} dot={false} connectNulls />
@@ -634,7 +635,7 @@ export default function LongTerm() {
               <Tooltip
                 labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                 formatter={(v: number) => [`${v} %`, "Plan-Erfüllung"]}
-                contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                contentStyle={TOOLTIP_STYLE}
               />
               <Line type="monotone" dataKey="pct" name="Plan-Erfüllung" stroke="#0891b2" strokeWidth={1.8}
                 connectNulls dot={{ r: 3, fill: "#0891b2", strokeWidth: 0 }} />

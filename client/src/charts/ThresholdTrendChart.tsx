@@ -2,6 +2,7 @@
 // (rechts) über die Zeit. Quelle: /api/threshold-trend (rollendes 90-Tage-Fenster).
 import { useEffect, useState } from "react";
 import { ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type ThresholdTrend } from "../lib/api.ts";
 import { fmtDate, fmtDateY, paceStr } from "../lib/util.ts";
 
@@ -18,7 +19,7 @@ export default function ThresholdTrendChart({ height }: { height?: number }) {
         <YAxis yAxisId="pace" reversed domain={["dataMin - 5", "dataMax + 5"]} width={52} tickFormatter={(s: number) => paceStr(s)} tick={{ fontSize: 11, fill: "#8a96a6" }} />
         {hasCp && <YAxis yAxisId="cp" orientation="right" domain={["dataMin - 5", "dataMax + 5"]} width={42} unit=" W" tick={{ fontSize: 11, fill: "#8a96a6" }} />}
         <Tooltip labelFormatter={(d) => fmtDateY(String(d))} formatter={(v: number, n: string) => n === "Schwellen-Pace" ? [`${paceStr(v)}/km`, n] : [`${v} W`, n]}
-          contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
+          contentStyle={TOOLTIP_STYLE} />
         <Line yAxisId="pace" type="monotone" dataKey="thrPace" name="Schwellen-Pace" stroke="#eab308" strokeWidth={1.8} dot={false} connectNulls isAnimationActive={false} />
         {hasCp && <Line yAxisId="cp" type="monotone" dataKey="cp" name="Critical Power" stroke="#7c3aed" strokeWidth={1.8} dot={false} connectNulls isAnimationActive={false} />}
       </ComposedChart>

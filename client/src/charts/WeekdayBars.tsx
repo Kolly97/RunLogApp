@@ -5,6 +5,7 @@
 // Farb-Semantik (ToDo Z.12 v0.11.0): Distanz in kühlen Tönen (Blau/Türkis),
 // Belastung in warmen Tönen (Orange/Bernstein); Legende in zwei beschriftete Gruppen.
 import { Bar, ComposedChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { Activity } from "../lib/api.ts";
 import { DAY_NAMES } from "../lib/util.ts";
 
@@ -42,7 +43,7 @@ export default function WeekdayBars({
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} />
           <YAxis yAxisId="km" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
           <YAxis yAxisId="tss" orientation="right" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
-          <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+          <Tooltip contentStyle={TOOLTIP_STYLE}
             formatter={(v: number, n: string) => [v, n]} />
           <Bar yAxisId="km" dataKey="runKm" name="Lauf-km" stackId="km" fill={C_RUN_KM} barSize={9} isAnimationActive={false} />
           <Bar yAxisId="km" dataKey="bikeEq" name="Rad-km (äqu.)" stackId="km" fill={C_BIKE_KM} barSize={9} radius={[2, 2, 0, 0]} isAnimationActive={false} />

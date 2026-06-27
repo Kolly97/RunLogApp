@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { Activity, PlannedSession, SeasonWeek } from "../lib/api.ts";
 import { weekLabel } from "../lib/util.ts";
 import { phaseColor, phaseLabel } from "../lib/options.ts";
@@ -72,7 +73,7 @@ export default function SeasonProgress({
           <CartesianGrid stroke="#eef1f5" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} angle={0} minTickGap={0} textAnchor="middle" height={30} />
           <YAxis tick={{ fontSize: 11, fill: "#8a96a6" }} width={36} unit="" />
-          <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
           {/* Krank-Wochen rot hinterlegt (Hintergrund) */}
           {sickLabels.map((l) => (
             <ReferenceArea key={`sick-${l}`} x1={l} x2={l} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />

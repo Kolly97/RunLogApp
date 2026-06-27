@@ -66,6 +66,13 @@ export default function WeekTrack() {
   if (!week) return <div className="empty"><T k="track.noWeek">Keine Woche — erst Saison anlegen (Einstellungen).</T></div>;
 
   const days = daysOfWeek(week.start_date);
+  // A3 (UI-Konzept): Wochen-Überblick als Primär-Zone — km · TSS (real/geplant) · Plan-Erfüllung auf einen Blick.
+  const weekActs = acts.filter((a) => days.includes(a.date));
+  const realKm = Math.round(weekActs.reduce((s, a) => s + (a.distance_m ?? 0), 0) / 100) / 10;
+  const realTss = Math.round(weekActs.reduce((s, a) => s + (a.tss ?? 0), 0));
+  const planTss = Math.round(sessions.reduce((s, x) => s + (x.planned_tss ?? 0), 0));
+  const adhVals = Object.values(adh).map((a) => a.pct);
+  const weekAdh = adhVals.length ? Math.round(adhVals.reduce((s, p) => s + p, 0) / adhVals.length) : null;
   const extraAct: Activity = { date: todayIso(), source: "manual", sport: "Run", type: null };
   // Gewählter Tag robust: gesetzter selDate, sonst heute (falls in Woche), sonst erster Tag.
   const curDay = days.includes(selDate) ? selDate : (days.includes(todayIso()) ? todayIso() : days[0]);
@@ -90,7 +97,16 @@ export default function WeekTrack() {
             jumpTo={week ? { href: `/report?date=${week.start_date}`, title: "Zur gleichen Woche im Wochenbericht", label: "→ Bericht" } : undefined} />
         </div>
       </div>
-      <div className="card tight"><div className="row"><span className="pill phase">{week.phase}</span><strong>Woche {week.week_no}</strong><span className="muted tiny">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span></div></div>
+      <div className="card tight">
+        <div className="spread" style={{ flexWrap: "wrap", gap: 8 }}>
+          <div className="row" style={{ width: "auto", gap: 8 }}><span className="pill phase">{week.phase}</span><strong>Woche {week.week_no}</strong><span className="muted tiny">{fmtDate(week.start_date)}–{fmtDate(week.end_date)}</span></div>
+          <div className="row tiny" style={{ width: "auto", gap: 16 }}>
+            <span><strong style={{ fontSize: 14 }}>{realKm}</strong> km</span>
+            <span><strong style={{ fontSize: 14 }}>{realTss}</strong>{planTss ? <span className="muted"> / {planTss}</span> : ""} TSS</span>
+            {weekAdh != null && <span><T k="track.week.adherence">Plan-Erfüllung</T> <strong style={{ fontSize: 14, color: weekAdh >= 80 ? "var(--ok)" : weekAdh >= 60 ? "var(--warn)" : "var(--danger)" }}>{weekAdh}%</strong></span>}
+          </div>
+        </div>
+      </div>
 
       {extra && (
         <div className="card tight" style={{ marginBottom: 10 }}>

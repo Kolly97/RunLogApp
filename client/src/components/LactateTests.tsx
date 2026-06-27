@@ -4,6 +4,7 @@ import { api, type LactateTest, type LactateTestPoint, type LactateZoneProposal,
 import { todayIso } from "../lib/util.ts";
 import T from "./T.tsx";
 import { ResponsiveContainer, LineChart, ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 
 function fmtPace(sec?: number | null): string {
   if (!sec) return "—";
@@ -242,7 +243,7 @@ function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: Lacta
         <ComposedChart margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
           <XAxis type="number" dataKey="speed_kmh" domain={["dataMin - 0.3", "dataMax + 0.3"]} unit=" km/h" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} width={30} />
-          <Tooltip formatter={(v: number, n: string) => [n === "Laktat" ? `${v} mmol/l` : v, n]} labelFormatter={(v) => `${v} km/h`} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+          <Tooltip formatter={(v: number, n: string) => [n === "Laktat" ? `${v} mmol/l` : v, n]} labelFormatter={(v) => `${v} km/h`} contentStyle={TOOLTIP_STYLE} />
           <Line data={a.curve} dataKey="lactate" name="Fit" stroke="#2b6cb0" strokeWidth={1.8} dot={false} isAnimationActive={false} />
           <Scatter data={raw} dataKey="lactate" name="Laktat" fill="#2b6cb0" />
           {a.lt1 && <ReferenceLine x={a.lt1.speed_kmh} stroke="#22c55e" strokeWidth={1.5} label={{ value: "LT1", fontSize: 10, fill: "#22c55e", position: "top" }} />}

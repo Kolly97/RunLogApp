@@ -1,6 +1,7 @@
 // VO2max-Kachel (v0.15.0, O1): große VDOT-Zahl (≈ VO2max) + Alters-Niveau + Mini-Sparkline.
 // Quelle: /api/fitness-trend (90-Tage-Rolling-Window, Daniels-VDOT aus Bestzeiten).
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { FitnessTrend } from "../lib/api.ts";
 import { fmtDate, fmtDateY } from "../lib/util.ts";
 
@@ -40,7 +41,7 @@ export default function Vo2maxCard({ data }: { data: FitnessTrend | null }) {
                   <Tooltip
                     labelFormatter={(d) => fmtDateY(String(d))}
                     formatter={(v: number) => [`${(v as number).toFixed(1)} VO₂max`, ""]}
-                    separator="" contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }}
+                    separator="" contentStyle={TOOLTIP_STYLE}
                   />
                   <Line type="monotone" dataKey="vdot" stroke="var(--fitness, #2b6cb0)" strokeWidth={1.6} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
                 </LineChart>

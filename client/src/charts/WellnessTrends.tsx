@@ -4,6 +4,7 @@
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { DailyLog } from "../lib/api.ts";
 import { DAY_NAMES } from "../lib/util.ts";
 import SleepWindow from "./SleepWindow.tsx";
@@ -79,7 +80,7 @@ export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100,
         />
         <Tooltip
           formatter={(v: number) => [m.fmt ? m.fmt(v) : Math.round(v * 10) / 10, m.title]}
-          contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+          contentStyle={TOOLTIP_STYLE}
         />
         {m.refY != null && (
           <ReferenceLine y={m.refY} stroke="#cbd5e1" strokeDasharray="3 4"

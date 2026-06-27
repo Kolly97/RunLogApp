@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { IntervalEffortStat } from "../lib/api.ts";
 import { fmtDate, fmtDateY, paceStr } from "../lib/util.ts";
 
@@ -69,7 +70,7 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
         <Tooltip
           labelFormatter={(d) => fmtDateY(String(d))}
           formatter={(v: number, n: string) => [`${paceStr(v)} /km`, n]}
-          contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+          contentStyle={TOOLTIP_STYLE}
         />
         <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
           onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey)); }} />

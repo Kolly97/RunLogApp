@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type BestsResult, type FitnessTrend, type Pb } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { paceStr, secToClock, clockToSec, fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
@@ -215,7 +216,7 @@ export default function Bests() {
                     const time = l ? Math.round(v * (l.dist / 1000)) : v;
                     return [`${secToClock(time)} · ${paceStr(v)}/km`, n];
                   }}
-                  contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+                  contentStyle={TOOLTIP_STYLE}
                 />
                 <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
                   onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey)); }} />

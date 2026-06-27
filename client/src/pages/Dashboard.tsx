@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
+import { typeColor, typeLabel } from "../lib/options.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
@@ -94,10 +95,14 @@ export default function Dashboard() {
         <h1>Dashboard</h1>
         <span className="muted tiny">{fmtDate(todayIso())} · {todayIso().slice(0, 4)}</span>
       </div>
-      <p className="muted tiny" style={{ marginTop: -6, marginBottom: 6 }}>
+      <p className="muted tiny" style={{ marginTop: -6, marginBottom: 10 }}>
         <T k="dashboard.role">Status heute — aktuelle Form, Readiness und Ziel-Abgleich. Lange Verläufe siehe Langzeit.</T>
       </p>
 
+      {/* A3: Leitfrage „Was mache ich heute?" zuerst — fix & prominent. */}
+      {todayPanel()}
+
+      <div className="tiny muted" style={{ fontWeight: 600, margin: "2px 0 4px" }}><T k="dashboard.form.title">Form-Überblick</T></div>
       <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
         <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} />
         <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} />
@@ -116,16 +121,41 @@ export default function Dashboard() {
     </div>
   );
 
-  function blockCards(): EgBlock[] {
-    const list: EgBlock[] = [
-      {
-        id: "today", title: t("dashboard.block.today.title", "Heute — Empfehlung"), defaultSpan: 12, defaultHeight: 150,
-        render: () => (
-          <div className="card">
+  // A3 (UI-Konzept): die heutige Entscheidung ist die Leitfrage des Dashboards → fix & prominent ganz oben
+  // (statt als verschiebbare Kachel unter den Form-Stats). Inkl. Renn-Countdown.
+  function todayPanel() {
+    const nextRace = [...allRaces].filter((r) => r.date >= todayIso()).sort((a, b) => a.date.localeCompare(b.date))[0] ?? null;
+    const raceDays = nextRace ? Math.round((Date.parse(nextRace.date + "T00:00:00Z") - Date.parse(todayIso() + "T00:00:00Z")) / 86400000) : null;
+    const plannedToday = allSessions.filter((s) => s.date === todayIso() && s.type !== "Rest").sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    return (
+          <div className="card" style={{ marginBottom: 12 }}>
             <div className="spread">
               <h2><T k="dashboard.block.today.title">Heute — Empfehlung</T></h2>
-              <span className="tiny muted"><T k="dashboard.block.today.sub">regelbasiert · Vorschlag</T></span>
+              <span className="row" style={{ gap: 10, width: "auto" }}>
+                {nextRace && raceDays != null && (
+                  <span className="pill" title={`${nextRace.name || "Rennen"} · ${nextRace.date}`}
+                    style={{ background: nextRace.is_tuneup ? "var(--info)" : "var(--accent)", color: "#fff" }}>
+                    🏁 {nextRace.is_tuneup ? "Test" : "Rennen"} {raceDays === 0 ? "heute" : `in ${raceDays} ${raceDays === 1 ? "Tag" : "Tagen"}`}
+                  </span>
+                )}
+                <span className="tiny muted"><T k="dashboard.block.today.sub">regelbasiert · Vorschlag</T></span>
+              </span>
             </div>
+
+            {/* Konkret heute geplant (aus der Wochenplanung), nicht nur die Empfehlung. */}
+            <div style={{ margin: "2px 0 10px" }}>
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 3 }}><T k="dashboard.today.planned">Heute geplant</T></div>
+              {plannedToday.length === 0 ? (
+                <div className="tiny muted"><T k="dashboard.today.rest">Keine Einheit geplant — Ruhetag/frei.</T></div>
+              ) : plannedToday.map((s, i) => (
+                <div key={s.id ?? i} className="row" style={{ gap: 8, alignItems: "center", fontSize: 13, marginBottom: 2 }}>
+                  <span className="type-pill" style={{ background: typeColor(s.type), fontSize: 10, padding: "1px 7px" }}>{typeLabel(s.type)}</span>
+                  <span style={{ flex: 1 }}>{s.description || typeLabel(s.type)}</span>
+                  <span className="tiny muted nowrap">{s.planned_min ? `${s.planned_min} min` : ""}{s.planned_tss ? ` · ${Math.round(s.planned_tss)} TSS` : ""}</span>
+                </div>
+              ))}
+            </div>
+
             {!today && <p className="muted tiny">…</p>}
             {today && (
               <div>
@@ -179,8 +209,11 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-        ),
-      },
+    );
+  }
+
+  function blockCards(): EgBlock[] {
+    const list: EgBlock[] = [
       {
         id: "pmc", title: t("dashboard.block.pmc.title", "Performance Management Chart"), defaultSpan: 8, defaultHeight: 360,
         render: (h) => (

@@ -3,6 +3,7 @@
 import {
   Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer,
 } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { PmcPoint } from "../lib/api.ts";
 import { fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
 
@@ -52,7 +53,7 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
           <Tooltip
             labelFormatter={(d) => fmtDateY(String(d))}
             formatter={(v: number) => [`${v}% · ${bandFor(v).label}`, "Intensity"]}
-            contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }}
+            contentStyle={TOOLTIP_STYLE}
           />
           <Area type="monotone" dataKey="ratio" stroke="#334155" strokeWidth={1.8} fill="#334155" fillOpacity={0.06} dot={false} isAnimationActive={false} />
         </ComposedChart>

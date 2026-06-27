@@ -3,6 +3,7 @@
 // Hinweis: Coros-Laufwatt sind gerätespezifisch → CP/Zonen/RSS sind RELATIV zu deinen Coros-Watt zu lesen.
 import { useEffect, useState } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type PowerCurve, type CpTrend, type RunEffectiveness, type WPrimeLatest } from "../lib/api.ts";
 import { fmtDate } from "../lib/util.ts";
 
@@ -57,7 +58,7 @@ export default function PowerCard() {
             <LineChart data={curveData} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} domain={["dataMin - 10", "dataMax + 10"]} width={38} unit=" W" />
-              <Tooltip formatter={(v: number) => [`${v} W`, "best"]} contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }} />
+              <Tooltip formatter={(v: number) => [`${v} W`, "best"]} contentStyle={TOOLTIP_STYLE} />
               <Line type="monotone" dataKey="w" stroke="#7c3aed" strokeWidth={1.8} dot={{ r: 2.5 }} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -70,7 +71,7 @@ export default function PowerCard() {
               <LineChart data={trendData} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => fmtDate(String(d)).slice(0, 6)} />
                 <YAxis tick={{ fontSize: 10 }} domain={["dataMin - 5", "dataMax + 5"]} width={38} unit=" W" />
-                <Tooltip labelFormatter={(d) => fmtDate(String(d))} formatter={(v: number) => [`${v} W`, "CP"]} contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }} />
+                <Tooltip labelFormatter={(d) => fmtDate(String(d))} formatter={(v: number) => [`${v} W`, "CP"]} contentStyle={TOOLTIP_STYLE} />
                 <Line type="monotone" dataKey="cp" stroke="#0ea5e9" strokeWidth={1.8} dot={{ r: 2 }} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -90,7 +91,7 @@ export default function PowerCard() {
               <LineChart data={re.points} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => fmtDate(String(d)).slice(0, 6)} minTickGap={28} />
                 <YAxis tick={{ fontSize: 10 }} domain={["dataMin - 0.02", "dataMax + 0.02"]} width={36} tickFormatter={(v: number) => v.toFixed(2)} />
-                <Tooltip labelFormatter={(d) => fmtDate(String(d))} formatter={(v: number) => [v.toFixed(3), "RE"]} contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }} />
+                <Tooltip labelFormatter={(d) => fmtDate(String(d))} formatter={(v: number) => [v.toFixed(3), "RE"]} contentStyle={TOOLTIP_STYLE} />
                 <Line type="monotone" dataKey="re" stroke="#16a34a" strokeWidth={1.6} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -107,7 +108,7 @@ export default function PowerCard() {
               <LineChart data={wb.curve} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="t" tick={{ fontSize: 10 }} tickFormatter={(t: number) => `${Math.round(t)}′`} />
                 <YAxis tick={{ fontSize: 10 }} width={40} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip labelFormatter={(t) => `${t} min`} formatter={(v: number) => [`${(v / 1000).toFixed(1)} kJ`, "W′-bal"]} contentStyle={{ borderRadius: 8, border: "1px solid #e3e8ef", fontSize: 11, padding: "4px 8px" }} />
+                <Tooltip labelFormatter={(t) => `${t} min`} formatter={(v: number) => [`${(v / 1000).toFixed(1)} kJ`, "W′-bal"]} contentStyle={TOOLTIP_STYLE} />
                 <ReferenceLine y={0} stroke="var(--danger)" strokeDasharray="3 3" />
                 <Line type="monotone" dataKey="bal" stroke="#7c3aed" strokeWidth={1.6} dot={false} isAnimationActive={false} />
               </LineChart>

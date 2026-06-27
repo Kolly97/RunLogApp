@@ -1,4 +1,5 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { PhysioDist } from "../lib/api.ts";
 
 /** Vorher/Nachher-Zeitverteilung (Z1/Z2/Z3 in %) als gruppiertes Balkendiagramm. */
@@ -15,7 +16,7 @@ export default function MarkerDelta({ start, end, height = 180 }: { start: Physi
         <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" />
         <XAxis dataKey="zone" tick={{ fontSize: 11 }} />
         <YAxis tick={{ fontSize: 11 }} unit="%" />
-        <Tooltip formatter={(v: number) => `${Math.round(v)}%`} contentStyle={{ borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 }} />
+        <Tooltip formatter={(v: number) => `${Math.round(v)}%`} contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="Vorher" fill="#94a3b8" radius={[3, 3, 0, 0]} />
         <Bar dataKey="Nachher" fill="#3b82f6" radius={[3, 3, 0, 0]} />
