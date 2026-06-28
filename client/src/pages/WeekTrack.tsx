@@ -345,7 +345,7 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
   }
 
   return (
-    <div className="card tight" style={{ background: "#fafbfd", marginBottom: 8 }}>
+    <div className="card tight" style={{ background: "var(--surface2)", marginBottom: 8 }}>
       {/* Zusätzliche Einheit mit frei wählbarem Datum (v0.14.0, ToDo 3) */}
       {dateEditable && (
         <label className="field" style={{ margin: "0 0 8px", maxWidth: 200 }}><span><T k="track.field.date">Datum</T></span>

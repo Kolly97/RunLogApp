@@ -8,9 +8,10 @@ import { phaseColor, phaseLabel } from "../lib/options.ts";
 
 export interface PhaseRun { fromKey: string; toKey: string; phase: string; }
 export interface YearMark { key?: string; index?: number; year: string; }
+export interface PbMark { date: string; label: string; }
 
 export default function ChartDecor(props: any) {
-  const { xAxisMap, offset, runs = [], years = [], phaseText = "", phaseFill = "#64748b" } = props;
+  const { xAxisMap, offset, runs = [], years = [], pbs = [], phaseText = "", phaseFill = "#64748b" } = props;
   const axis = xAxisMap && xAxisMap[Object.keys(xAxisMap)[0]];
   if (!axis || !offset) return null;
   const scale = axis.scale;
@@ -65,6 +66,17 @@ export default function ChartDecor(props: any) {
           >
             {y.year}
           </text>
+          </g>
+        );
+      })}
+      {/* M5: PB-Marker — kleine goldene Wimpel am oberen Plot-Rand (dezent, Detail im Hover-Title). */}
+      {(pbs as PbMark[]).map((p, i) => {
+        const x = xOf(p.date);
+        if (x == null || !isFinite(x)) return null;
+        return (
+          <g key={`pbm${i}`}>
+            <title>{p.label}</title>
+            <polygon points={`${x - 4},${offset.top} ${x + 4},${offset.top} ${x},${offset.top + 7}`} fill="#d4af37" opacity={0.85} />
           </g>
         );
       })}

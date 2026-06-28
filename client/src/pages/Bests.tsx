@@ -2,7 +2,7 @@
 // dazu eine VO2max/VDOT-Schätzung (Jack Daniels) + leistungs-äquivalente Renn-Prognosen.
 import { useEffect, useState } from "react";
 import {
-  LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type BestsResult, type FitnessTrend, type Pb } from "../lib/api.ts";
@@ -37,6 +37,7 @@ export default function Bests() {
   const [data, setData] = useState<BestsResult | null>(null);
   const [fit, setFit] = useState<FitnessTrend | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [ghost, setGhost] = useState(false); // M7 Easter Egg: Doppelklick → PB als Ghost-Benchmark im Prognose-Chart
   const [err, setErr] = useState(false);
   const [edit, setEdit] = useState<EditState>(null);
   const [newPb, setNewPb] = useState<NewState>(null);
@@ -201,14 +202,14 @@ export default function Bests() {
           <div className="card">
             <div className="spread">
               <h2><T k="bests.pred.title">Renn-Prognose im Verlauf</T></h2>
-              <span className="tiny muted"><T k="bests.pred.sub">VDOT/Daniels, 90-Tage-Fenster — Pace je Distanz, schneller = oben · Legende klicken zum Aus-/Einblenden</T></span>
+              <span className="tiny muted"><T k="bests.pred.sub">VDOT/Daniels, 90-Tage-Fenster — Pace je Distanz, schneller = oben · Legende klicken zum Aus-/Einblenden</T>{ghost ? " · Ghost-PB an (Doppelklick aus)" : ""}</span>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={paceData} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
-                <CartesianGrid stroke="#eef1f5" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+              <LineChart data={paceData} margin={{ top: 8, right: 16, left: 4, bottom: 8 }} onDoubleClick={() => setGhost((g) => !g)}>
+                <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                 <YAxis reversed domain={["dataMin", "dataMax"]} width={52} tickFormatter={(s: number) => paceStr(s)}
-                  tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                 <Tooltip
                   labelFormatter={(d) => fmtDateY(String(d))}
                   formatter={(v: number, n: string) => {
@@ -224,6 +225,15 @@ export default function Bests() {
                   <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color}
                     strokeWidth={1.8} connectNulls dot={false} hide={hidden.has(l.key)} />
                 ))}
+                {/* Ghost-PB: PB-Pace je Distanz als gedämpfte Benchmark — die Prognose-Linie „überholt" sie irgendwann. */}
+                {ghost && PRED_LINES.map((l) => {
+                  const pb = pbs.find((p) => p.distance_m === l.dist);
+                  if (!pb || hidden.has(l.key)) return null;
+                  return (
+                    <ReferenceLine key={`g${l.key}`} y={pb.pace_s} ifOverflow="extendDomain" stroke={l.color} strokeOpacity={0.5} strokeDasharray="2 5" strokeWidth={1.2}
+                      label={{ value: `👻 PB ${l.label}`, position: "insideBottomRight", fontSize: 9, fill: l.color }} />
+                  );
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>

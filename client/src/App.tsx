@@ -18,6 +18,14 @@ import Lernen from "./pages/Lernen.tsx";
 import Coach from "./pages/Coach.tsx";
 import { PageActionsProvider, PageActionsBar } from "./components/PageActionsBar.tsx";
 import Coachmark from "./components/Coachmark.tsx";
+import BrandMark from "./components/BrandMark.tsx";
+import Celebration from "./components/Celebration.tsx";
+import Intro from "./components/Intro.tsx";
+import PbWatcher from "./components/PbWatcher.tsx";
+import AchievementWatcher from "./components/AchievementWatcher.tsx";
+import KonamiLab from "./components/KonamiLab.tsx";
+import { applyTheme, getThemePref, setThemePref, type ThemePref } from "./lib/theme.ts";
+import { motionEnabled, getMotionPref, setMotionPref } from "./lib/motion.ts";
 import pkg from "../../package.json";
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
@@ -54,14 +62,35 @@ const NAV_GROUPS: { label?: string; tk?: string; items: NavItem[] }[] = [
 
 export default function App() {
   useEffect(() => { api.cleanupOrphans().catch(() => {}); }, []);
+  // M1/M2: Theme + Animations-Status auf <html> spiegeln (Auto folgt dem System; reagiert auf Pref-/System-Wechsel).
+  useEffect(() => {
+    const apply = () => {
+      applyTheme();
+      document.documentElement.setAttribute("data-motion", motionEnabled() ? "on" : "off");
+    };
+    apply();
+    window.addEventListener("runlog-theme-change", apply);
+    window.addEventListener("runlog-motion-change", apply);
+    const mqD = window.matchMedia("(prefers-color-scheme: dark)");
+    const mqR = window.matchMedia("(prefers-reduced-motion: reduce)");
+    mqD.addEventListener?.("change", apply);
+    mqR.addEventListener?.("change", apply);
+    return () => {
+      window.removeEventListener("runlog-theme-change", apply);
+      window.removeEventListener("runlog-motion-change", apply);
+      mqD.removeEventListener?.("change", apply);
+      mqR.removeEventListener?.("change", apply);
+    };
+  }, []);
   const location = useLocation();
   return (
     <PageActionsProvider>
     <div className="app">
       <aside className="sidebar no-print">
-        <div className="brand">Run<span>Log</span></div>
+        <BrandMark />
         <ProfileSwitcher />
         <LangSwitcher />
+        <ThemeMotionControls />
         <nav className="nav">
           {NAV_GROUPS.map((g, gi) => (
             <div key={gi} className="nav-group">
@@ -100,8 +129,29 @@ export default function App() {
         <PageActionsBar />
       </main>
       <Coachmark />
+      <Celebration />
+      <PbWatcher />
+      <AchievementWatcher />
+      <KonamiLab />
+      <Intro />
     </div>
     </PageActionsProvider>
+  );
+}
+
+// M1/M2: Theme- (Auto/Hell/Dunkel) + Animations-Schalter im Sidebar-Fuß.
+function ThemeMotionControls() {
+  const [theme, setTheme] = useState<ThemePref>(getThemePref());
+  const [motion, setMotion] = useState(getMotionPref());
+  const cycleTheme = () => { const next: ThemePref = theme === "auto" ? "light" : theme === "light" ? "dark" : "auto"; setThemePref(next); setTheme(next); };
+  const toggleMotion = () => { const next = motion === "on" ? "off" : "on"; setMotionPref(next); setMotion(next); };
+  const themeIcon = theme === "auto" ? "🌓" : theme === "light" ? "☀️" : "🌙";
+  const themeLabel = theme === "auto" ? "Auto" : theme === "light" ? "Hell" : "Dunkel";
+  return (
+    <div className="theme-motion no-print">
+      <button className="tm-btn" onClick={cycleTheme} title={`Theme: ${themeLabel} — klicken zum Wechseln`}><span>{themeIcon}</span> {themeLabel}</button>
+      <button className="tm-btn" onClick={toggleMotion} title={motion === "on" ? "Animationen an (klicken zum Ausschalten)" : "Animationen aus (klicken zum Einschalten)"}>{motion === "on" ? "✨" : "⏸"}</button>
+    </div>
   );
 }
 

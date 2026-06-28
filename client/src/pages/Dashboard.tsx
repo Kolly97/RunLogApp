@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult, type BestsResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { addDays, todayIso, fmtDate, weekLabel } from "../lib/util.ts";
+import { addDays, todayIso, fmtDate, weekLabel, pbMarkers } from "../lib/util.ts";
 import { typeColor, typeLabel } from "../lib/options.ts";
+import { useCountUp, useReveal } from "../lib/motion.ts";
+import FormRibbon from "../charts/FormRibbon.tsx";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
@@ -29,7 +31,10 @@ export default function Dashboard() {
   const [trend, setTrend] = useState<IntervalEffortStat[] | null>(null);
   const [fit, setFit] = useState<FitnessTrend | null>(null);
   const [today, setToday] = useState<TodayResult | null>(null);
+  const [bests, setBests] = useState<BestsResult | null>(null);
   useEffect(() => { api.today().then(setToday).catch(() => setToday(null)); }, []);
+  useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
+  const formRef = useReveal<HTMLDivElement>(); // M3: Form-Karten gestaffelt einblenden
   const [adjBusy, setAdjBusy] = useState(false);
   const [adjMsg, setAdjMsg] = useState("");
   const applyAdjustment = async () => {
@@ -99,11 +104,14 @@ export default function Dashboard() {
         <T k="dashboard.role">Status heute — aktuelle Form, Readiness und Ziel-Abgleich. Lange Verläufe siehe Langzeit.</T>
       </p>
 
+      {/* M4: Signature-Hero — Form-Trajektorie als fließendes Band. */}
+      {(pmc?.pmc?.length ?? 0) > 1 && <FormRibbon points={pmc!.pmc.filter((p) => p.date <= todayIso())} />}
+
       {/* A3: Leitfrage „Was mache ich heute?" zuerst — fix & prominent. */}
       {todayPanel()}
 
       <div className="tiny muted" style={{ fontWeight: 600, margin: "2px 0 4px" }}><T k="dashboard.form.title">Form-Überblick</T></div>
-      <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="grid" ref={formRef} style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
         <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} />
         <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} />
         <StatCard label={t("dashboard.stat.form.label", "Form (TSB)")} value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb, t)} />
@@ -180,7 +188,7 @@ export default function Dashboard() {
                   </ul>
                 </details>
                 {today.adjustment?.changed && today.adjustment.adjusted && (
-                  <div className="card" style={{ marginTop: 10, padding: "8px 10px", background: today.adjustment.mode === "gate" ? "#fff7ed" : "#f8fafc", border: "1px solid var(--line)" }}>
+                  <div className="card" style={{ marginTop: 10, padding: "8px 10px", background: "var(--surface2)", border: "1px solid var(--line)" }}>
                     <div className="row" style={{ gap: 8, alignItems: "center" }}>
                       <span className="dot" style={{ background: today.adjustment.mode === "gate" ? "#f97316" : "#0ea5e9", width: 10, height: 10 }} />
                       <strong style={{ fontSize: 13 }}>{today.adjustment.headline}</strong>
@@ -222,7 +230,7 @@ export default function Dashboard() {
               <h2><T k="dashboard.block.pmc.title">Performance Management Chart</T></h2>
               <span className="tiny muted"><T k="dashboard.block.pmc.sub">Fitness · Fatigue · Form</T></span>
             </div>
-            <Pmc data={pmc?.pmc ?? []} races={racesByDate} sickRanges={sickByDate}
+            <Pmc data={pmc?.pmc ?? []} races={racesByDate} pbs={pbMarkers(bests?.pbs)} sickRanges={sickByDate} seasonal
               phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
           </div>
         ),
@@ -292,10 +300,11 @@ export default function Dashboard() {
 }
 
 function StatCard({ label, value, cls, sub }: { label: string; value: number; cls?: string; sub?: string }) {
+  const display = useCountUp(value); // M3: sanftes Hochzählen beim Laden/Wertwechsel
   return (
     <div className="card stat">
       <div className="label">{label}</div>
-      <div className={"value " + (cls || "")}>{Math.round(value * 10) / 10}</div>
+      <div className={"value " + (cls || "")}>{display}</div>
       {sub && <div className="sub">{sub}</div>}
     </div>
   );

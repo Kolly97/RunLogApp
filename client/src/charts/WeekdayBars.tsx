@@ -40,9 +40,9 @@ export default function WeekdayBars({
     <div>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} margin={{ top: 14, right: 6, left: -12, bottom: 4 }} barGap={2}>
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} />
-          <YAxis yAxisId="km" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
-          <YAxis yAxisId="tss" orientation="right" tick={{ fontSize: 11, fill: "#8a96a6" }} width={30} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+          <YAxis yAxisId="km" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={30} />
+          <YAxis yAxisId="tss" orientation="right" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={30} />
           <Tooltip contentStyle={TOOLTIP_STYLE}
             formatter={(v: number, n: string) => [v, n]} />
           <Bar yAxisId="km" dataKey="runKm" name="Lauf-km" stackId="km" fill={C_RUN_KM} barSize={9} isAnimationActive={false} />

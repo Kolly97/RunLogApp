@@ -11,12 +11,12 @@ import {
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend, type BestsResult } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
-import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur } from "../lib/util.ts";
+import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur, pbMarkers } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import ZoneHistogram from "../charts/ZoneHistogram.tsx";
 import ThresholdTrendChart from "../charts/ThresholdTrendChart.tsx";
@@ -125,6 +125,8 @@ export default function LongTerm() {
   const [zoneHist, setZoneHist] = useState<ZoneHistogramData | null>(null); // C3 v1.4.0
   const [fitnessTrend, setFitnessTrend] = useState<FitnessTrend | null>(null); // C4 v1.4.0
   const [effVo2, setEffVo2] = useState<EffVo2maxTrend | null>(null); // V v1.5.0
+  const [bests, setBests] = useState<BestsResult | null>(null); // M5: PB-Marker im PMC
+  useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
   // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
   const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
 
@@ -312,7 +314,7 @@ export default function LongTerm() {
       <EgItem id="pmc" title={t("lt.block.pmc.title", "Performance Management Chart")} defaultSpan={12} defaultHeight={360}>{(h) => (
       <div className="card">
         <div className="spread"><h2><T k="lt.block.pmc.title">Performance Management Chart</T></h2><span className="tiny muted"><T k="lt.block.pmc.sub">Fitness · Fatigue · Form (geplant rechts von „heute")</T></span></div>
-        <Pmc data={pmc} races={racesByDate} sickRanges={sickByDate}
+        <Pmc data={pmc} races={racesByDate} pbs={pbMarkers(bests?.pbs)} sickRanges={sickByDate} seasonal
           phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} height={h ?? 360} />
       </div>
       )}</EgItem>
@@ -363,10 +365,10 @@ export default function LongTerm() {
               ) : longView ? (
                 <ResponsiveContainer width="100%" height={135}>
                   <ComposedChart data={rollingSeries(points, m.key).map((p) => ({ date: p.date, avg: p.avg, band: [p.lo, p.hi] }))} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
-                    <CartesianGrid stroke="#eef1f5" vertical={false} />
+                    <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                     {sickSegments.map((s, i) => <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />)}
-                    <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]} reversed={m.reversed} tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))} />
+                    <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "var(--chart-tick)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--chart-tick)" }} width={44} domain={["auto", "auto"]} reversed={m.reversed} tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))} />
                     <Tooltip labelFormatter={(d) => fmtDateY(String(d))} contentStyle={TOOLTIP_STYLE}
                       formatter={(v: number | number[], n: string) => {
                         const fv = (x: number) => (m.fmt ? m.fmt(x) : String(Math.round(x * 10) / 10));
@@ -381,13 +383,13 @@ export default function LongTerm() {
               ) : (
               <ResponsiveContainer width="100%" height={135}>
                 <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {sickSegments.map((s, i) => (
                     <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
                   ))}
-                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "#8a96a6" }} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={32} tick={{ fontSize: 10, fill: "var(--chart-tick)" }} />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "#8a96a6" }} width={44} domain={["auto", "auto"]} reversed={m.reversed}
+                    tick={{ fontSize: 10, fill: "var(--chart-tick)" }} width={44} domain={["auto", "auto"]} reversed={m.reversed}
                     tickFormatter={(v: number) => (m.fmt ? m.fmt(v) : String(Math.round(v * 10) / 10))}
                   />
                   <Tooltip
@@ -424,13 +426,13 @@ export default function LongTerm() {
               <h3><T k="lt.block.eff.title">Ø-Pace vs. Ø-Herzfrequenz</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
                 <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick-${i}`} yAxisId="pace" x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
                   ))}
-                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                   <YAxis yAxisId="pace" reversed domain={paceDomain} tickFormatter={(v: number) => paceStr(v)}
-                    width={44} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                    width={44} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                   <YAxis yAxisId="hr" orientation="right" domain={["auto", "auto"]} width={34}
                     tick={{ fontSize: 11, fill: "#d53f8c" }} />
                   <Tooltip
@@ -466,12 +468,12 @@ export default function LongTerm() {
               <h3><T k="lt.block.ef.title">Effizienz-Faktor (m/min je Herzschlag)</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
                 <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
+                  <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick2-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
                   ))}
-                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={44} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={44} />
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number) => [v, "EF"]}
@@ -496,9 +498,9 @@ export default function LongTerm() {
             <h3><T k="lt.block.decoupling.title">Aerobe Entkopplung (Pa:HR-Drift)</T></h3>
             <ResponsiveContainer width="100%" height={h ?? 240}>
               <LineChart data={decoupling} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
-                <CartesianGrid stroke="#eef1f5" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="%" />
+                <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} unit="%" />
                 <Tooltip
                   labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                   formatter={(v: number, _n: string, item: any) => {
@@ -551,8 +553,8 @@ export default function LongTerm() {
               <h3><T k="lt.block.fitness.title">Fitness-Signale: CTL & VDOT-Trend</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
                 <ComposedChart data={merged} margin={{ top: 8, right: 40, left: -14, bottom: 26 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+                  <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                   <YAxis yAxisId="ctl" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#2b6cb0" }} width={40} />
                   <YAxis yAxisId="vdot" orientation="right" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#d97706" }} width={32} />
                   <Tooltip
@@ -592,9 +594,9 @@ export default function LongTerm() {
               <h3><T k="lt.block.effvo2.title">Effective VO2max je Lauf</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
                 <ComposedChart data={data} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
-                  <CartesianGrid stroke="#eef1f5" vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="" />
+                  <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+                  <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} unit="" />
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                     formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
@@ -629,9 +631,9 @@ export default function LongTerm() {
           </div>
           <ResponsiveContainer width="100%" height={h ?? 200}>
             <LineChart data={adhData} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
-              <CartesianGrid stroke="#eef1f5" vertical={false} />
-              <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={40} unit="%" />
+              <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+              <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} unit="%" />
               <Tooltip
                 labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
                 formatter={(v: number) => [`${v} %`, "Plan-Erfüllung"]}

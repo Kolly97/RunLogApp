@@ -39,7 +39,7 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
       </div>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#eef1f5" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           {BANDS.map((b) => (
             <ReferenceArea key={b.label} y1={b.lo} y2={Math.min(b.hi, maxR)} fill={b.color} fillOpacity={0.18} ifOverflow="hidden" />
           ))}
@@ -48,8 +48,8 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
             label={{ value: "Optimal 80 %", fontSize: 9, fill: "#16a34a", position: "insideBottomLeft" }} />
           <ReferenceLine y={149} stroke="#16a34a" strokeDasharray="5 4" strokeWidth={1.4}
             label={{ value: "149 %", fontSize: 9, fill: "#16a34a", position: "insideTopLeft" }} />
-          <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-          <YAxis domain={[0, maxR]} width={40} tick={{ fontSize: 11, fill: "#8a96a6" }} tickFormatter={(v: number) => `${v}%`} />
+          <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+          <YAxis domain={[0, maxR]} width={40} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} tickFormatter={(v: number) => `${v}%`} />
           <Tooltip
             labelFormatter={(d) => fmtDateY(String(d))}
             formatter={(v: number) => [`${v}% · ${bandFor(v).label}`, "Intensity"]}

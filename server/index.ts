@@ -2007,6 +2007,19 @@ app.get("/api/enrich-progress", (_req, res) => {
   res.json({ total: row.total || 0, details: row.details || 0, streams: row.streams || 0 });
 });
 
+// Lifetime-Summen für das versteckte „Lab Mode"-Panel (M7 Easter Egg). Read-only, NULL-sicher, je Profil.
+app.get("/api/overview", (_req, res) => {
+  const row = db.prepare(
+    "SELECT COUNT(*) n, " +
+      "COALESCE(SUM(distance_m),0) dist_m, " +
+      "COALESCE(SUM(elevation),0) elev_m, " +
+      "COALESCE(SUM(moving_s),0) moving_s, " +
+      "COALESCE(SUM(kcal),0) kcal " +
+      "FROM activities WHERE profile_id=?",
+  ).get(pid()) as { n: number; dist_m: number; elev_m: number; moving_s: number; kcal: number };
+  res.json({ n: row.n || 0, dist_m: row.dist_m || 0, elev_m: row.elev_m || 0, moving_s: row.moving_s || 0, kcal: row.kcal || 0 });
+});
+
 app.post("/api/recompute-tss", (_req, res) => {
   try {
     const profile = pid();

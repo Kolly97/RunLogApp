@@ -13,7 +13,7 @@ export default function MarkerDelta({ start, end, height = 180 }: { start: Physi
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis dataKey="zone" tick={{ fontSize: 11 }} />
         <YAxis tick={{ fontSize: 11 }} unit="%" />
         <Tooltip formatter={(v: number) => `${Math.round(v)}%`} contentStyle={TOOLTIP_STYLE} />

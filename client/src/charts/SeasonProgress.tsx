@@ -70,9 +70,9 @@ export default function SeasonProgress({
         <ComposedChart data={rows} margin={{ top: 14, right: 12, left: -8, bottom: 28 }}
           onMouseMove={(s: any) => setHoverPhase(s?.activePayload?.[0]?.payload?.phase ?? null)}
           onMouseLeave={() => setHoverPhase(null)}>
-          <CartesianGrid stroke="#eef1f5" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a96a6" }} angle={0} minTickGap={0} textAnchor="middle" height={30} />
-          <YAxis tick={{ fontSize: 11, fill: "#8a96a6" }} width={36} unit="" />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} angle={0} minTickGap={0} textAnchor="middle" height={30} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={36} unit="" />
           <Tooltip contentStyle={TOOLTIP_STYLE} />
           {/* Krank-Wochen rot hinterlegt (Hintergrund) */}
           {sickLabels.map((l) => (

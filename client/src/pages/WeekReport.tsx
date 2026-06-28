@@ -5,12 +5,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race,
+  api, type PlannedSession, type Activity, type DailyLog, type AnalyzeResult, type PmcPoint, type Effort, type Race, type BestsResult,
 } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
-  fmtDur, weekLabel, phaseLabel, addDays,
+  fmtDur, weekLabel, phaseLabel, addDays, pbMarkers,
 } from "../lib/util.ts";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
 import { useOptions, typeIntensity } from "../lib/options.ts";
@@ -84,6 +84,8 @@ export default function WeekReport() {
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
   const [bikeFactor, setBikeFactor] = useState(0.25); // Rad-km → Lauf-km (Wochentags-Chart, ToDo Z.9)
+  const [bests, setBests] = useState<BestsResult | null>(null); // M5: PB-Marker im PMC
+  useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
   const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
 
   async function reload() {
@@ -504,7 +506,7 @@ export default function WeekReport() {
             <div className="pmc-row">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Pmc data={pmcWin} height={h ?? 210} highlight={{ from: week.start_date, to: week.end_date }}
-                  races={racesByDate} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
+                  races={racesByDate} pbs={pbMarkers(bests?.pbs)} sickRanges={sickByDate} phaseRuns={pmcPhaseRuns} />
               </div>
               {/* Last-Kennzahlen am Wochenende (v0.14.0, ToDo 2) */}
               <div className="pmc-values">
@@ -647,7 +649,7 @@ function PhysioStack({ vals, height = 24 }: { vals: { z1: number; z2: number; z3
     { k: "z1" as const, pct: vals.z1 }, { k: "z2" as const, pct: vals.z2 }, { k: "z3" as const, pct: vals.z3 },
   ];
   return (
-    <div style={{ display: "flex", height, borderRadius: 6, overflow: "hidden", border: "1px solid #e3e8ef", background: "#f1f5f9" }}>
+    <div style={{ display: "flex", height, borderRadius: 6, overflow: "hidden", border: "1px solid #e3e8ef", background: "var(--surface2)" }}>
       {segs.map((s) => s.pct > 0 && (
         <div key={s.k} style={{ width: `${s.pct}%`, background: PHYSIO_COL[s.k], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fff", fontWeight: 600 }}>
           {s.pct >= 9 ? `${Math.round(s.pct)}%` : ""}

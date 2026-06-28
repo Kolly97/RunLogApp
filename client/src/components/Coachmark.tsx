@@ -129,7 +129,7 @@ export default function Coachmark() {
   if (choosing) {
     return (
       <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "92vw", background: "#fff", borderRadius: 14, boxShadow: "0 10px 30px rgba(15,23,42,0.25)", padding: 18 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "92vw", background: "var(--card)", borderRadius: 14, boxShadow: "0 10px 30px rgba(15,23,42,0.25)", padding: 18 }}>
           <strong style={{ fontSize: 16 }}>🎓 Geführte Tour</strong>
           <p className="tiny muted" style={{ margin: "4px 0 12px" }}>Zwei Touren — wähle, was du brauchst:</p>
           <button className="primary" style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 8 }} onClick={() => pick("whatis")}>
@@ -168,7 +168,7 @@ export default function Coachmark() {
         <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)" }} />
       )}
 
-      <div style={{ position: "fixed", top: tipTop, left: tipLeft, width: TW, background: "#fff", borderRadius: 12,
+      <div style={{ position: "fixed", top: tipTop, left: tipLeft, width: TW, background: "var(--card)", borderRadius: 12,
         boxShadow: "0 10px 30px rgba(15,23,42,0.25)", padding: 14, zIndex: 1001 }}>
         <div className="spread" style={{ marginBottom: 4 }}>
           <strong style={{ fontSize: 14 }}>{step.title}</strong>

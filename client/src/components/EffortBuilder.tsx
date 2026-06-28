@@ -178,7 +178,7 @@ function GroupBox({ g, bike, zones, cols, planning, onChange, onRemove }: {
   const addChild = () => onChange({ ...g, children: [...children, { reps: 1 }] });
 
   return (
-    <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 8px", margin: "4px 0", background: "#fafbfd" }}>
+    <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 8px", margin: "4px 0", background: "var(--surface2)" }}>
       <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 4 }}>
         <span className="tiny muted">Wiederholung</span>
         <input type="number" min={1} style={{ width: 56, textAlign: "center" }} value={g.reps ?? 1}

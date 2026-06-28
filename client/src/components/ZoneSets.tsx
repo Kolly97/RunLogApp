@@ -111,7 +111,7 @@ function ZoneSetEditor({ z, onChange, canDelete }: { z: ZoneSet; onChange: () =>
   const setPower = (i: number, v: number | null) => { const arr = [...(e.power_zones || [])]; arr[i] = v ?? 0; saveZ({ ...e, power_zones: arr }); };
   const warnings = zoneWarnings(e);
   return (
-    <div className="card tight" style={{ background: "#fafbfd" }}>
+    <div className="card tight" style={{ background: "var(--surface2)" }}>
       <div className="row mb">
         <label className="field" style={{ margin: 0 }}><span><T k="zones.field.validFrom">Gültig ab</T></span><input type="date" value={e.valid_from} onChange={(x) => saveZ({ ...e, valid_from: x.target.value })} /></label>
         <label className="field" style={{ margin: 0, width: 80 }}><span><T k="zones.field.lthr">LTHR</T></span><input type="number" value={e.lthr} onChange={(x) => saveZ({ ...e, lthr: Number(x.target.value) })} /></label>

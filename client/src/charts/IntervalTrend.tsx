@@ -63,10 +63,10 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-        <CartesianGrid stroke="#eef1f5" vertical={false} />
-        <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+        <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+        <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
         <YAxis reversed domain={[min, max]} tickFormatter={(v: number) => paceStr(v)} width={44}
-          tick={{ fontSize: 11, fill: "#8a96a6" }} />
+          tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
         <Tooltip
           labelFormatter={(d) => fmtDateY(String(d))}
           formatter={(v: number, n: string) => [`${paceStr(v)} /km`, n]}

@@ -7,14 +7,16 @@ import type { PmcPoint } from "../lib/api.ts";
 import { todayIso, fmtDate, fmtDateY } from "../lib/util.ts";
 import { phaseColor, phaseLabel } from "../lib/options.ts";
 import ChartDecor, { vRefLabel, type PhaseRun, type YearMark } from "./ChartDecor.tsx";
+import SeasonalDecor from "./SeasonalDecor.tsx";
 
 export interface RaceMarker { date: string; label: string; }
+export interface PbMarker { date: string; label: string; }
 export interface DateRange2 { from: string; to: string; }
 
 const SERIES = [
-  { key: "fitness", name: "Fitness (CTL)", color: "#2b6cb0" },
-  { key: "fatigue", name: "Fatigue (ATL)", color: "#d53f8c" },
-  { key: "form", name: "Form (TSB)", color: "#e0a300" },
+  { key: "fitness", name: "Fitness (CTL)", color: "var(--fitness)" },
+  { key: "fatigue", name: "Fatigue (ATL)", color: "var(--fatigue)" },
+  { key: "form", name: "Form (TSB)", color: "var(--form)" },
   { key: "week", name: "TSS/Woche", color: "#7c9cbf" },
   { key: "tss", name: "TSS/Tag", color: "#c3ccd6" },
   { key: "races", name: "Races", color: "#d4af37" },
@@ -31,12 +33,16 @@ function short(s: string, n = 16): string { return s.length > n ? s.slice(0, n -
 // TrainingPeaks-Farbsemantik: CTL blau, ATL rosa, TSB gelb. Prognose (rechts von heute) gestrichelt.
 // TSS-Tagesbalken + Wochen-TSS auf eigenen, versteckten Achsen → Fitness nutzt die linke Achse voll.
 export default function Pmc({
-  data, height = 360, highlight, races = [], sickRanges = [],
-  phaseRuns = [], yearMarks = [], namesByDate, onPick,
+  data, height = 360, highlight, races = [], pbs = [], sickRanges = [],
+  phaseRuns = [], yearMarks = [], namesByDate, onPick, seasonal = false,
 }: {
   data: PmcPoint[]; height?: number;
   highlight?: { from: string; to: string };
   races?: RaceMarker[];
+  /** Bestzeiten-Marker (M5): dezente Wimpel am oberen Rand bei PB-Daten. */
+  pbs?: PbMarker[];
+  /** Jahreszeiten-Deko (M7 Easter Egg) — nur Dashboard/Langzeit, nicht im Druck-Bericht. */
+  seasonal?: boolean;
   sickRanges?: DateRange2[];
   phaseRuns?: PhaseRun[];
   yearMarks?: YearMark[];
@@ -92,11 +98,12 @@ export default function Pmc({
           style={onPick ? { cursor: "pointer" } : undefined}>
           <defs>
             <linearGradient id="ctlFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2b6cb0" stopOpacity={0.5} />
-              <stop offset="100%" stopColor="#2b6cb0" stopOpacity={0.02} />
+              <stop offset="0%" stopColor="var(--fitness)" stopOpacity={0.5} />
+              <stop offset="100%" stopColor="var(--fitness)" stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="#eef1f5" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+          {seasonal && <Customized component={(p: any) => <SeasonalDecor {...p} />} />}
           {sickRanges.map((s, i) => (
             <ReferenceArea key={`sick${i}`} yAxisId="load" x1={s.from} x2={s.to} fill="#ef4444" fillOpacity={0.06} ifOverflow="hidden" />
           ))}
@@ -104,27 +111,27 @@ export default function Pmc({
             <ReferenceArea yAxisId="load" x1={hl.from} x2={hl.to} fill="var(--accent)" fillOpacity={0.07}
               stroke="#bcd4f0" strokeOpacity={0.8} ifOverflow="hidden" />
           )}
-          <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={36} tickMargin={6} tick={{ fontSize: 11, fill: "#8a96a6" }} />
-          <YAxis yAxisId="load" domain={[0, loadMax]} tick={{ fontSize: 11, fill: "#8a96a6" }} width={38} />
-          <YAxis yAxisId="form" orientation="right" tick={{ fontSize: 11, fill: "#8a96a6" }} width={34} />
+          <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={36} tickMargin={6} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+          <YAxis yAxisId="load" domain={[0, loadMax]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={38} />
+          <YAxis yAxisId="form" orientation="right" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={34} />
           <YAxis yAxisId="bars" hide domain={[0, Math.ceil(maxDaily * 1.02)]} />
           <YAxis yAxisId="week" hide domain={[0, Math.ceil(maxWeek * 1.08)]} />
           <Tooltip content={<PmcTooltip />} />
 
           <Bar yAxisId="bars" dataKey="tss" fill="#c3ccd6" barSize={5} hide={hidden.tss} isAnimationActive={false} />
           <Line yAxisId="week" type="stepAfter" dataKey="weekSum" stroke="#7c9cbf" strokeWidth={1.4} dot={false} hide={hidden.week} isAnimationActive={false} />
-          <Area yAxisId="load" type="monotone" dataKey="ctl_p" stroke="#2b6cb0" strokeWidth={2.2} fill="url(#ctlFill)" dot={false} hide={hidden.fitness} isAnimationActive={false} />
-          <Line yAxisId="load" type="monotone" dataKey="ctl_f" stroke="#2b6cb0" strokeWidth={2.2} strokeDasharray="5 4" dot={false} hide={hidden.fitness} isAnimationActive={false} />
-          <Line yAxisId="load" type="monotone" dataKey="atl_p" stroke="#d53f8c" strokeWidth={1.8} dot={false} hide={hidden.fatigue} isAnimationActive={false} />
-          <Line yAxisId="load" type="monotone" dataKey="atl_f" stroke="#d53f8c" strokeWidth={1.8} strokeDasharray="5 4" dot={false} hide={hidden.fatigue} isAnimationActive={false} />
-          <Line yAxisId="form" type="monotone" dataKey="tsb_p" stroke="#e0a300" strokeWidth={1.8} dot={false} hide={hidden.form} isAnimationActive={false} />
-          <Line yAxisId="form" type="monotone" dataKey="tsb_f" stroke="#e0a300" strokeWidth={1.8} strokeDasharray="5 4" dot={false} hide={hidden.form} isAnimationActive={false} />
+          <Area yAxisId="load" type="monotone" dataKey="ctl_p" stroke="var(--fitness)" strokeWidth={2.2} fill="url(#ctlFill)" dot={false} hide={hidden.fitness} isAnimationActive={false} />
+          <Line yAxisId="load" type="monotone" dataKey="ctl_f" stroke="var(--fitness)" strokeWidth={2.2} strokeDasharray="5 4" dot={false} hide={hidden.fitness} isAnimationActive={false} />
+          <Line yAxisId="load" type="monotone" dataKey="atl_p" stroke="var(--fatigue)" strokeWidth={1.8} dot={false} hide={hidden.fatigue} isAnimationActive={false} />
+          <Line yAxisId="load" type="monotone" dataKey="atl_f" stroke="var(--fatigue)" strokeWidth={1.8} strokeDasharray="5 4" dot={false} hide={hidden.fatigue} isAnimationActive={false} />
+          <Line yAxisId="form" type="monotone" dataKey="tsb_p" stroke="var(--form)" strokeWidth={1.8} dot={false} hide={hidden.form} isAnimationActive={false} />
+          <Line yAxisId="form" type="monotone" dataKey="tsb_f" stroke="var(--form)" strokeWidth={1.8} strokeDasharray="5 4" dot={false} hide={hidden.form} isAnimationActive={false} />
 
-          <ReferenceLine yAxisId="form" y={0} stroke="#cbd5e1" strokeDasharray="2 4" />
-          <ReferenceLine yAxisId="load" x={today} stroke="#94a3b8" strokeDasharray="4 4"
-            label={{ value: "heute", fontSize: 10, fill: "#94a3b8", position: "top" }} />
+          <ReferenceLine yAxisId="form" y={0} stroke="var(--chart-tick)" strokeDasharray="2 4" />
+          <ReferenceLine yAxisId="load" x={today} stroke="var(--chart-tick)" strokeDasharray="4 4"
+            label={{ value: "heute", fontSize: 10, fill: "var(--chart-tick)", position: "top" }} />
           {/* Phasenband + Jahresmarke + Phasenname über den TSS-Balken (ToDo Z.39). */}
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} pbs={hidden.races ? [] : pbs}
             phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
           {/* Races zuletzt → Label im Vordergrund, von nichts überlappt (ToDo Z.27) */}
           {!hidden.races && races.map((r, i) => (
@@ -153,12 +160,12 @@ function PmcTooltip({ active, payload }: any) {
     </div>
   );
   return (
-    <div style={{ background: "#fff", border: "1px solid #e3e8ef", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
       <div style={{ fontWeight: 100, marginBottom: 4 }}>{fmtDateY(p.date)}</div>
-      {row("Fitness", p.ctl, "#2b6cb0")}
-      {row("Fatigue", p.atl, "#d53f8c")}
-      {row("Form", p.tsb, "#e0a300")}
-      {row("TSS/Tag", p.tss, "#8a96a6")}
+      {row("Fitness", p.ctl, "var(--fitness)")}
+      {row("Fatigue", p.atl, "var(--fatigue)")}
+      {row("Form", p.tsb, "var(--form)")}
+      {row("TSS/Tag", p.tss, "var(--chart-tick)")}
       {row("TSS/Woche", p.weekSum, "#7c9cbf")}
     </div>
   );

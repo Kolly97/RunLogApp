@@ -83,6 +83,22 @@ export function secToClock(sec?: number | null): string {
     : `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// M5: kompakte Distanz-Namen für PB-Marker (knapper als Bestzeiten-Seite, da Annotation).
+const PB_DIST_NAMES: Record<number, string> = {
+  1000: "1 km", 1609: "1 Meile", 3219: "2 Meilen", 5000: "5 km", 10000: "10 km",
+  15000: "15 km", 16093: "10 Meilen", 20000: "20 km", 21097: "HM", 42195: "Marathon",
+};
+function pbDistLabel(m: number): string {
+  return PB_DIST_NAMES[m] || (m >= 1000 ? `${Math.round(m / 100) / 10} km` : `${m} m`);
+}
+
+/** PMC-Annotation (M5): Bestzeiten je Distanz → dezente Marker { date, label } auf der Zeitachse. */
+export function pbMarkers(pbs?: { distance_m: number; time_s: number; date: string }[] | null): { date: string; label: string }[] {
+  return (pbs ?? [])
+    .filter((p) => p.date)
+    .map((p) => ({ date: p.date, label: `PB ${pbDistLabel(p.distance_m)} · ${secToClock(p.time_s)}` }));
+}
+
 export function num(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);

@@ -231,7 +231,7 @@ function DonutStat({ label, value, total, color }: { label: string; value: numbe
   return (
     <div style={{ textAlign: "center", width: 96 }}>
       <svg width="72" height="72" viewBox="0 0 72 72" style={{ transform: "rotate(-90deg)" }}>
-        <circle cx="36" cy="36" r={r} fill="none" stroke="#eef1f5" strokeWidth="9" />
+        <circle cx="36" cy="36" r={r} fill="none" stroke="var(--chart-grid)" strokeWidth="9" />
         <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
           strokeDasharray={`${c * pct} ${c}`} />
       </svg>

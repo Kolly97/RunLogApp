@@ -69,10 +69,18 @@ export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100,
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={points} margin={{ top: 6, right: 8, left: -14, bottom: -4 }}>
-        <CartesianGrid stroke="#eef1f5" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#8a96a6" }} interval={0} />
+        {band && (
+          <defs>
+            <linearGradient id={`wb-${m.key}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={m.color} stopOpacity={0.16} />
+              <stop offset="100%" stopColor={m.color} stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+        )}
+        <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--chart-tick)" }} interval={0} />
         <YAxis
-          tick={{ fontSize: 10, fill: "#8a96a6" }}
+          tick={{ fontSize: 10, fill: "var(--chart-tick)" }}
           width={46}
           domain={["auto", "auto"]}
           reversed={m.reversed}
@@ -87,7 +95,7 @@ export function WellnessTrendChart({ metric: m, points, sleepRows, height = 100,
             label={{ value: m.refLabel, fontSize: 9, fill: "#94a3b8", position: "right" }} />
         )}
         {band && (<>
-          <ReferenceArea y1={band.lo} y2={band.hi} fill={m.color} fillOpacity={0.08} ifOverflow="hidden" />
+          <ReferenceArea y1={band.lo} y2={band.hi} fill={`url(#wb-${m.key})`} ifOverflow="hidden" />
           <ReferenceLine y={band.mean} stroke={m.color} strokeDasharray="5 3" strokeOpacity={0.4} strokeWidth={1.1} />
         </>)}
         <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.8}

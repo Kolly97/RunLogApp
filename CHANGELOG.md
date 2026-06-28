@@ -4,6 +4,61 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [1.10.0] – 2026-06-28 — Premium-Politur: Dark Mode, Motion, Signature-Hero, Chart-Veredelung & Delight
+
+Großes Veredelungs-Update der Oberfläche — aus dem soliden, analytischen RunLog wird ein **premium, klinisch-edles**
+Produkt, ohne den seriösen Charakter zu verlieren. Aufbauend auf dem neuen **Design-Fundament** (Tokens, gruppierte
+Navigation, Seiten-Hierarchie, einheitliche Chart-Grammatik) kommen ein **Dark Mode** („Performance-Lab"), ein
+zentral abschaltbares **Motion-System**, ein **Signature-Hero** am Dashboard, **dezent veredelte Charts** und ein paar
+geschmackvolle **Delight-Momente**. Alles barrierearm (`prefers-reduced-motion` + globaler Aus-Schalter); die
+Druck-Sicht (Wochenbericht) bleibt unberührt — immer hell und statisch.
+
+### Hinzugefügt
+
+**Design-Fundament**
+- **Design-Tokens** als einzige Quelle für Farben/Abstände, **gruppierte Navigation** (Heute · Planen · Tracken ·
+  Analysieren · Lernen + Einstellungen), klarere **Seiten-Hierarchie** und eine **einheitliche Chart-Grammatik**
+  (gemeinsame Tooltip-/Achsen-/Gitter-Stile).
+
+**Dark Mode („Performance-Lab")**
+- **Auto (System) · Hell · Dunkel**, umschaltbar im Sidebar-Fuß; Wahl bleibt gespeichert.
+- **Theme-fähige Charts:** Tick-/Gitter-/Tooltip-/Serien-Farben kommen aus CSS-Variablen statt fixer Hex-Werte —
+  Diagramme bleiben in beiden Modi gut lesbar. Druck wird stets hell erzwungen.
+
+**Motion-System**
+- **Zentrale, gegatete Helfer** (`useMotion`/`useCountUp`/`useReveal`/Draw-on): jede Bewegung läuft nur, wenn
+  Animationen an sind **und** das System keine reduzierte Bewegung verlangt — sonst sofort der Endzustand.
+- **Einstellungen:** Schalter „Animationen" (an/aus) + „Theme"; Default lebendig, 60-fps-budgetiert (nur transform/opacity).
+
+**Micro-Motion**
+- **Zahl-Tweens** für KPIs (CTL/ATL/TSB/Ramp/VO₂max, Bestzeiten, Wochenbericht-Kopf), **Draw-on** für Linien/Flächen,
+  **gestaffeltes Einblenden** von Karten beim Seitenwechsel, dezente **Hover-/Press**-Mikro-Interaktionen.
+
+**Signature-Hero — „Form-Ribbon"**
+- Oben am Dashboard ein fließendes **CTL/ATL/TSB-Band** der letzten ~6 Wochen mit Draw-on und großen Live-Kennzahlen;
+  reduced-motion → statisch.
+
+**Chart-Veredelung (dezent)**
+- Sanfte **Verläufe/Glow** (PMC-Fläche, Schwellen-Trend, Wellness-Normalbereich-Bänder), **feinere Achsen** und
+  **PB-Marker** auf der PMC-Zeitachse (dezente Wimpel mit Hover-Detail; Dashboard · Langzeit · Wochenbericht).
+
+**Delight — Celebrations, Intro & Easter Eggs**
+- **Celebrations** bei echten Erfolgen — neue Bestzeit · geschlagene Wunschzeit · Konsistenz-Streak (4/8/12/26/52
+  Wochen) · abgeschlossener Trainingsblock — als dezenter, schließbarer Glanz-Moment (Queue, reduced-motion-treu).
+- **Cineastischer Intro** beim App-Start (Brand- + „Form"-Reveal), skippbar, reduced-motion → übersprungen.
+- **Easter Eggs (subtil):** Tageszeit-Begrüßung + „Lauf"-Akzent am Logo · **Vier Jahreszeiten auf den Graphen**
+  (Winter: Schnee + Skifahrer auf der Form-Kurve · Frühling: Blüten · Sommer: Sonne & Wellen · Herbst: Blätter) ·
+  **Lab Mode** (Konami-Code → Lifetime-Kennzahlen mit Erdumrundung/Everest) · **Ghost-PB** (Doppelklick im
+  Prognose-Chart blendet die eigenen Bestzeiten als Benchmark ein).
+
+### Geändert
+- Recharts-Diagramme beziehen ihre Farben durchgängig aus theme-fähigen CSS-Variablen (statt fester Hex-Werte).
+- Wellness-Normalbereich-Bänder mit weichem Gradient statt flachem Fill; Theme-Umschalter zieht in den Sidebar-Fuß.
+
+### Technik
+- Neuer **read-only** Endpoint `GET /api/overview` (Lifetime-Summen je Profil für Lab Mode) — additiv, keine
+  Datenbank-Änderung, keine Schreibvorgänge.
+
 ## [1.9.0] – 2026-06-27 — Plan rund ums Rennen, optimale Zonen, UI-Politur, Lern-Tutorial & Erweiterbarkeit
 
 Fünf-Phasen-Update aus der ToDo-Liste: der Trainingsplan wird **um das Rennen herum vollständig** (echtes Rennen

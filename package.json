@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "express": "^4.21.2",
+    "gsap": "^3.15.0",
     "react-grid-layout": "^1.5.3"
   },
   "devDependencies": {

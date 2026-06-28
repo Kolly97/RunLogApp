@@ -25,7 +25,7 @@ export default function ZoneDistribution({
     <div>
       <ResponsiveContainer width="100%" height={chartH}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }}>
-          <XAxis type="number" domain={[0, 100]} unit="%" ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: "#8a96a6" }} />
+          <XAxis type="number" domain={[0, 100]} unit="%" ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
           <YAxis type="category" dataKey="name" width={58} tick={{ fontSize: 12, fill: "#46505f" }} />
           <Tooltip formatter={(v: number, n: string) => [`${v}%`, zoneLabel(zones, n)]} contentStyle={TOOLTIP_STYLE} />
           {zones.map((z) => (

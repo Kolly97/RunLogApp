@@ -97,7 +97,7 @@ function RaceForm({ race, onClose, onSaved }: { race: Race; onClose: () => void;
   }
 
   return (
-    <div className="card" style={{ background: "#fafbfd" }}>
+    <div className="card" style={{ background: "var(--surface2)" }}>
       <div className="spread">
         <h2><T k={e.id ? "races.form.editTitle" : "races.form.newTitle"}>{e.id ? "Wettkampf bearbeiten" : "Neuer Wettkampf"}</T></h2>
         <button className="sm ghost" onClick={onClose}><T k="races.form.close">Schließen</T></button>
@@ -182,7 +182,7 @@ function PacingPanel({ race, onClose }: { race: Race; onClose: () => void }) {
   const distLabel = km ? `${km} km` : "–";
 
   return (
-    <div className="card" style={{ background: "#fafbfd", marginBottom: 8 }}>
+    <div className="card" style={{ background: "var(--surface2)", marginBottom: 8 }}>
       <div className="spread">
         <h2 style={{ fontSize: 15 }}>Pacing-Plan — {race.name || distLabel}</h2>
         <button className="sm ghost" onClick={onClose}>Schließen</button>

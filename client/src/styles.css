@@ -35,8 +35,38 @@
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   /* Typografie-Skala. */
   --fs-xs: 11px; --fs-sm: 12px; --fs-base: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 24px;
+  /* Chart-Farben (theme-fähig via CSS-Var in SVG/Recharts). */
+  --chart-grid: #eef1f5; --chart-tick: #8a96a6;
 
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* M2: Dark Mode („Performance-Lab"). Nur die Primitiv-Tokens überschreiben — die Aliasse (--text/--border/
+   --primary/--ok-color…) folgen automatisch. Druck bleibt hell (siehe @media print weiter unten). */
+:root[data-theme="dark"] {
+  --bg: #0e1420;
+  --card: #161e2e;
+  --ink: #e4e9f1;
+  --muted: #8b97a8;
+  --line: #26324a;
+  --accent: #4a90d9;
+  --fitness: #4a90d9;
+  --fatigue: #ec5aa0;
+  --form: #e0b54a;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --info: #8b97a8;
+  --surface2: #1e2940;
+  --border-faint: #1d2740;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lift: 0 8px 22px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --chart-grid: #26324a; --chart-tick: #8b97a8;
+}
+
+/* M1: globaler Animations-Aus-Schalter (Pref „aus" ODER System prefers-reduced-motion). */
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after {
+  transition-duration: 0.001s !important; animation-duration: 0.001s !important; animation-delay: 0s !important;
 }
 
 * { box-sizing: border-box; }
@@ -53,8 +83,11 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
   width: 208px; background: #11192a; color: #c7d2e0; padding: 18px 12px; flex-shrink: 0;
   position: sticky; top: 0; height: 100vh;
 }
-.brand { font-size: 19px; font-weight: 750; color: #fff; padding: 6px 10px 18px; letter-spacing: -0.01em; }
+.brand { position: relative; font-size: 19px; font-weight: 750; color: #fff; padding: 6px 10px 18px; letter-spacing: -0.01em; }
 .brand span { color: #6ea8e6; }
+/* M6 Easter Egg: „Lauf"-Akzent — winziger Punkt, der beim Klick einmal über das Logo sprintet (per GSAP gesteuert). */
+.brand-spark { position: absolute; left: 4%; top: 52%; width: 6px; height: 6px; margin: -3px 0 0 0; border-radius: 50%; background: #6ea8e6; box-shadow: 0 0 7px #6ea8e6; opacity: 0; pointer-events: none; }
+.brand-runner { position: absolute; left: -14%; top: 44%; font-size: 15px; font-style: normal; line-height: 1; opacity: 0; pointer-events: none; }
 .nav a {
   position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px;
   color: #aeb9cc; font-weight: 550; margin-bottom: 2px;
@@ -73,6 +106,62 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 /* v1.10.0 UI A2: gruppierte Navigation — dezente Gruppen-Labels im dunklen Sidebar. */
 .nav-group { margin-bottom: 4px; }
 .nav-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7890; font-weight: 700; padding: 9px 11px 3px; }
+/* M1/M2: Theme- + Animations-Schalter im Sidebar-Fuß. */
+.theme-motion { display: flex; gap: 6px; padding: 8px 10px 4px; }
+.tm-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 8px;
+  background: #1c2740; color: #aeb9cc; border: 1px solid #273248; border-radius: 8px; font-size: 11px; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.tm-btn:hover { background: #243150; color: #fff; }
+.tm-btn:last-child { flex: 0 0 auto; }
+/* M3: dezente Premium-Mikro-Interaktionen (gegatet über [data-motion=off]). */
+.card.stat { transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.card.stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+button { transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+button:active { transform: translateY(0.5px) scale(0.985); }
+/* M4: Signature-Hero „Form-Ribbon" am Dashboard. */
+.form-ribbon { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; box-shadow: var(--shadow); }
+.form-ribbon-overlay { position: absolute; top: 12px; left: 16px; display: flex; gap: 28px; pointer-events: none; }
+.frv { font-size: 26px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.frl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+/* M6: Celebration (edle Belohnung bei Erfolgen). */
+.celebrate-overlay { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.14); backdrop-filter: blur(1px); }
+.celebrate-burst { position: absolute; top: 46%; left: 50%; width: 0; height: 0; pointer-events: none; }
+.celebrate-piece { position: absolute; width: 9px; height: 9px; border-radius: 2px; will-change: transform, opacity; }
+.celebrate-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-lift); padding: 22px 28px; text-align: center; max-width: 340px; }
+.celebrate-emoji { font-size: 42px; line-height: 1; margin-bottom: 8px; }
+.celebrate-card strong { font-size: 16px; display: block; }
+/* Cineastischer Intro (M6): einmaliger, skippbarer Erst-Start. */
+.intro-overlay { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); cursor: pointer; }
+.intro-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: default; }
+.intro-brand { font-size: 56px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }
+.intro-brand span { color: var(--accent); }
+.intro-svg { width: min(420px, 70vw); height: 56px; display: block; }
+.intro-tag { letter-spacing: 0.14em; text-transform: uppercase; }
+.intro-skip { position: fixed; bottom: 26px; right: 26px; opacity: 0.7; cursor: pointer; }
+/* Lab Mode (M7 Easter Egg): verstecktes Lifetime-Panel via Konami-Code. */
+.lab-overlay { position: fixed; inset: 0; z-index: 1150; display: flex; align-items: center; justify-content: center; background: rgba(8, 12, 22, 0.55); backdrop-filter: blur(3px); cursor: pointer; }
+.lab-card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-lift); padding: 26px 28px; max-width: 560px; width: min(560px, 92vw); text-align: center; cursor: default; }
+.lab-head { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; }
+.lab-badge { font-size: 12px; font-weight: 800; letter-spacing: 0.22em; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; }
+.lab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.lab-tile { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 16px 12px; }
+.lab-emoji { font-size: 26px; line-height: 1; margin-bottom: 6px; }
+.lab-value { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em; }
+.lab-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.lab-sub { margin-top: 4px; }
+/* Vier-Jahreszeiten-Deko (M7 Easter Egg): dezente Partikel in der Plotfläche. Druckt nie. */
+.seasonal-decor { pointer-events: none; }
+.snow-flake, .petal, .leaf { transform-box: fill-box; transform-origin: center; }
+@keyframes sd-snow { 0% { transform: translate(0, 0); opacity: 0; } 12% { opacity: 0.9; } 90% { opacity: 0.5; } 100% { transform: translate(var(--drift), var(--fall)); opacity: 0; } }
+@keyframes sd-petal { 0% { transform: translate(0, 0) rotate(0deg); opacity: 0; } 14% { opacity: 0.85; } 100% { transform: translate(var(--drift), var(--fall)) rotate(140deg); opacity: 0; } }
+@keyframes sd-leaf { 0% { transform: translate(0, 0) rotate(0deg); opacity: 0; } 14% { opacity: 0.9; } 100% { transform: translate(var(--drift), var(--fall)) rotate(240deg); opacity: 0; } }
+@keyframes sd-sun { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.85; } }
+.snow-flake { animation: sd-snow linear infinite; }
+.petal { animation: sd-petal ease-in-out infinite; }
+.leaf { animation: sd-leaf ease-in infinite; }
+.sun-glow.anim { animation: sd-sun 5s ease-in-out infinite; }
+@media print { .seasonal-decor { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .snow-flake, .petal, .leaf, .sun-glow.anim { animation: none !important; } }
 .main { flex: 1; padding: 24px 30px 72px; max-width: 1180px; } /* +Platz für die fixierte Aktionsleiste */
 
 /* Fixierte Aktionsleiste (v1.9.0): „Layout bearbeiten" + „Hilfe & Tipps" gemeinsam, klebt unten, druckt nicht. */

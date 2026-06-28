@@ -49,6 +49,8 @@ export interface WPrimeLatest {
 // Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
 export interface BestsResult { pbs: Pb[]; vdot: number | null; vdotLevel: string | null; age: number | null; predictions: { distance_m: number; time_s: number }[]; }
+// Lifetime-Summen für das „Lab Mode"-Panel (M7 Easter Egg).
+export interface Overview { n: number; dist_m: number; elev_m: number; moving_s: number; kcal: number; }
 // VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
 export interface FitnessTrendPoint { date: string; vdot: number | null; p5000: number | null; p10000: number | null; p21097: number | null; p42195: number | null; }
 export interface FitnessTrend { points: FitnessTrendPoint[]; current: FitnessTrendPoint | null; age: number | null; level: string | null; }
@@ -424,6 +426,7 @@ export const api = {
   applyAdjustment: (id: number, adjusted: object) =>
     j<{ ok: true; planned_tss: number }>(`/api/sessions/${id}/apply-adjustment`, { method: "POST", body: JSON.stringify(adjusted) }),
   enrichProgress: () => j<{ total: number; details: number; streams: number }>("/api/enrich-progress"),
+  overview: () => j<Overview>("/api/overview"), // Lifetime-Summen (Lab Mode, M7)
 
   activities: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();

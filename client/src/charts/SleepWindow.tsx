@@ -47,9 +47,9 @@ export default function SleepWindow({ data, xTickFormatter, height = 135 }: {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} margin={{ top: 6, right: 8, left: -6, bottom: -4 }}>
-        <CartesianGrid stroke="#eef1f5" vertical={false} />
-        <XAxis dataKey="x" tickFormatter={xTickFormatter} minTickGap={20} interval="preserveStartEnd" tick={{ fontSize: 10, fill: "#8a96a6" }} />
-        <YAxis reversed domain={[min, max]} tickFormatter={axisToClock} width={44} tick={{ fontSize: 10, fill: "#8a96a6" }} />
+        <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+        <XAxis dataKey="x" tickFormatter={xTickFormatter} minTickGap={20} interval="preserveStartEnd" tick={{ fontSize: 10, fill: "var(--chart-tick)" }} />
+        <YAxis reversed domain={[min, max]} tickFormatter={axisToClock} width={44} tick={{ fontSize: 10, fill: "var(--chart-tick)" }} />
         <Tooltip content={<SleepTip xf={xTickFormatter} />} cursor={{ fill: "rgba(59,130,246,0.06)" }} />
         <Bar dataKey="lohi" fill="#3b82f6" radius={[3, 3, 3, 3]} maxBarSize={16} isAnimationActive={false} />
       </BarChart>
@@ -63,7 +63,7 @@ function SleepTip({ active, payload, xf }: any) {
   if (!r.lohi) return null;
   const dur = r.lohi[1] - r.lohi[0];
   return (
-    <div style={{ background: "#fff", border: "1px solid #e3e8ef", borderRadius: 10, padding: "6px 9px", fontSize: 12 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "6px 9px", fontSize: 12 }}>
       <div style={{ fontWeight: 700 }}>{xf ? xf(r.x) : r.x}</div>
       <div>Bett {r.bed ?? "–"} → Auf {r.wake ?? "–"}</div>
       <div className="muted">{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, "0")} h im Bett</div>

@@ -1,9 +1,10 @@
-// Gemeinsame Chart-Grammatik (v1.10.0 UI A4): EINE Quelle für Tooltip-Stil, Achsen-Ticks, Gitter und Kern-Farben,
-// damit alle Recharts-Diagramme konsistent aussehen (vorher streuten contentStyle/tick/Farben pro Chart).
-export const TOOLTIP_STYLE = { borderRadius: 10, border: "1px solid #e3e8ef", fontSize: 12 } as const;
-export const AXIS_TICK = { fontSize: 11, fill: "#8a96a6" } as const;
-export const AXIS_TICK_SM = { fontSize: 10, fill: "#8a96a6" } as const;
-export const GRID_STROKE = "#eef1f5";
+// Gemeinsame Chart-Grammatik (v1.10.0 UI A4): EINE Quelle für Tooltip-Stil, Achsen-Ticks, Gitter und Kern-Farben.
+// M2: theme-fähig über CSS-Variablen — Recharts gibt stroke/fill an SVG bzw. contentStyle an ein div weiter, beide
+// unterstützen var(); so passen sich Tooltip/Gitter/Ticks automatisch an Hell/Dunkel an (kein Hook nötig).
+export const TOOLTIP_STYLE = { borderRadius: 10, border: "1px solid var(--border)", fontSize: 12, background: "var(--card)", color: "var(--ink)" } as const;
+export const AXIS_TICK = { fontSize: 11, fill: "var(--chart-tick)" } as const;
+export const AXIS_TICK_SM = { fontSize: 10, fill: "var(--chart-tick)" } as const;
+export const GRID_STROKE = "var(--chart-grid)";
 
 // Intensität (easy/mittel/hart) — kanonisch (gespiegelt aus IntensityDonut.INT_COLORS).
 export const INTENSITY = { easy: "#3b82f6", mod: "#22c55e", hard: "#f97316" } as const;

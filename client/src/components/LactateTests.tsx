@@ -112,7 +112,7 @@ function TestEditor({
   }
 
   return (
-    <div className="card tight" style={{ background: "#fafbfd", marginTop: 8 }}>
+    <div className="card tight" style={{ background: "var(--surface2)", marginTop: 8 }}>
       <div className="spread" style={{ flexWrap: "wrap", gap: 8 }}>
         <label className="field" style={{ margin: 0, width: 150 }}><span><T k="lactate.field.date">Datum</T></span>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
