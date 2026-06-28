@@ -481,7 +481,7 @@ export default function WeekReport() {
         {/* Physiologische Intensitätsverteilung + Polarisierungs-Index (G4, v1.3.0) */}
         {analyze?.physioDist && (
           <EgItem id="physiodist" title={t("report.tile.physio", "Intensitätsverteilung (LT1/LT2)")} defaultSpan={6} defaultHeight={220}>{() => (
-            <PhysioDistTile pd={analyze.physioDist!} tgt={analyze.phaseTarget} pi={analyze.polarizationIndex} t={t} />
+            <PhysioDistTile pd={analyze.physioDist!} tgt={analyze.phaseTarget} pi={analyze.polarizationIndex} t={t} phase={analyze.week?.phase ?? null} onChanged={reload} />
           )}</EgItem>
         )}
 
@@ -658,12 +658,28 @@ function PhysioStack({ vals, height = 24 }: { vals: { z1: number; z2: number; z3
     </div>
   );
 }
-function PhysioDistTile({ pd, tgt, pi, t }: {
+function PhysioDistTile({ pd, tgt, pi, t, phase, onChanged }: {
   pd: NonNullable<AnalyzeResult["physioDist"]>;
   tgt?: AnalyzeResult["phaseTarget"];
   pi?: number | null;
   t: (k: string, d: string) => string;
+  phase?: string | null;       // T14: aktuelle Saison-Phase (für Override-Key)
+  onChanged?: () => void;      // T14: Reload nach Override
 }) {
+  const [busy, setBusy] = useState(false);
+  // T14: Verteilungs-Modell für DIESE Phase manuell überschreiben (oder auf Auto zurück). Merge-safe.
+  async function setOverride(val: string) {
+    if (!phase) return;
+    setBusy(true);
+    try {
+      const cfg = await api.settings().catch(() => ({}));
+      const cur: Record<string, string> = { ...(cfg?.phase_dist_overrides ?? {}) };
+      const key = phase.toLowerCase();
+      if (val === "auto") delete cur[key]; else cur[key] = val;
+      await api.saveSettings({ phase_dist_overrides: cur });
+      onChanged?.();
+    } finally { setBusy(false); }
+  }
   const zones = [
     { k: "z1" as const, lab: "Z1", desc: t("report.physio.z1", "< LT1 · aerob"), pct: pd.z1, min: pd.z1Min },
     { k: "z2" as const, lab: "Z2", desc: t("report.physio.z2", "LT1–LT2 · Schwelle"), pct: pd.z2, min: pd.z2Min },
@@ -691,13 +707,25 @@ function PhysioDistTile({ pd, tgt, pi, t }: {
           {/* Ist */}
           <div className="tiny muted" style={{ marginBottom: 3 }}>{t("report.physio.real", "Real (Zeit-in-Zone)")}</div>
           <PhysioStack vals={pd} />
-          {/* Soll */}
+          {/* Soll + T14: Klartext-Begründung + Override pro Phase */}
           {tgt && (
             <>
-              <div className="tiny muted" style={{ margin: "8px 0 3px" }}>
-                {t("report.physio.target", "Phasen-Soll")} · {tgt.label}
+              <div className="tiny muted" style={{ margin: "8px 0 3px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span>{t("report.physio.target", "Phasen-Soll")} · {tgt.label}{tgt.overridden ? " (manuell)" : ""}</span>
+                {phase && (
+                  <select className="tiny" disabled={busy} value={tgt.overridden ? tgt.model : "auto"}
+                    onChange={(e) => setOverride(e.target.value)}
+                    title={t("report.physio.overrideHint", "Verteilungs-Modell für diese Phase festlegen (Auto = aus Saison-Phase abgeleitet)")}
+                    style={{ width: "auto", padding: "1px 4px", fontSize: 11 }}>
+                    <option value="auto">Auto</option>
+                    <option value="pyramidal">pyramidal</option>
+                    <option value="polarized">polarisiert</option>
+                    <option value="regenerativ">regenerativ</option>
+                  </select>
+                )}
               </div>
               <PhysioStack vals={tgt} height={16} />
+              {tgt.rationale && <div className="tiny muted" style={{ marginTop: 4, lineHeight: 1.4 }}>{tgt.rationale}</div>}
             </>
           )}
           {/* Legende mit Minuten */}

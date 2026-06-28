@@ -2,7 +2,56 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v1.8.0** (27.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v2.0.0** (29.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+
+### Neu in v1.12.1 (Kurz)
+- **Bugfix StructureEditor:** `CountField`/`Row` von innen nach außen auf Modul-Ebene gehoben → Fokus-Verlust
+  nach jeder Ziffer behoben (React-Komponenten-Typ-Instabilität).
+- **Bugfix Dark Mode:** Präferenz-Kacheln (Profil → Block-Präferenzen) nicht markierter Einheiten nutzen
+  jetzt `var(--card)` statt `#fff` (AvailabilityCard.tsx:261).
+
+### Neu in v1.12.0 (Kurz)
+- **Verschachtelter Workout-Builder (Coros-artig):** `SegNode` (rekursiv, additiv auf `WorkoutTemplate.structure?`);
+  `renderStructure()` in `server/workouts.ts` (neuer Zweig in `renderWorkout`); verschachtelte `Effort[]` mit
+  von-bis-Bändern und Satz-Anzahl via T7-Mechanik (TSB + Fitness + Phase); `Effort.group?/children?` in
+  planbuilder + api.ts. `StructureEditor.tsx` (neu): Coros-artiger Editor (Segmente/Gruppen, „±"-Spielraum,
+  Pausen, ▲▼, beliebige Tiefe). `CustomWorkoutsCard.tsx`: Einfach/Strukturiert-Modus, Tabelle mit
+  Struktur-Spalte (`effShort`) + aufklappbarer `EffortTree`-Detailzeile. `estimateCustom` ruft bei `structure`
+  denselben Renderer (`DEFAULT_EST_ZONES`). `GET /api/workouts` rendert jedes Template mit echten Profil-Zonen.
+- **Keine DB-Migration** — `custom_workouts.template` ist JSON; additives Feld.
+
+### Neu in v1.11.1 (Kurz)
+- **Bugfix IntervalTrend Legende:** `onClick` strip `_avg`-Suffix → Kategorien toggeln wieder korrekt.
+- **Bugfix Kachel-Höhe:** `hpx` aus `layout[b.id]?.h` statt statischem Wert → Höhen-Resize funktioniert.
+- **Dark Mode Tracking-Tabs + PowerCard-Zonen-Pills** per CSS-Token behoben.
+- **Methodik CS-Klarheit:** Tooltip/Hilfetext differenziert Absolutwert / Δ / vorher→nachher.
+
+### Neu in v1.11.0 (Kurz)
+- **Laktat-Diagnostik:** Wissenschaftliche Begründungen je Schwelle; x-Achse min/km ↔ km/h ↔ Watt;
+  Watt-Eingabe Rad-Tests. `LactateTests.tsx` + `server/lactate.ts`.
+- **Sparklines:** `Sparkline.tsx` (SVG, trend-farbig) + `sparkPref.ts` (localStorage-Toggle im Footer);
+  Methodik: 5 Trend-Sparklines; Dashboard: CTL/ATL/TSB per `pastPmc`.
+- **Dynamische Einheiten (T7):** `repsBand(tpl, fitness, progress, tsb?)` → `{lo, hi, target}`;
+  `fitnessLevel()` VDOT-verfeinert; `adaptNote` in `ConcreteSession`/`BlockDay`/`PlannedSession`.
+  `EffortLines` in WeekPlan zeigt von-bis + „heute: N".
+- **Methodik-Korrektheit (T6 contiguous blocks):** `methodInference` rechnet auf zusammenhängenden
+  Regime-Blöcken; `nBlocks` in `RegimeStat`.
+- **Periodisierungs-Ziel + Override (T14):** `phaseDistributionTarget(phase, overrides?)` mit Rationale;
+  `phase_dist_overrides` in settings; Override-UI in WeekReport.
+- **Dark Mode Vollständig:** CSS-Token-Sweep (Inputs/Modals/Tabellen/Popovers); `.table`-Klasse;
+  `@media print`-Reset; glass-vars.
+- **GSAP Intro-Animation:** Läufer folgt Form-Kurve via `getPointAtLength`-Proxy-Tween → App-Icon.
+- **Count-up in WeekTrack:** `useCountUp`-Hooks für KPI-Kacheln.
+
+### Neu in v1.10.0 (Kurz)
+- **Design-Tokens + gruppierte Navigation** (Heute/Planen/Tracken/Analysieren/Lernen).
+- **Dark Mode** (Auto/Hell/Dunkel), CSS-Variablen in Charts; `data-theme` auf `<html>`.
+- **Motion-System:** `lib/motion.ts` (`useMotion`, `useReveal`, `useCountUp`); `prefers-reduced-motion`-Gating.
+- **Signature-Hero „Form-Ribbon"** oben am Dashboard: CTL/ATL/TSB-Band ~6 Wochen + Draw-on.
+- **Chart-Veredelung:** PMC-Gradient, PB-Marker, niceYDomain-Helfer, Jahres-Dreieck kleiner, PMC-Legende.
+- **Celebrations:** `Celebration.tsx` (Konfetti); `PbWatcher.tsx` (Streak-/PB-Gate).
+- `lib/theme.ts`, `lib/motion.ts`, `charts/FormRibbon.tsx`, `components/Celebration.tsx`,
+  `components/PbWatcher.tsx` (alle neu).
 
 ### Neu in v1.8.0 (Kurz)
 - **UX-Rationalisierung:** klare Seiten-Rollen + Captions; **Zeit-in-Zone** ist Leit-Intensität (ATL/CTL →
@@ -153,30 +202,37 @@
 - `import-scans.ts` (historisch), `reset-db.ts` (leere Vorlage). (`import-docx.ts`/Seed in v0.12.0 entfernt.)
 
 **client/src/**
-- `lib/api.ts` — ALLE Typen + `api`-Objekt (eine Stelle für Endpunkte; `Activity` hat u.a. `ngp`/`np`/`elevation`).
-  **v0.15 neu:** `FitnessTrend`/`FitnessTrendPoint`; `AnalyzeResult.tssRec`; `ZoneSet.hr_zones_bike`;
-  `api.fitnessTrend()`, `api.relinkEfforts(id)`.
-- `lib/util.ts` — Formatter (`paceStr`, `fmtDur`, `fmtDate/Y`, `speedKmh`, `paceOrSpeed`, `isBikeSport`, `weekLabel`,
-  `daysOfWeek`, `DAY_NAMES`, `num`, …) + Re-Exports der Options-Helfer.
-- `lib/options.ts` — Options-Cache, `useOptions()`, `loadOptions()`, `phaseColor/Label`, `typeColor/Label`,
-  `typeIntensity` (easy|moderate|hard je sessionType), `sportLabel`.
-- `lib/hooks.ts` (`useSeason()`), `lib/markers.ts` (`raceMarkers*` NUR aus Races-Tabelle, `sick*`, `phaseRuns*`,
-  `yearMarks*` per Band-Index).
-- `pages/` — `Dashboard` (Layout v0.15.5: PMC|Aktuelle Woche 2fr/1fr, Saison|Intensity 1fr/1fr),
-  `WeekPlan` (Ziel-km editierbar; Phase-Pill editierbar; Drag&Copy; TSS-Empfehlung-Badge; Race-Sync),
-  `WeekTrack` (?date; Tag/Woche-Switcher + Plan-%; Dots nach TSS-Größe; Schlaf hh:mm; Relink-Button),
-  `WeekReport` (2-seitiger Druck; EF; Plan-Erfüllung als Inline-%-Kacheln statt Balkendiagramm),
-  `LongTerm` (+ Plan-%-Trend; IntensityRatio-Karte; Schlaffenster statt Bettzeit-Linie), `Races`,
-  **`Bests`** (Bestzeiten + Critical Speed + Race-Prediction-Chart), `SeasonPlan`, `Profile`
-  (+ `AthleteCard` für Geburtsjahr/Geschlecht/Gewicht/Max-HF), `Settings`, `OptionsConfig`.
-- `charts/` — `Pmc`, `SeasonProgress`, `ChartDecor`, `IntensityDonut`, `IntensityCard`, `ZoneDistribution`,
-  `WeekdayBars`, `IntervalTrend` (Legende togglebar), `WellnessTrends` (Schlaffenster + 8-Wochen-Referenz),
-  `RangeSelector`, **`Vo2maxCard`** (VDOT + Niveau-Badge + Sparkline + Hover-Tooltip),
-  **`IntensityRatio`** (ATL/CTL-Bänder, 5 Zonen, Optimal-Korridor-Linien),
-  **`SleepWindow`** (Whoop-Stil Bettzeit→Aufwach, Floating Bars, reversed Y-Achse).
-- `components/` — `WeekSelector`, `SessionModal`, `EffortBuilder`, **`AthleteCard`**, `ZoneSets`
-  (+ Fahrrad-HF-Zonen-Sektion), **`LactateTests`** (v1.3.0: Stufentest-Eingabe + Ergebnis + Trend + Zonen-Vorschlag).
-  `App.tsx`, `styles.css`, `pages/track.css`.
+- `lib/api.ts` — ALLE Typen + `api`-Objekt. Seit v1.11.0: `Effort` += `reps_lo/hi`, `pace_lo/hi`, `group?`,
+  `children?`; `PlannedSession` += `adaptNote?`; `BlockDay` += `adaptNote?`; `RegimeStat` += `nBlocks?`;
+  `WorkoutInfo` += `description?`, `efforts?`, `planned_min?`, `planned_tss?`, `adaptNote?`;
+  `SegNode` (rekursiv, v1.12.0); `CustomInput` += `structure?: SegNode[]`.
+- `lib/util.ts` — Formatter + Re-Exports der Options-Helfer.
+- `lib/options.ts` — Options-Cache, `useOptions()`, Farb-/Label-Helfer.
+- `lib/motion.ts` (**neu v1.10.0**) — `useMotion()`, `motionEnabled()`, `useReveal()`, `useCountUp()`;
+  alle Animationen gated (`prefers-reduced-motion` + globaler Schalter).
+- `lib/theme.ts` (**neu v1.10.0**) — `useTheme()`, `setTheme()`; `data-theme` auf `<html>`.
+- `lib/sparkPref.ts` (**neu v1.11.0**) — `getSparkPref()/setSparkPref()/useSparkPref()`; localStorage-Toggle.
+- `lib/hooks.ts` (`useSeason()`), `lib/markers.ts` (`raceMarkers*`, `sick*`, `phaseRuns*`, `yearMarks*`).
+- `pages/` — `Dashboard` (Form-Ribbon + StatCard-Sparklines v1.11.0, Count-up v1.11.0),
+  `WeekPlan` (EffortLines + adaptNote + Phase-Override v1.11.0; Ziel-km; Phase-Pill; Drag&Copy; TSS-Badge),
+  `WeekTrack` (Count-up v1.11.0; Tag/Woche-Switcher; Plan-%; Schlaf hh:mm; Relink-Button),
+  `WeekReport` (phaseDistributionTarget-Override v1.11.0; 2-seitiger Druck; EF; Inline-Plan-Kacheln),
+  `LongTerm`, `Races`, `Bests` (Critical Speed + Race-Prediction), `Methodik` (Marker-Sparklines v1.11.0;
+  Block-Terme; CS-Tooltips v1.11.1), `SeasonPlan`, `Profile`, `Settings`, `OptionsConfig`.
+- `charts/` — `Pmc`, `SeasonProgress`, `ChartDecor` (Jahres-Dreiecke kleiner v1.10.0), `IntensityDonut`,
+  `ZoneDistribution`, `WeekdayBars`, `IntervalTrend` (Rolling-Mittel v1.11.0; Legende-Fix v1.11.1),
+  `WellnessTrends`, `RangeSelector`, `Vo2maxCard`, `IntensityRatio` (Dark Mode v1.11.0),
+  `SleepWindow`, `ThresholdTrendChart` (Legende v1.10.0; niceYDomain), `MarkerDelta`,
+  `FormRibbon.tsx` (**neu v1.10.0**) — Signature-Hero CTL/ATL/TSB-Band mit Draw-on.
+- `components/` — `WeekSelector`, `SessionModal`, `EffortBuilder`, `AthleteCard`, `ZoneSets`,
+  `LactateTests` (Watt-Eingabe + x-Achse-Toggle v1.11.0), `AvailabilityCard` (Dark-Mode-Fix v1.12.1),
+  `CustomWorkoutsCard` (**v1.12.0**: Einfach/Strukturiert, `EffortTree`, Struktur-Spalte),
+  `StructureEditor.tsx` (**neu v1.12.0**) — Coros-artiger rekursiver Editor (Modul-Ebene = kein Fokus-Bug),
+  `Sparkline.tsx` (**neu v1.11.0**) — SVG-Sparkline mit trend-farbiger Linie,
+  `Celebration.tsx` (**neu v1.10.0**) — Konfetti-Overlay für Bestzeiten/Streaks,
+  `PbWatcher.tsx` (**neu v1.10.0**) — Gate für Celebration-Trigger,
+  `PageHelp.tsx` (Seiten-Hilfe), `OnboardingTour.tsx`, `EditableGrid.tsx` (Höhen-Resize-Fix v1.11.1).
+  `App.tsx`, `styles.css` (massive Dark-Mode-Sweep v1.11.0), `pages/track.css` (Dark-Mode-Fix v1.11.1).
 
 ## 3. Datenmodell (SQLite, alles profil-bezogen)
 
@@ -210,9 +266,45 @@
 - `options` (kind: phase|sport|sessionType; value/label/color/sort/active; `intensity`=easy|moderate|hard nur bei
   sessionType → steuert den TSS-Donut). `settings` (key→JSON).
 
-## 4. Funktionsstand v1.6.2 (Ist-Stand, nicht Historie)
+## 4. Funktionsstand v1.12.1 (Ist-Stand, nicht Historie)
 
-**Neu in v1.6.2 (Kurz):**
+**Neu in v1.12.1 (Bugfixes):**
+- `StructureEditor.tsx`: `CountField`+`Row` auf Modul-Ebene → Fokus-Verlust behoben (React-Typ-Instabilität).
+- `AvailabilityCard.tsx:261`: neutrale Kacheln `#fff` → `var(--card)` (Dark Mode Fix).
+
+**Neu in v1.12.0 (Strukturierter Workout-Builder):**
+- `server/workouts.ts`: `SegNode`-Interface (rekursiv) + `WorkoutTemplate.structure?: SegNode[]` (additiv).
+  `renderStructure(tpl, ctx)`: rekursiver Renderer (Gruppen nutzen `repsBand`-Logik für Satz-Anzahl; Reps
+  bekommen Pace-Band vom Anker ± paceWindow + paceOffset); gibt verschachtelte `Effort[]` mit
+  `group/children/reps_lo/hi/pace_lo/hi` aus. `describeStructure()` → Kurztext. `DEFAULT_EST_ZONES` (für
+  `estimateCustom` ohne DB). `estimateCustom`: bei `inp.structure` → Template bauen + `renderWorkout`.
+  `fitnessLevel()` nimmt jetzt optional `vdot` (verfeinert Level ±1 Schritt).
+- `server/planbuilder.ts`: `Effort` += `group?: boolean; children?: Effort[]`.
+- `server/index.ts`: `GET /api/workouts` rendert jedes Template mit echten Profil-Zonen → liefert
+  `efforts/description/planned_min/planned_tss/adaptNote`.
+- `client/src/lib/api.ts`: `SegNode` (gespiegelt), `WorkoutInfo`-Anreicherung, `CustomInput.structure?`.
+- `client/src/components/StructureEditor.tsx` (neu): Coros-artiger rekursiver Editor (Segmente/Gruppen,
+  „±"-Spielraum auf Anzahl, Pausen, ▲▼, beliebige Tiefe). Fokus-sicher durch Modul-Ebene.
+- `client/src/components/CustomWorkoutsCard.tsx`: Modus „Einfach | Strukturiert"; Struktur-Spalte mit
+  `effShort()` + aufklappbarer Detailzeile (`EffortTree` rekursiv + adaptNote-Hinweis).
+- `package.json` → 1.12.0 (→ 1.12.1 mit Bugfixes).
+
+**Neu in v1.11.x (dynamische Einheiten + Diagnostik + Premium-Feinschliff):**
+- `server/workouts.ts`: `repsBand(tpl, fitness, progress, tsb?)` → `{lo, hi, target}` (T7-Mechanik, TSB-Shift
+  ±0.3 Band-Fraktion); `buildAdaptNote(ctx)` → „angepasst: Build · TSB -4 · Fit mid · VDOT 59".
+- `server/analysis.ts`: `methodInference` auf zusammenhängende `Block[]` (korrekte Wochenzahl + Δ-CS);
+  `RegimeStat.nBlocks`; `phaseDistributionTarget(phase, overrides?)` mit `DIST_MODELS`/`MODEL_RATIONALE`;
+  `BlockDay.adaptNote?`; `ResolveCtx.curTsb?`.
+- `server/index.ts`: `buildResolveCtx` reicht `curTsb`; `phase_dist_overrides` aus settings.
+- Frontend: `Sparkline.tsx` (neu), `sparkPref.ts` (neu), Methodik-Sparklines, Dashboard-StatCard-Sparklines,
+  `EffortLines` in WeekPlan, Phase-Override in WeekReport, Dark-Mode-Sweep, `FormRibbon.tsx` (v1.10.0),
+  `Celebration.tsx`/`PbWatcher.tsx` (v1.10.0), Count-up, Intro-Animation.
+- v1.11.1 Bugfixes: IntervalTrend-Legende (strip `_avg`), Kachel-Höhe (generisch aus Layout), Dark-Mode
+  Tracking-Tabs + PowerCard-Pills, CS-Klarheit-Tooltips.
+
+**Neu in v1.6.2 (historisch, nicht Ist-Stand — zur Orientierung):**
+
+**Neu in v1.6.2 (Kurz, historisch):**
 - **N-of-1-Inferenz-Performance (`server/index.ts`):** `buildMethodInference` ist jetzt ein gecachter Accessor
   (`computeMethodInference` = ein `loadProfileRuns()`-Load + In-Memory-Fenster + leichte `rollingCsVdot` statt
   60 voller `buildMarkerSnapshot`). Cache pro Profil, globale `inferenceVersion`, invalidiert über Middleware bei
@@ -495,26 +587,20 @@ Reset-Knopf öffnet Sperre für einzelne Aktivität (`POST /api/activities/:id/r
 
 ## 5. Offen / nächste Schritte
 
-- **v1.1.0 inhaltlich abgeschlossen.** Nächster großer Meilenstein: **Electron-Desktop-App** (App per Icon
-  auf Mac/Windows) → bewusst eigener Meilenstein (Packaging/Icons/Sidecar; node:sqlite braucht Node 22+).
-  Plan + Entscheidungen lagen in `~/.claude/plans/polished-sparking-russell.md`.
-- **T7 (Prognose-Divergenz):** Prognose-Panels vs. PMC-Graph zeigen unterschiedliche Werte — noch offen,
-  braucht Reproduktions-Info von Kolja (welche Seite, welche Werte).
-- **Zurückgestellt aus v0.15:** S4 **Template-Speicherung** für geplante Einheiten (explizit aufgeschoben);
-  O5 **Strava-Splits-Sync-Konsistenz** (Architektur-Untersuchung offen).
-- **Strava-Backfill (budgetiert):** `best_efforts` (Bestzeiten), `pace_zone_min` (Plan-% Pace-Anteil),
-  NGP/NP + min/km-Zone, Race-Splits kommen je Einheit erst beim „Details/Splits nachziehen" rein → Altbestand
-  braucht mehrere Durchläufe (Tages-Bremse stoppt vor dem Strava-Tageslimit). Danach „TSS neu berechnen".
-  Plan-% ist bis dahin TSS-only (`tssOnly`), Bestzeiten/CS/VDOT füllen sich nach und nach.
-- **Grenzen (dokumentiert):** Strava liefert nur *aktuelle* Zonen (Import-`valid_from` selbst wählen, 5→6-HF-
-  Mapping, Z6 geschätzt); CS-/VDOT-Modell braucht aerobe PBs (≥ 1500 m, ≥ 3 min); EF/Plan-% nur für
-  Strava-Läufe mit Streams.
+- **v1.12.1 abgeschlossen.** Nächster großer Meilenstein: **Electron-Desktop-App** (App per Icon auf Mac/Windows)
+  → Packaging/Icons/Sidecar; node:sqlite braucht Node 22+. Plan in `~/.claude/plans/`.
+- **Strava-Backfill (budgetiert):** `best_efforts`, `pace_zone_min`, NGP/NP + min/km-Zone, Race-Splits kommen
+  je Einheit erst beim Enrich → Altbestand braucht mehrere Durchläufe (Tages-Bremse). Danach „TSS neu berechnen".
+- **Grenzen (dokumentiert):** Strava liefert nur *aktuelle* Zonen; CS-/VDOT-Modell braucht aerobe PBs
+  (≥ 1500 m, ≥ 3 min); EF/Plan-% nur für Strava-Läufe mit Streams; `estimateCustom` nutzt `DEFAULT_EST_ZONES`
+  statt echter Profil-Zonen → leichte Differenz vs. Tabelle (gewollt: Schätz- vs. echte Auflösung).
 - **„In Zukunft NICHT JETZT" (ToDo.md):** Readiness, Dashboard-Tagesvorschlag, Pace-/HF-Histogramm,
   v2.0-Redesign (awwwards/GSAP/Three.js, eigener Branch) — erst auf ausdrücklichen Wunsch.
 - **Bekannte Feinheiten (Kolja-Kosmetik, nicht zurückdrehen):** Jahresmarke-Dreieck in `ChartDecor.tsx`
   (Spitze `plotBottom-20`, Jahreszahl `plotBottom+34`, Phasentext `plotBottom+50`, Phasenband `plotBottom-6`);
   Chart-Bottom-Margin `Pmc.tsx` 30 / `SeasonProgress.tsx` 28; SleepWindow Anker 18:00 (1080 min) für
   cross-midnight Bettzeiten.
+- **Zurückgestellt:** S4 Template-Speicherung, O5 Strava-Splits-Sync-Konsistenz.
 
 ## 6. Verifikations-Routine
 

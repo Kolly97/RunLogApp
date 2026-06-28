@@ -55,14 +55,14 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
             formatter={(v: number) => [`${v}% · ${bandFor(v).label}`, "Intensity"]}
             contentStyle={TOOLTIP_STYLE}
           />
-          <Area type="monotone" dataKey="ratio" stroke="#334155" strokeWidth={1.8} fill="#334155" fillOpacity={0.06} dot={false} isAnimationActive={false} />
+          <Area type="monotone" dataKey="ratio" stroke="var(--ink)" strokeWidth={1.8} fill="var(--ink)" fillOpacity={0.06} dot={false} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="row" style={{ flexWrap: "wrap", gap: "4px 14px", marginTop: 8 }}>
         {BANDS.map((b) => (
           <span key={b.label} className="tiny muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ width: 9, height: 9, borderRadius: 2, background: b.color, display: "inline-block" }} />
-            <strong style={{ color: "#475569" }}>{b.label}</strong> {b.range}
+            <strong>{b.label}</strong> {b.range}
           </span>
         ))}
       </div>

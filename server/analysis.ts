@@ -344,15 +344,40 @@ export function polarizationIndex(z1: number, z2: number, z3: number): number | 
   return Math.round(Math.log10((z1 / z2c) * z3) * 100) / 100;
 }
 
-export interface DistTarget { model: "pyramidal" | "polarized" | "regenerativ"; z1: number; z2: number; z3: number; label: string }
+export type DistModel = "pyramidal" | "polarized" | "regenerativ";
+export interface DistTarget {
+  model: DistModel; z1: number; z2: number; z3: number; label: string;
+  rationale?: string;     // T14: Klartext, WARUM dieses Modell (aus Phase abgeleitet oder manuell)
+  overridden?: boolean;   // T14: true, wenn manuell pro Phase überschrieben
+}
 
-/** Verteilungs-Ziel je Saison-Phase (advisory): Base/Belastung pyramidal, Race Specific polarisiert, Entlastung/Taper regenerativ. */
-export function phaseDistributionTarget(phase: string | null | undefined): DistTarget {
+/** Kanonische Verteilungs-Modelle (Z1/Z2/Z3-%). */
+export const DIST_MODELS: Record<DistModel, Omit<DistTarget, "rationale" | "overridden">> = {
+  pyramidal: { model: "pyramidal", z1: 80, z2: 15, z3: 5, label: "pyramidal" },
+  polarized: { model: "polarized", z1: 78, z2: 4, z3: 18, label: "polarisiert" },
+  regenerativ: { model: "regenerativ", z1: 90, z2: 7, z3: 3, label: "regenerativ (Z1-lastig)" },
+};
+const MODEL_RATIONALE: Record<DistModel, string> = {
+  pyramidal: "Base-/Belastungsphase → pyramidal: viel Z1-Grundlage + spürbares Z2-Schwellenvolumen, wenig Z3.",
+  polarized: "Race-Specific-Phase → polarisiert: viel lockeres Z1 plus harte Z3-Reize (VO2/Renntempo), kaum Grey-Zone.",
+  regenerativ: "Entlastung/Taper → regenerativ: Z1-lastig zur Erholung, Intensität nur als kurze Reize.",
+};
+
+/**
+ * Verteilungs-Ziel je Saison-Phase (advisory). Default-Mapping: Race Specific → polarisiert,
+ * Entlastung/Taper/Race-Week/Krank → regenerativ, sonst (Base/Belastung) → pyramidal.
+ * T14: optionaler manueller Override pro Phase (`overrides[phaseLower] = model`) hat Vorrang; Klartext-`rationale`.
+ */
+export function phaseDistributionTarget(phase: string | null | undefined, overrides?: Record<string, string> | null): DistTarget {
   const p = (phase || "").toLowerCase();
-  if (p.includes("specific")) return { model: "polarized", z1: 78, z2: 4, z3: 18, label: "polarisiert" };
-  if (p.includes("entlast") || p.includes("deload") || p.includes("race week") || p.includes("raceweek") || p.includes("race-week") || p.includes("krank"))
-    return { model: "regenerativ", z1: 90, z2: 7, z3: 3, label: "regenerativ (Z1-lastig)" };
-  return { model: "pyramidal", z1: 80, z2: 15, z3: 5, label: "pyramidal" };
+  const ovRaw = overrides && p ? overrides[p] : undefined;
+  if (ovRaw && (ovRaw === "pyramidal" || ovRaw === "polarized" || ovRaw === "regenerativ")) {
+    return { ...DIST_MODELS[ovRaw], overridden: true, rationale: `Manuell für Phase „${phase}" gesetzt: ${DIST_MODELS[ovRaw].label}.` };
+  }
+  let model: DistModel = "pyramidal";
+  if (p.includes("specific")) model = "polarized";
+  else if (p.includes("entlast") || p.includes("deload") || p.includes("race week") || p.includes("raceweek") || p.includes("race-week") || p.includes("krank")) model = "regenerativ";
+  return { ...DIST_MODELS[model], rationale: MODEL_RATIONALE[model] };
 }
 
 /** Schild für die reale Zeit-Verteilung: Ist vs. Phasen-Ziel + Polarisierungs-Index. */
@@ -616,12 +641,13 @@ export function classifyWeekRegime(w: WeekRegimeInput): Regime {
 
 export interface RegimeStat {
   regime: Regime;
-  nWeeks: number;            // verwendbare Regime-Wochen (mit gültigem Forward-Paar)
-  csChange: number | null;   // Ø CS-Pace-Veränderung über Lag (s/km, negativ = schneller = besser)
+  nWeeks: number;            // Summe der Wochen in zusammenhängenden Regime-Blöcken (T6: contiguous, nicht überlappende Paare)
+  nBlocks: number;           // Anzahl zusammenhängender Blöcke dieses Regimes (unabhängige Beobachtungen)
+  csChange: number | null;   // Ø CS-Pace-Veränderung Block-Start→Block-Ende (s/km, negativ = schneller = besser)
   vdotChange: number | null; // Ø VDOT-Veränderung (positiv = besser)
   confidence: "hoch" | "mittel" | "niedrig";
-  fromDate: string | null;   // v1.10.0: Spanne der Wochen dieses Regimes (von)
-  toDate: string | null;     // … bis (Ende der letzten Woche)
+  fromDate: string | null;   // früheste Block-Startwoche dieses Regimes
+  toDate: string | null;     // … bis Ende des spätesten Blocks
 }
 export interface MethodInferenceResult {
   regimes: RegimeStat[];
@@ -635,54 +661,72 @@ const REGIME_LABEL: Record<Regime, string> = {
   polarized: "polarisiert", pyramidal: "pyramidal", threshold: "Threshold", norwegian: "Norwegian Double-Threshold", mixed: "gemischt",
 };
 
-function weekAtLag(sorted: WeekRegimeInput[], i: number, lagWeeks: number): WeekRegimeInput | null {
-  const target = addDaysIsoLocal(sorted[i].start_date, lagWeeks * 7);
-  for (let j = i + 1; j < sorted.length; j++) {
-    const d = Math.abs(daysBetweenIso(sorted[j].start_date, target));
-    if (d <= 3) return sorted[j];
-    if (daysBetweenIso(target, sorted[j].start_date) > 3) break; // schon über dem Ziel
-  }
-  return null;
-}
-
 /**
- * Passive Methoden-Inferenz: jedes Wochen-Regime gegen seine Marker-Reaktion über `lagWeeks` (Default 3, also
- * 2–4) Folgewochen. Strenge Confounder-Kontrolle (Q4): Krank/Taper/Race-Wochen raus; nur Paare mit annähernd
- * stabiler CTL über das Lag (|ΔCTL| ≤ ctlBand) — so wird die Marker-Änderung dem Regime und nicht einem
- * Last-Sprung zugeschrieben. Ausgabe advisory: Korrelation, nicht Kausalität; kleine n sichtbar.
+ * Passive Methoden-Inferenz (T6, block-basiert): Wochen werden zuerst in ZUSAMMENHÄNGENDE Regime-Blöcke
+ * gruppiert (gleiche Klassifikation, lückenlos ≤10 Tage, Krank/Taper/Race-Wochen brechen einen Block).
+ * Je Block wird die Marker-Reaktion als Block-Start→Block-Ende gemessen — CS/VDOT sind bereits 42-Tage-rollend,
+ * ein zusätzlicher Lag würde Post-Block-Training importieren. Confounder-Kontrolle (Q4): nur Blöcke mit
+ * annähernd stabiler CTL über den Block (|ΔCTL| ≤ ctlBand·Blockwochen/3) — so wird die Marker-Änderung dem
+ * Regime und nicht einem Last-Sprung zugeschrieben. `nWeeks` = echte Blockwochen, `nBlocks` = unabhängige
+ * Beobachtungen (Konfidenz folgt nBlocks, nicht überlappenden Paaren). Advisory: Korrelation, nicht Kausalität.
  */
 export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: number; ctlBand?: number }): MethodInferenceResult {
   const lagWeeks = opts?.lagWeeks ?? 3;
   const ctlBand = opts?.ctlBand ?? 8;
   const sorted = [...weeks].sort((a, b) => a.start_date.localeCompare(b.start_date));
-  const buckets = new Map<Regime, { cs: number[]; vd: number[]; dates: string[] }>();
+
+  // 1) Zusammenhängende Regime-Blöcke bilden. Excluded-Wochen sind im Array, brechen aber jeden Block
+  //    (kein index-Anschluss). Kalenderlücke >10 Tage (fehlende/leere Woche) bricht ebenfalls.
+  interface Block { regime: Regime; idx: number[]; }
+  const blocks: Block[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const w = sorted[i];
     if (w.excluded) continue;
-    const later = weekAtLag(sorted, i, lagWeeks);
-    if (!later || later.excluded) continue;
-    // CTL-Band-Confounder-Kontrolle: nur Paare mit stabiler Last.
-    if (w.ctl != null && later.ctl != null && Math.abs(later.ctl - w.ctl) > ctlBand) continue;
     const regime = classifyWeekRegime(w);
-    const b = buckets.get(regime) ?? { cs: [], vd: [], dates: [] };
-    if (w.csPace != null && later.csPace != null) b.cs.push(later.csPace - w.csPace);
-    if (w.vdot != null && later.vdot != null) b.vd.push(later.vdot - w.vdot);
-    b.dates.push(w.start_date);
-    buckets.set(regime, b);
+    const cur = blocks[blocks.length - 1];
+    const prevIdx = cur ? cur.idx[cur.idx.length - 1] : -2;
+    const prevW = prevIdx >= 0 ? sorted[prevIdx] : null;
+    const contiguous = cur != null && cur.regime === regime && prevIdx === i - 1
+      && prevW != null && daysBetweenIso(prevW.start_date, w.start_date) <= 10;
+    if (contiguous) cur!.idx.push(i);
+    else blocks.push({ regime, idx: [i] });
   }
+
+  // 2) Je Block die Marker-Reaktion (Start→Ende) mit längen-skalierter CTL-Confounder-Kontrolle.
+  const buckets = new Map<Regime, { cs: number[]; vd: number[]; nBlocks: number; weeks: number; from: string[]; to: string[] }>();
+  for (const blk of blocks) {
+    const first = sorted[blk.idx[0]];
+    const last = sorted[blk.idx[blk.idx.length - 1]];
+    const blkWeeks = blk.idx.length;
+    const b = buckets.get(blk.regime) ?? { cs: [], vd: [], nBlocks: 0, weeks: 0, from: [], to: [] };
+    b.nBlocks += 1;
+    b.weeks += blkWeeks;
+    b.from.push(first.start_date);
+    b.to.push(addDaysIsoLocal(last.start_date, 6));
+    // CTL-Drift über den Block proportional zur Blocklänge erlauben (ctlBand ist je 3 Wochen definiert).
+    const allow = ctlBand * Math.max(1, blkWeeks / 3);
+    const ctlOk = first.ctl == null || last.ctl == null || Math.abs(last.ctl - first.ctl) <= allow;
+    if (ctlOk) {
+      if (first.csPace != null && last.csPace != null) b.cs.push(last.csPace - first.csPace);
+      if (first.vdot != null && last.vdot != null) b.vd.push(last.vdot - first.vdot);
+    }
+    buckets.set(blk.regime, b);
+  }
+
   const regimes: RegimeStat[] = [];
   for (const [regime, b] of buckets) {
-    const nWeeks = Math.max(b.cs.length, b.vd.length);
-    if (nWeeks === 0) continue;
-    const confidence: RegimeStat["confidence"] = nWeeks >= 6 ? "hoch" : nWeeks >= 4 ? "mittel" : "niedrig";
-    const ds = [...b.dates].sort();
+    if (b.weeks === 0) continue;
+    // Konfidenz folgt unabhängigen Blöcken (Replikation), nicht der reinen Wochenzahl.
+    const confidence: RegimeStat["confidence"] = b.nBlocks >= 2 && b.weeks >= 6 ? "hoch" : b.weeks >= 4 ? "mittel" : "niedrig";
+    const froms = [...b.from].sort();
+    const tos = [...b.to].sort();
     regimes.push({
-      regime, nWeeks,
+      regime, nWeeks: b.weeks, nBlocks: b.nBlocks,
       csChange: b.cs.length ? meanRound(b.cs, 1) : null,
       vdotChange: b.vd.length ? meanRound(b.vd, 1) : null,
       confidence,
-      fromDate: ds[0] ?? null,
-      toDate: ds.length ? addDaysIsoLocal(ds[ds.length - 1], 6) : null,
+      fromDate: froms[0] ?? null,
+      toDate: tos[tos.length - 1] ?? null,
     });
   }
   // Ranken nach CS-Reaktion (negativ = schneller = besser); nur Regimes mit CS-Signal werten.
@@ -691,18 +735,19 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
   // „Best" nur, wenn ≥4 Regime-Wochen (Q6) und tatsächlich eine Verbesserung (negativ).
   const top = ranked[0];
   const best = top && top.nWeeks >= 4 && (top.csChange ?? 0) < -1.5 ? top.regime : null;
-  const overallConf: MethodInferenceResult["confidence"] = best && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
+  const overallConf: MethodInferenceResult["confidence"] = best && top.nBlocks >= 2 && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
+  const blkTxt = (r: RegimeStat) => `n=${r.nWeeks} Wochen${r.nBlocks > 1 ? ` in ${r.nBlocks} Blöcken` : ""}`;
   let note: string;
   if (!ranked.length) {
     note = "Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine Methoden-Aussage.";
   } else if (best) {
     const runner = ranked[1];
     const csTxt = (v: number) => `${v <= 0 ? "" : "+"}${v} s/km CS`;
-    note = `Bei dir korrelierte ${REGIME_LABEL[best]} mit ${csTxt(top.csChange!)} (n=${top.nWeeks} Wochen, ${lagWeeks}-Wochen-Lag)` +
-      (runner ? `; ${REGIME_LABEL[runner.regime]} ${csTxt(runner.csChange!)} (n=${runner.nWeeks})` : "") +
+    note = `Bei dir korrelierte ${REGIME_LABEL[best]} mit ${csTxt(top.csChange!)} (${blkTxt(top)}, Block-Auswertung)` +
+      (runner ? `; ${REGIME_LABEL[runner.regime]} ${csTxt(runner.csChange!)} (${blkTxt(runner)})` : "") +
       ". Korrelation, nicht Kausalität — kleine n beachten.";
   } else {
-    note = `Trend, aber (noch) nicht belastbar: bestes Regime ${REGIME_LABEL[top.regime]} (${top.csChange} s/km CS, n=${top.nWeeks}). Mehr Wochen/Daten nötig.`;
+    note = `Trend, aber (noch) nicht belastbar: bestes Regime ${REGIME_LABEL[top.regime]} (${top.csChange} s/km CS, ${blkTxt(top)}). Mehr Wochen/Daten nötig.`;
   }
   return { regimes, best, lagWeeks, note, confidence: overallConf };
 }
@@ -1077,6 +1122,7 @@ export interface BlockDay {
   planned_min: number; planned_tss: number; description: string;
   zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
   prescription?: { templateId: string; progress: number; targetTss: number } | null; // v1.7.0: Intention für Live-Resolution
+  adaptNote?: string | null; // T7: „angepasst an: Phase · TSB · Fitness · VDOT"
 }
 export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
@@ -1190,6 +1236,7 @@ export interface ResolveCtx {
   today: string;
   curVdot: number | null;
   curCtl: number;
+  curTsb?: number | null;       // T7: aktuelle Form → verschiebt den Reps-Zielwert im Band (nur naher Live-Kontext)
   baseZones: ZonesInput;        // aus effectiveZoneSet (hr_zones, pace_zones, threshold, lt1, cs)
   goalDistanceM: number | null;
   goalTimeS: number | null;
@@ -1204,7 +1251,7 @@ export function resolvePlannedSession(
   presc: { templateId: string; progress: number; targetTss: number },
   sessionDate: string,
   ctx: ResolveCtx,
-): { planned_min: number; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null } | null {
+): { planned_min: number; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null; adaptNote?: string | null } | null {
   const tpl = workoutById(presc.templateId);
   if (!tpl || !ctx.curVdot) return null;
   const weeksUntil = Math.max(0, Math.round((Date.parse(sessionDate + "T00:00:00Z") - Date.parse(ctx.today + "T00:00:00Z")) / (7 * 86400000)));
@@ -1212,9 +1259,10 @@ export function resolvePlannedSession(
   const need = goalVdot - ctx.curVdot;
   const projVdot = ctx.curVdot + (need > 0 ? Math.min(need, 0.4 * weeksUntil) : 0); // gedeckelt, kein Regress
   const zones = zonesForWeek(ctx.baseZones, projVdot, ctx.goalDistanceM);
-  const fitness = fitnessLevel(ctx.curCtl, zones.cs_pace ?? null);
-  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, targetTss: presc.targetTss });
-  return { planned_min: c.planned_min, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget };
+  const fitness = fitnessLevel(ctx.curCtl, zones.cs_pace ?? null, ctx.curVdot); // T7: VDOT verfeinert
+  const tsb = weeksUntil <= 1 ? (ctx.curTsb ?? null) : null; // TSB nur für die nahe Einheit (Projektion sonst unsicher)
+  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot });
+  return { planned_min: c.planned_min, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget, adaptNote: c.adaptNote ?? null };
 }
 
 /** Position der Woche innerhalb ihres zusammenhängenden Phasen-Blocks (für Rotation + Progression). */
@@ -1291,13 +1339,13 @@ export function blockPlan(args: {
     // v1.6.1: konkrete Einheiten aus der Workout-Bibliothek — Rotation + Progression + Fitness-Skalierung.
     const { weekInPhase, phaseLen } = phaseProgress(phases, wi);
     const progress = phaseLen > 1 ? weekInPhase / (phaseLen - 1) : 0.5;
-    const fitness = fitnessLevel(ctl, weekZones.cs_pace ?? null);
+    const fitness = fitnessLevel(ctl, weekZones.cs_pace ?? null, args.curVdot); // T7: VDOT verfeinert das Level
     const picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
       args.availability ? { emphasis: args.availability.emphasis, favoriteWorkouts: args.availability.favoriteWorkouts, avoidWorkouts: args.availability.avoidWorkouts } : undefined);
 
     // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
     let qTss = 0;
-    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress }).planned_tss;
+    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase }).planned_tss;
     const remaining = Math.max(0, target - qTss);
     const longs = picks.filter((p) => p.role === "long");
     const easies = picks.filter((p) => p.role === "easy");
@@ -1318,10 +1366,10 @@ export function blockPlan(args: {
       if (su.downgrade && ref?.tpl) {
         // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
         const easyTpl = workoutById("easy_ga1") ?? ref.tpl;
-        c = renderWorkout(easyTpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: Math.round(easyShare) || 50, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined });
+        c = renderWorkout(easyTpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: Math.round(easyShare) || 50, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined, vdot: args.curVdot ?? null, phaseLabel: phase });
         downgraded = true;
       } else if (ref?.tpl) {
-        c = renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: ref.targetTss, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined });
+        c = renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: ref.targetTss, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined, vdot: args.curVdot ?? null, phaseLabel: phase });
       } else {
         c = concretizeSession(su.type, su.targetTss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
       }
@@ -1333,6 +1381,7 @@ export function blockPlan(args: {
         date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond,
         planned_min: c.planned_min, planned_tss: c.planned_tss, description: c.description,
         zone_alloc: c.zone_alloc, efforts: c.efforts, paceTarget: c.paceTarget, prescription,
+        adaptNote: c.adaptNote ?? null,
       });
       projected.set(su.date, (projected.get(su.date) ?? 0) + c.planned_tss);
       tssActual += c.planned_tss;

@@ -1,22 +1,21 @@
-// Seiten-Hilfe (v1.8.0): dezenter „!"-Button unten je Seite → kurze Erklärung der Diagramme/Funktionen
-// ('so liest du das, so hilft es dir') + Link zur vollständigen Anleitung. Druckt nicht mit.
+// Seiten-Hilfe: dezenter „!"-Button unten je Seite → kurze Erklärung + Link zur Anleitung. Druckt nicht mit.
 import { useState } from "react";
 
 export const HELP: Record<string, { title: string; bullets: string[] }> = {
   dashboard: { title: "Dashboard — dein Status heute", bullets: [
-    "CTL = Fitness (42-Tage-Last), ATL = Ermüdung (7-Tage), TSB = Form (CTL−ATL): >+5 frisch, −10 bis −25 produktiv müde.",
-    "Oben: Readiness, heutige Empfehlung und — falls ein Ziel-Rennen mit Wunschzeit gesetzt ist — der Soll/Ist-Abgleich.",
+    "CTL = Fitness (42-Tage-Last), ATL = Ermüdung (7-Tage), TSB = Form (CTL−ATL): >+5 frisch, −10 bis −25 produktiv müde. Sparklines zeigen den Verlauf der letzten Wochen.",
+    "Oben: Form-Ribbon (CTL/ATL/TSB-Band der letzten ~6 Wochen) — zeigt auf einen Blick, ob du aufbaust, erhältst oder entlastest.",
     "Kacheln lassen sich per 'Bearbeiten' verschieben/ausblenden. Lange Verläufe stehen auf der Seite Langzeit.",
   ] },
   plan: { title: "Wochenplanung — die Woche bauen", bullets: [
     "Wochen-Vorschlag erzeugt konkrete Einheiten (Variety-Engine: Pace-Bereich, HF, Pausen). Block-Vorschau plant bis zum Renntag.",
-    "'Phasen übernehmen' schreibt die Periodisierung in den Saisonplan. Die Phase-Pille ist klickbar.",
-    "Die Paces der übernommenen Einheiten passen sich live an deine projizierte Fitness Richtung Wunsch-Zielzeit an.",
+    "Einheiten zeigen von–bis-Wiederholungen + Tageswert nach Form (TSB), Fitness und Phase — mit 'angepasst'-Notiz wenn die Engine anpasst.",
+    "'Phasen übernehmen' schreibt die Periodisierung in den Saisonplan. Die Paces passen sich live an deine projizierte Fitness Richtung Wunsch-Zielzeit an.",
   ] },
   coach: { title: "Coach — Training gestalten", bullets: [
-    "Wettkampf-Block: kompletter Mesozyklus bis zum Renntag (inkl. Taper + Erholung) — pro Woche selektiv in die Wochenplanung übernehmbar; 'Phasen übernehmen' schreibt die Periodisierung in den Saisonplan.",
-    "Optimale Zonen (Pace/HF/Watt) aus deinen Laufwerten + Verfügbarkeit & Einheiten-Vorlieben (Schwerpunkt, Lieblings/Vermeiden) + eigene Einheiten.",
-    "Der wöchentliche Vorschlag bleibt in der Wochenplanung — hier planst du den großen Bogen.",
+    "Wettkampf-Block: kompletter Mesozyklus bis zum Renntag — pro Woche selektiv übernehmbar; 'Phasen übernehmen' schreibt die Periodisierung.",
+    "Eigene Einheiten: verschachtelter Builder (Coros-artig) — Segmente & Gruppen in beliebiger Tiefe, Spielraum auf der Anzahl (von–bis), Pace-Offset und Pausen. Die Engine wählt den Tageswert nach deiner Form.",
+    "Bibliotheks- und eigene Einheiten werden mit deinen echten Zonen gerendert — Struktur-Spalte + aufklappbare Detailzeile in der Tabelle.",
   ] },
   track: { title: "Tracking — gelaufene Einheiten", bullets: [
     "Hier erscheinen Strava-Importe und manuelle Einträge. Intervalle inkl. Pausen sind erfassbar.",
@@ -24,7 +23,8 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
   ] },
   report: { title: "Wochenbericht — diese Woche im Detail", bullets: [
     "Geplant vs. real: Zonen-Verteilung (Zeit-in-Zone = Leit-Intensität) und TSS-Anteil nach Einheitstyp (ergänzend).",
-    "Wochen-Checks als Ampel: grün gut, gelb grenzwertig, rot Warnung. Die Seite ist druckbar.",
+    "Periodisierungs-Ziel je Phase (pyramidal/polarisiert/regenerativ) mit Begründung — und manuellem Override falls gewünscht.",
+    "Wochen-Checks als Ampel: grün gut, gelb grenzwertig, rot Warnung. Die Seite ist druckbar (immer hell).",
   ] },
   longterm: { title: "Langzeit — Trends übers Jahr", bullets: [
     "PMC, VO2max/Critical Speed, Lauf-Power, Intensität und Wellness im Verlauf. Zeitraum oben wählbar.",
@@ -39,12 +39,13 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
     "W′ = anaerobe Reserve oberhalb CP. Kacheln verschieb-/ausblendbar.",
   ] },
   methodik: { title: "Methodik — was bei DIR wirkt (N-of-1)", bullets: [
-    "Marker-Batterie (Critical Speed primär), geführte Methoden-Experimente (Vorher/Nachher) und passive Inferenz.",
+    "Marker-Batterie (Critical Speed primär) mit Mini-Sparklines. Passive Inferenz wertet zusammenhängende Regime-Blöcke aus — korrektere Δ-CS als frühere überlappende Wochenpaare.",
+    "Periodisierungs-Ziel je Saisonphase (pyramidal/polarisiert/regenerativ) mit Begründung — Override möglich im Wochenbericht.",
     "Wichtig: Korrelation, nicht Kausalität — kleine Stichproben sind als 'explorativ' markiert. Beratend, nie zwingend.",
   ] },
   profile: { title: "Profil — Athlet, Zonen & Präferenzen", bullets: [
-    "Links die Bereiche: Athlet, Zonen/Schwellen, Verfügbarkeit & Block-Präferenzen (Schwerpunkt, Lieblings/Vermeiden), Leistungstests.",
-    "Block-Präferenzen wirken beratend auf die Einheiten-Auswahl — Periodisierung und Erholungsregeln bleiben verbindlich.",
+    "Athlet · Zonen/Schwellen · Verfügbarkeit · Block-Präferenzen (Schwerpunkt, Lieblings/Vermeiden) · Leistungstests.",
+    "Eigene Einheiten: Coros-artiger Builder — Segmente & Gruppen, Spielraum auf Anzahl, Pausen, Pace-Offset. Engine löst Tageswert nach Form auf.",
     "Das 'Tutorial'-Profil enthält ein komplettes Beispieljahr zum gefahrlosen Ausprobieren.",
   ] },
 };

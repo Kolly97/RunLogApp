@@ -71,7 +71,7 @@ import {
   type WeekRegimeInput,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
-import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
+import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId } from "./tutorial.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
 
@@ -222,7 +222,7 @@ app.get("/api/settings", (_req, res) => {
     strava_client_id: getSetting("strava_client_id", ""),
     strava_client_secret: getSetting("strava_client_secret", ""),
     strava_sync_from: getSetting("strava_sync_from", ""), // Extraktions-Startdatum (v0.14.0); leer → Saisonstart
-
+    phase_dist_overrides: getSetting("phase_dist_overrides", {} as Record<string, string>), // T14: manuelle Verteilungs-Modelle pro Phase
   });
 });
 
@@ -861,7 +861,22 @@ app.get("/api/power-curve", (req, res) => {
 
 // v1.8.0: Workout-Bibliothek (für Block-Präferenzen — Lieblings/Vermeiden-Auswahl im Profil).
 app.get("/api/workouts", (_req, res) => {
-  const map = (t: WorkoutTemplate, custom: boolean) => ({ id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom, workZone: t.workZone, anchor: t.anchor ?? null, kind: t.kind });
+  // v1.12.0: jede Einheit mit echten Profil-Zonen rendern → volle Struktur (Efforts mit von-bis-Bändern) + Tageswerte.
+  let rctx: { zones: any; fitness: any; progress: number; tsb: number | null; vdot: number | null } | null = null;
+  try {
+    const ctx = buildResolveCtx();
+    rctx = { zones: ctx.baseZones, fitness: fitnessLevel(ctx.curCtl, ctx.baseZones.cs_pace ?? null, ctx.curVdot), progress: 0.5, tsb: ctx.curTsb ?? null, vdot: ctx.curVdot };
+  } catch { /* ohne Kontext nur Basisfelder */ }
+  const map = (t: WorkoutTemplate, custom: boolean) => {
+    let c: ReturnType<typeof renderWorkout> | null = null;
+    if (rctx) { try { c = renderWorkout(t, rctx as any); } catch { /* core o. ä. */ } }
+    return {
+      id: t.id, name: t.name, family: t.family, purpose: t.purpose, effort: t.effort, custom,
+      workZone: t.workZone, anchor: t.anchor ?? null, kind: t.kind,
+      description: c?.description ?? null, efforts: c?.efforts ?? null,
+      planned_min: c?.planned_min ?? null, planned_tss: c?.planned_tss ?? null, adaptNote: c?.adaptNote ?? null,
+    };
+  };
   const lib = WORKOUT_LIBRARY.filter((t) => t.kind !== "core").map((t) => map(t, false));
   const cust = customWorkoutList().map((t) => map(t, true));
   res.json([...lib, ...cust]);
@@ -1614,7 +1629,7 @@ app.get("/api/sessions", (req, res) => {
   res.json(ctx ? list.map((r) => {
     if (!r.prescription || r.date < today) return r;
     const res2 = resolvePlannedSession(r.prescription, r.date, ctx);
-    return res2 ? { ...r, planned_min: res2.planned_min, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, resolved: true } : r;
+    return res2 ? { ...r, planned_min: res2.planned_min, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, adaptNote: res2.adaptNote ?? null, resolved: true } : r;
   }) : list);
 });
 
@@ -1626,10 +1641,11 @@ function buildResolveCtx() {
   const from = minIso(earliestDataDate() ?? today, today);
   const pmc = computePmc(dailyTssMap(from, today), from, today, today);
   const curCtl = pmc.length ? pmc[pmc.length - 1].ctl : 0;
+  const curTsb = pmc.length ? pmc[pmc.length - 1].tsb : null; // T7: aktuelle Form für den nahen Live-Reps-Shift
   const zs = effectiveZoneSet(today);
   const baseZones = { pace_zones: zs.pace_zones, threshold_pace: zs.threshold_pace, lt1_pace: zs.lt1_pace, hr_zones: zs.hr_zones, cs_pace: cur.csPace, rep_pace: cur.csPace ? cur.csPace - 8 : null, cp: currentCp() };
   const race = db.prepare("SELECT distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND goal_time_s IS NOT NULL ORDER BY date LIMIT 1").get(pid(), today) as { distance_m: number | null; goal_time_s: number | null } | undefined;
-  return { today, curVdot: cur.vdot, curCtl, baseZones, goalDistanceM: race?.distance_m ?? null, goalTimeS: race?.goal_time_s ?? null };
+  return { today, curVdot: cur.vdot, curCtl, curTsb, baseZones, goalDistanceM: race?.distance_m ?? null, goalTimeS: race?.goal_time_s ?? null };
 }
 
 app.post("/api/sessions", (req, res) => {
@@ -2363,7 +2379,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Echte Zeit-in-Zone-Verteilung (G4, v1.3.0): 3 Zonen gegen LT1/LT2 + Polarisierungs-Index + Phasen-Ziel.
   const physioDist = physioTimeZones(realZoneMin, zs.hr_zones, zs.lt1_hr, zs.lthr);
   const polIndex = polarizationIndex(physioDist.z1, physioDist.z2, physioDist.z3);
-  const phaseTarget = phaseDistributionTarget(wk?.phase);
+  const phaseTarget = phaseDistributionTarget(wk?.phase, getSetting("phase_dist_overrides", {} as Record<string, string>));
   const realPolarizationFlag = polarizationFlag(physioDist, phaseTarget, polIndex);
 
   // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).

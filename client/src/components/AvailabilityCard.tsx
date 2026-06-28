@@ -258,7 +258,7 @@ export default function AvailabilityCard() {
                   const fav = (av.favoriteWorkouts ?? []).includes(w.id);
                   const avo = (av.avoidWorkouts ?? []).includes(w.id);
                   return (
-                    <div key={w.id} title={w.purpose} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${fav ? "var(--ok)" : avo ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, padding: "5px 8px", background: fav ? "rgba(16,185,129,0.08)" : avo ? "rgba(239,68,68,0.06)" : "#fff" }}>
+                    <div key={w.id} title={w.purpose} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${fav ? "var(--ok)" : avo ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, padding: "5px 8px", background: fav ? "rgba(16,185,129,0.08)" : avo ? "rgba(239,68,68,0.06)" : "var(--card)" }}>
                       <span style={{ flex: 1, fontSize: 12, fontWeight: 500, opacity: avo ? 0.7 : 1 }}>{w.name}</span>
                       <button className="sm ghost" onClick={() => toggleFav(w.id)} title="Favorit — häufiger vorschlagen"
                         style={{ padding: "1px 6px", borderRadius: 6, fontWeight: 700, color: fav ? "#fff" : "var(--muted)", background: fav ? "var(--ok)" : "transparent" }}>♥</button>

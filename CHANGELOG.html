@@ -193,6 +193,12 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <h4>Versionen</h4>
+    <a href="#v2000"><span class="v-badge">2.0.0</span>2026-06-29</a>
+    <a href="#v1121"><span class="v-badge">1.12.1</span>2026-06-29</a>
+    <a href="#v1120"><span class="v-badge">1.12.0</span>2026-06-28</a>
+    <a href="#v1111"><span class="v-badge">1.11.1</span>2026-06-28</a>
+    <a href="#v1110"><span class="v-badge">1.11.0</span>2026-06-28</a>
+    <a href="#v1100"><span class="v-badge">1.10.0</span>2026-06-28</a>
     <a href="#v180"><span class="v-badge">1.8.0</span>2026-06-27</a>
     <a href="#v170"><span class="v-badge">1.7.0</span>2026-06-26</a>
     <a href="#v162"><span class="v-badge">1.6.2</span>2026-06-24</a>
@@ -224,9 +230,184 @@
   <main>
     <!-- stats -->
     <div class="stats">
-      <div class="stat"><div class="stat-num">26</div><div class="stat-label">Versionen</div></div>
-      <div class="stat"><div class="stat-num">17</div><div class="stat-label">Tage Entwicklung</div></div>
-      <div class="stat"><div class="stat-num">v1.8.0</div><div class="stat-label">Aktuelle Release</div></div>
+      <div class="stat"><div class="stat-num">32</div><div class="stat-label">Versionen</div></div>
+      <div class="stat"><div class="stat-num">18</div><div class="stat-label">Tage Entwicklung</div></div>
+      <div class="stat"><div class="stat-num">v2.0.0</div><div class="stat-label">Aktuelle Release</div></div>
+    </div>
+
+    <!-- ═══════════════════ 2.0.0 ═══════════════════ -->
+    <div class="version open" id="v2000">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">2.0.0</span>
+        <span class="version-title">Versionsmeilenstein — Anleitung v2.0 vollständig aktualisiert</span>
+        <span class="version-date">2026-06-29</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Meilenstein nach v1.10–1.12: Premium-Politur, N-of-1-Diagnostik,
+          strukturierter Builder, dynamische Einheiten mit TSB/Fitness-Anpassung. Die In-App-Anleitung wurde vollständig
+          auf den aktuellen Funktionsstand gebracht.</p>
+        <div class="group">
+          <div class="group-label label-changed">↻ Geändert</div>
+          <ul class="changes">
+            <li><strong>Anleitung v2.0 (<code>client/public/usage.html</code>):</strong> Alle Seiten-Beschreibungen
+              (Dashboard, Wochenplanung, Tracking, Bericht, Methodik, Profil, Einstellungen) auf v1.12.1-Stand
+              gebracht — Form-Ribbon, Dark-Mode-Schalter, Sparklines, dynamische Einheiten (von–bis + TSB-Anpassung),
+              strukturierter Coros-Builder, Block-Inferenz (Block-statt Wochenpaare), Periodisierungs-Override,
+              Laktat-Achsenumschaltung, Tutorial-Profil, Theme/Animationen in den Einstellungen.</li>
+            <li><code>package.json</code> → <strong>2.0.0</strong></li>
+            <li><code>README.md</code>, <code>HANDOFF.md</code>, <code>CHANGELOG.md</code> Versionsreferenz → 2.0.0</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.12.1 ═══════════════════ -->
+    <div class="version open" id="v1121">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.12.1</span>
+        <span class="version-title">Bugfixes: Eingabefokus-Verlust &amp; Dark-Mode-Kacheln</span>
+        <span class="version-date">2026-06-29</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Zwei gezielte Bugfixes ohne Eingriff in Trainingslogik oder Datenmodell.</p>
+        <div class="group">
+          <div class="group-label label-fixed">✓ Behoben</div>
+          <ul class="changes">
+            <li><strong>Strukturierter Builder – Eingabefokus:</strong> Zahlenfelder (Anzahl, Distanz, Dauer, Pausen, Pace-Offset) verloren nach jeder Ziffer den Fokus. Ursache: <code>CountField</code> und <code>Row</code> waren als Funktionen innerhalb der <code>StructureEditor</code>-Komponente definiert — jeder Re-render erzeugte einen neuen Komponenten-Typ → unmount/remount. Behoben durch Anheben auf Modul-Ebene mit Callbacks als Props.</li>
+            <li><strong>Dark Mode — neutrale Einheits-Kacheln:</strong> Nicht markierte Einheiten in der Präferenz-Karte (Profil → Block-Präferenzen) hatten im Dark Mode weißen Hintergrund (<code>#fff</code> statt <code>var(--card)</code>).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.12.0 ═══════════════════ -->
+    <div class="version" id="v1120">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.12.0</span>
+        <span class="version-title">Strukturierter Workout-Builder (Coros-Style) + Spielraum + Engine-Anpassung</span>
+        <span class="version-date">2026-06-28</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Eigene Einheiten lassen sich jetzt <strong>frei verschachtelt</strong> anlegen — mit <strong>Spielraum</strong> auf den Wiederholungen, eigenen Pausen und automatischer Anpassung an die Form. Bibliothek <strong>und</strong> eigene Einheiten zeigen volle Struktur in der Tabelle. Additiv, keine DB-Migration.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Verschachtelter Builder (Coros-artig):</strong> Segmente und Gruppen in beliebiger Tiefe, z.&nbsp;B. <code>3×(1000-1000-600-200-200)</code>. Je Zeile Distanz <em>oder</em> Dauer, optionaler Pace-Offset zum Anker, eigene Pause; Gruppen mit eigener Satz-Anzahl und Satz-Pause. Reihenfolge per ▲▼, hinzufügen/löschen, beliebig schachteln. „Einfach"-Modus bleibt für simple Einheiten.</li>
+            <li><strong>Spielraum (von–bis) auf der Anzahl:</strong> je Segment/Satz per „±" ein Bereich (5–6× oder Satz 3–4×). Die Engine wählt den Tageswert nach Phase · Form (TSB) · Fitness · VDOT (gleiche Mechanik wie die dynamischen Einheiten); Pace bleibt als Band.</li>
+            <li><strong>Volle Struktur in der Einheiten-Tabelle:</strong> Struktur-Spalte (von–bis-Kurzfassung) + aufklappbare Detailzeile mit Segmenten/Pausen/Bändern, Tageswert und Engine-Hinweis — für Bibliotheks- <em>und</em> eigene Einheiten mit echten Profil-Zonen.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert</div>
+          <ul class="changes">
+            <li><strong>Einheitliches Modell &amp; Engine:</strong> Bibliothek und eigene Einheiten teilen denselben Renderer; TSS-/Dauer-Schätzung im Builder kommt aus genau diesem Renderer (eine Quelle der Wahrheit).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.11.1 ═══════════════════ -->
+    <div class="version" id="v1111">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.11.1</span>
+        <span class="version-title">Bugfixes &amp; Klarstellungen</span>
+        <span class="version-date">2026-06-28</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Kleine, sichere Folge-Politur nach v1.11.0 — keine neuen Features, kein Eingriff in Trainingslogik/Daten.</p>
+        <div class="group">
+          <div class="group-label label-fixed">✓ Behoben</div>
+          <ul class="changes">
+            <li><strong>Intervall-Trend – Legende:</strong> Ein-/Ausblenden je Kategorie funktioniert wieder (Regression aus dem Rolling-Mittel von v1.11.0). Ein Klick schaltet jetzt <em>beide</em> Serien der Kategorie gemeinsam — gedämpfte Rohpunkte und 7-Tage-Mittel-Linie.</li>
+            <li><strong>Layout-Modus – Höhe:</strong> Chart-Kacheln lassen sich nun auch in der Höhe anpassen (vorher nur Breite). Diagramme folgen generisch der Kachelhöhe.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert</div>
+          <ul class="changes">
+            <li><strong>Dark Mode (gezielt):</strong> Wochentag-Tabs im Tracking und Power-Zonen-Pills bei „Lauf-Power" sind sauber dunkel gethemt; Hell-Modus und Druck unverändert.</li>
+            <li><strong>Methodik – Klarheit:</strong> Ausklappbarer Hilfetext + Tooltips erklären die unterschiedlichen CS-Zahlen (Absolutwert / Δ / vorher→nachher — messen bewusst Verschiedenes).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.11.0 ═══════════════════ -->
+    <div class="version" id="v1110">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.11.0</span>
+        <span class="version-title">Diagnostik, Methodik-Korrektheit, dynamische Einheiten &amp; Premium-Feinschliff</span>
+        <span class="version-date">2026-06-28</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Großes Inhalts-Update: wissenschaftlich fundierte Laktat-Diagnostik, korrigierte und transparentere Methodik (N-of-1), dynamische Trainingseinheiten mit von–bis-Bändern sowie Chart-/Dark-Mode-Feinschliff. Datensicher, keine Migrationen.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Laktat-Diagnostik:</strong> Ausführliche wissenschaftliche Begründung je Schwelle (FatMax · LT1 · 2 mmol · LT2 · 4 mmol/OBLA — Physiologie + Methode/Quelle, ausklappbar); x-Achse umschaltbar min/km ↔ km/h ↔ Watt; Watt-Eingabe für Rad-Tests; Marker-Beschriftung im Plot.</li>
+            <li><strong>Methodik – Marker-Verläufe:</strong> Mini-Sparklines für CS, VDOT, Schwelle, Entkopplung und eff. VO₂max; global abschaltbar im Footer. Zusätzlich CTL/ATL/TSB-Sparklines im Dashboard-Form-Überblick.</li>
+            <li><strong>Methodik – Periodisierungs-Transparenz:</strong> Klartext warum das Z1/Z2/Z3-Ziel aus der Saisonphase folgt + manueller Override pro Phase.</li>
+            <li><strong>Wochenplanung – dynamische Einheiten:</strong> Rohe Einheiten mit von–bis-Wiederholungen + empfohlenem Tageswert („heute: N") und Pace-Band; additive, gedeckelte Anpassung an Phase · TSB · Fitness · VDOT mit „angepasst"-Notiz.</li>
+            <li><strong>Intro:</strong> Animierter Läufer joggt entlang der Form-Kurve und endet im echten App-Icon (GSAP-gegated, skippbar).</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-fixed">✓ Behoben</div>
+          <ul class="changes">
+            <li><strong>Methodik – Passive Inferenz (Rechenfehler):</strong> Auswertung auf zusammenhängende Regime-Blöcke umgestellt — korrekte Wochenzahl + Δ-CS als Block-Start→Ende statt überlappender Wochenpaare. Konfidenz folgt den unabhängigen Blöcken.</li>
+            <li><strong>Charts im Dark Mode:</strong> Intensitäts-Verhältnis und Jahres-Marker sichtbar/theme-fähig; PB-Dreiecke nicht mehr am Rand abgeschnitten.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">~ Geändert</div>
+          <ul class="changes">
+            <li><strong>Dark Mode durchgängiger:</strong> Inputs, Modals, Tabellen und Popover über Tokens; A4-Druckvorschau im Dark Mode dunkel, echter Druck bleibt erzwungen hell.</li>
+            <li><strong>Tabellen:</strong> Globale, theme-fähige <code>.table</code>-Politur (Zebra, Sticky-Header, rechtsbündige Zahlen).</li>
+            <li><strong>Y-Achsen:</strong> Smartere „nice"-Skalierung mit Polster; Intervall-Trend mit 7-Tage-Rolling-Mittel über gedämpften Rohwerten.</li>
+            <li><strong>Wochenplanung:</strong> Kennzahlen zählen sanft hoch (Count-up).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 1.10.0 ═══════════════════ -->
+    <div class="version" id="v1100">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">1.10.0</span>
+        <span class="version-title">Premium-Politur: Dark Mode, Motion, Signature-Hero, Chart-Veredelung &amp; Delight</span>
+        <span class="version-date">2026-06-28</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Großes Veredelungs-Update: aus dem soliden, analytischen RunLog wird ein <strong>premium, klinisch-edles</strong> Produkt. Design-Fundament (Tokens, Gruppen-Nav, Chart-Grammatik), Dark Mode, zentrales Motion-System, Signature-Hero, veredelte Charts und Delight-Momente.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Design-Fundament</div>
+          <ul class="changes">
+            <li><strong>Design-Tokens</strong> als einzige Farbquelle; <strong>gruppierte Navigation</strong> (Heute · Planen · Tracken · Analysieren · Lernen + Einstellungen); einheitliche <strong>Chart-Grammatik</strong> (Tooltip-/Achsen-/Gitter-Stile).</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Dark Mode</div>
+          <ul class="changes">
+            <li><strong>Auto (System) · Hell · Dunkel</strong>, umschaltbar im Sidebar-Fuß; Wahl bleibt gespeichert.</li>
+            <li><strong>Theme-fähige Charts:</strong> alle Farben aus CSS-Variablen — Charts bleiben in beiden Modi lesbar. Druck wird stets hell erzwungen.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt — Motion, Hero &amp; Delight</div>
+          <ul class="changes">
+            <li><strong>Motion-System:</strong> zentrale gegatete Helfer (<code>useMotion</code>/<code>useCountUp</code>/<code>useReveal</code>/Draw-on); jede Bewegung respektiert <code>prefers-reduced-motion</code> + globalen Aus-Schalter. 60-fps-budgetiert (nur transform/opacity).</li>
+            <li><strong>Signature-Hero „Form-Ribbon":</strong> fließendes CTL/ATL/TSB-Band der letzten ~6 Wochen mit Draw-on und Live-Kennzahlen; reduced-motion → statisch.</li>
+            <li><strong>Chart-Veredelung:</strong> sanfte Verläufe/Glow (PMC-Fläche, Schwellen-Trend, Wellness-Bänder), feinere Achsen, PB-Marker auf der PMC-Zeitachse (Hover-Detail).</li>
+            <li><strong>Celebrations:</strong> Konfetti bei neuer Bestzeit, geschlagener Wunschzeit und Konsistenz-Streaks.</li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════════════ 1.8.0 ═══════════════════ -->

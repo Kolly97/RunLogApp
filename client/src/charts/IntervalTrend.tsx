@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
+import { TOOLTIP_STYLE, niceYDomain } from "../lib/chartTheme.ts";
 import type { IntervalEffortStat } from "../lib/api.ts";
 import { fmtDate, fmtDateY, paceStr } from "../lib/util.ts";
 
@@ -18,6 +18,19 @@ const CATS = [
 ] as const;
 
 type CatKey = (typeof CATS)[number]["key"];
+
+/** Fügt 7-Tage-gleitende Mittelwerte als `_avg`-Spalten hinzu (T4 Rolling-Mittel). */
+function withRolling(data: any[], keys: string[], win = 7): any[] {
+  return data.map((row, i) => {
+    const r = { ...row };
+    for (const k of keys) {
+      const vals = (data.slice(Math.max(0, i - win + 1), i + 1) as any[])
+        .map((x) => x[k]).filter((v): v is number => typeof v === "number");
+      if (vals.length >= 2) r[`${k}_avg`] = vals.reduce((a, b) => a + b) / vals.length;
+    }
+    return r;
+  });
+}
 
 function runStats(data: IntervalEffortStat[]): IntervalEffortStat[] {
   return (data || []).filter(
@@ -47,18 +60,18 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
     e.n[k] = (e.n[k] || 0) + 1;
     acc.set(r.date, e);
   }
-  const rows = [...acc.entries()]
+  const rawRows = [...acc.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, e]) => {
       const row: { date: string } & Partial<Record<CatKey, number>> = { date };
       for (const c of CATS) if (e.n[c.key]) row[c.key] = (e.sum[c.key] as number) / (e.n[c.key] as number);
       return row;
     });
+  const rows = withRolling(rawRows, CATS.map((c) => c.key));
 
-  // Y-Domain mit etwas Luft (Pace in s/km), invertiert.
+  // Y-Domain: nice-gerundete Grenzen + Polster (T16 Y-Achse).
   const vals = runs.map((r) => r.avg_pace_s as number);
-  const min = Math.floor((Math.min(...vals) - 10) / 10) * 10;
-  const max = Math.ceil((Math.max(...vals) + 10) / 10) * 10;
+  const [min, max] = niceYDomain(Math.min(...vals), Math.max(...vals), 0.06);
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -73,11 +86,17 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
           contentStyle={TOOLTIP_STYLE}
         />
         <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
-          onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey)); }} />
+          onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey).replace(/_avg$/, "")); }} />
+        {/* Rohe Einzel-Werte: dezente Punkte, keine Linie */}
         {CATS.map((c) => (
-          <Line key={c.key} type="monotone" dataKey={c.key} name={c.label} stroke={c.color}
-            strokeWidth={1.8} connectNulls dot={{ r: 3, fill: c.color, strokeWidth: 0 }}
-            hide={hidden.has(c.key)} />
+          <Line key={`${c.key}_raw`} type="monotone" dataKey={c.key} name={c.label} stroke={c.color}
+            strokeWidth={0} connectNulls dot={{ r: 2.5, fill: c.color, strokeWidth: 0, fillOpacity: 0.35 }}
+            legendType="none" hide={hidden.has(c.key)} />
+        ))}
+        {/* 7-Tage-Rolling-Mean: kräftige Linie über den Rohpunkten */}
+        {CATS.map((c) => (
+          <Line key={`${c.key}_avg`} type="monotone" dataKey={`${c.key}_avg`} name={c.label} stroke={c.color}
+            strokeWidth={2.2} connectNulls dot={false} legendType="circle" hide={hidden.has(c.key)} />
         ))}
       </ComposedChart>
     </ResponsiveContainer>

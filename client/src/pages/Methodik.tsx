@@ -5,6 +5,11 @@ import MarkerDeltaChart from "../charts/MarkerDelta.tsx";
 import ConfidenceBadge, { type ConfLevel } from "../components/ConfidenceBadge.tsx";
 import ExpertDetails from "../components/ExpertDetails.tsx";
 import OnboardingTour from "../components/OnboardingTour.tsx";
+import Sparkline from "../components/Sparkline.tsx";
+import { useSparkPref } from "../lib/sparkPref.ts";
+
+// T15: Marker-Verläufe (Sparklines) aus bestehenden Trend-Endpoints. `dir` = Verbesserungsrichtung.
+type SparkSeries = { data: (number | null)[]; dir: "up" | "down" };
 
 const METHODIK_TOUR = [
   { title: "Methodik — was bei DIR wirkt", body: "Trainingslehre ist im Mittel erforscht, aber deine optimale Methode ist individuell. Diese Seite findet mit deinen eigenen Daten heraus, welches Training dir am meisten bringt (N-of-1)." },
@@ -20,6 +25,18 @@ const METHODS = [
   { v: "norwegian_double_threshold", l: "Norwegian Double-Threshold" },
   { v: "custom", l: "Eigene" },
 ];
+// v1.11.1: Tooltip-Erklärungen je Marker (Hover) — macht klar, was die Zahl misst (Fenster/Einheit/Richtung).
+const MARKER_HELP: Record<string, string> = {
+  csPace: "Critical Speed — aktueller Schätzwert über das 14-Tage-Fenster, als Pace (s/km, kleiner = schneller). Nicht zu verwechseln mit „Δ CS\" in der Regime-Tabelle (Veränderung je Block).",
+  vdot: "VDOT (≈ VO2max) aus deinen Bestzeiten, 14-Tage-Fenster. Höher = besser.",
+  thresholdPace: "Schwellen-Pace (LT2) über das 14-Tage-Fenster. Kleiner = schneller.",
+  thresholdHr: "Schwellen-Herzfrequenz (LT2) über das 14-Tage-Fenster.",
+  decoupling: "Aerobe Entkopplung (Pace:HF-Drift) über das 14-Tage-Fenster. Kleiner = besser.",
+  submaxEf: "Submaximaler Efficiency-Faktor (Tempo je Herzschlag), 14-Tage-Fenster. Höher = besser.",
+  effVo2max: "Effektives VO2max aus dem Leistungs-/HF-Verhältnis, 14-Tage-Fenster. Höher = besser.",
+  lactateAtPace: "Geschätztes Laktat an der Schwellen-Pace, 14-Tage-Fenster. Kleiner = besser.",
+  pi: "Polarisierungs-Index der Zeit-in-Zone, 14-Tage-Fenster. ≥ 2,0 = polarisiert.",
+};
 const REGIME_LABEL: Record<string, string> = {
   polarized: "polarisiert", pyramidal: "pyramidal", threshold: "Threshold", norwegian: "Norwegian Double-Threshold", mixed: "gemischt",
 };
@@ -50,11 +67,29 @@ export default function Methodik() {
   const [sel, setSel] = useState<number | null>(null);
   const [evalR, setEvalR] = useState<MethodEvaluationResult | null>(null);
   const [form, setForm] = useState({ start_date: "", end_date: "", method: "polarized", label: "", notes: "" });
+  const [sparks, setSparks] = useState<Record<string, SparkSeries>>({});
+  const showSparks = useSparkPref();
 
   const reload = () => api.methodExperiments().then(setExps).catch(() => setExps([]));
   useEffect(() => {
     api.markers(undefined, 14).then(setMarkers).catch(() => setMarkers(null));
     api.methodInference().then(setInference).catch(() => setInference(null));
+    // T15: Kern-Marker-Verläufe aus bestehenden Trend-Endpoints (kein neuer Endpoint).
+    Promise.all([
+      api.cpTrend(12).catch(() => null),
+      api.fitnessTrend().catch(() => null),
+      api.thresholdTrend(12).catch(() => null),
+      api.decouplingTrend().catch(() => null),
+      api.effVo2maxTrend().catch(() => null),
+    ]).then(([cp, fit, thr, dec, ev]) => {
+      const s: Record<string, SparkSeries> = {};
+      if (cp?.points?.length) s.csPace = { data: cp.points.map((p) => p.cp), dir: "up" };
+      if (fit?.points?.length) s.vdot = { data: fit.points.map((p) => p.vdot), dir: "up" };
+      if (thr?.points?.length) s.thresholdPace = { data: thr.points.map((p) => p.thrPace), dir: "down" };
+      if (dec?.length) s.decoupling = { data: dec.map((p) => p.decoupling), dir: "down" };
+      if (ev?.points?.length) s.effVo2max = { data: ev.points.map((p) => p.est), dir: "up" };
+      setSparks(s);
+    }).catch(() => setSparks({}));
     reload();
   }, []);
   useEffect(() => {
@@ -113,10 +148,13 @@ export default function Methodik() {
         {!markers ? <p className="muted">Lädt…</p> : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
             {markerRows.map((m) => (
-              <div key={m.key} style={{ border: "1px solid #eef2f6", borderRadius: 8, padding: "8px 10px" }}>
+              <div key={m.key} title={MARKER_HELP[m.key as string]} style={{ border: "1px solid var(--border-faint)", borderRadius: 8, padding: "8px 10px" }}>
                 <div className="tiny muted">{m.label}</div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{fmtVal(m.key, markers[m.key] as number | null)}</div>
                 {m.key === "csPace" && markers.csConfidence && <div className="tiny muted">{CONF_LABEL[markers.csConfidence]}</div>}
+                {showSparks && sparks[m.key as string] && (
+                  <div style={{ marginTop: 5 }}><Sparkline data={sparks[m.key as string].data} improveDir={sparks[m.key as string].dir} /></div>
+                )}
               </div>
             ))}
           </div>
@@ -132,19 +170,26 @@ export default function Methodik() {
               {inference.best
                 ? <><strong style={{ color: "var(--ok)" }}>{REGIME_LABEL[inference.best]}</strong> korreliert bei dir am stärksten mit Fortschritt. </>
                 : <span className="muted">Noch keine belastbare Methoden-Präferenz. </span>}
-              <ConfidenceBadge level={inference.confidence as ConfLevel} title={`${CONF_LABEL[inference.confidence]} · ${inference.lagWeeks}-Wochen-Lag`} />
+              <ConfidenceBadge level={inference.confidence as ConfLevel} title={`${CONF_LABEL[inference.confidence]} · Block-Auswertung (zusammenhängende Regime-Wochen)`} />
             </p>
             <p className="tiny muted" style={{ marginTop: -6 }}>{inference.note}</p>
             {inference.regimes.length > 0 && (
               <ExpertDetails summary={`Regime-Details (${inference.regimes.length}) — Korrelation, nicht Kausalität`}>
               <table className="table" style={{ width: "100%" }}>
-                <thead><tr><th>Regime</th><th>Zeitraum</th><th>Wochen</th><th>Δ CS</th><th>Δ VDOT</th><th>Konfidenz</th></tr></thead>
+                <thead><tr>
+                  <th>Regime</th>
+                  <th title="Spanne der zusammenhängenden Regime-Blöcke (frühester Block-Start bis spätestes Block-Ende).">Zeitraum</th>
+                  <th title="Summe der Wochen in zusammenhängenden Blöcken dieses Regimes · N Bl. = Anzahl unabhängiger Blöcke.">Wochen</th>
+                  <th title="Veränderung der Critical Speed vom Block-Start zum Block-Ende (s/km, negativ = schneller = besser). NICHT der CS-Absolutwert oben in den Markern.">Δ CS</th>
+                  <th title="Veränderung des VDOT über den Block (positiv = besser).">Δ VDOT</th>
+                  <th title="Belastbarkeit: folgt der Anzahl unabhängiger Blöcke, nicht der reinen Wochenzahl.">Konfidenz</th>
+                </tr></thead>
                 <tbody>
                   {inference.regimes.map((r) => (
                     <tr key={r.regime}>
                       <td><strong>{REGIME_LABEL[r.regime]}</strong></td>
                       <td className="tiny muted nowrap">{r.fromDate && r.toDate ? `${fmtDate(r.fromDate)} – ${fmtDate(r.toDate)}` : "—"}</td>
-                      <td>{r.nWeeks}</td>
+                      <td className="nowrap">{r.nWeeks}{r.nBlocks && r.nBlocks > 1 ? <span className="tiny muted"> · {r.nBlocks} Bl.</span> : null}</td>
                       <td style={{ color: r.csChange != null && r.csChange < 0 ? "var(--ok)" : r.csChange != null && r.csChange > 0 ? "var(--danger)" : undefined }}>
                         {r.csChange != null ? `${r.csChange > 0 ? "+" : ""}${r.csChange} s/km` : "—"}
                       </td>
@@ -154,9 +199,20 @@ export default function Methodik() {
                   ))}
                 </tbody>
               </table>
+              {/* v1.11.1: Klartext, warum „CS" an mehreren Stellen verschiedene Zahlen zeigt (image-53). */}
+              <details style={{ marginTop: 8, fontSize: 12 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--muted)" }}>Was bedeuten diese Werte?</summary>
+                <ul style={{ margin: "6px 0 0 16px", padding: 0, lineHeight: 1.55, color: "var(--muted)" }}>
+                  <li><strong>Critical Speed (Marker oben)</strong> — dein aktueller CS-<em>Absolutwert</em> über das 14-Tage-Fenster (Pace, kleiner = schneller).</li>
+                  <li><strong>Δ CS (diese Tabelle)</strong> — die <em>Veränderung</em> der CS vom Block-Start zum Block-Ende (s/km, negativ = schneller geworden). Block = zusammenhängende Wochen desselben Regimes.</li>
+                  <li><strong>CS vorher → nachher (Abschnitts-Auswertung)</strong> — zwei CS-Snapshots: 14-Tage-Fenster am Anfang vs. am Ende des Regime-Abschnitts.</li>
+                  <li><strong>Wochen · N Bl.</strong> — Gesamtwochen des Regimes und Anzahl unabhängiger Blöcke; die Konfidenz folgt den Blöcken.</li>
+                </ul>
+                <div style={{ marginTop: 4, fontStyle: "italic" }}>Verschiedene Zahlen sind also gewollt: Absolutwert vs. Veränderung vs. Anfang/Ende. Es bleibt Korrelation, nicht Kausalität.</div>
+              </details>
               {/* v1.10.0: Vorher→Nachher-Auswertung je erkanntem Regime-Abschnitt (image-20) — lazy beim Aufklappen. */}
               <div style={{ marginTop: 8 }}>
-                <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>Auswertung je Regime-Abschnitt</div>
+                <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>Auswertung je Regime-Abschnitt <span style={{ fontWeight: 400 }}>— CS vorher → nachher · 14-Tage-Fenster</span></div>
                 {inference.regimes.filter((r) => r.fromDate && r.toDate).map((r) => (
                   <RegimeEvaluation key={r.regime} label={REGIME_LABEL[r.regime]} from={r.fromDate!} to={r.toDate!} />
                 ))}

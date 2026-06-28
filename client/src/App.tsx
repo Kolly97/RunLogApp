@@ -26,7 +26,20 @@ import AchievementWatcher from "./components/AchievementWatcher.tsx";
 import KonamiLab from "./components/KonamiLab.tsx";
 import { applyTheme, getThemePref, setThemePref, type ThemePref } from "./lib/theme.ts";
 import { motionEnabled, getMotionPref, setMotionPref } from "./lib/motion.ts";
+import { useSparkPref, setSparkPref } from "./lib/sparkPref.ts";
 import pkg from "../../package.json";
+
+// T15: globaler Footer-Toggle für Marker-Sparklines (Pref in localStorage, gelesen auf der Methodik-Seite).
+function SparkToggle() {
+  const on = useSparkPref();
+  return (
+    <button type="button" className="linklike" onClick={() => setSparkPref(!on)}
+      title="Marker-Verläufe (Sparklines) auf der Methodik-Seite ein-/ausblenden"
+      style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--accent)", cursor: "pointer" }}>
+      Sparklines: {on ? "an" : "aus"}
+    </button>
+  );
+}
 
 // Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
 const BUILD_DATE = "27.06.2026"; // v1.8.0
@@ -124,7 +137,8 @@ export default function App() {
         </div>
         <footer className="footer no-print">
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
-          <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a>
+          <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a> ·{" "}
+          <SparkToggle />
         </footer>
         <PageActionsBar />
       </main>

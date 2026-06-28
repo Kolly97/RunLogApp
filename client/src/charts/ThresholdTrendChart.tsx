@@ -1,7 +1,7 @@
 // Schwellen-Trend (v1.9.0): Schwellen-Pace (aus VDOT/CS, links, invertiert: schneller = oben) + Critical Power
 // (rechts) über die Zeit. Quelle: /api/threshold-trend (rollendes 90-Tage-Fenster).
 import { useEffect, useState } from "react";
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import { api, type ThresholdTrend } from "../lib/api.ts";
 import { fmtDate, fmtDateY, paceStr } from "../lib/util.ts";
@@ -33,6 +33,7 @@ export default function ThresholdTrendChart({ height }: { height?: number }) {
         {hasCp && <YAxis yAxisId="cp" orientation="right" domain={["dataMin - 5", "dataMax + 5"]} width={42} unit=" W" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />}
         <Tooltip labelFormatter={(d) => fmtDateY(String(d))} formatter={(v: number, n: string) => n === "Schwellen-Pace" ? [`${paceStr(v)}/km`, n] : [`${v} W`, n]}
           contentStyle={TOOLTIP_STYLE} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
         <Area yAxisId="pace" type="monotone" dataKey="thrPace" baseValue={paceFloor} stroke="none" fill="url(#thrFill)" connectNulls legendType="none" activeDot={false} tooltipType="none" {...anim} />
         <Line yAxisId="pace" type="monotone" dataKey="thrPace" name="Schwellen-Pace" stroke="#eab308" strokeWidth={1.8} dot={false} connectNulls {...anim} />
         {hasCp && <Line yAxisId="cp" type="monotone" dataKey="cp" name="Critical Power" stroke="#7c3aed" strokeWidth={1.8} dot={false} connectNulls {...anim} />}

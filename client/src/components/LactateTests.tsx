@@ -30,10 +30,11 @@ function paceInputStr(sec?: number | null): string {
 const NUM_IN = { width: 84, padding: "7px 9px", fontSize: 14, textAlign: "right" as const };
 
 function PointsTable({
-  points, onChange,
+  points, onChange, isBike,
 }: {
   points: LactateTestPoint[];
   onChange: (pts: LactateTestPoint[]) => void;
+  isBike?: boolean;
 }) {
   const upd = (i: number, key: keyof LactateTestPoint, val: string) => {
     const n = [...points];
@@ -55,7 +56,7 @@ function PointsTable({
       <thead>
         <tr style={{ color: "var(--muted)", fontSize: 11 }}>
           <th style={{ textAlign: "left", paddingBottom: 4 }}>Stufe</th>
-          <th style={th}>km/h</th><th style={th}>Pace (min:s/km)</th><th style={th}>HF (bpm)</th>
+          <th style={th}>km/h</th><th style={th}>Pace (min:s/km)</th>{isBike && <th style={th}>Watt</th>}<th style={th}>HF (bpm)</th>
           <th style={th}>Laktat (mmol/l)</th><th style={th}>RPE (1–10)</th><th />
         </tr>
       </thead>
@@ -67,6 +68,8 @@ function PointsTable({
               value={p.speed_kmh ?? ""} onChange={(e) => upd(i, "speed_kmh", e.target.value)} /></td>
             <td style={{ padding: "0 4px" }}><input type="text" inputMode="numeric" placeholder="mm:ss" style={NUM_IN}
               key={`pace-${i}-${p.pace_s ?? ""}`} defaultValue={paceInputStr(p.pace_s)} onBlur={(e) => updPace(i, e.target.value)} title="Pace als mm:ss, z. B. 3:45" /></td>
+            {isBike && <td style={{ padding: "0 4px" }}><input type="number" step="1" placeholder="W" style={NUM_IN}
+              value={p.power_w ?? ""} onChange={(e) => upd(i, "power_w", e.target.value)} /></td>}
             <td style={{ padding: "0 4px" }}><input type="number" step="1" placeholder="bpm" style={NUM_IN}
               value={p.hr ?? ""} onChange={(e) => upd(i, "hr", e.target.value)} /></td>
             <td style={{ padding: "0 4px" }}><input type="number" step="0.1" placeholder="mmol" style={NUM_IN}
@@ -127,7 +130,7 @@ function TestEditor({
         <label className="field" style={{ margin: 0, flex: 1, minWidth: 140 }}><span><T k="lactate.field.notes">Notizen</T></span>
           <input value={notes} onChange={e => setNotes(e.target.value)} /></label>
       </div>
-      <PointsTable points={points} onChange={setPoints} />
+      <PointsTable points={points} onChange={setPoints} isBike={sport === "Bike"} />
       <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
         <button className="sm" onClick={() => setPoints([...points, mkRow()])}><T k="lactate.btn.addRow">+ Stufe</T></button>
         <button onClick={save} disabled={busy}><T k="lactate.btn.save">Speichern & berechnen</T></button>
@@ -220,9 +223,123 @@ function fmtPaceShort(sec?: number | null): string {
   return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 }
 
+// T2: x-Achsen-Modus für die Laktatkurve — Pace (Lauf) ↔ km/h (Rad) ↔ Watt.
+type XMode = "pace" | "kmh" | "watt";
+
+/** Linear interpolierter Watt-Wert bei Geschwindigkeit `sp` aus den (speed_kmh, power_w)-Rohpunkten.
+ *  null, wenn <2 Wattpunkte. An den Rändern wird auf den Endwert geklemmt (keine Extrapolation). */
+function makePowerAt(points: LactateTestPoint[]): ((sp: number) => number) | null {
+  const pts = points
+    .filter((p) => p.speed_kmh != null && p.power_w != null && p.power_w > 0)
+    .map((p) => ({ sp: p.speed_kmh!, w: p.power_w! }))
+    .sort((a, b) => a.sp - b.sp);
+  if (pts.length < 2) return null;
+  return (sp: number): number => {
+    if (sp <= pts[0].sp) return pts[0].w;
+    for (let i = 1; i < pts.length; i++) {
+      if (sp <= pts[i].sp) {
+        const t = (sp - pts[i - 1].sp) / (pts[i].sp - pts[i - 1].sp || 1);
+        return pts[i - 1].w + t * (pts[i].w - pts[i - 1].w);
+      }
+    }
+    return pts[pts.length - 1].w;
+  };
+}
+
+// T1 (ausführlich): Physiologie + Methode/Quelle je Schwelle — wissenschaftlich verifiziert, ausklappbar.
+const THRESHOLD_INFO: { k: string; color: string; phys: string; method: string }[] = [
+  {
+    k: "FatMax", color: "#0891b2",
+    phys: "Intensität mit der höchsten absoluten Fettoxidationsrate (g/min). Darüber verschiebt sich die Energiebereitstellung zunehmend zu Kohlenhydraten — Ankerpunkt für lange Grundlageneinheiten und Stoffwechseltraining.",
+    method: "Hier geschätzt als Laktat-Minimum im aeroben Bereich unterhalb LT1. Exakt nur per Spiroergometrie (RER/indirekte Kalorimetrie) bestimmbar — dies ist eine Näherung.",
+  },
+  {
+    k: "LT1 · aerobe Schwelle", color: "#22c55e",
+    phys: "Erster Anstieg des Blutlaktats über das Ruhe-/Baseline-Niveau. Obere Grenze des reinen Grundlagenbereichs (GA1); darüber beginnt eine messbare, noch kompensierte Laktatbildung.",
+    method: "Baseline + Δ (≈ 0,4 mmol/L); erster Überschreitungspunkt linear interpoliert. Verwandte Verfahren: Log-Log (Beaver 1985), Δ 0,2–0,5 mmol/L.",
+  },
+  {
+    k: "2 mmol/L", color: "#64748b",
+    phys: "Historische fixe Referenz für die „aerobe Schwelle\" (Kindermann 1979; Aunola & Rusko). Individuell stark variabel — dient nur der Orientierung.",
+    method: "Feste 2-mmol/L-Linie, aus den Rohpunkten interpoliert.",
+  },
+  {
+    k: "LT2 · anaerobe Schwelle", color: "#eab308",
+    phys: "Näherung an das maximale Laktat-Steady-State (MLSS) — die höchste Dauerleistung, bei der Laktatbildung und -elimination noch im Gleichgewicht sind. Zentraler Anker für Schwellentraining und Renntempo.",
+    method: "Modifizierter Dmax (AIS; Bishop 1998): maximale senkrechte Distanz der gefitteten Laktatkurve zur Sekante vom ersten echten Anstieg bis zur höchsten Stufe. Robuster als klassischer Dmax.",
+  },
+  {
+    k: "4 mmol/L · OBLA", color: "#dc2626",
+    phys: "„Onset of Blood Lactate Accumulation\" (Sjödin & Jacobs 1981; Mader). Klassische fixe anaerobe Schwelle bei 4 mmol/L.",
+    method: "Feste 4-mmol/L-Linie, aus den Rohpunkten interpoliert. Bei Trainierten oft konservativ — das echte MLSS liegt häufig unter 4 mmol/L.",
+  },
+];
+
+function ThresholdInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="sm ghost" onClick={() => setOpen((o) => !o)} style={{ fontSize: 12 }}>
+        {open ? "▲ " : "▼ "}Wie werden diese Schwellen bestimmt?
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, paddingLeft: 12, borderLeft: "2px solid var(--border)", display: "grid", gap: 8 }}>
+          {THRESHOLD_INFO.map((info) => (
+            <div key={info.k} style={{ fontSize: 12, lineHeight: 1.5 }}>
+              <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: info.color, display: "inline-block", flexShrink: 0 }} />
+                {info.k}
+              </div>
+              <div style={{ color: "var(--ink)" }}>{info.phys}</div>
+              <div className="muted"><b>Methode:</b> {info.method}</div>
+            </div>
+          ))}
+          <div className="tiny muted" style={{ fontStyle: "italic" }}>
+            Fixe mmol-Schwellen sind populationsbasierte Referenzen; individuelle Schwellen (LT1/LT2) sind aussagekräftiger.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Volle Laktat-Auswertung (v1.10.0): Kurve + Schwellen (LT1/LT2/2/4 mmol/FatMax) + Fit-Güte + Trainingsempfehlungen.
-function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: LactateTestPoint[] }) {
-  const raw = points.filter((p) => p.speed_kmh != null && p.lactate != null).map((p) => ({ speed_kmh: p.speed_kmh!, lactate: p.lactate }));
+// v1.11.0 (T1/T2): ausführliche Schwellen-Begründung (ausklappbar), Marker-Labels INNERHALB des Plots,
+// umschaltbare x-Achse (Pace ↔ km/h ↔ Watt).
+function LactateAnalysisPanel({ a, points, sport }: { a: LactateAnalysis; points: LactateTestPoint[]; sport?: string }) {
+  const powerAt = makePowerAt(points);
+  const isBike = (sport || "").toLowerCase().includes("bike") || (sport || "").toLowerCase().includes("rad");
+  // Default-Modus: Rad → Watt (falls vorhanden) sonst km/h; Lauf → Pace.
+  const [xMode, setXMode] = useState<XMode>(isBike ? (powerAt ? "watt" : "kmh") : "pace");
+  const modes: { key: XMode; label: string }[] = [
+    { key: "pace", label: "min/km" },
+    { key: "kmh", label: "km/h" },
+    ...(powerAt ? [{ key: "watt" as XMode, label: "Watt" }] : []),
+  ];
+
+  // x-Wert eines Punkts im aktuellen Modus (null wenn im Watt-Modus keine Leistung ableitbar).
+  const toX = (speed: number, pace?: number | null, power?: number | null): number | null => {
+    if (xMode === "pace") return pace ?? Math.round(3600 / speed);
+    if (xMode === "watt") return power ?? (powerAt ? Math.round(powerAt(speed)) : null);
+    return speed; // km/h
+  };
+  const fmtX = (v: number): string => (xMode === "pace" ? `${fmtPaceShort(v)}/km` : xMode === "watt" ? `${Math.round(v)} W` : `${v} km/h`);
+
+  const raw = points
+    .filter((p) => p.speed_kmh != null && p.lactate != null)
+    .map((p) => ({ x: toX(p.speed_kmh!, p.pace_s, p.power_w), lactate: p.lactate }))
+    .filter((p): p is { x: number; lactate: number } => p.x != null);
+  const curve = a.curve
+    .map((c) => ({ x: toX(c.speed_kmh, c.pace_s), lactate: c.lactate }))
+    .filter((p): p is { x: number; lactate: number } => p.x != null);
+  const thrX = (p: LactateThresholdPoint): number | null => toX(p.speed_kmh, p.pace_s);
+
+  // Achsen-Konfiguration je Modus. Pace invertiert (faster = rechts) → Intensität steigt stets nach rechts.
+  const reversed = xMode === "pace";
+  const pad = xMode === "pace" ? 6 : xMode === "watt" ? 12 : 0.3;
+  const axisTickFmt = xMode === "pace" ? (v: number) => fmtPaceShort(v) : undefined;
+  const axisUnit = xMode === "kmh" ? " km/h" : xMode === "watt" ? " W" : "";
+
   const rows = ([
     a.fatmax && { k: "FatMax", p: a.fatmax, sub: "geschätzt" },
     a.lt1 && { k: "LT1 · aerob", p: a.lt1 },
@@ -239,22 +356,32 @@ function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: Lacta
 
   return (
     <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 2 }}>
+        <span className="seg" title="x-Achse umschalten">
+          {modes.map((m) => (
+            <button key={m.key} className={xMode === m.key ? "active" : ""} onClick={() => setXMode(m.key)}>{m.label}</button>
+          ))}
+        </span>
+      </div>
       <ResponsiveContainer width="100%" height={210}>
-        <ComposedChart margin={{ top: 10, right: 12, left: 0, bottom: 4 }}>
-          <XAxis type="number" dataKey="speed_kmh" domain={["dataMin - 0.3", "dataMax + 0.3"]} unit=" km/h" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} width={30} />
-          <Tooltip formatter={(v: number, n: string) => [n === "Laktat" ? `${v} mmol/l` : v, n]} labelFormatter={(v) => `${v} km/h`} contentStyle={TOOLTIP_STYLE} />
-          <Line data={a.curve} dataKey="lactate" name="Fit" stroke="#2b6cb0" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+        <ComposedChart margin={{ top: 14, right: 14, left: 0, bottom: 4 }}>
+          <XAxis type="number" dataKey="x" reversed={reversed} domain={[`dataMin - ${pad}`, `dataMax + ${pad}`]}
+            unit={axisUnit} tickFormatter={axisTickFmt} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={30} unit=" mmol" />
+          <Tooltip
+            formatter={(v: number, n: string) => [n === "Laktat" ? `${v} mmol/l` : v, n]}
+            labelFormatter={(v) => fmtX(Number(v))} contentStyle={TOOLTIP_STYLE} />
+          <Line data={curve} dataKey="lactate" name="Fit" stroke="#2b6cb0" strokeWidth={1.8} dot={false} isAnimationActive={false} />
           <Scatter data={raw} dataKey="lactate" name="Laktat" fill="#2b6cb0" />
-          {a.lt1 && <ReferenceLine x={a.lt1.speed_kmh} stroke="#22c55e" strokeWidth={1.5} label={{ value: "LT1", fontSize: 10, fill: "#22c55e", position: "top" }} />}
-          {a.lt2 && <ReferenceLine x={a.lt2.speed_kmh} stroke="#eab308" strokeWidth={1.5} label={{ value: "LT2", fontSize: 10, fill: "#eab308", position: "top" }} />}
-          {a.fatmax && <ReferenceLine x={a.fatmax.speed_kmh} stroke="#0891b2" strokeDasharray="3 3" label={{ value: "FatMax", fontSize: 9, fill: "#0891b2", position: "insideTopLeft" }} />}
+          {a.fatmax && thrX(a.fatmax) != null && <ReferenceLine x={thrX(a.fatmax)!} stroke="#0891b2" strokeDasharray="3 3" label={{ value: "FatMax", fontSize: 9, fill: "#0891b2", position: "insideTopLeft" }} />}
+          {a.lt1 && thrX(a.lt1) != null && <ReferenceLine x={thrX(a.lt1)!} stroke="#22c55e" strokeWidth={1.5} label={{ value: "LT1", fontSize: 10, fontWeight: 700, fill: "#22c55e", position: "insideTop" }} />}
+          {a.lt2 && thrX(a.lt2) != null && <ReferenceLine x={thrX(a.lt2)!} stroke="#eab308" strokeWidth={1.5} label={{ value: "LT2", fontSize: 10, fontWeight: 700, fill: "#b8860b", position: "insideBottom" }} />}
         </ComposedChart>
       </ResponsiveContainer>
 
       <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", marginTop: 6 }}>
         <thead><tr style={{ color: "var(--muted)", textAlign: "right" }}>
-          <th style={{ textAlign: "left" }}>Marker</th><th>km/h</th><th>Pace</th><th>HF</th><th>Laktat</th>
+          <th style={{ textAlign: "left" }}>Marker</th><th>km/h</th><th>Pace</th>{powerAt && <th>Watt</th>}<th>HF</th><th>Laktat</th>
         </tr></thead>
         <tbody>
           {rows.map((r) => (
@@ -262,6 +389,7 @@ function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: Lacta
               <td style={{ fontWeight: 600 }}>{r.k} {r.sub && <span className="tiny muted" style={{ fontWeight: 400 }}>({r.sub})</span>}</td>
               <td style={{ textAlign: "right" }}>{r.p.speed_kmh.toFixed(1)}</td>
               <td style={{ textAlign: "right" }}>{fmtPaceShort(r.p.pace_s)}/km</td>
+              {powerAt && <td style={{ textAlign: "right" }}>{Math.round(powerAt(r.p.speed_kmh))} W</td>}
               <td style={{ textAlign: "right" }}>{r.p.hr ?? "—"}</td>
               <td style={{ textAlign: "right" }}>{r.p.lactate.toFixed(1)}</td>
             </tr>
@@ -269,6 +397,8 @@ function LactateAnalysisPanel({ a, points }: { a: LactateAnalysis; points: Lacta
         </tbody>
       </table>
       <div className="tiny muted" style={{ marginTop: 4 }}>Fit-Güte R² {a.r2 != null ? a.r2.toFixed(3) : "—"} · Konfidenz <span style={{ color: confCol, fontWeight: 600 }}>{a.confidence}</span> · Methode {a.method}</div>
+
+      <ThresholdInfo />
 
       {recs.length > 0 && (
         <div style={{ marginTop: 8 }}>
@@ -371,7 +501,7 @@ export default function LactateTests() {
                   {t.warnings.join(" · ")}
                 </div>
               )}
-              {fullTest.analysis && <LactateAnalysisPanel a={fullTest.analysis} points={fullTest.points} />}
+              {fullTest.analysis && <LactateAnalysisPanel a={fullTest.analysis} points={fullTest.points} sport={fullTest.sport} />}
               <div className="tiny muted" style={{ fontWeight: 600, margin: "10px 0 2px" }}>Gemessene Stufen</div>
               <table style={{ borderCollapse: "collapse", width: "100%", color: "var(--muted)" }}>
                 <thead>

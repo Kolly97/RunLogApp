@@ -24,6 +24,10 @@ export interface Effort {
   reps?: number; sec?: number | null; dist_m?: number | null; pace_s?: number | null;
   zone?: number | null; label?: string;
   rest_s?: number | null; rest_type?: "jog" | "stand" | null; hr_recovery?: number | null; // v1.6.0: Intervall-Pause
+  // T7 (v1.11.0): von-bis-Bänder für rohe Einheiten. reps = empfohlener Zielwert (heute), reps_lo/hi = Band.
+  reps_lo?: number | null; reps_hi?: number | null; pace_lo?: number | null; pace_hi?: number | null;
+  // v1.12.0: verschachtelte Gruppen (group:true ⇒ reps × children) für frei strukturierte Einheiten.
+  group?: boolean; children?: Effort[];
 }
 
 export interface ConcreteSession {
@@ -34,6 +38,7 @@ export interface ConcreteSession {
   description: string;                        // kurze Klartext-Beschreibung (Pace/Struktur)
   planned_tss: number;                        // erwarteter Plan-TSS (≈ target) — zur Anzeige/Konfidenz
   paceTarget: number | null;                  // Ziel-Pace s/km (Dauerläufe), sonst null
+  adaptNote?: string | null;                  // T7: „angepasst an: Phase · TSB · Fitness · VDOT" (Live-Kontext)
 }
 
 /** Zonen-Pace (s/km) für Zone z, mit Default-Fallback — exakt wie rTssFromZones in load.ts. */

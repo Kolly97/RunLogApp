@@ -37,6 +37,9 @@
   --fs-xs: 11px; --fs-sm: 12px; --fs-base: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 24px;
   /* Chart-Farben (theme-fähig via CSS-Var in SVG/Recharts). */
   --chart-grid: #eef1f5; --chart-tick: #8a96a6;
+  /* Glass-Effekte (fixierte Leisten, Hover-Overlays) — dark-mode-überschrieben. */
+  --bg-glass: rgba(255, 255, 255, 0.96);
+  --bg-glass-sm: rgba(255, 255, 255, 0.88);
 
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -62,6 +65,8 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-lift: 0 8px 22px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
   --chart-grid: #26324a; --chart-tick: #8b97a8;
+  --bg-glass: rgba(22, 30, 46, 0.96);
+  --bg-glass-sm: rgba(22, 30, 46, 0.88);
 }
 
 /* M1: globaler Animations-Aus-Schalter (Pref „aus" ODER System prefers-reduced-motion). */
@@ -132,9 +137,11 @@ button:active { transform: translateY(0.5px) scale(0.985); }
 .celebrate-card strong { font-size: 16px; display: block; }
 /* Cineastischer Intro (M6): einmaliger, skippbarer Erst-Start. */
 .intro-overlay { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); cursor: pointer; }
-.intro-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: default; }
-.intro-brand { font-size: 56px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }
-.intro-brand span { color: var(--accent); }
+.intro-stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; cursor: default; overflow: visible; }
+/* T17: echtes App-Icon als Hero/Ziel — GSAP poppt es ein (Start scale:0/opacity:0). */
+.intro-icon { width: 124px; height: 124px; border-radius: 27px; display: block; opacity: 0; filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.38)); user-select: none; }
+/* T17: Läufer-Emoji folgt der Form-Kurve im Intro. GSAP setzt left/top; xPercent/yPercent zentrieren unterm Pfad. */
+.intro-runner { position: absolute; left: 0; top: 0; font-size: 22px; pointer-events: none; user-select: none; opacity: 0; line-height: 1; z-index: 2; }
 .intro-svg { width: min(420px, 70vw); height: 56px; display: block; }
 .intro-tag { letter-spacing: 0.14em; text-transform: uppercase; }
 .intro-skip { position: fixed; bottom: 26px; right: 26px; opacity: 0.7; cursor: pointer; }
@@ -166,11 +173,11 @@ button:active { transform: translateY(0.5px) scale(0.985); }
 
 /* Fixierte Aktionsleiste (v1.9.0): „Layout bearbeiten" + „Hilfe & Tipps" gemeinsam, klebt unten, druckt nicht. */
 .page-actions-bar { position: fixed; left: 208px; right: 0; bottom: 0; z-index: 40;
-  background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(6px);
-  border-top: 1px solid #e3e8ef; box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.06); }
+  background: var(--bg-glass); backdrop-filter: blur(6px);
+  border-top: 1px solid var(--line); box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08); }
 .page-actions-row { display: flex; align-items: center; gap: 8px; padding: 8px 30px; max-width: 1180px; }
-.page-actions-help { max-width: 1180px; padding: 12px 30px; border-bottom: 1px solid #eef2f7;
-  background: #fff; max-height: 42vh; overflow: auto; }
+.page-actions-help { max-width: 1180px; padding: 12px 30px; border-bottom: 1px solid var(--border-faint);
+  background: var(--card); max-height: 42vh; overflow: auto; }
 .page-actions-help ul { margin: 6px 0 8px 16px; padding: 0; font-size: 13px; line-height: 1.55; }
 .page-actions-help strong { font-size: 13px; }
 .ph-badge { display: inline-flex; width: 16px; height: 16px; border-radius: 999px; border: 1.5px solid currentColor;
@@ -206,7 +213,7 @@ button:active { transform: translateY(0.5px) scale(0.985); }
 /* Inputs */
 input, select, textarea {
   font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
-  background: #fff; color: var(--ink); width: 100%;
+  background: var(--card); color: var(--ink); width: 100%;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid #bcd4f0; border-color: var(--accent); }
@@ -214,30 +221,47 @@ label.field { display: block; margin-bottom: 8px; }
 label.field > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
 button {
   font: inherit; font-weight: 600; padding: 8px 14px; border: 1px solid var(--line);
-  border-radius: 8px; background: #fff; color: var(--ink); cursor: pointer;
+  border-radius: 8px; background: var(--card); color: var(--ink); cursor: pointer;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-button:hover { background: #f0f4f8; border-color: #cbd5e1; }
+button:hover { background: var(--surface2); border-color: var(--line); }
 button:active:not(:disabled) { transform: translateY(1px) scale(.99); }
 button:focus-visible { outline: 2px solid #bcd4f0; outline-offset: 1px; }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button:disabled:hover { background: #fff; border-color: var(--line); filter: none; }
+button:disabled:hover { background: var(--card); border-color: var(--line); filter: none; }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button.primary:hover { filter: brightness(1.07); box-shadow: 0 1px 4px rgba(43, 108, 176, 0.28); }
 button.primary:disabled:hover { background: var(--accent); }
 button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
-button.ghost:hover { background: #eef2f7; border-color: transparent; color: var(--ink); }
+button.ghost:hover { background: var(--surface2); border-color: transparent; color: var(--ink); }
 button.sm { padding: 4px 9px; font-size: 12px; }
 button.danger { color: var(--danger); }
-button.ghost.danger:hover { background: #fdf0f0; color: var(--danger); }
+button.ghost.danger:hover { background: var(--surface2); color: var(--danger); }
 
-/* Tables */
+/* Tables — Basis */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
 th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
+
+/* T3 — Polierte Daten-Tabelle. Klasse .table ergänzt — DRY, schrittweise anwendbar.
+   Zebrastreifen (var(--surface2)), Sticky-Header, Zahlen rechts, theme-fähig. */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table thead th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+  color: var(--muted); padding: 7px 10px; border-bottom: 2px solid var(--line);
+  background: var(--surface2); position: sticky; top: 0; z-index: 1; white-space: nowrap;
+}
+.table td { padding: 7px 10px; border-bottom: 1px solid var(--border-faint); vertical-align: middle; }
+.table tbody tr:nth-child(even) td { background: var(--surface2); }
+.table tbody tr:hover td { background: var(--border-faint); }
+.table tr:last-child td { border-bottom: none; }
+/* Zahlen rechtsbündig + Tabular-Nums: einfach .num auf th/td setzen. */
+.table td.num, .table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Kompakte Variante (z. B. Splits, Laktat-Tabellen). */
+.table.sm td, .table.sm th { padding: 4px 8px; font-size: 12px; }
 
 /* Flags / pills */
 .flag { display: flex; gap: 8px; align-items: flex-start; padding: 8px 11px; border-radius: 9px; margin-bottom: 7px; font-size: 13px; border: 1px solid transparent; }
@@ -250,6 +274,11 @@ tr:last-child td { border-bottom: none; }
 .flag.warn .dot { background: var(--warn); }
 .flag.danger { background: #fdf0f0; color: #971b1b; }
 .flag.danger .dot { background: var(--danger); }
+/* T10 dark mode: Flag-Hintergründe — dezente Farbtönung statt grellem Hellton. */
+:root[data-theme="dark"] .flag.ok { background: rgba(52, 211, 153, 0.10); color: #6ee7b7; }
+:root[data-theme="dark"] .flag.info { background: rgba(139, 151, 168, 0.12); color: #8b97a8; }
+:root[data-theme="dark"] .flag.warn { background: rgba(251, 191, 36, 0.10); color: #fde68a; }
+:root[data-theme="dark"] .flag.danger { background: rgba(248, 113, 113, 0.10); color: #fca5a5; }
 
 /* Reale Bewertungs-Schilder nebeneinander, gleich hoch (v0.14.0, ToDo 9) */
 .flag-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
@@ -257,7 +286,7 @@ tr:last-child td { border-bottom: none; }
 
 /* Efficiency Factor je Wochentag (v0.14.0, ToDo 11) */
 .ef-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.ef-cell { border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; text-align: center; background: #f9fbfd; }
+.ef-cell { border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; text-align: center; background: var(--surface2); }
 .ef-cell.hard-prev { border-color: var(--warn); background: #fdf6ec; }
 .ef-cell .ef-day { font-size: 11px; color: var(--muted); font-weight: 700; }
 .ef-cell .ef-val { font-size: 16px; font-weight: 700; line-height: 1.2; }
@@ -279,11 +308,11 @@ tr:last-child td { border-bottom: none; }
 .nowrap { white-space: nowrap; }
 
 /* Day planner */
-.day { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
-.day.today { border-color: var(--accent); box-shadow: 0 0 0 2px #d6e6f7; }
+.day { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--card); }
+.day.today { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.18); }
 .day-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
 .day-name { font-weight: 700; }
-.sess { display: flex; gap: 8px; align-items: center; padding: 6px; border-radius: 8px; background: #f7f9fb; margin-bottom: 5px; flex-wrap: wrap; }
+.sess { display: flex; gap: 8px; align-items: center; padding: 6px; border-radius: 8px; background: var(--surface2); margin-bottom: 5px; flex-wrap: wrap; }
 .sess .type-pill { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; color: #fff; }
 
 .zone-bar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
@@ -299,14 +328,14 @@ tr:last-child td { border-bottom: none; }
 textarea { resize: vertical; min-height: 38px; }
 
 /* Segment-Buttons (RangeSelector) */
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
-.seg button { border: none; border-radius: 0; padding: 5px 11px; font-size: 12px; background: #fff; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--card); }
+.seg button { border: none; border-radius: 0; padding: 5px 11px; font-size: 12px; background: var(--card); transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.active { background: var(--accent); color: #fff; }
 
 /* Kategorie-Summen im Wochenbericht (Lauf / Rad / Kraft) */
 .cat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.cat-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #f9fbfd; min-width: 0; }
+.cat-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface2); min-width: 0; }
 .cat-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .cat-box .main { font-size: 16px; font-weight: 700; margin-top: 2px; white-space: nowrap; }
 
@@ -323,18 +352,18 @@ table.units .note-name { font-style: normal; font-weight: 600; color: var(--mute
 table.units .note-efforts { color: var(--muted); }
 
 /* Wochenbericht: Wettkampf-Block */
-.race-block { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: #fffdf5; }
+.race-block { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--card); }
 .race-block table.splits { margin-top: 6px; font-size: 11px; }
 .race-block table.splits th, .race-block table.splits td { padding: 2px 8px; text-align: left; }
 
 /* Intensitäts-Karte: Wochen-Bewertungs-Badge */
-.int-rating { margin-top: 6px; padding: 5px 9px; border: 1px solid; border-radius: 8px; font-size: 13px; background: #fff; }
+.int-rating { margin-top: 6px; padding: 5px 9px; border: 1px solid; border-radius: 8px; font-size: 13px; background: var(--card); }
 .donut-sublabel { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; }
 
 /* PMC: Hover-Overlay (Einheitsname oben links) */
 .pmc-hover {
   position: absolute; top: 6px; left: 46px; z-index: 5; pointer-events: none;
-  background: rgba(255,255,255,0.92); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-glass-sm); backdrop-filter: blur(4px); border: 1px solid var(--line); border-radius: 8px;
   padding: 3px 8px; font-size: 12px; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -351,7 +380,7 @@ table.units .note-efforts { color: var(--muted); }
 .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .chart-card {
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
-  background: #fff; box-shadow: var(--shadow); min-width: 0;
+  background: var(--card); box-shadow: var(--shadow); min-width: 0;
 }
 .chart-card.tight { padding: 8px 10px; }
 .chart-card h3 { font-size: 12px; margin-bottom: 6px; }
@@ -375,10 +404,10 @@ table.units .note-efforts { color: var(--muted); }
 
 /* Saisonplan: Jahres-Akkordeon-Kopfzeile (ToDo 9 v0.11.0) */
 .season-year .year-head td {
-  background: #f5f7fa; cursor: pointer; padding: 9px 8px; border-top: 1px solid var(--line);
+  background: var(--surface2); cursor: pointer; padding: 9px 8px; border-top: 1px solid var(--line);
   user-select: none;
 }
-.season-year .year-head:hover td { background: #eef2f7; }
+.season-year .year-head:hover td { background: var(--border-faint); }
 .season-year .year-head .caret { color: var(--muted); font-size: 10px; margin-right: 8px; display: inline-block; width: 10px; }
 .season-year .year-head strong { font-size: 14px; }
 
@@ -386,23 +415,23 @@ table.units .note-efforts { color: var(--muted); }
 .week-select { position: relative; }
 .week-select-trigger {
   display: inline-flex; align-items: center; gap: 8px; min-width: 280px; justify-content: space-between;
-  background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
   font: inherit; font-size: 13px; color: var(--ink); cursor: pointer;
 }
-.week-select-trigger:hover { border-color: #cbd5e1; }
+.week-select-trigger:hover { border-color: var(--accent); }
 .week-select-trigger .wst-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .week-select-trigger .caret { color: var(--muted); font-size: 11px; }
 .week-select-pop {
   position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; min-width: 320px; max-width: 380px;
-  max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--line);
-  border-radius: 10px; box-shadow: 0 12px 32px rgba(20,28,44,0.16); padding: 4px;
+  max-height: 60vh; overflow-y: auto; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(20,28,44,0.22); padding: 4px;
 }
 .wy-group + .wy-group { border-top: 1px solid var(--line); }
 .wy-head {
   display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
   font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; padding: 8px;
 }
-.wy-head:hover { background: #f5f7fa; border-radius: 6px; }
+.wy-head:hover { background: var(--surface2); border-radius: 6px; }
 .wy-head .caret { color: var(--muted); font-size: 10px; width: 10px; }
 .wy-head .tiny { margin-left: auto; }
 /* sanfte Höhen-Animation per grid-template-rows 0fr↔1fr */
@@ -413,8 +442,8 @@ table.units .note-efforts { color: var(--muted); }
   display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
   font: inherit; cursor: pointer; padding: 6px 8px 6px 22px; border-radius: 6px; text-align: left;
 }
-.wy-week:hover { background: #f5f7fa; }
-.wy-week.active { background: #eef4fc; }
+.wy-week:hover { background: var(--surface2); }
+.wy-week.active { background: var(--border-faint); }
 .wy-week.sick .wy-week-label { color: var(--danger); }
 .wy-week .wy-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .wy-week .wy-week-label { font-size: 13px; font-weight: 600; min-width: 46px; }
@@ -425,7 +454,7 @@ table.units .note-efforts { color: var(--muted); }
 .check-heatmap { display: grid; gap: 3px; align-items: center; min-width: min-content; }
 /* erste Spalte (Ecke, Kategorie-Namen, Score-Label) bleibt beim Horizontal-Scroll stehen */
 .check-heatmap .ch-corner, .check-heatmap .ch-row-head, .check-heatmap .ch-score-head {
-  position: sticky; left: 0; z-index: 2; background: #fff;
+  position: sticky; left: 0; z-index: 2; background: var(--card);
 }
 .check-heatmap .ch-corner { height: 40px; }
 .check-heatmap .ch-col-head {
@@ -468,15 +497,15 @@ table.units .note-efforts { color: var(--muted); }
 /* Wochenplanung: Vorlagen-Schnellauswahl am Tag (▾) */
 .tpl-menu {
   position: absolute; z-index: 60; top: calc(100% + 4px); right: 0; min-width: 220px;
-  max-height: 50vh; overflow-y: auto; background: #fff; border: 1px solid var(--line);
-  border-radius: 10px; box-shadow: 0 12px 32px rgba(20,28,44,0.16); padding: 4px;
+  max-height: 50vh; overflow-y: auto; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(20,28,44,0.22); padding: 4px;
 }
 .tpl-menu .tpl-item {
   display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
   font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; padding: 7px 9px;
   border-radius: 6px; text-align: left;
 }
-.tpl-menu .tpl-item:hover { background: #f5f7fa; }
+.tpl-menu .tpl-item:hover { background: var(--surface2); }
 .tpl-menu .tpl-sep { height: 1px; background: var(--line); margin: 4px 0; }
 
 /* Anpassbares Chart-Raster (T8) — freies Raster via react-grid-layout. */
@@ -496,7 +525,7 @@ table.units .note-efforts { color: var(--muted); }
 /* paged: Toolbar als Overlay → Inhalt bekommt die volle Tile-Höhe (Editor == Druck, Legende clippt nicht). */
 .eg-toolbar.eg-overlay {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5;
-  background: rgba(255, 255, 255, 0.86); border-radius: 12px 12px 0 0;
+  background: var(--bg-glass-sm); border-radius: 12px 12px 0 0;
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
 }
 .eg-block.editing { outline: 1px dashed var(--line); outline-offset: -1px; border-radius: 12px; cursor: grab; }
@@ -517,18 +546,18 @@ table.units .note-efforts { color: var(--muted); }
 .eg-handle { color: var(--muted); font-size: 15px; user-select: none; }
 .eg-toolbar .eg-title { font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eg-toolbar .eg-spacer { flex: 1; }
-.eg-eye { border: 1px solid var(--line); border-radius: 7px; background: #fff; cursor: pointer; padding: 2px 7px; font-size: 13px; }
+.eg-eye { border: 1px solid var(--line); border-radius: 7px; background: var(--card); cursor: pointer; padding: 2px 7px; font-size: 13px; }
 .eg-tray { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.eg-tray button { border: 1px dashed var(--line); border-radius: 8px; background: #fff; cursor: pointer; padding: 3px 9px; }
+.eg-tray button { border: 1px dashed var(--line); border-radius: 8px; background: var(--card); cursor: pointer; padding: 3px 9px; }
 .eg-editbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 /* Kachel-Button-Gruppe (z. B. Seitenwechsel ← S / S →) */
 .eg-grp { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .eg-grp button {
-  border: 0; border-radius: 0; background: #fff; color: var(--muted);
+  border: 0; border-radius: 0; background: var(--card); color: var(--muted);
   font: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer; line-height: 1.4; white-space: nowrap;
 }
 .eg-grp button + button { border-left: 1px solid var(--line); }
-.eg-grp button:hover:not(:disabled) { background: #f5f7fa; }
+.eg-grp button:hover:not(:disabled) { background: var(--surface2); }
 .eg-grp button:disabled { opacity: 0.35; cursor: default; }
 .eg-grp button.on { background: var(--accent, #2563eb); color: #fff; }
 
@@ -552,26 +581,27 @@ table.units .note-efforts { color: var(--muted); }
   position: absolute; top: -2px; left: 0; font-size: 11px; font-weight: 700;
   color: var(--muted); letter-spacing: 0.03em; z-index: 7;
 }
+/* T10: A4-Sheet Preview im Dark Mode dunkel — echter Druck wird in @media print auf #fff erzwungen. */
 .eg-sheet {
   position: absolute; top: 14px; left: 0;
-  background: #fff; border: 1px solid var(--line); border-radius: 4px;
-  box-shadow: 0 6px 24px rgba(20, 28, 44, 0.12); overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 6px 24px rgba(20, 28, 44, 0.16); overflow: hidden;
 }
 .eg-sheet-scale { position: absolute; top: 0; left: 0; transform-origin: top left; }
 /* paged: Tile-Inhalt clippt (wie im Druck) statt Scrollbar → Editor == PDF. */
 .eg-sheet .eg-content { overflow: hidden !important; }
 .eg-textctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 .eg-addpage {
-  border: 1px dashed var(--line); border-radius: 10px; background: #fff; cursor: pointer;
+  border: 1px dashed var(--line); border-radius: 10px; background: var(--card); cursor: pointer;
   padding: 8px 16px; color: var(--muted); font: inherit; font-size: 13px;
 }
-.eg-addpage:hover { background: #f5f7fa; }
+.eg-addpage:hover { background: var(--surface2); }
 
 /* Intervall-Splits als Mini-Tabelle (Wochenbericht: unter der Einheit) */
 .effort-wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .effort-mini { width: auto; margin: 5px 0 3px; border-collapse: collapse; font-size: 11px; }
 .effort-mini th, .effort-mini td { border: 1px solid var(--line); padding: 2px 9px; text-align: right; white-space: nowrap; }
-.effort-mini th { background: #f5f7fa; color: var(--muted); font-weight: 600; }
+.effort-mini th { background: var(--surface2); color: var(--muted); font-weight: 600; }
 .effort-mini th:first-child, .effort-mini td.lbl { text-align: left; }
 
 /* Motion (T11): Seiten-Eintritt, Karten-Staffelung, Modal-Pop */
@@ -624,6 +654,12 @@ tr.opt-row.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
 
 /* Print */
 @media print {
+  /* T10: Dark-Mode-Vars im Druck auf Hellthema zurücksetzen → Bericht immer hell, egal ob App dunkel ist. */
+  :root, :root[data-theme="dark"] {
+    --bg: #f4f6f8; --card: #ffffff; --ink: #1a2230; --muted: #6b7888; --line: #e3e8ef;
+    --surface2: #f1f5f9; --border-faint: #eef1f5; --chart-grid: #eef1f5; --chart-tick: #8a96a6;
+    --bg-glass: rgba(255, 255, 255, 0.96); --bg-glass-sm: rgba(255, 255, 255, 0.88);
+  }
   /* Motion im Druck deaktivieren (kein Fade/Versatz im PDF) */
   .route-enter, .route-enter .card { animation: none !important; opacity: 1 !important; transform: none !important; }
   .no-print, .sidebar { display: none !important; }
@@ -660,7 +696,7 @@ tr.opt-row.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
   .eg-sheet-wrap { height: auto !important; margin: 0 !important; }
   .eg-sheet-label, .eg-addpage, .eg-textctl { display: none !important; }
   .eg-sheet {
-    position: static !important;
+    position: static !important; background: #fff !important;
     width: 794px !important; height: 1123px !important; overflow: hidden !important;
     box-shadow: none !important; border: none !important; border-radius: 0 !important; margin: 0 !important;
     break-after: page; break-inside: avoid;
@@ -695,7 +731,7 @@ tr.opt-row.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
 
 
 /* --- i18n: Sprachumschalter (Sidebar + Settings) --- */
-.lang-switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.lang-switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .lang-switch button { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .lang-switch button.active { background: var(--accent); color: #fff; }
 .sidebar .lang-switch { margin: 8px 0 4px; }

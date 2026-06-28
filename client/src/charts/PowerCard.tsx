@@ -122,7 +122,7 @@ export default function PowerCard() {
       <div className="tiny muted" style={{ margin: "10px 0 4px" }}>Power-Zonen (%CP, Stryd-nah)</div>
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
         {pc.zones.map((z) => (
-          <span key={z.z} className="pill" style={{ background: "#eef2f7", color: "var(--text)", fontSize: 11 }}>
+          <span key={z.z} className="pill" style={{ background: "var(--surface2)", color: "var(--text)", fontSize: 11 }}>
             <strong>Z{z.z} {z.name}</strong> {z.lo}{z.hi != null ? `–${z.hi}` : "+"} W
           </span>
         ))}

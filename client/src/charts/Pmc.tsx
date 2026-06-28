@@ -19,7 +19,7 @@ const SERIES = [
   { key: "form", name: "Form (TSB)", color: "var(--form)" },
   { key: "week", name: "TSS/Woche", color: "#7c9cbf" },
   { key: "tss", name: "TSS/Tag", color: "#c3ccd6" },
-  { key: "races", name: "Races", color: "#d4af37" },
+  { key: "races", name: "Races · PBs ▲", color: "#d4af37" },
 ] as const;
 type SeriesKey = (typeof SERIES)[number]["key"];
 

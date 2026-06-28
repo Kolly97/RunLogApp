@@ -303,7 +303,9 @@ export default function EditableGrid({ page, blocks, children, paged }: {
           onDragStop={onChange} onResizeStop={onChange}>
           {[...rgl].sort((a, c) => a.y - c.y || a.x - c.x).map((it) => {
             const b = blocks2.find((x) => x.id === it.i)!;
-            const hpx = b.defaultHeight ? (layout[b.id]?.h ? Math.max(120, it.h * ROW_H + (it.h - 1) * MARGIN - HEADER_PX) : b.defaultHeight) : undefined;
+            // T(v1.11.1): Höhe IMMER aus der Kachelhöhe ableiten, sobald eine Layout-Höhe existiert (gezogen) —
+            // sonst defaultHeight. So folgt jeder Chart der vertikalen Resize-Geste, nicht nur Blöcke mit defaultHeight.
+            const hpx = layout[b.id]?.h ? Math.max(120, it.h * ROW_H + (it.h - 1) * MARGIN - HEADER_PX) : b.defaultHeight;
             return (
               <div key={b.id} className={"eg-block" + (editing ? " editing" : "")}>
                 {editing && (

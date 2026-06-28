@@ -75,12 +75,15 @@ export interface Effort {
   avg_hr?: number | null; max_hr?: number | null; zone?: number | null; label?: string;
   group?: boolean; children?: Effort[];
   rest_s?: number | null; rest_type?: "jog" | "stand" | null; hr_recovery?: number | null; // v1.6.0: Intervall-Pause
+  // T7 (v1.11.0): von-bis-Bänder. reps = empfohlener Zielwert (heute), reps_lo/hi = Band; pace_lo/hi = Pace-Band.
+  reps_lo?: number | null; reps_hi?: number | null; pace_lo?: number | null; pace_hi?: number | null;
 }
 export interface PlannedSession {
   id?: number; date: string; week_no?: number | null; sport: string; type: string;
   planned_km?: number | null; planned_min?: number | null; zone_alloc?: ZoneAlloc | null;
   description?: string; structured?: unknown; efforts?: Effort[] | null; planned_tss?: number | null; sort_order?: number;
   prescription?: Prescription | null; // v1.7.0 Live-Resolution-Intention
+  adaptNote?: string | null;          // T7: „angepasst an …" (live aufgelöst)
 }
 // Einheiten-Vorlage = Inhalt einer PlannedSession ohne Datum/Woche (per Klick in einen Tag einsetzbar).
 export interface SessionTemplate {
@@ -135,7 +138,7 @@ export interface AnalyzeResult {
   // v1.3.0 (G4) — echte Zeit-in-Zone-Verteilung (Z1<LT1 / Z2 LT1–LT2 / Z3>LT2) + Polarisierungs-Index + Phasen-Ziel
   physioDist?: { z1: number; z2: number; z3: number; z1Min: number; z2Min: number; z3Min: number };
   polarizationIndex?: number | null;
-  phaseTarget?: { model: "pyramidal" | "polarized" | "regenerativ"; z1: number; z2: number; z3: number; label: string };
+  phaseTarget?: { model: "pyramidal" | "polarized" | "regenerativ"; z1: number; z2: number; z3: number; label: string; rationale?: string; overridden?: boolean };
   realPolarizationFlag?: Flag | null;
 }
 
@@ -211,12 +214,28 @@ export interface Availability {
   favoriteWorkouts?: string[];  // v1.8.0: bevorzugte Einheiten-IDs
   avoidWorkouts?: string[];     // v1.8.0: zu vermeidende Einheiten-IDs
 }
-export interface WorkoutInfo { id: string; name: string; family: string; purpose: string; effort: number; custom?: boolean; workZone?: number; anchor?: string | null; kind?: string }
+export interface WorkoutInfo {
+  id: string; name: string; family: string; purpose: string; effort: number; custom?: boolean;
+  workZone?: number; anchor?: string | null; kind?: string;
+  // v1.12.0: vom Server mit echten Zonen gerendert — volle Struktur + Tageswerte.
+  description?: string | null; efforts?: Effort[] | null;
+  planned_min?: number | null; planned_tss?: number | null; adaptNote?: string | null;
+}
 // Eigene Einheiten (v1.9.0, Z14)
 export type CustomFamily = "Easy" | "Long" | "LT1" | "LT2" | "VO2" | "Hill" | "Speed";
+// v1.12.0: rekursiver Struktur-Knoten (gespiegelt aus server/workouts.ts SegNode).
+export interface SegNode {
+  kind: "rep" | "group";
+  reps?: number; reps_lo?: number | null; reps_hi?: number | null;
+  children?: SegNode[];
+  dist_m?: number | null; sec?: number | null;
+  paceOffset?: number; restSec?: number | null; restType?: "jog" | "stand";
+  label?: string;
+}
 export interface CustomInput {
   name: string; family: CustomFamily; kind: "steady" | "intervals"; workZone: number;
   minMin?: number; maxMin?: number; reps?: number; repSec?: number; repDist_m?: number; restSec?: number; phases?: string[];
+  structure?: SegNode[]; // v1.12.0: frei verschachtelte Struktur (Vorrang vor Flach-Feldern)
 }
 export interface CustomEstimate { template: { id: string; family: string; effort: number; anchor: string | null; sessionType: string }; tssEstimate: number; durationMin: number }
 export interface CustomWorkout { id: number; name: string; family: string; template: { id: string; effort: number; workZone: number; kind: string }; created_at: string }
@@ -264,6 +283,7 @@ export interface BlockDay {
   planned_min: number; planned_tss: number; description: string;
   zone_alloc: ZoneAlloc; efforts: Effort[] | null; paceTarget: number | null;
   prescription?: Prescription | null; // v1.7.0 Live-Resolution
+  adaptNote?: string | null;          // T7: „angepasst an …"
 }
 export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
@@ -336,6 +356,7 @@ export interface MethodEvaluationResult {
 export interface RegimeStat {
   regime: "polarized" | "pyramidal" | "threshold" | "norwegian" | "mixed";
   nWeeks: number;
+  nBlocks?: number;          // T6: Anzahl zusammenhängender Blöcke (unabhängige Beobachtungen)
   csChange: number | null;
   vdotChange: number | null;
   confidence: "hoch" | "mittel" | "niedrig";

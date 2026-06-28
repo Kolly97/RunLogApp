@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay, type GoalGap, type TodayResult } from "../lib/api.ts";
+import { api, type PlannedSession, type SessionTemplate, type AnalyzeResult, type Race, type WeekSuggestionResult, type BlockPlan, type BlockDay, type GoalGap, type TodayResult, type Effort } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num, paceStr,
@@ -277,12 +277,14 @@ export default function WeekPlan() {
                   <div className="tiny muted" style={{ marginBottom: 4 }}>Konkrete Einheiten (Tag · Dauer · Ziel-Pace / Struktur):</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     {curWeekDays.map((d, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, flexWrap: "wrap" }}>
                         <span style={{ width: 22, color: "var(--muted)", flexShrink: 0 }}>{DAY_NAMES[d.weekdayIdx]}</span>
                         <span className="type-pill" style={{ background: typeColor(d.type), fontSize: 10, padding: "1px 6px" }}>{typeLabel(d.type)}</span>
                         <span style={{ flex: 1 }}>{d.description}</span>
                         <span className="tiny muted nowrap">{d.planned_min} min · {Math.round(d.planned_tss)} TSS{d.paceTarget ? ` · @${paceStr(d.paceTarget)}/km` : ""}</span>
                         {d.isSecond && <span className="tiny muted">(2.)</span>}
+                        {/* T7: rohe Einheiten in der Coach-Vorschau */}
+                        <EffortLines efforts={d.efforts} adaptNote={d.adaptNote} />
                       </div>
                     ))}
                   </div>
@@ -363,6 +365,8 @@ export default function WeekPlan() {
                     </span>
                     <button className="sm ghost" title="Kopieren" onClick={(e) => { e.stopPropagation(); copySession(s); }}>⊕</button>
                     <button className="sm ghost danger" onClick={(e) => { e.stopPropagation(); remove(s.id); }}>✕</button>
+                    {/* T7: rohe Einheiten — strukturierte Effort-Zeilen + dynamische Anpassung (live aufgelöst) */}
+                    <EffortLines efforts={s.efforts} adaptNote={s.adaptNote} />
                   </div>
                 ))}
               </div>
@@ -499,6 +503,41 @@ function GoalGapCard() {
         <span className="pill" style={{ background: col, color: "#fff" }}>{g.feasible ? "machbar" : "sehr ambitioniert"}</span>
       </div>
       {!g.feasible && <div className="tiny muted" style={{ marginTop: 2 }}>Realistische Prognose-Endzeit bei gedeckelter Progression: <strong>{fmtT(g.projEndTimeS)}</strong>. Ziel ggf. anpassen oder Vorbereitungszeit verlängern.</div>}
+    </div>
+  );
+}
+
+// T7: rohe Einheiten — strukturierte Effort-Zeilen (von-bis Reps + „heute" + Pace-Band) + „angepasst"-Notiz.
+function effDur(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  return sec % 60 === 0 ? `${sec / 60}'` : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+function paceRange(lo?: number | null, hi?: number | null, center?: number | null): string {
+  if (lo != null && hi != null && hi !== lo) return `${paceStr(lo)}–${paceStr(hi)}/km`;
+  return center != null ? `${paceStr(center)}/km` : "";
+}
+export function EffortLines({ efforts, adaptNote }: { efforts?: Effort[] | null; adaptNote?: string | null }) {
+  const lines = (efforts ?? []).filter((e) => e && (e.reps || e.dist_m || e.sec));
+  if (!lines.length && !adaptNote) return null;
+  return (
+    <div className="tiny" style={{ flexBasis: "100%", marginTop: 3, paddingLeft: 8, borderLeft: "2px solid var(--border-faint)", color: "var(--muted)" }}>
+      {lines.map((e, i) => {
+        const lo = e.reps_lo, hi = e.reps_hi, tgt = e.reps;
+        const hasBand = lo != null && hi != null && hi !== lo;
+        const repsTxt = hasBand ? `${lo}–${hi}` : tgt != null ? `${tgt}` : "";
+        const unit = e.dist_m ? `${e.dist_m} m` : e.sec ? effDur(e.sec) : "";
+        const pace = paceRange(e.pace_lo, e.pace_hi, e.pace_s);
+        const today = hasBand && tgt != null ? ` (heute: ${tgt})` : "";
+        const rest = e.rest_s ? ` · ${effDur(e.rest_s)} ${e.rest_type === "stand" ? "Stehen" : "Trab"}` : "";
+        return (
+          <div key={i}>
+            {repsTxt && unit ? `${repsTxt} × ${unit}` : repsTxt || unit}
+            {pace ? ` @ ${pace}` : ""}{today}{rest}
+            {e.label ? <span style={{ opacity: 0.7 }}> · {e.label}</span> : null}
+          </div>
+        );
+      })}
+      {adaptNote && <div style={{ marginTop: 2, fontStyle: "italic" }}>↳ {adaptNote}</div>}
     </div>
   );
 }

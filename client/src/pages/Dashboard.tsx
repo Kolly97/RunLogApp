@@ -14,6 +14,8 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
+import Sparkline from "../components/Sparkline.tsx";
+import { useSparkPref } from "../lib/sparkPref.ts";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
@@ -88,7 +90,9 @@ export default function Dashboard() {
     if (week) api.analyzeWeek(week.week_no).then(setAnalyze).catch(() => setAnalyze(null));
   }, [week?.week_no]);
 
-  const last = pmc?.pmc.filter((p) => p.date <= todayIso()).at(-1);
+  const pastPmc = (pmc?.pmc ?? []).filter((p) => p.date <= todayIso());
+  const last = pastPmc.at(-1);
+  const showSparks = useSparkPref(); // globaler Footer-Toggle (T15) steuert auch die Form-Überblick-Sparklines
   const visibleRows = range
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
     : rows;
@@ -112,9 +116,9 @@ export default function Dashboard() {
 
       <div className="tiny muted" style={{ fontWeight: 600, margin: "2px 0 4px" }}><T k="dashboard.form.title">Form-Überblick</T></div>
       <div className="grid" ref={formRef} style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
-        <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} />
-        <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} />
-        <StatCard label={t("dashboard.stat.form.label", "Form (TSB)")} value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb, t)} />
+        <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} spark={showSparks ? pastPmc.map((p) => p.ctl) : undefined} sparkColor="var(--fitness)" />
+        <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} spark={showSparks ? pastPmc.map((p) => p.atl) : undefined} sparkColor="var(--fatigue)" />
+        <StatCard label={t("dashboard.stat.form.label", "Form (TSB)")} value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb, t)} spark={showSparks ? pastPmc.map((p) => p.tsb) : undefined} sparkColor="var(--form)" />
         <StatCard label={t("dashboard.stat.ctlramp.label", "CTL-Ramp")} value={pmc?.ctlRamp7 ?? 0} sub={t("dashboard.stat.ctlramp.sub", "pro Woche (7d)")} />
         <Vo2maxCard data={fit} />
       </div>
@@ -299,13 +303,19 @@ export default function Dashboard() {
   }
 }
 
-function StatCard({ label, value, cls, sub }: { label: string; value: number; cls?: string; sub?: string }) {
+function StatCard({ label, value, cls, sub, spark, sparkColor }: {
+  label: string; value: number; cls?: string; sub?: string;
+  spark?: (number | null)[]; sparkColor?: string; // optionaler Mini-Verlauf (CTL/ATL/TSB)
+}) {
   const display = useCountUp(value); // M3: sanftes Hochzählen beim Laden/Wertwechsel
   return (
     <div className="card stat">
       <div className="label">{label}</div>
       <div className={"value " + (cls || "")}>{display}</div>
       {sub && <div className="sub">{sub}</div>}
+      {spark && spark.filter((v) => v != null).length >= 2 && (
+        <div style={{ marginTop: 6 }}><Sparkline data={spark} color={sparkColor} width={120} height={32} /></div>
+      )}
     </div>
   );
 }

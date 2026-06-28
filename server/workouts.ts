@@ -24,6 +24,19 @@ export interface WorkoutSegment {
   label?: string;
 }
 
+// v1.12.0: rekursiver Struktur-Baum für frei verschachtelte, Coros-artige eigene Einheiten.
+// `group` = Wiederholung der `children` (mit Anzahl-Spielraum); `rep` = ein Arbeitsabschnitt (Distanz ODER Dauer, fix).
+// Spielraum gibt es nur auf der ANZAHL (reps_lo..reps_hi); Pace bleibt ein Band um den Anker (± paceWindow + paceOffset).
+export interface SegNode {
+  kind: "rep" | "group";
+  reps?: number; reps_lo?: number; reps_hi?: number;     // Anzahl (Default lo=hi=reps)
+  children?: SegNode[];                                   // nur group
+  dist_m?: number | null; sec?: number | null;           // nur rep
+  paceOffset?: number;                                    // s/km relativ zum Anker (− = schneller)
+  restSec?: number | null; restType?: "jog" | "stand";   // Pause NACH diesem Knoten
+  label?: string;
+}
+
 export interface WorkoutTemplate {
   id: string;
   family: Family;
@@ -42,6 +55,7 @@ export interface WorkoutTemplate {
   repsByFitness?: { low: [number, number]; mid: [number, number]; high: [number, number] };
   segments?: WorkoutSegment[];             // v1.8.0: mehrsegmentig (Ladder/Cut-down/Mixed/Float)
   setsByFitness?: { low: number; mid: number; high: number }; // wie oft die Segment-Liste wiederholt wird
+  structure?: SegNode[];                   // v1.12.0: frei verschachtelte Struktur (eigene Einheiten); vorhanden ⇒ neuer Render-Pfad
   synergy: string;
   lit: string;
 }
@@ -121,11 +135,17 @@ const getWk = (id: string): WorkoutTemplate | undefined => byId.get(id) ?? custo
 const wk = (id: string): WorkoutTemplate => (byId.get(id) ?? customById.get(id))!;
 
 // ---------------- Fitness-Stufe ----------------
-export function fitnessLevel(ctl: number, csPace?: number | null): FitnessLevel {
+export function fitnessLevel(ctl: number, csPace?: number | null, vdot?: number | null): FitnessLevel {
   let lvl: FitnessLevel = ctl >= 65 ? "high" : ctl >= 40 ? "mid" : "low";
   if (csPace && csPace > 0) {
     if (csPace < 205 && lvl === "mid") lvl = "high";   // < ~3:25/km
     if (csPace > 270 && lvl === "high") lvl = "mid";
+  }
+  // T7: VDOT verfeinert das Level um max. eine Stufe (Daniels-VDOT als zusätzlicher Fitness-Proxy).
+  if (vdot && vdot > 0) {
+    if (vdot >= 60 && lvl === "mid") lvl = "high";
+    else if (vdot < 45 && lvl === "high") lvl = "mid";
+    else if (vdot < 38 && lvl === "mid") lvl = "low";
   }
   return lvl;
 }
@@ -331,7 +351,113 @@ function repsForFitness(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: n
   return Math.round(band[0] + (band[1] - band[0]) * Math.max(0, Math.min(1, progress)));
 }
 
-export interface RenderCtx { zones: ZonesInput; fitness: FitnessLevel; progress: number; targetTss?: number; maxMin?: number }
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+/**
+ * T7: Reps-Band des Fitness-Levels + dynamischer Zielwert (heute) innerhalb des Bandes.
+ * Progress (Phasen-Position) setzt die Basis; TSB verschiebt additiv & gedeckelt (müde→unten, frisch→oben),
+ * Begrenzung auf ±0,3 Band-Anteil → bei schmalen Bändern ≤±1 Rep, bei breiten ≤±2.
+ */
+function repsBand(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number, tsb?: number | null): { lo: number; hi: number; target: number } {
+  const [lo, hi] = tpl.repsByFitness![fitness];
+  let frac = clamp01(progress);
+  if (tsb != null) frac = clamp01(frac + Math.max(-0.3, Math.min(0.3, tsb / 50)));
+  const target = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo) * frac)));
+  return { lo, hi, target };
+}
+
+export interface RenderCtx {
+  zones: ZonesInput; fitness: FitnessLevel; progress: number; targetTss?: number; maxMin?: number;
+  // T7: Tagesform + Fitness-Proxys + Phasen-Label für dynamische Reps + „angepasst"-Notiz.
+  tsb?: number | null; vdot?: number | null; phaseLabel?: string | null;
+}
+
+/** T7: „angepasst an"-Notiz aus dem Live-Kontext (nur was bekannt ist). */
+function buildAdaptNote(ctx: RenderCtx): string | null {
+  const parts: string[] = [];
+  if (ctx.phaseLabel) parts.push(ctx.phaseLabel);
+  if (ctx.tsb != null) parts.push(`TSB ${ctx.tsb > 0 ? "+" : ""}${Math.round(ctx.tsb)}`);
+  parts.push(`Fit ${ctx.fitness}`);
+  if (ctx.vdot != null) parts.push(`VDOT ${Math.round(ctx.vdot)}`);
+  return parts.length ? `angepasst: ${parts.join(" · ")}` : null;
+}
+
+// v1.12.0: kurze von-bis-Zusammenfassung eines Struktur-Baums (für Tabelle/Beschreibung).
+function describeStructure(nodes: SegNode[]): string {
+  const one = (n: SegNode): string => {
+    const lo = n.reps_lo ?? n.reps ?? 1, hi = n.reps_hi ?? n.reps ?? lo;
+    const cnt = hi > lo ? `${lo}–${hi}` : `${lo}`;
+    if (n.kind === "group") {
+      const inner = (n.children ?? []).map(one).join(" · ");
+      return `${cnt}×(${inner})`;
+    }
+    const unit = n.dist_m ? `${n.dist_m}m` : n.sec ? durLabel(n.sec) : "";
+    return `${cnt > "1" || hi > lo ? `${cnt}×` : ""}${unit}`;
+  };
+  return nodes.map(one).join(" · ");
+}
+
+/**
+ * v1.12.0: rekursive Auflösung eines Struktur-Baums → verschachtelte Effort[] mit von-bis + Tageswert.
+ * Anzahl-Spielraum via Progress + TSB (T7-Mechanik, gedeckelt); Pace = Anker-Band ± paceWindow (+ paceOffset).
+ * Pausen + WU/CD in Z1; Arbeit in der Arbeitszone. planned_min/planned_tss rekursiv.
+ */
+function renderStructure(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession {
+  const { zones, fitness, progress } = ctx;
+  const z = tpl.workZone;
+  const tpmW = tssPerMin(z, zones), tpmE = tssPerMin(1, zones);
+  const center = anchorCenter(tpl.anchor, zones) ?? paceOf(z, zones);
+  const wuCd = tpl.family === "VO2" || tpl.family === "Race" ? 25 : 22;
+  const wu = r0(wuCd / 2);
+
+  // Anzahl im Band auflösen (Progress + TSB), Default lo=hi=reps.
+  const resolveCount = (n: SegNode): { lo: number; hi: number; t: number } => {
+    const lo = Math.max(1, n.reps_lo ?? n.reps ?? 1);
+    const hi = Math.max(lo, n.reps_hi ?? n.reps ?? lo);
+    let frac = clamp01(progress);
+    if (ctx.tsb != null) frac = clamp01(frac + Math.max(-0.3, Math.min(0.3, ctx.tsb / 50)));
+    const t = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo) * frac)));
+    return { lo, hi, t };
+  };
+
+  // Knoten → { Effort, Arbeitsminuten, Pausenminuten } für den aufgelösten Tageswert.
+  const buildNode = (n: SegNode): { eff: Effort; work: number; rest: number } => {
+    const { lo, hi, t } = resolveCount(n);
+    const selfRest = (n.restSec ?? 0) / 60 * t; // Pause nach jeder Wiederholung dieses Knotens
+    if (n.kind === "group") {
+      const kids = (n.children ?? []).map(buildNode);
+      const oneWork = kids.reduce((s, k) => s + k.work, 0);
+      const oneRest = kids.reduce((s, k) => s + k.rest, 0);
+      const eff: Effort = {
+        group: true, reps: t, reps_lo: lo, reps_hi: hi, children: kids.map((k) => k.eff),
+        rest_s: n.restSec ?? null, rest_type: n.restType ?? "jog", label: n.label,
+      };
+      return { eff, work: oneWork * t, rest: oneRest * t + selfRest };
+    }
+    const segPace = Math.round(center + (n.paceOffset ?? 0));
+    const repMin = n.dist_m ? (n.dist_m / 1000) * segPace / 60 : (n.sec ?? 60) / 60;
+    const eff: Effort = {
+      reps: t, reps_lo: lo, reps_hi: hi, dist_m: n.dist_m ?? null, sec: n.sec ?? null, zone: z,
+      pace_s: segPace, pace_lo: Math.round(segPace - tpl.paceWindow), pace_hi: Math.round(segPace + tpl.paceWindow),
+      rest_s: n.restSec ?? null, rest_type: n.restType ?? "jog", label: n.label,
+    };
+    return { eff, work: repMin * t, rest: selfRest };
+  };
+
+  const built = (tpl.structure ?? []).map(buildNode);
+  const workMin = built.reduce((s, b) => s + b.work, 0);
+  const innerRest = built.reduce((s, b) => s + b.rest, 0);
+  const z1Min = wuCd + innerRest;
+  const planned_min = r0(z1Min + workMin);
+  const hr = metricsStr(z, zones);
+  const paceTxt = paceRangeStr(center, tpl.paceWindow);
+  const description = `${wu}' WU · ${describeStructure(tpl.structure ?? [])} @ ${paceTxt}${hr ? ` (${hr})` : ""} · ${wu}' CD`;
+  return {
+    type: tpl.sessionType, planned_min,
+    zone_alloc: { byKm: byMinToByKm({ 1: r1(z1Min), [z]: r1(workMin) }, zones) },
+    efforts: built.map((b) => b.eff), paceTarget: center,
+    description, planned_tss: r1(z1Min * tpmE + workMin * tpmW), adaptNote: buildAdaptNote(ctx),
+  };
+}
 
 /** Vorlage → konkrete Einheit (Pace-Bereich + HF + Pausen). Steady nutzt targetTss; Intervalle Fitness+Progression. */
 export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession {
@@ -348,6 +474,9 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
       planned_tss: 0,
     };
   }
+
+  // v1.12.0: frei verschachtelte Struktur (eigene Einheiten). Rekursiv → verschachtelte Effort[] mit von-bis-Bändern.
+  if (tpl.structure && tpl.structure.length) return renderStructure(tpl, ctx);
 
   if (tpl.kind === "steady") {
     const z = tpl.workZone;
@@ -370,7 +499,7 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
       type: tpl.sessionType, planned_min: min, zone_alloc: { byKm: byMinToByKm({ [z]: min }, zones) },
       efforts: null, paceTarget: center ?? paceOf(z, zones),
       description: `${min} min ${tpl.name} @ ${paceTxt}${hr ? ` (${hr})` : ""} (Z${z})${extra}`,
-      planned_tss: r1(min * tpm),
+      planned_tss: r1(min * tpm), adaptNote: buildAdaptNote(ctx),
     };
   }
 
@@ -392,7 +521,7 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
       type: tpl.sessionType, planned_min: r0(z1 + workMin), zone_alloc: { byKm: byMinToByKm({ 1: r1(z1), [z]: r1(workMin) }, zones) },
       efforts, paceTarget: center,
       description: `Doppel-Schwelle @ ${paceTxt}${hr ? ` (${hr})` : ""} — AM ${amReps}×6' /60s · PM ${pmReps}×400m /40s`,
-      planned_tss: r1(z1 * tpmE + workMin * tpmW),
+      planned_tss: r1(z1 * tpmE + workMin * tpmW), adaptNote: buildAdaptNote(ctx),
     };
   }
 
@@ -432,7 +561,7 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
     return {
       type: tpl.sessionType, planned_min: b.planned_min,
       zone_alloc: { byKm: byMinToByKm({ 1: r1(b.z1Min), [z]: r1(b.workMin) }, zones) },
-      efforts: b.efforts, paceTarget: center, description, planned_tss: r1(b.z1Min * tpmE + b.workMin * tpmW),
+      efforts: b.efforts, paceTarget: center, description, planned_tss: r1(b.z1Min * tpmE + b.workMin * tpmW), adaptNote: buildAdaptNote(ctx),
     };
   }
 
@@ -440,15 +569,19 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
   const z = tpl.workZone;
   const tpmW = tssPerMin(z, zones), tpmE = tssPerMin(1, zones);
   const center = anchorCenter(tpl.anchor, zones);
-  let reps = repsForFitness(tpl, fitness, progress);
-  // Rep-Dauer (min): aus repSec ODER repDist via Anker-/Zonenpace.
+  // T7: Band (von-bis) + dynamischer Zielwert (Progress + TSB) statt Einzelwert.
+  const band = repsBand(tpl, fitness, progress, ctx.tsb);
   const repPaceForTime = center ?? paceOf(z, zones);
   const repMin = tpl.repDist_m ? (tpl.repDist_m / 1000) * repPaceForTime / 60 : (tpl.repSec ?? 60) / 60;
   const restSec = tpl.restSec ?? 60;
   const wuCd = tpl.family === "VO2" || tpl.family === "Race" ? 25 : tpl.family === "Hill" || tpl.family === "Speed" ? 18 : 22;
   const totalAt = (n: number) => wuCd + n * repMin + Math.max(0, n - 1) * (restSec / 60);
-  const minReps = tpl.repsByFitness![fitness][0];
-  while (reps > minReps && totalAt(reps) > maxMin) reps--;
+  // Zeitbudget (maxMin) deckelt Zielwert UND Bandobergrenze; Bandfloor bleibt der Fitness-Mindestwert.
+  let reps = band.target;
+  while (reps > band.lo && totalAt(reps) > maxMin) reps--;
+  let repsHi = band.hi;
+  while (repsHi > reps && totalAt(repsHi) > maxMin) repsHi--;
+  const repsLo = Math.min(band.lo, reps);
   const restMin = Math.max(0, reps - 1) * (restSec / 60);
   const workMin = reps * repMin;
   const z1Min = wuCd + restMin;
@@ -456,23 +589,29 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
   // HF nur sinnvoll bei längeren/intensiven Reps; bei Steigerungen (kurz, neuromuskulär) irreführend → weglassen.
   const hr = tpl.effort <= 2 ? "" : metricsStr(z, zones);
   const repLabel = tpl.repDist_m ? `${tpl.repDist_m}m` : durLabel(tpl.repSec ?? 60);
+  const repsTxt = repsHi > repsLo ? `${repsLo}–${repsHi}` : `${reps}`;
   const wu = r0(wuCd / 2);
+  const paceLo = center != null ? Math.round(center - tpl.paceWindow) : null;
+  const paceHi = center != null ? Math.round(center + tpl.paceWindow) : null;
 
   const effort: Effort = {
-    reps, sec: tpl.repSec ?? null, dist_m: tpl.repDist_m ?? null, zone: z,
-    pace_s: tpl.kind === "hill" ? null : center, rest_s: restSec, rest_type: tpl.restType ?? "jog", label: tpl.name,
+    reps, reps_lo: repsLo, reps_hi: repsHi,
+    sec: tpl.repSec ?? null, dist_m: tpl.repDist_m ?? null, zone: z,
+    pace_s: tpl.kind === "hill" ? null : center,
+    pace_lo: tpl.kind === "hill" ? null : paceLo, pace_hi: tpl.kind === "hill" ? null : paceHi,
+    rest_s: restSec, rest_type: tpl.restType ?? "jog", label: tpl.name,
   };
   let description: string;
   if (tpl.kind === "hill") {
-    description = `${wu}' WU · ${reps}×${repLabel} bergauf @ Aufwand ${tpl.effort}/5${hr ? ` (${hr})` : ""} / ${restLabel(restSec, tpl.restType ?? "jog")} (Trab-down) · ${wu}' CD`;
+    description = `${wu}' WU · ${repsTxt}×${repLabel} bergauf @ Aufwand ${tpl.effort}/5${hr ? ` (${hr})` : ""} / ${restLabel(restSec, tpl.restType ?? "jog")} (Trab-down) · ${wu}' CD`;
   } else {
     const paceTxt = center != null ? paceRangeStr(center, tpl.paceWindow) : `~${paceStr(paceOf(z, zones))}/km`;
-    description = `${wu}' WU · ${reps}×${repLabel} @ ${paceTxt}${hr ? ` (${hr})` : ""} / ${restLabel(restSec, tpl.restType ?? "jog")} · ${wu}' CD`;
+    description = `${wu}' WU · ${repsTxt}×${repLabel} @ ${paceTxt}${hr ? ` (${hr})` : ""} / ${restLabel(restSec, tpl.restType ?? "jog")} · ${wu}' CD`;
   }
   return {
     type: tpl.sessionType, planned_min, zone_alloc: { byKm: byMinToByKm({ 1: r1(z1Min), [z]: r1(workMin) }, zones) },
     efforts: [effort], paceTarget: tpl.kind === "hill" ? null : center ?? paceOf(z, zones),
-    description, planned_tss: r1(z1Min * tpmE + workMin * tpmW),
+    description, planned_tss: r1(z1Min * tpmE + workMin * tpmW), adaptNote: buildAdaptNote(ctx),
   };
 }
 
@@ -480,12 +619,19 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
 const SESSION_TYPE: Record<Family, string> = { Easy: "Easy", Long: "Long", LT1: "Steady", LT2: "Threshold", VO2: "VO2", Hill: "Hill", Speed: "VO2", Race: "Race", Core: "Stabi" };
 const ANCHOR_BY_ZONE: Anchor[] = [null, "easy", "easy", "lt1", "lt2", "cs", "rep"]; // Index = Zone (1..6)
 const IF_BY_ZONE = [0, 0.65, 0.72, 0.85, 0.95, 1.05, 1.12];
+// v1.12.0: plausible Default-Zonen für die TSS-Vorschätzung verschachtelter Einheiten (pur, ohne DB).
+// Die LIVE-Anzeige (Plan/Tabelle) rendert mit den echten Profil-Zonen — dies ist nur die Builder-Schätzung.
+const DEFAULT_EST_ZONES: ZonesInput = {
+  pace_zones: [330, 300, 270, 250, 222, 205], threshold_pace: 240, lt1_pace: 270,
+  cs_pace: 222, rep_pace: 205, hr_zones: [],
+};
 function hashStr(s: string): number { let h = 0; for (let i = 0; i < (s || "").length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 export interface CustomInput {
   name: string; family: Family; kind: "steady" | "intervals"; workZone: number;
   minMin?: number; maxMin?: number; reps?: number; repSec?: number; repDist_m?: number; restSec?: number;
   phases?: string[]; goalPaceS?: number;
+  structure?: SegNode[]; // v1.12.0: frei verschachtelte Struktur (hat Vorrang vor den Flach-Feldern)
 }
 
 /** Aus den Form-Eingaben eine gültige WorkoutTemplate bauen + Familie/Anstrengung/TSS vorschätzen (Z14). */
@@ -496,6 +642,19 @@ export function estimateCustom(inp: CustomInput): { template: WorkoutTemplate; t
   const effort = (z <= 1 ? 1 : z >= 5 ? 5 : z) as 1 | 2 | 3 | 4 | 5;
   const reps = Math.max(1, inp.reps ?? 5);
   const id = "custom_" + ((inp.name || "einheit").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24) || "einheit") + "_" + Math.abs(hashStr(inp.name || "")).toString(36).slice(0, 4);
+
+  // v1.12.0: verschachtelte Struktur → Template mit `structure`, TSS/Dauer aus dem echten Renderer (eine Quelle).
+  if (inp.structure && inp.structure.length) {
+    const template: WorkoutTemplate = {
+      id, family: inp.family, sessionType: SESSION_TYPE[inp.family] ?? "Threshold", name: inp.name || "Eigene Einheit",
+      purpose: "Eigene Einheit", phases: inp.phases?.length ? inp.phases : ["base", "belast", "specific"],
+      effort, kind: "intervals", workZone: z, anchor, paceWindow: 4,
+      restType: "jog", structure: inp.structure, synergy: "eigene Einheit", lit: "—",
+    };
+    const c = renderWorkout(template, { zones: DEFAULT_EST_ZONES, fitness: "mid", progress: 0.5 });
+    return { template, tssEstimate: Math.round(c.planned_tss), durationMin: c.planned_min };
+  }
+
   let tss: number, durationMin: number;
   if (inp.kind === "steady") {
     const dur = Math.round(((inp.minMin ?? 30) + (inp.maxMin ?? inp.minMin ?? 40)) / 2);

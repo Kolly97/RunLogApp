@@ -4,6 +4,108 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [2.0.0] – 2026-06-29 — Vollständig aktualisierte Anleitung (Anleitung v2.0) + Versionsmeilenstein
+
+Versionsmeilenstein nach dem umfangreichen Funktionsausbau v1.10–v1.12.1: Premium-Politur (Dark Mode,
+Motion-System, Signature-Hero), vollständige N-of-1-Diagnostik, strukturierter Workout-Builder (Coros-Style),
+dynamische Einheiten mit TSB/Fitness-Anpassung. Die **In-App-Anleitung** (`client/public/usage.html`) wurde
+vollständig auf den aktuellen Stand gebracht (Anleitung Version 2.0) — alle Seiten, alle Funktionen.
+
+### Geändert
+- **Anleitung v2.0:** Dashboard (Form-Ribbon, Sparklines, Dark Mode), Wochenplanung (dynamische Einheiten
+  mit von–bis, strukturierter Builder), Wochenbericht (Periodisierungs-Override), Methodik (Block-Inferenz,
+  Sparklines), Profil (Laktat-Achse, Tutorial-Profil, Block-Präferenzen + Builder), Einstellungen (Theme,
+  Animationen, Sparklines). Neue Seite „Was ist neu? v1.10–1.12" im Nav.
+- `package.json` → **2.0.0**.
+
+## [1.12.1] – 2026-06-29 — Bugfixes: Eingabefokus-Verlust & Dark-Mode-Kacheln
+
+### Behoben
+- **Strukturierter Builder – Eingabefokus:** In den Zahlenfeldern des verschachtelten Workout-Editors (Anzahl,
+  Distanz, Dauer, Pausen, Pace-Offset) ging der Fokus nach jeder Ziffer verloren — man musste nach jeder Taste
+  neu klicken. Ursache: `CountField` und `Row` waren als Funktionen *innerhalb* der `StructureEditor`-Komponente
+  definiert und wurden bei jedem Re-render als neuer Typ erkannt → unmount/remount. Behoben durch Anheben auf
+  Modul-Ebene mit Callbacks als Props.
+- **Dark Mode — neutrale Einheits-Kacheln:** Die Präferenz-Karte (Profil → Block-Präferenzen) zeigte nicht
+  markierte Einheiten im Dark Mode auf weißem Hintergrund (`#fff` statt `var(--card)`).
+
+### Geändert
+- Keine funktionalen Änderungen; Datensicherheit und Trainingsdaten unberührt.
+
+## [1.12.0] – 2026-06-28 — Strukturierter Workout-Builder (Coros-Style) + Spielraum + Engine-Anpassung
+
+Eigene Einheiten lassen sich jetzt **frei verschachtelt** anlegen (wie bei Coros) — mit **Spielraum** auf den
+Wiederholungen, eigenen Pausen und automatischer Anpassung an deine Form. Bibliothek **und** eigene Einheiten
+zeigen ihre volle Struktur in einer Tabelle. Additiv, keine Datenbank-Migration.
+
+### Hinzugefügt
+- **Verschachtelter Builder:** Segmente und Gruppen in beliebiger Tiefe, z. B. `3×(1000-1000-600-200-200)`. Je Zeile
+  Distanz **oder** Dauer, optionaler Pace-Offset zum Anker, eigene Pause; Gruppen mit eigener Satz-Anzahl und Satz-Pause.
+  Reihenfolge per ▲▼, hinzufügen/löschen, beliebig schachteln. „Einfach"-Modus (N × Rep) bleibt für simple Einheiten.
+- **Spielraum (von-bis) auf der Anzahl:** je Segment/Satz per „±" ein Bereich (z. B. 5–6× oder Satz 3–4×). Die Engine
+  wählt den **Tageswert** nach **Phase · Form (TSB) · Fitness · VDOT** (gleiche Mechanik wie die dynamischen Einheiten);
+  Pace bleibt als Band sichtbar.
+- **Volle Struktur in der Tabelle „Alle Einheiten":** neue **Struktur**-Spalte (von-bis-Kurzfassung) + **aufklappbare
+  Detailzeile** mit allen Segmenten/Pausen/Bändern, „heute"-Wert und dem Hinweis „so passt die Engine es an deine Form an"
+  — für Bibliotheks- **und** eigene Einheiten, gerendert mit deinen echten Zonen.
+
+### Geändert
+- **Einheitliches Modell & Engine:** Bibliothek und eigene Einheiten teilen denselben Renderer; die TSS-/Dauer-Schätzung
+  des Builders kommt aus genau diesem Renderer (eine Quelle der Wahrheit).
+
+## [1.11.1] – 2026-06-28 — Bugfixes & Klarstellungen
+
+Kleine, sichere Folge-Politur nach v1.11.0 — keine neuen Features, kein Eingriff in Trainingslogik/Daten.
+
+### Behoben
+- **Intervall-Trend – Legende:** Ein-/Ausblenden je Kategorie funktioniert wieder (eine Regression aus dem Rolling-Mittel
+  von v1.11.0). Ein Klick schaltet jetzt **beide** Serien der Kategorie gemeinsam — gedämpfte Rohpunkte **und** die
+  7-Tage-Mittel-Linie.
+- **Layout-Modus – Höhe:** Chart-Kacheln lassen sich nun auch **in der Höhe** anpassen (vorher nur Breite). Diagramme
+  folgen generisch der Kachelhöhe.
+
+### Geändert
+- **Dark Mode (gezielt):** Wochentag-Tabs im Tracking und die Power-Zonen-Pills bei „Lauf-Power" (Bestzeiten) sind jetzt
+  sauber dunkel gethemt und lesbar; Hell-Modus unverändert, Druck bleibt hell.
+- **Methodik – Klarheit:** Ausklappbarer Hilfetext „Was bedeuten diese Werte?" + Tooltips erklären, warum „CS" an
+  mehreren Stellen unterschiedliche Zahlen zeigt — **Absolutwert** (Marker, 14-Tage), **Δ CS** (Veränderung je Block)
+  und **vorher → nachher** (Abschnitts-Auswertung) messen bewusst Verschiedenes.
+
+## [1.11.0] – 2026-06-28 — Diagnostik, Methodik-Korrektheit, dynamische Einheiten & Premium-Feinschliff
+
+Großes Inhalts-Update nach der Premium-Politur: wissenschaftlich fundierte **Laktat-Diagnostik**, eine **korrigierte und
+transparentere Methodik** (N-of-1), **dynamische Trainingseinheiten** mit sichtbaren von-bis-Bändern sowie viel
+**Chart-/Dark-Mode-Feinschliff**. Alles datensicher (keine Migrationen nötig), barrierearm und druckfest.
+
+### Hinzugefügt
+- **Laktat-Diagnostik:** ausführliche wissenschaftliche Begründung je Schwelle (FatMax, LT1, 2 mmol, LT2, 4 mmol/OBLA —
+  Physiologie **und** Methode/Quelle, ausklappbar); x-Achse umschaltbar **min/km ↔ km/h ↔ Watt**; Watt-Eingabe für
+  Rad-Tests; Marker-Beschriftung innerhalb des Plots.
+- **Methodik – Marker-Verläufe:** Mini-Sparklines für CS, VDOT, Schwelle, Entkopplung und eff. VO₂max (aus bestehenden
+  Trend-Daten), global **abschaltbar im Footer**; zusätzlich CTL/ATL/TSB-Sparklines im Dashboard-Form-Überblick.
+- **Methodik – Periodisierungs-Transparenz:** Klartext, warum das Z1/Z2/Z3-Ziel aus der Saison-Phase folgt
+  (Base/Belastung → pyramidal, Race-Specific → polarisiert, Taper → regenerativ) **+ manueller Override pro Phase**.
+- **Wochenplanung – dynamische Einheiten:** rohe Einheiten mit **von-bis-Wiederholungen** + empfohlenem Tageswert
+  („heute: N") und **Pace-Band**; additive, gedeckelte Anpassung an **Phase · TSB · Fitness · VDOT** mit „angepasst"-Notiz.
+- **Intro:** animierter Läufer joggt entlang der Form-Kurve und endet im echten App-Icon (GSAP-gegated, skippbar).
+
+### Behoben
+- **Methodik – Passive Inferenz (Rechenfehler):** Auswertung auf **zusammenhängende Regime-Blöcke** umgestellt —
+  korrekte Wochenzahl (+ Blockanzahl) und Δ-CS als Block-Start→Ende statt überlappender Wochenpaare (Behebung des
+  „16-Wochen"/Δ-CS-Problems). Konfidenz folgt jetzt den unabhängigen Blöcken.
+- **Charts im Dark Mode:** Intensitäts-Verhältnis und Jahres-Marker sind sichtbar/theme-fähig; PB-Dreiecke nicht mehr
+  am Rand abgeschnitten.
+
+### Geändert
+- **Dark Mode durchgängiger:** Inputs, Modals, Tabellen und Popover über Tokens; **A4-Druckvorschau im Dark Mode dunkel**
+  gethemt, echter Druck bleibt erzwungen hell.
+- **Tabellen:** globale, theme-fähige `.table`-Politur (Zebra, Sticky-Header, rechtsbündige Zahlen).
+- **Schwellen-Trend:** Legende ergänzt (lila = Critical Power) + Plot-Beschriftung; Jahres-Dreiecke ~30 % kleiner,
+  PB-Dreiecke erklärt.
+- **Y-Achsen:** smartere „nice"-Skalierung mit etwas Polster; **Intervall-Trend** mit 7-Tage-Rolling-Mittel über
+  gedämpften Rohwerten.
+- **Wochenplanung:** Kennzahlen zählen sanft hoch (Count-up).
+
 ## [1.10.0] – 2026-06-28 — Premium-Politur: Dark Mode, Motion, Signature-Hero, Chart-Veredelung & Delight
 
 Großes Veredelungs-Update der Oberfläche — aus dem soliden, analytischen RunLog wird ein **premium, klinisch-edles**

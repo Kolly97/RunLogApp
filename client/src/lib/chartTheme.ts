@@ -12,3 +12,16 @@ export const INTENSITY = { easy: "#3b82f6", mod: "#22c55e", hard: "#f97316" } as
 export const PMC = { ctl: "#2b6cb0", atl: "#d53f8c", tsb: "#d69e2e" } as const;
 // Schwellen-/Leistungs-Trends.
 export const TREND = { thrPace: "#eab308", cp: "#7c3aed", lactate: "#2b6cb0" } as const;
+
+/**
+ * Berechnet ein "nices" Y-Domain-Intervall (runde Ticks, etwas Polster oben/unten).
+ * Gibt [lo, hi] zurück; lo wird nie unter 0 gedrückt wenn alle Werte ≥ 0.
+ */
+export function niceYDomain(min: number, max: number, pad = 0.08): [number, number] {
+  const range = Math.max(max - min, 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(range)));
+  const step = range / mag >= 4 ? mag : mag / 2;
+  const lo = Math.floor((min - range * pad) / step) * step;
+  const hi = Math.ceil((max + range * pad) / step) * step;
+  return [Math.min(lo, min - range * pad), hi];
+}

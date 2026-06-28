@@ -50,10 +50,10 @@
 .wd-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 12px; }
 .wd-tab {
   border: 1px solid var(--line); border-radius: 10px; padding: 7px 4px 6px; text-align: center;
-  background: #fff; cursor: pointer; font: inherit;
+  background: var(--card); cursor: pointer; font: inherit;
 }
-.wd-tab:hover { background: #f5f7fa; }
-.wd-tab.active { border-color: var(--accent); box-shadow: 0 0 0 2px #d6e6f7; }
+.wd-tab:hover { background: var(--surface2); }
+.wd-tab.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.22); }
 .wd-tab.today .wd-name { color: var(--accent); }
 .wd-tab .wd-name { font-weight: 700; font-size: 12px; line-height: 1.1; }
 .wd-tab .wd-date { font-size: 10px; color: var(--muted); }

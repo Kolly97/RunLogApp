@@ -47,22 +47,18 @@ export default function ChartDecor(props: any) {
         return (
           <g key={`yr${i}`}>
           <polygon
-            points={`
-              ${x},${plotBottom - 20}
-              ${x - 10},${plotBottom}
-              ${x + 10},${plotBottom}
-            `}
-            fill="#0f172a"
-            opacity={0.9}
+            points={`${x},${plotBottom - 14} ${x - 7},${plotBottom} ${x + 7},${plotBottom}`}
+            fill="var(--ink)"
+            opacity={0.75}
           />
-
           <text
             x={x}
-            y={plotBottom + 34}
+            y={plotBottom + 26}
             textAnchor="middle"
-            fontSize={11}
+            fontSize={10}
             fontWeight={700}
-            fill="#0f172a"
+            fill="var(--ink)"
+            opacity={0.75}
           >
             {y.year}
           </text>
@@ -76,7 +72,7 @@ export default function ChartDecor(props: any) {
         return (
           <g key={`pbm${i}`}>
             <title>{p.label}</title>
-            <polygon points={`${x - 4},${offset.top} ${x + 4},${offset.top} ${x},${offset.top + 7}`} fill="#d4af37" opacity={0.85} />
+            <polygon points={`${x - 4},${offset.top + 2} ${x + 4},${offset.top + 2} ${x},${offset.top + 9}`} fill="#d4af37" opacity={0.9} />
           </g>
         );
       })}
