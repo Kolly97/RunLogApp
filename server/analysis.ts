@@ -180,19 +180,26 @@ export function weekTotals(
     hardSessions = 0,
     longestKm = 0;
   const byCategory: CategoryTotals = { run: { km: 0, min: 0 }, bike: { km: 0, min: 0 }, strength: { min: 0 } };
+  // Item 4: km-Fallback — vorgeschlagene/ältere Einheiten haben oft kein planned_km, aber zone_alloc.byKm.
+  const kmOf = (s: PlannedSession): number => {
+    if (s.planned_km != null) return s.planned_km;
+    const bk = s.zone_alloc?.byKm;
+    return bk ? Object.values(bk).reduce((a, b) => a + (Number(b) || 0), 0) : 0;
+  };
   for (const s of sessions) {
     const isRun = s.sport === "Run";
     const isBike = isBikeSport(s.sport);
+    const skm = kmOf(s);
     if (isRun) {
-      km += s.planned_km || 0;
+      km += skm;
       runSessions++;
-      longestKm = Math.max(longestKm, s.planned_km || 0);
-      byCategory.run.km += s.planned_km || 0;
+      longestKm = Math.max(longestKm, skm);
+      byCategory.run.km += skm;
       byCategory.run.min += s.planned_min || 0;
     }
-    if (isBike) bike_km += s.planned_km || 0;
+    if (isBike) bike_km += skm;
     if (isBike || s.sport === "General") {
-      byCategory.bike.km += s.planned_km || 0;
+      byCategory.bike.km += skm;
       byCategory.bike.min += s.planned_min || 0;
     }
     if (s.sport === "Strength" || s.sport === "Physio") byCategory.strength.min += s.planned_min || 0;
@@ -368,7 +375,7 @@ const MODEL_RATIONALE: Record<DistModel, string> = {
  * Entlastung/Taper/Race-Week/Krank → regenerativ, sonst (Base/Belastung) → pyramidal.
  * T14: optionaler manueller Override pro Phase (`overrides[phaseLower] = model`) hat Vorrang; Klartext-`rationale`.
  */
-export function phaseDistributionTarget(phase: string | null | undefined, overrides?: Record<string, string> | null): DistTarget {
+export function phaseDistributionTarget(phase: string | null | undefined, overrides?: Record<string, string> | null, goalDistanceM?: number | null): DistTarget {
   const p = (phase || "").toLowerCase();
   const ovRaw = overrides && p ? overrides[p] : undefined;
   if (ovRaw && (ovRaw === "pyramidal" || ovRaw === "polarized" || ovRaw === "regenerativ")) {
@@ -377,7 +384,18 @@ export function phaseDistributionTarget(phase: string | null | undefined, overri
   let model: DistModel = "pyramidal";
   if (p.includes("specific")) model = "polarized";
   else if (p.includes("entlast") || p.includes("deload") || p.includes("race week") || p.includes("raceweek") || p.includes("race-week") || p.includes("krank")) model = "regenerativ";
-  return { ...DIST_MODELS[model], rationale: MODEL_RATIONALE[model] };
+  const base = { ...DIST_MODELS[model], rationale: MODEL_RATIONALE[model] };
+  // Item 3 (Frage B): Distanz verschiebt das Soll leicht — kurze Distanz polarisierter (mehr Z3), HM/Marathon
+  // schwellenlastiger (mehr Z2). Taper/Erholung unangetastet. Distanz = Rahmen (Frage 8), Athlet moduliert sonst.
+  const d = goalDistanceM ?? 0;
+  if (d > 0 && model !== "regenerativ") {
+    const dz3 = d <= 12000 ? 4 : d >= 21000 ? -3 : 0; // 5k/10k → +Z3 · HM/M → +Z2
+    if (dz3 !== 0) {
+      return { ...base, z3: Math.max(2, base.z3 + dz3), z2: Math.max(2, base.z2 - dz3),
+        rationale: `${base.rationale} Distanz-Anpassung (${Math.round(d / 1000)} km): ${dz3 > 0 ? "etwas polarisierter" : "mehr Z2-Schwellenvolumen"}.` };
+    }
+  }
+  return base;
 }
 
 /** Schild für die reale Zeit-Verteilung: Ist vs. Phasen-Ziel + Polarisierungs-Index. */
@@ -999,11 +1017,12 @@ export function weekStructureRecommendation(args: {
   weekNo?: number | null;   // für 3:1 Modulo (jede 4. Woche Deload)
   readinessLevel: ReadinessLevel | null;
   methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory Nudge
+  goalDistanceM?: number | null; // Item 3 (Frage B): Zieldistanz verschiebt das Verteilungs-Soll leicht
 }): WeekStructureRec {
   const reasons: { code: string; text: string }[] = [];
   const p = (args.phase || "").toLowerCase();
   const tssRange = tssRecommendation(args.ctl, args.phase);
-  let distTarget = phaseDistributionTarget(args.phase);
+  let distTarget = phaseDistributionTarget(args.phase, null, args.goalDistanceM ?? null);
   let confidence: WeekStructureRec["confidence"] = "mittel";
   let periodizationModel: WeekStructureRec["periodizationModel"] = "traditional";
   let headline = "";
@@ -1115,7 +1134,7 @@ export function weekStructureRecommendation(args: {
 // generierten Plan-TSS), ruft je Woche weekStructureRecommendation und macht jede Einheit konkret (A2) +
 // tagesgebunden (A3). Vorschlag-Modus: schreibt nichts — liefert reine Vorschau.
 
-export interface BlockWeekInput { week_no: number; phase: string | null; start_date: string; dates: string[] }
+export interface BlockWeekInput { week_no: number; phase: string | null; start_date: string; dates: string[]; target_km?: number | null }
 
 export interface BlockDay {
   date: string; weekdayIdx: number; type: string; isSecond: boolean;
@@ -1251,7 +1270,7 @@ export function resolvePlannedSession(
   presc: { templateId: string; progress: number; targetTss: number },
   sessionDate: string,
   ctx: ResolveCtx,
-): { planned_min: number; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null; adaptNote?: string | null } | null {
+): { planned_min: number; planned_km?: number | null; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null; adaptNote?: string | null } | null {
   const tpl = workoutById(presc.templateId);
   if (!tpl || !ctx.curVdot) return null;
   const weeksUntil = Math.max(0, Math.round((Date.parse(sessionDate + "T00:00:00Z") - Date.parse(ctx.today + "T00:00:00Z")) / (7 * 86400000)));
@@ -1261,8 +1280,8 @@ export function resolvePlannedSession(
   const zones = zonesForWeek(ctx.baseZones, projVdot, ctx.goalDistanceM);
   const fitness = fitnessLevel(ctx.curCtl, zones.cs_pace ?? null, ctx.curVdot); // T7: VDOT verfeinert
   const tsb = weeksUntil <= 1 ? (ctx.curTsb ?? null) : null; // TSB nur für die nahe Einheit (Projektion sonst unsicher)
-  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot });
-  return { planned_min: c.planned_min, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget, adaptNote: c.adaptNote ?? null };
+  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot, goalDistanceM: ctx.goalDistanceM ?? null });
+  return { planned_min: c.planned_min, planned_km: c.planned_km ?? null, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget, adaptNote: c.adaptNote ?? null };
 }
 
 /** Position der Woche innerhalb ihres zusammenhängenden Phasen-Blocks (für Rotation + Progression). */
@@ -1333,6 +1352,7 @@ export function blockPlan(args: {
       ctl, tsb, ctlRamp: ramp, phase, weekNo: w.week_no,
       readinessLevel: wi === 0 ? args.readinessLevel : null,
       methodPreference: args.methodPreference ?? null,
+      goalDistanceM: args.goalDistanceM ?? null,
     });
     const target = rec.tssRange.target;
 
@@ -1345,7 +1365,7 @@ export function blockPlan(args: {
 
     // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
     let qTss = 0;
-    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase }).planned_tss;
+    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
     const remaining = Math.max(0, target - qTss);
     const longs = picks.filter((p) => p.role === "long");
     const easies = picks.filter((p) => p.role === "easy");
@@ -1360,22 +1380,53 @@ export function blockPlan(args: {
     const scheduled = scheduleWeek(units, args.availability, w.dates);
     const days: BlockDay[] = [];
     let tssActual = 0, downgraded = false;
-    for (const su of scheduled) {
+
+    // Render-Closure (eine Quelle für Erst-Render + km-Angleichung): Einheit → konkrete Session bei gegebener Ziel-TSS.
+    const renderUnit = (su: typeof scheduled[number], tss: number): ConcreteSession => {
       const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
-      let c;
-      if (su.downgrade && ref?.tpl) {
-        // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
-        const easyTpl = workoutById("easy_ga1") ?? ref.tpl;
-        c = renderWorkout(easyTpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: Math.round(easyShare) || 50, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined, vdot: args.curVdot ?? null, phaseLabel: phase });
-        downgraded = true;
-      } else if (ref?.tpl) {
-        c = renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: ref.targetTss, maxMin: su.budgetMin > 0 ? su.budgetMin : undefined, vdot: args.curVdot ?? null, phaseLabel: phase });
-      } else {
-        c = concretizeSession(su.type, su.targetTss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
+      const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
+      // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
+      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null });
+      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null });
+      return concretizeSession(su.type, tss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
+    };
+    const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
+
+    // Erst-Render je Einheit; Easy/Long-Familien markieren (Frage A: deren Volumen an target_km angleichen).
+    type Rendered = { su: typeof scheduled[number]; c: ConcreteSession; baseTss: number; scalable: boolean };
+    const rendered: Rendered[] = scheduled.map((su) => {
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+      const baseTss = su.downgrade ? (Math.round(easyShare) || 50) : (ref?.targetTss ?? su.targetTss);
+      const fam = su.downgrade ? "Easy" : ref?.tpl.family;
+      return { su, c: renderUnit(su, baseTss), baseTss, scalable: fam === "Easy" || fam === "Long" };
+    });
+    if (scheduled.some((su) => su.downgrade)) downgraded = true;
+
+    // Frage A: Easy/Long-Dauer so skalieren, dass Wochen-km ≈ target_km (harte Einheiten unangetastet); gedeckelt
+    // (×0.7..1.4) → PMC-Projektion bleibt selbstkonsistent, kein Runaway. Nur wenn target_km gepflegt ist.
+    const targetKm = w.target_km ?? null;
+    if (targetKm && targetKm > 0) {
+      const elKm = rendered.filter((r) => r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
+      const otherKm = rendered.filter((r) => !r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
+      if (elKm > 0) {
+        const desiredEl = Math.max(targetKm * 0.4, targetKm - otherKm); // Easy/Long tragen nie unter 40% des Ziels
+        const factor = Math.max(0.7, Math.min(1.4, desiredEl / elKm));
+        // Skaliert die TATSÄCHLICH gerenderte Dauer (über die gerenderte TSS) — nicht die Ziel-TSS-Shares,
+        // die bei qualitäts-gesättigten Wochen 0 sind (dann rendern Easy/Long über ihre Default-Dauer).
+        if (Math.abs(factor - 1) > 0.05) for (const r of rendered) if (r.scalable && r.c.planned_tss > 0) {
+          r.baseTss = Math.max(20, Math.round(r.c.planned_tss * factor));
+          r.c = renderUnit(r.su, r.baseTss);
+        }
       }
-      // v1.7.0: Intention (Template + Progression + Ziel-TSS) für Live-Resolution speichern.
+    }
+
+    // Tage materialisieren + Form vorwärts akkumulieren.
+    for (const r of rendered) {
+      const { su, c } = r;
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+      // v1.7.0: Intention (Template + Progression + tatsächliche Ziel-TSS nach Angleich) für Live-Resolution speichern.
       const prescription = ref?.tpl
-        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, targetTss: su.downgrade ? (Math.round(easyShare) || 50) : ref.targetTss }
+        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, targetTss: r.baseTss }
         : null;
       days.push({
         date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond,

@@ -156,7 +156,7 @@ export default function CustomWorkoutsCard() {
         const custCount = catalog.filter((w) => w.custom).length;
         const delId = (info: WorkoutInfo) => list.find((c) => c.template?.id === info.id)?.id ?? null;
         return (
-          <div style={{ marginTop: 12, borderTop: "1px solid #eef2f7", paddingTop: 8 }}>
+          <div style={{ marginTop: 12, borderTop: "1px solid var(--border-faint)", paddingTop: 8 }}>
             <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 4 }}>Alle Einheiten ({catalog.length}, davon {custCount} eigene) — nach Familie &amp; Zone</div>
             <div style={{ maxHeight: 320, overflow: "auto" }}>
               <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>

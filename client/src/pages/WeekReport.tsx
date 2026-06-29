@@ -215,6 +215,9 @@ export default function WeekReport() {
   const serverRealCat: Cat | undefined = anyAnalyze?.totals?.realByCategory ?? anyAnalyze?.realByCategory;
   const realCat: Cat = serverRealCat ?? catsFromActs(acts);
 
+  // Item 1: Erfüllungs-Prozent (Ist/Plan) für die schlanke Completion-Bar.
+  const pct = (real: number, planned: number) => (planned > 0 ? (real / planned) * 100 : null);
+
   const wellness = avgWellness(daily);
   const wtrend = wellnessTrendData(daily, days);
   // v1.10.0: 30-Tage-Normalbereich (Mittel ± 1σ) je Wellness-Metrik aus dem Fenster bis zum Wochenende.
@@ -288,15 +291,21 @@ export default function WeekReport() {
         )}</EgItem>
 
         {/* Kategorie-Summen: Lauf / Rad gesamt / Kraft & Mobility */}
-        <EgItem id="cats" title={t("report.tile.cats", "Kategorie-Summen")} defaultSpan={12} defaultHeight={86}>{() => (
-          <div className="card cat-row mt">
-            <CatBox label={t("report.cat.run", "Lauf")} main={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
-              sub={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`} />
-            <CatBox label={t("report.cat.bike", "Rad gesamt (indoor + outdoor + Commute)")} main={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
-              sub={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.bike.km)} km · ${hours(plannedCat.bike.min)}`} />
-            <CatBox label={t("report.cat.strength", "Kraft / Mobility")} main={hours(realCat.strength.min)}
-              sub={`${t("report.cat.planned", "geplant")} ${hours(plannedCat.strength.min)}`} />
-          </div>
+        {/* Kategorie-Summen (#10): 3 schlichte Stat-Kacheln wie Langzeit (Ist groß · geplant · dünne Bar), nicht gestreckt. */}
+        <EgItem id="cat-run" title={t("report.tile.cats.run", "Lauf")} defaultSpan={4} defaultHeight={84}>{() => (
+          <CatStat label={t("report.cat.run", "Lauf")} value={`${round1(realCat.run.km)} km · ${hours(realCat.run.min)}`}
+            planned={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.run.km)} km · ${hours(plannedCat.run.min)}`}
+            pct={pct(realCat.run.km, plannedCat.run.km)} />
+        )}</EgItem>
+        <EgItem id="cat-bike" title={t("report.tile.cats.bike", "Rad gesamt")} defaultSpan={4} defaultHeight={84}>{() => (
+          <CatStat label={t("report.cat.bike", "Rad gesamt (indoor + outdoor + Commute)")} value={`${round1(realCat.bike.km)} km · ${hours(realCat.bike.min)}`}
+            planned={`${t("report.cat.planned", "geplant")} ${round1(plannedCat.bike.km)} km · ${hours(plannedCat.bike.min)}`}
+            pct={pct(realCat.bike.km, plannedCat.bike.km) ?? pct(realCat.bike.min, plannedCat.bike.min)} />
+        )}</EgItem>
+        <EgItem id="cat-str" title={t("report.tile.cats.str", "Kraft / Mobility")} defaultSpan={4} defaultHeight={84}>{() => (
+          <CatStat label={t("report.cat.strength", "Kraft / Mobility")} value={hours(realCat.strength.min)}
+            planned={`${t("report.cat.planned", "geplant")} ${hours(plannedCat.strength.min)}`}
+            pct={pct(realCat.strength.min, plannedCat.strength.min)} />
         )}</EgItem>
 
         {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
@@ -628,12 +637,21 @@ export default function WeekReport() {
 function Mini({ label, v, sub, cls }: { label: string; v: string | number; sub?: string; cls?: string }) {
   return <div className="stat"><div className="label">{label}</div><div className={"value" + (cls ? ` ${cls}` : "")} style={{ fontSize: 18 }}>{v === "" || v == null ? "–" : v}</div>{sub && <div className="sub">{sub}</div>}</div>;
 }
-function CatBox({ label, main, sub }: { label: string; main: string; sub?: string }) {
+// Item 1: schlanke Kategorie-Zeile — Label · Ist · geplant · dünne Erfüllungs-Bar. Kompakt, klinisch, designsicher.
+// #10: Kategorie-Summe als kompakte Stat-Kachel (wie Langzeit) — Ist groß · „geplant …" · dünne Completion-Bar.
+function CatStat({ label, value, planned, pct }: { label: string; value: string; planned: string; pct: number | null }) {
+  const p = pct == null ? null : Math.max(0, Math.round(pct));
+  const barCol = p == null ? "var(--muted)" : p >= 98 ? "var(--ok)" : p >= 70 ? "var(--accent)" : "var(--warn)";
   return (
-    <div className="cat-box">
-      <div className="label">{label}</div>
-      <div className="main">{main}</div>
-      {sub && <div className="sub muted tiny">{sub}</div>}
+    <div className="card stat cat-stat">
+      <div className="label" title={label}>{label}</div>
+      <div className="value">{value}</div>
+      <div className="sub">{planned}</div>
+      {p != null && (
+        <div className="cat-bar" title={`${p}% vom Plan`}>
+          <span style={{ width: `${Math.min(100, p)}%`, background: barCol }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -787,7 +805,9 @@ function catsFromActs(acts: Activity[]): Cat {
 function catsFromPlan(sessions: PlannedSession[]): Cat {
   const out: Cat = { run: { km: 0, min: 0 }, bike: { km: 0, min: 0 }, strength: { min: 0 } };
   for (const s of sessions) {
-    const km = s.planned_km || 0;
+    // Item 4: km-Fallback aus zone_alloc.byKm, falls planned_km (z. B. bei Vorschlägen) fehlt.
+    const byKm = (s as { zone_alloc?: { byKm?: Record<number, number> } }).zone_alloc?.byKm;
+    const km = s.planned_km ?? (byKm ? Object.values(byKm).reduce((a, b) => a + (Number(b) || 0), 0) : 0);
     const min = s.planned_min || 0;
     if (s.sport === "Run") { out.run.km += km; out.run.min += min; }
     else if (isBikeCat(s.sport)) { out.bike.km += km; out.bike.min += min; }

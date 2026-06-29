@@ -2,7 +2,7 @@
 // optimale Zonen, Verfügbarkeit & Einheiten-Vorlieben, eigene Einheiten. Der Wochen-Vorschlag bleibt in der
 // Wochenplanung. Übernehmen schreibt additiv in die Wochenplanung/den Saisonplan.
 import { useEffect, useState } from "react";
-import { api, type BlockPlan, type BlockDay, type TuneupProgress } from "../lib/api.ts";
+import { api, type BlockPlan, type BlockDay, type TuneupProgress, type DistanceConcept } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { DAY_NAMES, typeColor, typeLabel } from "../lib/util.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
@@ -44,6 +44,20 @@ function TuneupProgressCard() {
         <div className="tiny muted" style={{ marginTop: 4 }}>Kein Hauptrennen mit Wunsch-Zielzeit gesetzt — Prognose-Abgleich nicht möglich.</div>
       )}
     </div>
+  );
+}
+
+// Item 3 (#7): „So trainierst du {Distanz}" — Stoffwechselwege + Schlüssel-Einheiten, klinisch & einklappbar.
+function DistanceConceptBox({ c }: { c: DistanceConcept }) {
+  return (
+    <details className="card tight" style={{ marginBottom: 12 }} open>
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>So trainierst du {c.label}</summary>
+      <div className="tiny" style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 5 }}>
+        <div><strong>Stoffwechsel:</strong> {c.metabolic}</div>
+        <div><strong>Schlüssel-Einheiten:</strong> {c.keySessions.join(" · ")}</div>
+        <div className="muted">{c.longRunNote}</div>
+      </div>
+    </details>
   );
 }
 
@@ -100,6 +114,9 @@ export default function Coach() {
       </div>
 
       <TuneupProgressCard />
+
+      {/* Item 3 (#7): distanzspezifisches Konzept — Sportwissenschaft sichtbar (Stoffwechsel + Schlüssel-Einheiten). */}
+      {blockPlan?.distanceConcept && <DistanceConceptBox c={blockPlan.distanceConcept} />}
 
       {/* Wettkampf-Block bis Renntag */}
       <div className="card tight" style={{ marginBottom: 12 }}>

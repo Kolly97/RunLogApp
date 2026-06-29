@@ -17,7 +17,7 @@ export default function WeekPmcStrip({ pmc, tourAnchor }: { pmc: NonNullable<Ana
     </div>
   );
   return (
-    <div className="row" {...(tourAnchor ? { "data-tour": "week-pmc" } : {})} style={{ gap: 20, alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid #eef2f7", flexWrap: "wrap" }}>
+    <div className="row" {...(tourAnchor ? { "data-tour": "week-pmc" } : {})} style={{ gap: 20, alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border-faint)", flexWrap: "wrap" }}>
       <Stat label="Fitness CTL" val={pmc.ctl} title="CTL — chronische Last (42-Tage-EWMA): deine Fitness/Belastbarkeit." />
       <Stat label="Fatigue ATL" val={pmc.atl} title="ATL — akute Last (7-Tage-EWMA): aktuelle Ermüdung." />
       <Stat label="Form TSB" val={`${pmc.tsb > 0 ? "+" : ""}${pmc.tsb}`} col={tsbCol} title="TSB = CTL − ATL: > +5 frisch · −10 bis −25 produktiv müde · < −25 Risiko." />

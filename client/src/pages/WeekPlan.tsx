@@ -487,22 +487,32 @@ function GoalGapCard() {
   if (!g.goalTimeS) return (
     <div className="card tight no-print" style={{ marginBottom: 8 }}>
       <div className="tiny muted">{head}</div>
-      <div className="tiny">Prognose aktuell: <strong>{fmtT(g.predictedTimeS)}</strong> · keine Wunsch-Zielzeit gesetzt — in <a href="/races">Races</a> eintragen, dann passen sich die Paces der Progression an.</div>
+      <div className="tiny">Prognose aktuell: <strong>{fmtT(g.predictedTimeS ?? g.predictedEffTimeS ?? null)}</strong>{g.predictedTimeS == null && g.effVo2 ? <span className="muted"> (eff. VO₂max · Konfidenz {g.effVo2.confidence})</span> : null} · keine Wunsch-Zielzeit gesetzt — in <a href="/races">Races</a> eintragen, dann passen sich die Paces der Progression an.</div>
     </div>
   );
-  const gap = g.gapS ?? 0;
-  const col = g.feasible ? "var(--ok)" : "var(--danger)";
+  // C1 (#9): Renn-VDOT bevorzugt; ohne Rennen ≤90d eff. VO₂max als Fallback (Q2). Beide Quellen sichtbar (Q1), Bereich (Q4).
+  const usingEff = g.predictedTimeS == null && g.predictedEffTimeS != null;
+  const primaryPred = g.predictedTimeS ?? g.predictedEffTimeS ?? null;
+  const primaryRange = g.predictedTimeS != null ? g.predictedRange : g.predictedEffRange;
+  const gap = g.gapS != null ? g.gapS : (primaryPred != null ? primaryPred - g.goalTimeS : 0);
+  const col = g.feasible == null ? (gap <= 2 ? "var(--ok)" : "var(--warn)") : g.feasible ? "var(--ok)" : "var(--danger)";
   const gapTxt = gap <= 2 ? "im Ziel" : `${fmtT(gap)} über Ziel`;
   return (
     <div className="card tight no-print" style={{ marginBottom: 8, borderLeft: `4px solid ${col}` }}>
       <div className="tiny muted">{head}</div>
       <div className="row" style={{ gap: 14, flexWrap: "wrap", alignItems: "baseline", marginTop: 2 }}>
-        <span>Prognose <strong>{fmtT(g.predictedTimeS)}</strong> → Wunsch <strong>{fmtT(g.goalTimeS)}</strong></span>
+        <span>Prognose <strong>{fmtT(primaryPred)}</strong>{usingEff && g.effVo2 ? <span className="tiny muted"> (eff. VO₂max · Konfidenz {g.effVo2.confidence})</span> : null} → Wunsch <strong>{fmtT(g.goalTimeS)}</strong></span>
         <span className="tiny" style={{ color: col, fontWeight: 700 }}>{gapTxt}</span>
+        {primaryRange && <span className="tiny muted">Bereich {fmtT(primaryRange.best_s)}–{fmtT(primaryRange.realistic_s)}</span>}
         {g.reqVdotPerWeek != null && g.reqVdotPerWeek > 0 && <span className="tiny muted">nötig: +{g.reqVdotPerWeek} VDOT/Woche</span>}
-        <span className="pill" style={{ background: col, color: "#fff" }}>{g.feasible ? "machbar" : "sehr ambitioniert"}</span>
+        {g.feasible != null
+          ? <span className="pill" style={{ background: col, color: "#fff" }}>{g.feasible ? "machbar" : "sehr ambitioniert"}</span>
+          : <span className="pill" style={{ background: col, color: "#fff" }}>geschätzt</span>}
       </div>
-      {!g.feasible && <div className="tiny muted" style={{ marginTop: 2 }}>Realistische Prognose-Endzeit bei gedeckelter Progression: <strong>{fmtT(g.projEndTimeS)}</strong>. Ziel ggf. anpassen oder Vorbereitungszeit verlängern.</div>}
+      {!usingEff && g.predictedEffTimeS != null && g.effVo2 && (
+        <div className="tiny muted" style={{ marginTop: 2 }}>Zweitquelle eff. VO₂max: <strong>{fmtT(g.predictedEffTimeS)}</strong> (Konfidenz {g.effVo2.confidence})</div>
+      )}
+      {g.feasible === false && <div className="tiny muted" style={{ marginTop: 2 }}>Realistische Prognose-Endzeit bei gedeckelter Progression: <strong>{fmtT(g.projEndTimeS)}</strong>. Ziel ggf. anpassen oder Vorbereitungszeit verlängern.</div>}
     </div>
   );
 }

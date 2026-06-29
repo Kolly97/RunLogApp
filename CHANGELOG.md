@@ -4,6 +4,43 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [2.1.0] – 2026-06-30 — Distanzadaptive Trainingsplanung + Streak-Logik + Wochenbericht-Kacheln
+
+Drei Vertiefungen am Trainingsmodell und an der Oberfläche: Wochenplanung und Blockplanung reagieren jetzt auf
+die Wettkampfdistanz (5k bis Marathon), die Streak-Karte zeigt die korrekte laufende Serie und Wochenbericht-
+Kategorien erscheinen als kompakte, nicht überdehnte Stat-Felder.
+
+### Hinzugefügt
+- **Distanzadaptiver Workout-Picker (4 Buckets):** Neues `is10k`-Bucket (7–15 km) neben 5k, HM und Marathon.
+  Specific-Phase für 10k: VO2-max + LT2-Mix (`long_fastfinish`, VO2-Pool, LT2/Race-Pace-Rotation, Strides).
+  Build-Phase HM/M: zweiter Qualitätstag aus gefiltertem LT2-Pool (kein Duplikat mit Slot 1) + `long_mp_segments`.
+  Basis-Phase Marathon: Hill Reps früher im Rotations-Pool.
+- **`phaseDistributionTarget` distanzabhängig:** Akzeptiert jetzt `goalDistanceM`; 5k/10k → polarisierter
+  (+Z3), HM/M → pyramidal (+Z2); fließende Abstufung zwischen den Buckets.
+- **km-Alignment in `blockPlan`:** Wenn `target_km` gesetzt, skaliert ein `factor` (0.7–1.4) die TSS der
+  Easy/Long-Sessions so, dass die Gesamtwoche näher am Kilometerziel liegt; Quality-Sessions bleiben unberührt.
+- **Wettkampfdistanz an alle Planungs-Endpunkte durchgereicht:** `week-suggestion`, `block-suggestion` und
+  `analyze-week` lesen die nächste Race-`distance_m` und übergeben sie als `goalDistanceM`.
+
+### Geändert
+- **Streak-Regel „Nur echtes Training":** Eine Einheit mit `sport ≠ General` (kein Commute) verlängert die
+  Serie; reiner Commute-Tag (nur `sport = General`) bricht die Serie; eingetragener Ruhetag (`type = Rest`)
+  überbrückt; leerer Vergangenheitstag bricht. Heute bleibt offen (bricht nicht, sofern noch kein Real-Training).
+- **Streak-Headline = laufende Serie:** Große Zahl zeigt die aktuelle Serie bis heute; Nebenzeile zeigt aktive
+  Tage diesen Monat und die längste Serie. Commute-only-Tage im Kalender: neutral/gestrichelt; Ruhetag: gepunktet.
+- **Wochenbericht-Kategorien als 3 Stat-Kacheln:** Ehemaliges einzelnes, überdehnendes `cat-lines`-EgItem
+  durch drei kompakte Kacheln (`cat-run`, `cat-bike`, `cat-str`, je `defaultSpan={4}`, ~84 px Höhe) ersetzt.
+  Jede Kachel zeigt Ist-Wert, geplanten Wert und eine farbige Completion-Bar (≥98 % grün, ≥70 % accent, sonst warn).
+
+### Technisch
+- `server/workouts.ts`: 4-Bucket-Matrix + Build/Specific-Phase-Distanzmodulation.
+- `server/analysis.ts`: `phaseDistributionTarget(phase, overrides?, goalDistanceM?)`, `BlockWeekInput.target_km`,
+  `renderUnit`-Closure + km-Alignment-Loop in `blockPlan`.
+- `server/index.ts`: Race-`distance_m`-Lookup in `week-suggestion`, `block-suggestion`, `analyze-week`.
+- `client/src/components/StreakCard.tsx`: `DayAgg.real`, `restLogged`-Set, neue Streak-Iteration, Kalender-Klassen.
+- `client/src/pages/WeekReport.tsx`: `CatStat`-Komponente, 3 separate EgItems.
+- `client/src/styles.css`: `.cat-stat`, `.cat-bar`, `.streak-cell.commute`, `.streak-cell.rest`.
+
 ## [2.0.0] – 2026-06-29 — Vollständig aktualisierte Anleitung (Anleitung v2.0) + Versionsmeilenstein
 
 Versionsmeilenstein nach dem umfangreichen Funktionsausbau v1.10–v1.12.1: Premium-Politur (Dark Mode,

@@ -28,6 +28,14 @@ const DIST_NAMES: Record<number, string> = {
 function distLabel(m: number): string {
   return DIST_NAMES[m] || (m >= 1000 ? `${Math.round(m / 100) / 10} km` : `${m} m`);
 }
+// C1 (Q4): erwartete Zeit prominent + Bereich Bestfall–Realistisch als gedämpfte Unterzeile.
+function PredCell({ time_s, best_s, realistic_s }: { time_s: number; best_s: number; realistic_s: number }) {
+  return (
+    <span>{secToClock(time_s)}
+      <span className="tiny muted" style={{ display: "block" }}>{secToClock(best_s)}–{secToClock(realistic_s)}</span>
+    </span>
+  );
+}
 
 type EditState = { distance_m: number; timeStr: string; date: string } | null;
 type NewState = { distance_m: string; timeStr: string; date: string } | null;
@@ -81,8 +89,9 @@ export default function Bests() {
   if (err) return <div className="empty"><T k="bests.err">Bestzeiten konnten nicht geladen werden.</T></div>;
   if (!data) return <p className="muted"><T k="bests.loading">Lädt…</T></p>;
 
-  const { pbs, vdot, vdotLevel, age, predictions } = data;
-  const predByDist = new Map(predictions.map((p) => [p.distance_m, p.time_s]));
+  const { pbs, vdot, vdotLevel, age, predictions, effVo2, predictionsEff } = data;
+  const predByDist = new Map(predictions.map((p) => [p.distance_m, p]));
+  const predEffByDist = new Map((predictionsEff ?? []).map((p) => [p.distance_m, p]));
 
   return (
     <div>
@@ -158,24 +167,40 @@ export default function Bests() {
         {pbs.length > 0 && <EgItem id="vdot" title="VO₂max & Prognose" defaultSpan={6}>{() => (
           <div className="card">
             <h2><T k="bests.vdot.title">VO₂max & Prognose</T></h2>
-            {vdot == null && <p className="tiny muted"><T k="bests.vdot.empty">Zu wenige Renndaten (≥1500 m, 3–30 min) für eine VDOT-Schätzung — kommt mit mehr Syncs.</T></p>}
-            {vdot != null && (
+            {vdot == null && !effVo2 && <p className="tiny muted"><T k="bests.vdot.empty">Zu wenige Renndaten (≥1500 m, 3–30 min) für eine VDOT-Schätzung — kommt mit mehr Syncs.</T></p>}
+            {(vdot != null || effVo2) && (
               <>
+                {/* C1 (#9, Q1): zwei getrennte Quellen — Renn-VDOT (Goldstandard) und labor-kalibrierte eff. VO2max. */}
                 <div className="grid cols-2" style={{ gap: 8 }}>
-                  <div className="stat"><div className="label"><T k="bests.vdot.label">VO₂max (aktuell)</T></div><div className="value" style={{ fontSize: 22 }}>{vdot.toFixed(1)}<span className="tiny muted"> ml/kg/min</span></div></div>
-                  <div className="stat"><div className="label"><T k="bests.vdot.level">Niveau</T></div><div className="value" style={{ fontSize: 22 }}>{vdotLevel ?? "–"}{age ? <span className="tiny muted"> · {age} J.</span> : null}</div></div>
+                  <div className="stat">
+                    <div className="label"><T k="bests.vdot.label">VDOT · Rennen ≤90 T.</T></div>
+                    <div className="value" style={{ fontSize: 22 }}>{vdot != null ? vdot.toFixed(1) : "–"}<span className="tiny muted"> ml/kg/min</span></div>
+                    {vdot != null && <div className="sub tiny muted">{vdotLevel ?? "–"}{age ? ` · ${age} J.` : ""}</div>}
+                  </div>
+                  <div className="stat">
+                    <div className="label"><T k="bests.effvo2.label">eff. VO₂max</T>{effVo2?.calibrated ? " · labor-kal." : ""}</div>
+                    <div className="value" style={{ fontSize: 22 }}>{effVo2 ? effVo2.value.toFixed(1) : "–"}<span className="tiny muted"> ml/kg/min</span></div>
+                    {effVo2 && <div className="sub tiny muted"><T k="bests.effvo2.conf">Konfidenz</T> {effVo2.confidence}{effVo2.level ? ` · ${effVo2.level}` : ""}</div>}
+                  </div>
                 </div>
-                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}><T k="bests.vdot.model">Renn-Prognose (Daniels-äquivalent)</T></div>
+                <div className="tiny muted" style={{ marginTop: 8, marginBottom: 4 }}><T k="bests.vdot.model">Renn-Prognose (Daniels) · Bereich Bestfall–Realistisch</T></div>
                 <table>
-                  <thead><tr><th><T k="bests.cs.col.dist">Distanz</T></th><th><T k="bests.cs.col.pred">Prognose</T></th><th><T k="bests.cs.col.pb">PB</T></th></tr></thead>
+                  <thead><tr>
+                    <th><T k="bests.cs.col.dist">Distanz</T></th>
+                    {vdot != null && <th><T k="bests.col.race">Rennen</T></th>}
+                    {effVo2 && <th><T k="bests.col.eff">eff. VO₂max</T></th>}
+                    <th><T k="bests.cs.col.pb">PB</T></th>
+                  </tr></thead>
                   <tbody>
                     {[5000, 10000, 21097, 42195].map((d) => {
-                      const pred = predByDist.get(d);
+                      const pr = predByDist.get(d);
+                      const pe = predEffByDist.get(d);
                       const pb = pbs.find((p) => p.distance_m === d);
                       return (
                         <tr key={d}>
                           <td><strong>{distLabel(d)}</strong></td>
-                          <td>{pred ? secToClock(pred) : "–"}</td>
+                          {vdot != null && <td>{pr ? <PredCell time_s={pr.time_s} best_s={pr.best_s} realistic_s={pr.realistic_s} /> : "–"}</td>}
+                          {effVo2 && <td>{pe ? <PredCell time_s={pe.time_s} best_s={pe.best_s} realistic_s={pe.realistic_s} /> : "–"}</td>}
                           <td className="muted">{pb ? secToClock(pb.time_s) : "–"}</td>
                         </tr>
                       );

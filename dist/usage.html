@@ -71,28 +71,35 @@
       <div class="brand">Run<span>Log</span></div>
       <div class="grp">Anleitung</div>
       <a href="#start">Überblick &amp; Workflow</a>
-      <div class="grp">Die Seiten</div>
-      <a href="#dashboard">Dashboard</a>
-      <a href="#planung">Wochenplanung</a>
-      <a href="#tracking">Tracking</a>
-      <a href="#bericht">Wochenbericht</a>
-      <a href="#langzeit">Langzeit</a>
-      <a href="#races">Races</a>
-      <a href="#bestzeiten">Bestzeiten</a>
-      <a href="#methodik">Methodik</a>
-      <a href="#saisonplan">Saisonplan</a>
-      <a href="#profil">Profil</a>
-      <a href="#einstellungen">Einstellungen</a>
-      <a href="#optionen">Auswahllisten</a>
-      <a href="#strava">Strava</a>
+      <div class="grp">Planen</div>
+      <a href="#dashboard">▣ Dashboard</a>
+      <a href="#planung">✎ Wochenplanung</a>
+      <a href="#coach">🧭 Coach</a>
+      <div class="grp">Tracken</div>
+      <a href="#tracking">✓ Tracking</a>
+      <div class="grp">Analysieren</div>
+      <a href="#bericht">🖨 Wochenbericht</a>
+      <a href="#langzeit">📈 Langzeit</a>
+      <a href="#bestzeiten">🏅 Bestzeiten</a>
+      <a href="#methodik">🔬 Methodik</a>
+      <a href="#races">🏁 Races</a>
+      <div class="grp">Lernen</div>
+      <a href="#lernen">🎓 Lernen</a>
+      <div class="grp">Einstellungen</div>
+      <a href="#profil">👤 Profil</a>
+      <a href="#einstellungen">⚙ Einstellungen</a>
+      <a href="#optionen">🏷 Auswahllisten</a>
       <div class="grp">Nachschlagen</div>
       <a href="#glossar">Glossar &amp; Formeln</a>
+      <a href="#strava">Strava-Anbindung</a>
+      <div class="grp">Neu</div>
+      <a href="#neues">Was ist neu? v1.10–1.12</a>
     </nav>
 
     <main>
       <!-- ============================ ÜBERBLICK ============================ -->
       <div class="page" id="start">
-        <h1>Run<span>Log</span> — Anleitung</h1>
+        <h1>Run<span>Log</span> — Anleitung <span style="font-size:0.6em;color:var(--muted);font-weight:400">v2.0.0</span></h1>
         <p class="lead">Lokale Trainings-App für den Langstreckenlauf: Wochen planen, Einheiten tracken,
           wissenschaftlich auswerten im TrainingPeaks-Stil. Wähle links eine Seite.</p>
 
@@ -108,18 +115,25 @@
 
         <section class="card">
           <h2>Die Seiten auf einen Blick</h2>
+          <p class="muted" style="margin:0 0 8px;font-size:12px">Struktur wie in der App-Sidebar</p>
           <dl>
-            <dt>▣ <a href="#dashboard">Dashboard</a></dt><dd>Aktuelle Form (CTL/ATL/TSB/Ramp), PMC, Saison-Progression, Hinweise zur Woche, Intervall-Trend.</dd>
-            <dt>✎ <a href="#planung">Wochenplanung</a></dt><dd>Einheiten je Tag anlegen, Zonen verteilen, geplanten TSS + Live-Check sehen.</dd>
+            <dt>▣ <a href="#dashboard">Dashboard</a></dt><dd>Form-Ribbon, CTL/ATL/TSB/Ramp mit Sparklines, PMC, Saison-Progression, Intervall-Trend.</dd>
+            <dt style="margin-top:8px"><em style="font-size:11px;color:var(--muted)">Planen</em></dt><dd></dd>
+            <dt>✎ <a href="#planung">Wochenplanung</a></dt><dd>Einheiten je Tag anlegen, Block-Vorschlag, dynamische von–bis-Einheiten, Live-TSS-Check.</dd>
+            <dt>🧭 <a href="#coach">Coach</a></dt><dd>Wettkampf-Blockplan bis zum Renntag + strukturierter Einheiten-Builder (Coros-artig).</dd>
+            <dt style="margin-top:8px"><em style="font-size:11px;color:var(--muted)">Tracken</em></dt><dd></dd>
             <dt>✓ <a href="#tracking">Tracking</a></dt><dd>Reale Einheiten + Tagesfaktoren (Whoop &amp; Co.) erfassen.</dd>
-            <dt>🖨 <a href="#bericht">Wochenbericht</a></dt><dd>Druckfertiger 2-Seiten-Bericht der Woche.</dd>
-            <dt>📈 <a href="#langzeit">Langzeit</a></dt><dd>Monate-Entwicklung: Wellness, Zonen-Effizienz, Intervall-Trend.</dd>
-            <dt>🏁 <a href="#races">Races</a></dt><dd>Wettkämpfe mit Splits, Zeit, Platzierung, HF, Höhenmetern (auch automatisch aus dem Tracking).</dd>
-            <dt>🏅 <a href="#bestzeiten">Bestzeiten</a></dt><dd>Persönliche Bestzeiten je Distanz + Critical-Speed-Modell.</dd>
-            <dt>🔬 <a href="#methodik">Methodik</a></dt><dd>N-of-1: welche Trainingsmethode bringt dir am meisten? Marker, Experimente, passive Inferenz.</dd>
-            <dt>🗓 <a href="#saisonplan">Saisonplan</a></dt><dd>Wochen (KW-gesteuert) mit Phase, Ziel-km und Saisonziel-Rennen.</dd>
-            <dt>👤 <a href="#profil">Profil</a></dt><dd>Profile verwalten/zurücksetzen, HF-Zonen &amp; Schwellen.</dd>
-            <dt>⚙ <a href="#einstellungen">Einstellungen</a></dt><dd>Analyse-Schwellen &amp; Strava.</dd>
+            <dt style="margin-top:8px"><em style="font-size:11px;color:var(--muted)">Analysieren</em></dt><dd></dd>
+            <dt>🖨 <a href="#bericht">Wochenbericht</a></dt><dd>Druckfertiger Bericht mit Zonenverteilung, Periodisierungs-Ziel und Plan-Erfüllung.</dd>
+            <dt>📈 <a href="#langzeit">Langzeit</a></dt><dd>Monate-Entwicklung: Wellness, Zonen-Effizienz, VO2max, Intervall-Trend.</dd>
+            <dt>🏅 <a href="#bestzeiten">Bestzeiten</a></dt><dd>PBs je Distanz + Critical-Speed-Modell + Renn-Prognosen.</dd>
+            <dt>🔬 <a href="#methodik">Methodik</a></dt><dd>N-of-1: welche Trainingsmethode bringt dir am meisten? Block-Inferenz, Marker, Experimente.</dd>
+            <dt>🏁 <a href="#races">Races</a></dt><dd>Wettkämpfe mit Splits, Zeit, Platzierung, HF, Höhenmetern.</dd>
+            <dt style="margin-top:8px"><em style="font-size:11px;color:var(--muted)">Lernen</em></dt><dd></dd>
+            <dt>🎓 <a href="#lernen">Lernen</a></dt><dd>Geführte Onboarding-Touren + Coachmarks + Tutorial-Profil.</dd>
+            <dt style="margin-top:8px"><em style="font-size:11px;color:var(--muted)">Einstellungen</em></dt><dd></dd>
+            <dt>👤 <a href="#profil">Profil</a></dt><dd>Athletendaten, HF-Zonen/Schwellen, Laktat-Tests, Block-Präferenzen, eigene Einheiten.</dd>
+            <dt>⚙ <a href="#einstellungen">Einstellungen</a></dt><dd>Darstellung (Dark Mode, Animationen, Sparklines), Analyse-Schwellen, Strava.</dd>
             <dt>🏷 <a href="#optionen">Auswahllisten</a></dt><dd>Phasen, Sportarten, Einheitstypen, Wochen-Checks, Tagesfaktoren.</dd>
           </dl>
         </section>
@@ -145,24 +159,32 @@
 
       <!-- ============================ DASHBOARD ============================ -->
       <div class="page" id="dashboard">
-        <p class="crumbs">Die Seiten › Dashboard</p>
+        <p class="crumbs">Dashboard</p>
         <h1>▣ Dashboard</h1>
         <p class="lead">Der aktuelle Trainingszustand auf einen Blick.</p>
         <section class="card">
           <h2>Was du hier siehst</h2>
           <dl>
+            <dt>Form-Ribbon <span class="pill">v1.10.0</span></dt><dd>Ganz oben ein fließendes <strong>CTL/ATL/TSB-Band</strong>
+              der letzten ~6 Wochen mit großen Live-Kennzahlen. Zeigt auf einen Blick, ob du gerade aufbaust,
+              erhältst oder entlastest — und wie frisch du an diesem Tag bist.</dd>
             <dt>Kennzahlen-Kacheln</dt><dd><strong>Fitness (CTL)</strong>, <strong>Fatigue (ATL)</strong>,
-              <strong>Form (TSB)</strong> und <strong>CTL-Ramp</strong> für heute. Begriffe + Formeln im <a href="#glossar">Glossar</a>.</dd>
+              <strong>Form (TSB)</strong> und <strong>CTL-Ramp</strong> für heute, jeweils mit
+              <strong>Mini-Sparkline</strong> des Verlaufs der letzten Wochen. Begriffe + Formeln im <a href="#glossar">Glossar</a>.</dd>
             <dt>Performance Management Chart (PMC)</dt><dd>Fitness (blau), Fatigue (rosa), Form (gelb), dazu TSS pro
               Tag/Woche. Rechts von „heute" ist die Linie gestrichelt = Prognose aus den geplanten Einheiten.
               Hover zeigt die Einheit des Tages; Klick springt ins Tracking. Phasen-Farbband + Race-Marker (Gold) unten.</dd>
             <dt>Saison-Progression</dt><dd>Geplante vs. gelaufene km je Woche + Phasenziel; die aktuelle Woche ist markiert.</dd>
             <dt>Aktuelle Woche</dt><dd>Kurz-Check mit den wichtigsten Hinweisen (Volumen, Rampe, Polarisierung, Wochen-Last …).</dd>
-            <dt>Intervall-Trend</dt><dd>Entwicklung der Belastungs-Pace (LT1 / LT2 / VO2) — schneller = oben.</dd>
+            <dt>Intervall-Trend</dt><dd>Entwicklung der Belastungs-Pace (LT1 / LT2 / VO2) mit 7-Tage-Rolling-Mittel — schneller = oben.</dd>
           </dl>
           <h3>Zeitraum-Wähler</h3>
           <p>Saison / 1M / 6M / 1J / YTD / Eigene — gilt für die großen Charts. CTL/ATL werden immer aus der
             vollen Historie gerechnet und nur für die Anzeige zugeschnitten, damit die Fitness am Anfang stimmt.</p>
+          <h3>Dark Mode</h3>
+          <p>Oben rechts im Sidebar-Fuß: <strong>Auto (Systemfarbe) · Hell · Dunkel</strong>. Alle Charts nutzen
+            CSS-Variablen — bleiben in beiden Modi lesbar. <strong>Druck erzwingt immer Hell</strong> (kein schwarzes
+            Papier). Die Wahl wird gespeichert.</p>
         </section>
 
         <section class="card">
@@ -182,7 +204,7 @@
 
       <!-- ============================ PLANUNG ============================ -->
       <div class="page" id="planung">
-        <p class="crumbs">Die Seiten › Wochenplanung</p>
+        <p class="crumbs">Planen › Wochenplanung</p>
         <h1>✎ Wochenplanung</h1>
         <p class="lead">Die Einheiten der Woche entwerfen — die App rechnet die Last live mit.</p>
         <section class="card">
@@ -214,6 +236,18 @@
         </section>
 
         <section class="card">
+          <h2>Dynamische Einheiten <span class="pill">v1.11.0</span></h2>
+          <p>Einheiten aus der Bibliothek zeigen in der Wochenplanung <strong>von–bis-Wiederholungen</strong> und
+            einen empfohlenen <strong>Tageswert</strong> nach Phase · TSB · Fitness · VDOT. Eine kurze
+            <strong>„angepasst: …"-Notiz</strong> erklärt, warum reduziert oder erhöht wurde (z.&nbsp;B.
+            „angepasst: Build · TSB −18 · Fit mittel"). Die Pace bleibt als Band sichtbar
+            (Anker ± Fenster).</p>
+          <div class="note">Die Anpassung ist <strong>additiv und gedeckelt</strong> (±0,3 des Wiederholungs-Bands) —
+            niemals unter das Minimum, nie über das Maximum. Du kannst die Einheit jederzeit manuell bearbeiten
+            und „pinnst" sie damit.</div>
+        </section>
+
+        <section class="card">
           <h2>Einheiten-Bibliothek <span class="pill">v1.6.1</span></h2>
           <p>Der <strong>Block-Vorschlag</strong> wählt die konkreten Einheiten aus einer sportwissenschaftlich
             fundierten Bibliothek (Daniels · Bakken/Norwegian · Seiler · Billat). Über einen längeren Plan
@@ -238,11 +272,81 @@
             (Base → Belastung → Race-Specific → Taper) — du kannst jede Wochenphase aber manuell überschreiben,
             der Vorschlag passt sich an.</div>
         </section>
+
+        <section class="card">
+          <h2>Eigene Einheiten — Strukturierter Builder <span class="pill">v1.12.0</span></h2>
+          <p>Im Bereich <strong>Coach → Eigene Einheiten</strong> kannst du eigene Einheiten mit beliebiger Tiefe
+            aufbauen — wie bei Coros. Wähle <strong>„Strukturiert"</strong>, dann füge Segmente und Gruppen hinzu:</p>
+          <dl>
+            <dt>Segment</dt>
+            <dd>Ein Arbeitsabschnitt: <strong>Distanz</strong> (m) <em>oder</em> <strong>Dauer</strong> (s), optionaler
+              <strong>Pace-Offset</strong> zum Anker in s/km (z.&nbsp;B. −15 = 15 s/km schneller), eigene
+              <strong>Pause</strong> in Sekunden.</dd>
+            <dt>Gruppe</dt>
+            <dd>Enthält Segmente (oder weitere Gruppen). Eigene Anzahl mit optionalem
+              <strong>Spielraum</strong> (von–bis per „±"), eigene <strong>Satz-Pause</strong>.</dd>
+            <dt>Spielraum (von–bis)</dt>
+            <dd>Mit „±" schaltest du einen Bereich ein (z.&nbsp;B. 5–6 Reps / Satz 3–4×). Die Engine wählt den
+              <strong>Tageswert</strong> nach Phase · TSB · Fitness · VDOT — gleiche Mechanik wie die Bibliotheks-Einheiten.
+              Pace-Band bleibt immer sichtbar.</dd>
+          </dl>
+          <p>In der <strong>Tabelle aller Einheiten</strong> erscheint eine Struktur-Spalte (Kurzfassung) + aufklappbare
+            <strong>Detailzeile</strong> mit allen Segmenten, Pausen, von–bis-Bändern und dem Tageswert. Bibliotheks-
+            <em>und</em> eigene Einheiten nutzen denselben Renderer mit deinen echten Profil-Zonen.</p>
+          <div class="note">Der „Einfach"-Modus (N×Rep) bleibt für unkomplizierte Einheiten erhalten — du musst nichts
+            umstellen.</div>
+        </section>
+      </div>
+
+      <!-- ============================ COACH ============================ -->
+      <div class="page" id="coach">
+        <p class="crumbs">Planen › Coach</p>
+        <h1>🧭 Coach</h1>
+        <p class="lead">Wettkampf-Blockplanung und eigene Einheiten — alles auf deine aktuellen Zonen und Form zugeschnitten.</p>
+
+        <section class="card">
+          <h2>Wettkampf-Block</h2>
+          <p>Wähle ein Ziel-Rennen und der Coach generiert einen <strong>kompletten Mesozyklus</strong> bis zum Renntag
+            (Base → Aufbau → Race-Specific → Taper) — mit konkreten Wochenplänen, Periodisierungszielen und Phasen.
+            Jede Woche ist einzeln übernehmbar; <strong>„Phasen übernehmen"</strong> schreibt die Periodisierung in
+            den Saisonplan. Die Einheitspaces passen sich an deine projizierte Fitness und die Wunsch-Zielzeit an.</p>
+          <div class="note">Den Gate-Modus (<strong>beratend</strong> vs. <strong>Gate</strong>) stellst du in den
+            <a href="#einstellungen">Einstellungen</a> ein. Gute Ergebnisse erfordern gepflegte Tagesfaktoren
+            (HRV/Schlaf) + korrekte Schwellen im <a href="#profil">Profil</a>.</div>
+        </section>
+
+        <section class="card">
+          <h2>Eigene Einheiten — Strukturierter Builder <span class="pill">v1.12.0</span></h2>
+          <p>Coros-artiger rekursiver Editor für eigene Einheiten. Wähle <strong>„Strukturiert"</strong> und baue
+            beliebig tiefe Gruppen + Segmente:</p>
+          <dl>
+            <dt>Segment</dt>
+            <dd><strong>Distanz</strong> (m) <em>oder</em> <strong>Dauer</strong> (s) + optionaler
+              <strong>Pace-Offset</strong> (s/km vom Anker) + eigene <strong>Pause</strong>.</dd>
+            <dt>Gruppe</dt>
+            <dd>Enthält Segmente oder weitere Gruppen; eigene Anzahl mit optionalem
+              <strong>Spielraum</strong> (von–bis per „±"); eigene Satz-Pause.</dd>
+            <dt>Spielraum</dt>
+            <dd>„±" schaltet ein von–bis-Band ein. Die Engine wählt den <strong>Tageswert</strong> nach
+              Phase · TSB · Fitness — gleiche Mechanik wie Bibliotheks-Einheiten.</dd>
+          </dl>
+          <p>In der Einheiten-Tabelle erscheinen Bibliotheks- <em>und</em> eigene Einheiten mit
+            <strong>Struktur-Kurzfassung</strong> + aufklappbarer Detailzeile (Segmente, Pausen, Bänder, Tageswert).</p>
+        </section>
+
+        <section class="card">
+          <h2>Einheiten-Bibliothek</h2>
+          <p>Alle Bibliotheks-Einheiten (Daniels · Bakken/Norwegian · Seiler · Billat) stehen hier zum Browsen —
+            mit gerenderten Paces deiner echten Zonen. Du kannst Einheiten als
+            <strong>Favorit (♥)</strong> oder <strong>Vermeiden (⊘)</strong> markieren, was den Block-Vorschlag
+            in der Wochenplanung beeinflusst. Unter <a href="#profil">Profil → Block-Präferenzen</a> wählst du
+            den übergeordneten Schwerpunkt.</p>
+        </section>
       </div>
 
       <!-- ============================ TRACKING ============================ -->
       <div class="page" id="tracking">
-        <p class="crumbs">Die Seiten › Tracking</p>
+        <p class="crumbs">Tracken › Tracking</p>
         <h1>✓ Tracking</h1>
         <p class="lead">Nach dem Training: reale Werte + tägliches Befinden erfassen.</p>
         <section class="card">
@@ -287,7 +391,7 @@
 
       <!-- ============================ BERICHT ============================ -->
       <div class="page" id="bericht">
-        <p class="crumbs">Die Seiten › Wochenbericht</p>
+        <p class="crumbs">Analysieren › Wochenbericht</p>
         <h1>🖨 Wochenbericht</h1>
         <p class="lead">Druckfertige Auswertung der Woche — frei anordnbar, WYSIWYG.</p>
         <section class="card">
@@ -310,6 +414,8 @@
             <li><strong>Efficiency Factor</strong> je Wochentag, <strong>PMC bis zu dieser Woche</strong></li>
             <li>Saison-Progression, reale Bewertungs-Schilder, Wellness-Ø, Wochen-Checks, Reflexion</li>
             <li>Wellness-Verläufe (je Metrik eine eigene Kachel)</li>
+            <li><strong>Periodisierungs-Ziel</strong> mit Begründung (pyramidal/polarisiert/regenerativ je Phase) +
+              optionalem manuellem <strong>Override</strong> <span class="pill">v1.11.0</span></li>
           </ul>
           <p>Über <strong>„Drucken / PDF"</strong> als PDF sichern.</p>
           <div class="note"><strong>PMC + Saison-Progression enden an der Berichtswoche</strong> (nicht bei „heute") —
@@ -320,7 +426,7 @@
 
       <!-- ============================ LANGZEIT ============================ -->
       <div class="page" id="langzeit">
-        <p class="crumbs">Die Seiten › Langzeit</p>
+        <p class="crumbs">Analysieren › Langzeit</p>
         <h1>📈 Langzeit</h1>
         <p class="lead">Entwicklung über Monate — frei anordnbar, druckbar.</p>
         <section class="card">
@@ -361,7 +467,7 @@
 
       <!-- ============================ RACES ============================ -->
       <div class="page" id="races">
-        <p class="crumbs">Die Seiten › Races</p>
+        <p class="crumbs">Analysieren › Races</p>
         <h1>🏁 Races</h1>
         <p class="lead">Wettkämpfe mit allen Details.</p>
         <section class="card">
@@ -380,7 +486,7 @@
 
       <!-- ============================ BESTZEITEN ============================ -->
       <div class="page" id="bestzeiten">
-        <p class="crumbs">Die Seiten › Bestzeiten</p>
+        <p class="crumbs">Analysieren › Bestzeiten</p>
         <h1>🏅 Bestzeiten</h1>
         <p class="lead">Persönliche Bestzeiten und ein Critical-Speed-Modell aus den Strava-Daten.</p>
         <section class="card">
@@ -403,7 +509,7 @@
 
       <!-- ============================ METHODIK ============================ -->
       <div class="page" id="methodik">
-        <p class="crumbs">Die Seiten › Methodik</p>
+        <p class="crumbs">Analysieren › Methodik</p>
         <h1>🔬 Methodik <span class="pill">v1.6.0</span></h1>
         <p class="lead">Die Methoden-Engine (N-of-1): Sie beantwortet die wichtigste Frage der Trainingssteuerung —
           <strong>welche Art von Training bringt <em>dir persönlich</em> am meisten?</strong> Nicht im Lehrbuch,
@@ -462,19 +568,25 @@
         </section>
 
         <section class="card">
-          <h2>3 · Passive Inferenz</h2>
+          <h2>3 · Passive Inferenz <span class="pill">Block-basiert v1.11.0</span></h2>
           <p>Der mächtigste Teil läuft <strong>automatisch</strong>, ganz ohne dein Zutun: Die Engine ordnet jede
-            Woche deiner Historie einem <strong>Regime</strong> zu (aus Zonen-Verteilung + Session-Struktur) und misst,
-            wie sich deine Critical Speed in den <strong>2–4 Folgewochen</strong> entwickelt hat. Dann rankt sie die
-            Regime nach dieser Reaktion: <em>„Bei dir korrelierte polarisiert mit −9,7&nbsp;s/km CS (n=10 Wochen)."</em></p>
+            Woche deiner Historie einem <strong>Regime</strong> zu (aus Zonen-Verteilung + Session-Struktur) und fasst
+            sie zu <strong>zusammenhängenden Regime-Blöcken</strong> zusammen. Dann misst sie, wie sich deine Critical
+            Speed vom <em>Block-Start</em> zum <em>Block-Ende</em> entwickelt hat — das Δ&nbsp;CS je Block. Blöcke
+            mit stabiler CTL und ohne Krankheit/Taper/Wettkampf gehen in die Auswertung; je mehr
+            unabhängige Blöcke, desto höher die Konfidenz.</p>
+          <p><em>„Bei dir korrelierte polarisiert mit −9,7&nbsp;s/km CS (n=10 Wochen, 3 Blöcke)."</em></p>
           <p><strong>Damit das fair bleibt</strong> (Confounder-Kontrolle), schließt sie aus, was das Bild verfälschen
             würde:</p>
           <ul>
             <li>Krankheits-, Taper- und Wettkampfwochen fliegen raus.</li>
-            <li>Nur Wochen-Paare mit <strong>annähernd gleicher Gesamtlast (CTL)</strong> werden verglichen — so wird
+            <li>Nur Blöcke mit <strong>annähernd gleicher Gesamtlast (CTL)</strong> werden verglichen — so wird
               ein Fortschritt der Methode zugeschrieben und nicht einfach „mehr Umfang".</li>
-            <li>Regime mit zu wenigen Wochen werden klar als unsicher markiert.</li>
+            <li>Blöcke mit zu wenigen Wochen werden klar als unsicher markiert.</li>
           </ul>
+          <h3>Marker-Sparklines</h3>
+          <p>Jeder Marker zeigt eine <strong>Mini-Sparkline</strong> des Verlaufs (trend-farbig: grün = Verbesserung,
+            rot = Verschlechterung). Global im Footer unter dem Schalter <strong>„Sparklines"</strong> an-/abschaltbar.</p>
         </section>
 
         <section class="card">
@@ -528,6 +640,28 @@
           Naturgesetz. Genau deshalb macht RunLog kleine Stichproben (n) und die Konfidenz immer sichtbar.</div>
       </div>
 
+      <!-- ============================ LERNEN ============================ -->
+      <div class="page" id="lernen">
+        <p class="crumbs">Lernen › Lernen</p>
+        <h1>🎓 Lernen</h1>
+        <p class="lead">Interaktive Einführung in RunLog — Schritt für Schritt, mit echten Beispielwerten.</p>
+        <section class="card">
+          <h2>Was ist die Lernen-Seite?</h2>
+          <p>Geführte Onboarding-Touren durch die wichtigsten Funktionen: PMC-Konzept, Einheiten planen,
+            Strava einrichten, erste Woche auswerten. Die Inhalte nutzen ein <strong>Tutorial-Profil</strong>
+            mit einem kompletten fiktiven Trainingsjahr — du kannst alles ausprobieren, ohne deine echten
+            Daten zu berühren.</p>
+          <div class="note">Das Tutorial-Profil erstellst du einmalig in
+            <a href="#profil">Profil → „Tutorial-Profil anlegen"</a>. Es lässt sich jederzeit wieder löschen.</div>
+        </section>
+        <section class="card">
+          <h2>Coachmarks &amp; Highlights</h2>
+          <p>Interaktive Coachmarks führen dich durch einzelne UI-Elemente direkt auf den Seiten der App —
+            mit Pfeil und Erklärung. Einmal abgeschlossen verschwinden sie; du kannst sie im Footer jederzeit
+            zurücksetzen.</p>
+        </section>
+      </div>
+
       <!-- ============================ SAISONPLAN ============================ -->
       <div class="page" id="saisonplan">
         <p class="crumbs">Die Seiten › Saisonplan</p>
@@ -550,12 +684,19 @@
 
       <!-- ============================ EINSTELLUNGEN ============================ -->
       <div class="page" id="einstellungen">
-        <p class="crumbs">Die Seiten › Einstellungen</p>
+        <p class="crumbs">Einstellungen › Einstellungen</p>
         <h1>⚙ Einstellungen</h1>
         <p class="lead">Zonen, Schwellen, Strava, Profile.</p>
         <section class="card">
-          <div class="note">HF-Zonen, Schwellen und Profile sind in v0.12.0 in die eigene Seite
-            <a href="#profil">Profil</a> umgezogen.</div>
+          <h2>Darstellung <span class="pill">v1.10.0</span></h2>
+          <dl>
+            <dt>Theme (Dark Mode)</dt><dd><strong>Auto</strong> (folgt dem System) · <strong>Hell</strong> · <strong>Dunkel</strong>.
+              Auch im Sidebar-Fuß per Knopf umschaltbar. Druck erzwingt immer den hellen Modus.</dd>
+            <dt>Animationen</dt><dd>Schaltet alle Bewegungen (Count-up, Form-Ribbon, Draw-on) global aus.
+              Die App respektiert auch das Betriebs&shy;system-Setting „Bewegung reduzieren" automatisch.</dd>
+            <dt>Sparklines</dt><dd>Mini-Trendlinien auf CTL/ATL/TSB-Kacheln und Methodik-Markern — global
+              an-/abschaltbar hier oder im Footer-Schalter.</dd>
+          </dl>
           <h2>Analyse-Schwellen</h2>
           <p>Grenzwerte der Check-Engine (Volumen-%, CTL-Ramp-max, Hart-%-max, Z3-%-max, Longrun-%-max,
             TSB Race Week min, <strong>Race 7d-Last max %</strong>) sowie die Intensitäts-Einstufung
@@ -580,7 +721,7 @@
 
       <!-- ============================ PROFIL ============================ -->
       <div class="page" id="profil">
-        <p class="crumbs">Die Seiten › Profil</p>
+        <p class="crumbs">Einstellungen › Profil</p>
         <h1>👤 Profil</h1>
         <p class="lead">Alles Profil-Bezogene an einem Ort — wie bei TrainingPeaks/Strava.</p>
         <section class="card">
@@ -590,6 +731,9 @@
             pro Profil getrennt. <strong>Zurücksetzen</strong> löscht <em>alle</em> Trainings- &amp; Plandaten des Profils
             (Aktivitäten, Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan/Ziel-km und Wettkämpfe);
             nur die <strong>HF-Zonen/Schwellen</strong> bleiben erhalten (mit automatischem DB-Backup).</p>
+          <div class="note">Das <strong>„Tutorial"-Profil</strong> enthält ein komplettes, erfundenes Beispieljahr
+            (alle Funktionen mit Daten) — strikt getrennt auf eigenem Profil, idempotent und löschbar. Ideal zum
+            Ausprobieren, ohne echte Daten zu berühren.</div>
           <h2>Athletendaten &amp; VO2max-Laborwerte <span class="pill">v1.5.0</span></h2>
           <p>Geburtsjahr, Geschlecht, Gewicht sowie <strong>Max-HF</strong> und <strong>Ruhe-HF</strong>. Geburtsjahr +
             Geschlecht bestimmen die Alters-Norm der VO2max-Einordnung; Max-/Ruhe-HF speisen die <strong>HF-Reserve</strong>
@@ -613,11 +757,37 @@
             <em>aktuellen</em> Zonen (kein Gültig-ab; Z6 ist geschätzt). Dafür ist einmaliges <strong>Neu-Verbinden</strong>
             nötig (zusätzlicher Zonen-Zugriff); sonst kommt eine entsprechende Meldung.</p>
         </section>
+
+        <section class="card">
+          <h2>Laktat-/Feldtest-Diagnostik <span class="pill">v1.3.0+</span></h2>
+          <p>Stufentest-Ergebnisse eingeben (Geschwindigkeit / Pace / HF / Laktat / RPE je Stufe) → automatische
+            LT1- und LT2-Berechnung → Zonen-Set-Vorschlag.</p>
+          <dl>
+            <dt>x-Achse umschalten <span class="pill">v1.11.0</span></dt>
+            <dd>Im Plot die Achse auf <strong>min/km ↔ km/h ↔ Watt</strong> umschalten — für Rad-Tests mit Watt-Eingabe.</dd>
+            <dt>Schwellen-Erklärungen</dt>
+            <dd>Jede Schwelle (FatMax, LT1, 2&nbsp;mmol, LT2, 4&nbsp;mmol/OBLA) hat einen ausklappbaren Erklärungstext mit
+              Physiologie <em>und</em> Methode/Quelle — für Kontext beim nächsten Stufentest.</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Block-Präferenzen &amp; eigene Einheiten <span class="pill">v1.8.0 / v1.12.0</span></h2>
+          <dl>
+            <dt>Schwerpunkt</dt><dd>Threshold · VO2 · Berg · Norwegian · Fartlek — steuert beratend, welche Einheiten der
+              Block-Vorschlag bevorzugt. Periodisierungs- und Erholungsregeln bleiben verbindlich.</dd>
+            <dt>Lieblings- &amp; Vermeiden-Einheiten</dt><dd>Einheiten aus der Bibliothek als Favorit (♥) oder Vermeiden (⊘)
+              markieren — beeinflusst die Reihenfolge im Block-Vorschlag.</dd>
+            <dt>Strukturierter Builder</dt><dd>Coros-artiger Editor für eigene Einheiten (s.&nbsp;
+              <a href="#planung">Wochenplanung → Strukturierter Builder</a>). Alle eigenen Einheiten erscheinen
+              neben der Bibliothek in der Einheiten-Tabelle.</dd>
+          </dl>
+        </section>
       </div>
 
       <!-- ============================ AUSWAHLLISTEN ============================ -->
       <div class="page" id="optionen">
-        <p class="crumbs">Die Seiten › Auswahllisten</p>
+        <p class="crumbs">Einstellungen › Auswahllisten</p>
         <h1>🏷 Auswahllisten</h1>
         <p class="lead">Eigene Listen ohne Code-Änderung — jetzt als Master-Detail-Ansicht.</p>
         <section class="card">
@@ -788,7 +958,87 @@ NGP = ( Ø( 30s-Mittel⁴ ) )^¼</div>
         </section>
 
         <footer>
-          RunLog v1.5.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+          RunLog v2.0.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
+        </footer>
+      </div>
+
+      <!-- ============================ NEU v1.10–1.12 ============================ -->
+      <div class="page" id="neues">
+        <h1>Was ist neu? <span>v1.10 – v1.12</span></h1>
+        <p class="lead">Die wichtigsten Neuerungen der letzten Versionen auf einen Blick.</p>
+
+        <section class="card">
+          <h2>v1.12 — Strukturierter Workout-Builder (Coros-Style)</h2>
+          <p>Eigene Einheiten lassen sich jetzt <strong>frei verschachtelt</strong> anlegen — wie bei Coros — mit
+            <strong>Spielraum</strong> auf den Wiederholungen und automatischer Anpassung an deine Form.</p>
+          <h3>So geht es</h3>
+          <ol>
+            <li>Coach → Eigene Einheiten → <strong>„Strukturiert"</strong> wählen.</li>
+            <li>Mit <strong>„+ Segment"</strong> und <strong>„+ Gruppe"</strong> den Baum aufbauen (z.&nbsp;B. Gruppe 3× mit 5 Segmenten drin).</li>
+            <li>Je Segment: Distanz <em>oder</em> Dauer, optionaler Pace-Offset zum Anker, eigene Pause.</li>
+            <li>„±" aktiviert den <strong>Spielraum</strong> (von–bis): die Engine wählt den Tageswert nach TSB, Fitness und Phase.</li>
+            <li>Anlegen → in der Tabelle erscheint die Struktur-Spalte + aufklappbare Detailzeile mit Pace-Band und Tageswert.</li>
+          </ol>
+          <div class="note">Bestehende einfache Einheiten bleiben unverändert — „Einfach"-Modus weiterhin für unkomplizierte N × Rep.</div>
+          <dl>
+            <dt>Spielraum (von–bis)</dt>
+            <dd>z.&nbsp;B. 5–6 Reps. Die Engine nutzt dieselbe Mechanik wie die dynamischen Bibliotheks-Einheiten: Phase +
+              TSB-Shift (müde = unteres Band, frisch = oberes) + Fitness-Skalierung + VDOT-Verfeinerung.</dd>
+            <dt>Pace-Offset</dt>
+            <dd>Relativversatz zum Anker-Pace in s/km. −15 = 15 Sekunden schneller als der Anker. Nützlich für
+              Pyramiden-Strukturen (200er schneller als 1000er).</dd>
+            <dt>Struktur-Spalte in der Tabelle</dt>
+            <dd>Alle Einheiten (Bibliothek <em>und</em> eigene) zeigen ihre Kurzfassung. Klick öffnet die Detailzeile mit
+              von–bis, „heute: N" und dem Hinweis, wie die Engine anpasst.</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>v1.11 — Diagnostik, Methodik-Korrektheit &amp; dynamische Einheiten</h2>
+          <dl>
+            <dt>Dynamische Bibliotheks-Einheiten</dt>
+            <dd>Einheiten in der Wochenplanung zeigen jetzt <strong>von–bis-Wiederholungen</strong> + empfohlenen
+              Tageswert nach Form (TSB · Phase · Fitness · VDOT). Eine „angepasst: …"-Notiz erklärt, warum angepasst wurde.</dd>
+            <dt>Sparklines auf Marker und Dashboard</dt>
+            <dd>Mini-Sparklines für Critical Speed, VDOT, Schwelle, Entkopplung und eff. VO₂max auf der Methodik-Seite.
+              CTL/ATL/TSB-Sparklines auf den Dashboard-Kacheln. Global abschaltbar im Footer-Schalter.</dd>
+            <dt>Laktat-Diagnostik — Achse &amp; Wissenschaft</dt>
+            <dd>x-Achse umschaltbar <strong>min/km ↔ km/h ↔ Watt</strong>; Watt-Eingabe für Rad-Tests.
+              Ausklappbare wissenschaftliche Begründungen je Schwelle (FatMax · LT1 · 2&nbsp;mmol · LT2 · 4&nbsp;mmol/OBLA).</dd>
+            <dt>Methodik — Block-basierte Inferenz (Bugfix)</dt>
+            <dd>Die passive Inferenz wertet jetzt <strong>zusammenhängende Regime-Blöcke</strong> aus — korrektere
+              Wochenzahl, korrektes Δ-CS und ehrlichere Konfidenz. Unterbrechungen brechen den Block.</dd>
+            <dt>Periodisierungs-Ziel mit Override</dt>
+            <dd>Im Wochenbericht steht jetzt, warum die Phase pyramidal/polarisiert/regenerativ angepeilt wird —
+              und du kannst es manuell überschreiben (Override bleibt gespeichert).</dd>
+            <dt>Dark Mode vollständig</dt>
+            <dd>Inputs, Modals, Tabellen, Popovers, Tracking-Tabs, PowerCard-Pills — alle über CSS-Tokens.
+              A4-Druckvorschau im Dark Mode dunkel, echter Druck immer hell.</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>v1.10 — Premium-Politur: Dark Mode, Motion &amp; Signature-Hero</h2>
+          <dl>
+            <dt>Dark Mode</dt>
+            <dd><strong>Auto (System) · Hell · Dunkel</strong>, umschaltbar im Sidebar-Fuß. Alle Charts nutzen CSS-Token
+              statt fixer Hex-Farben — bleiben in beiden Modi lesbar. Druck erzwingt immer Hell.</dd>
+            <dt>Signature-Hero „Form-Ribbon"</dt>
+            <dd>Oben am Dashboard ein fließendes <strong>CTL/ATL/TSB-Band</strong> der letzten ~6 Wochen mit
+              Draw-on-Animation und großen Live-Kennzahlen. Zeigt auf einen Blick, ob du aufbaust, erhältst oder entlastest.</dd>
+            <dt>Motion-System</dt>
+            <dd>Zentrale, gegatete Animationen (<code>useMotion</code>): alle Bewegungen respektieren
+              <code>prefers-reduced-motion</code> + globalen Schalter in den Einstellungen. 60-fps-budgetiert (nur transform/opacity).</dd>
+            <dt>Chart-Veredelung</dt>
+            <dd>Sanfte Verläufe/Glow auf PMC-Fläche + Schwellen-Trend; PB-Marker auf der PMC-Zeitachse (Hover-Detail);
+              Jahres-Dreiecke ~30 % kleiner; smartere Y-Achsen-Skalierung (<code>niceYDomain</code>).</dd>
+            <dt>Celebrations</dt>
+            <dd>Konfetti bei neuer Bestzeit, geschlagener Wunschzeit und Konsistenz-Streaks.</dd>
+          </dl>
+        </section>
+
+        <footer>
+          RunLog v2.0.0 · <a href="#start">↑ zum Überblick</a> · <a href="/">zurück zur App</a>
         </footer>
       </div>
     </main>

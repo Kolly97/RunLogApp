@@ -243,7 +243,7 @@ export default function Methodik() {
             <thead><tr><th>Zeitraum</th><th>Methode</th><th>Label</th><th></th></tr></thead>
             <tbody>
               {exps.map((e) => (
-                <tr key={e.id} style={{ cursor: "pointer", background: sel === e.id ? "#f1f5f9" : undefined }} onClick={() => setSel(sel === e.id ? null : e.id)}>
+                <tr key={e.id} style={{ cursor: "pointer", background: sel === e.id ? "var(--surface2)" : undefined }} onClick={() => setSel(sel === e.id ? null : e.id)}>
                   <td>{e.start_date} – {e.end_date || "offen"}</td>
                   <td>{METHODS.find((m) => m.v === e.method)?.l || e.method}</td>
                   <td className="muted">{e.label || "—"}</td>

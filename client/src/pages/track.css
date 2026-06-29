@@ -26,13 +26,25 @@
 .df-foot { margin-top: 6px; }
 
 /* ---- Zeit je Zone (Aktivitätsformular) ---- */
+/* B1: Strava-artige Verteilungsleiste über dem Eingaberaster. */
+.zone-bar-strava { height: 10px; border-radius: 999px; margin-bottom: 8px; }
+.zone-bar-strava > div:first-child { border-radius: 999px 0 0 999px; }
+.zone-bar-strava > div:last-child { border-radius: 0 999px 999px 0; }
 .zone-min-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(64px, 1fr));
   gap: 6px;
 }
+/* B1: farbcodierte Zonen-Karte (Zonenfarbe als oberer Akzent), Eingabe bleibt voll editierbar. */
+.zone-min-grid .zone-cell {
+  border: 1px solid var(--line); border-top: 2px solid var(--zc, var(--line));
+  border-radius: 8px; padding: 5px 5px 4px; background: var(--surface2); min-width: 0;
+}
 .zone-min-grid .z-label { font-size: 11px; font-weight: 700; text-align: center; }
-.zone-min-grid input { width: 100%; padding: 5px 4px; text-align: center; }
+.zone-min-grid input {
+  width: 100%; padding: 5px 4px; text-align: center;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink);
+}
 .zone-hint {
   font-size: 10px; line-height: 1.25; color: var(--muted);
   text-align: center; white-space: nowrap; margin-top: 2px;

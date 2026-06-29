@@ -320,7 +320,7 @@ export default function LongTerm() {
       )}</EgItem>
 
       {/* Intensity-Trend (ATL/CTL) — separater Graph, v0.15.0 (O3) */}
-      <EgItem id="intensity" title={t("lt.block.intensity.title", "Last-Trend (ATL/CTL)")} defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
+      <EgItem id="intensity" title={t("lt.block.intensity.title", "Last-Trend (ATL/CTL)")} defaultSpan={12} defaultHeight={240} reserve={64}>{(h) => (
       <div className="card">
         <div className="spread"><h2><T k="lt.block.intensity.title">Last-Trend (ATL/CTL)</T></h2><span className="tiny muted"><T k="lt.block.intensity.sub">akute vs. chronische Last (ATL/CTL) — nicht die Zonen-Intensität</T></span></div>
         <IntensityRatio data={pmc} height={h ?? 240} />
@@ -328,7 +328,7 @@ export default function LongTerm() {
       )}</EgItem>
 
       {/* Schwellen-Trend (Pace & CP) — v1.9.0 */}
-      <EgItem id="threshold-trend" title={t("lt.block.threshold.title", "Schwellen-Trend (Pace & CP)")} defaultSpan={12} defaultHeight={240} reserve={150}>{(h) => (
+      <EgItem id="threshold-trend" title={t("lt.block.threshold.title", "Schwellen-Trend (Pace & CP)")} defaultSpan={12} defaultHeight={240} reserve={64}>{(h) => (
       <div className="card" data-tour="threshold-trend">
         <div className="spread"><h2><T k="lt.block.threshold.title">Schwellen-Trend</T></h2><span className="tiny muted"><T k="lt.block.threshold.sub">Schwellen-Pace (links) &amp; Critical Power (rechts) über die Zeit</T></span></div>
         <ThresholdTrendChart height={h} />
@@ -345,7 +345,7 @@ export default function LongTerm() {
 
       {/* (a) Wellness-Verläufe — jede Kennzahl als eigene, einzeln wählbare/anordenbare Kachel */}
       {visibleMetrics.map((m) => (
-        <EgItem key={m.key} id={`wellness-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={150}>{() => (
+        <EgItem key={m.key} id={`wellness-${m.key}`} title={m.title} defaultSpan={4} defaultHeight={150} reserve={48}>{(h) => (
             <div className="card chart-card tight">
               <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 2 }}>
                 {m.title}
@@ -361,9 +361,9 @@ export default function LongTerm() {
                 })()}
               </div>
               {m.key === "bed_dev" ? (
-                <SleepWindow data={sleepRows} xTickFormatter={fmtDate} height={135} />
+                <SleepWindow data={sleepRows} xTickFormatter={fmtDate} height={h ?? 135} />
               ) : longView ? (
-                <ResponsiveContainer width="100%" height={135}>
+                <ResponsiveContainer width="100%" height={h ?? 135}>
                   <ComposedChart data={rollingSeries(points, m.key).map((p) => ({ date: p.date, avg: p.avg, band: [p.lo, p.hi] }))} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
                     <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                     {sickSegments.map((s, i) => <ReferenceArea key={`sick-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />)}
@@ -381,7 +381,7 @@ export default function LongTerm() {
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
-              <ResponsiveContainer width="100%" height={135}>
+              <ResponsiveContainer width="100%" height={h ?? 135}>
                 <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 24 }}>
                   <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {sickSegments.map((s, i) => (
@@ -421,7 +421,7 @@ export default function LongTerm() {
 
       {/* (b) Zonen-Effizienz — zwei unabhängige Kacheln (Pace/HF und Effizienz-Faktor) */}
       {eff.length > 0 && (
-      <EgItem id="eff-pace" title={t("lt.block.eff.title", "Ø-Pace vs. Ø-HF")} defaultSpan={6} defaultHeight={240} reserve={150}>{(h) => (
+      <EgItem id="eff-pace" title={t("lt.block.eff.title", "Ø-Pace vs. Ø-HF")} defaultSpan={6} defaultHeight={240} reserve={92}>{(h) => (
             <div className="card chart-card">
               <h3><T k="lt.block.eff.title">Ø-Pace vs. Ø-Herzfrequenz</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
@@ -463,7 +463,7 @@ export default function LongTerm() {
       )}</EgItem>
       )}
       {eff.length > 0 && (
-      <EgItem id="eff-ef" title={t("lt.block.ef.title", "Effizienz-Faktor")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+      <EgItem id="eff-ef" title={t("lt.block.ef.title", "Effizienz-Faktor")} defaultSpan={6} defaultHeight={240} reserve={92}>{(h) => (
             <div className="card chart-card">
               <h3><T k="lt.block.ef.title">Effizienz-Faktor (m/min je Herzschlag)</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
@@ -493,7 +493,7 @@ export default function LongTerm() {
 
       {/* (b2b) Aerobe Entkopplung / Durability-Trend (C1, v1.4.0) */}
       {decoupling.length > 0 && (
-        <EgItem id="decoupling" title={t("lt.block.decoupling.title", "Aerobe Entkopplung (Durability)")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
+        <EgItem id="decoupling" title={t("lt.block.decoupling.title", "Aerobe Entkopplung (Durability)")} defaultSpan={6} defaultHeight={240} reserve={92}>{(h) => (
           <div className="card chart-card">
             <h3><T k="lt.block.decoupling.title">Aerobe Entkopplung (Pa:HR-Drift)</T></h3>
             <ResponsiveContainer width="100%" height={h ?? 240}>
@@ -526,7 +526,7 @@ export default function LongTerm() {
 
       {/* (b2c) Zonen-Histogramm: aggregierte Zeit in HF/Pace-Zonen (C3, v1.4.0) */}
       {zoneHist && (zoneHist.hrBands.some((b) => b.min > 0) || zoneHist.paceBands.some((b) => b.min > 0)) && (
-        <EgItem id="zone-hist" title={t("lt.block.zhist.title", "Zonen-Histogramm (HF & Pace)")} defaultSpan={12} defaultHeight={200} reserve={130}>{(h) => (
+        <EgItem id="zone-hist" title={t("lt.block.zhist.title", "Zonen-Histogramm (HF & Pace)")} defaultSpan={12} defaultHeight={200} reserve={92}>{(h) => (
           <div className="card chart-card">
             <h3><T k="lt.block.zhist.title">Zeit in HF- und Pace-Zonen</T></h3>
             <ZoneHistogram data={zoneHist} height={(h ?? 200) - 50} />

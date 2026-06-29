@@ -426,11 +426,22 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
             <span className="tiny muted">(alte Minuten-Werte unter „min")</span>
           )}
         </div>
+        {(() => {
+          // B1: Strava-artige Verteilungsleiste — proportionaler Anteil je Zone, aus den (editierbaren) Werten abgeleitet.
+          const vals = [1, 2, 3, 4, 5, 6].map((z) => (zoneUnit === "km" ? zk[z] : zm[z]) ?? 0);
+          const tot = vals.reduce((a, b) => a + b, 0);
+          if (tot <= 0) return null;
+          return (
+            <div className="zone-bar zone-bar-strava" title={tr("track.zone.dist", "Verteilung je Zone")}>
+              {vals.map((v, i) => (v > 0 ? <div key={i} style={{ width: `${(v / tot) * 100}%`, background: ZONE_COLORS[i] }} /> : null))}
+            </div>
+          );
+        })()}
         <div className="zone-min-grid">
           {[1, 2, 3, 4, 5, 6].map((z) => {
             const zr = zoneRange(z, zs?.hr_zones, zs?.pace_zones);
             return (
-              <div key={z} title={zr.title}>
+              <div key={z} className="zone-cell" title={zr.title} style={{ ["--zc" as string]: ZONE_COLORS[z - 1] }}>
                 <div className="z-label" style={{ color: ZONE_COLORS[z - 1] }}>Z{z}</div>
                 {zoneUnit === "km"
                   ? <input type="number" min={0} step="0.1" placeholder="km" value={zk[z] ?? ""} onChange={(x) => setZk(z, num(x.target.value))} />

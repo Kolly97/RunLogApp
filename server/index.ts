@@ -71,7 +71,7 @@ import {
   type WeekRegimeInput,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
-import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
+import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId } from "./tutorial.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
 
@@ -634,6 +634,39 @@ app.get("/api/effective-vo2max-trend", (req, res) => {
   res.json({ points, lab: labs, calibrated: labs.length > 0 });
 });
 
+// C1 (#9): Aktuelle labor-kalibrierte effektive VO2max als ZWEITE Prognose-Quelle (Daniels-Kurve, Q3).
+// Median der eff_vo2max-Schätzungen der letzten 42 Tage + Offset des jüngsten Labortests (robust um dessen Datum geankert).
+// Unabhängig von Renn-best-efforts → liefert eine Prognose auch ohne Wettkampf in den letzten 90 Tagen (Q2).
+function effVo2maxNow(today: string): { value: number; confidence: "hoch" | "mittel" | "niedrig"; calibrated: boolean; n: number } | null {
+  const winLo = addDaysIso(today, -42);
+  const recent = db.prepare(
+    "SELECT eff_vo2max v FROM activities WHERE profile_id=? AND sport='Run' AND eff_vo2max IS NOT NULL AND date>? AND date<=?",
+  ).all(pid(), winLo, today) as { v: number }[];
+  if (recent.length < 2) return null;
+  const sorted = recent.map((r) => r.v).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const labs = db.prepare("SELECT date, value FROM vo2max_lab WHERE profile_id=? ORDER BY date").all(pid()) as { date: string; value: number }[];
+  let offset = 0;
+  if (labs.length) {
+    const allRuns = db.prepare("SELECT date, eff_vo2max v FROM activities WHERE profile_id=? AND sport='Run' AND eff_vo2max IS NOT NULL ORDER BY date").all(pid()) as { date: string; v: number }[];
+    const last = labs[labs.length - 1];
+    const lo = addDaysIso(last.date, -21), hi = addDaysIso(last.date, 21);
+    const vs = allRuns.filter((r) => r.date >= lo && r.date <= hi).map((r) => r.v).sort((a, b) => a - b);
+    if (vs.length) offset = last.value - vs[Math.floor(vs.length / 2)];
+  }
+  const value = round1(median + offset);
+  const calibrated = labs.length > 0;
+  const confidence: "hoch" | "mittel" | "niedrig" = calibrated && recent.length >= 5 ? "hoch" : recent.length >= 4 ? "mittel" : "niedrig";
+  return { value, confidence, calibrated, n: recent.length };
+}
+
+// C1 (Q4): Prognose als Bereich Bestfall–Realistisch je nach Konfidenz; längere Distanzen mit größerer Downside (Durability).
+function predRange(time_s: number, distance_m: number, confidence: "hoch" | "mittel" | "niedrig") {
+  const base = confidence === "hoch" ? 0.008 : confidence === "mittel" ? 0.015 : 0.025;
+  const distFac = distance_m >= 21097 ? 1.5 : distance_m >= 10000 ? 1.2 : 1.0;
+  return { time_s, best_s: Math.round(time_s * (1 - base)), realistic_s: Math.round(time_s * (1 + base * distFac)) };
+}
+
 /** Zonen-Set aus Laktat-Test vorschlagen (schreibt NICHT — Nutzer bestätigt via POST /api/zonesets). */
 app.post("/api/lactate-tests/:id/propose-zoneset", (req, res) => {
   const test = db.prepare("SELECT * FROM lactate_tests WHERE id=? AND profile_id=?").get(req.params.id, pid()) as any;
@@ -687,7 +720,10 @@ app.get("/api/plan/week-suggestion", (req, res) => {
 
   const inf = buildMethodInference();
   const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
-  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null, methodPreference });
+  // Item 3 (Frage B): Zieldistanz des nächsten Hauptrennens → verschiebt das Verteilungs-Soll leicht.
+  const goalRow = db.prepare("SELECT distance_m FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), today) as { distance_m: number | null } | undefined;
+  const goalDistanceM = goalRow?.distance_m && goalRow.distance_m > 0 ? Number(goalRow.distance_m) : null;
+  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM });
   res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec, methodPreference });
 });
 
@@ -706,7 +742,7 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   let raceDate = raceRow?.date ?? null;
 
   // Wochen ab Startwoche; bei Renntag bis zur Renn-Woche, sonst rollend 6 Wochen.
-  const allWeeks = db.prepare("SELECT week_no, phase, start_date, end_date, goal_race FROM season_weeks_v2 WHERE profile_id=? AND start_date>=? ORDER BY start_date").all(pid(), startWk.start_date) as any[];
+  const allWeeks = db.prepare("SELECT week_no, phase, start_date, end_date, goal_race, target_km FROM season_weeks_v2 WHERE profile_id=? AND start_date>=? ORDER BY start_date").all(pid(), startWk.start_date) as any[];
   if (!raceDate) {
     const goalWk = allWeeks.find((w) => w.goal_race && String(w.goal_race).trim());
     if (goalWk) raceDate = goalWk.end_date;
@@ -725,6 +761,7 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const weeks: BlockWeekInput[] = weeksRaw.map((w) => ({
     week_no: w.week_no, phase: w.phase ?? null, start_date: w.start_date,
     dates: Array.from({ length: 7 }, (_, i) => addDaysIso(w.start_date, i)),
+    target_km: w.target_km ?? null, // Frage A: Saison-Wochenziel → Easy/Long-Volumen angleichen
   }));
 
   const from = minIso(earliestDataDate() ?? today, today);
@@ -761,7 +798,7 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
   const goalTimeS = raceRow?.goal_time_s && raceRow.goal_time_s > 0 ? Number(raceRow.goal_time_s) : null; // v1.7.0 Wunsch-Zielzeit
   const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs });
-  res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS });
+  res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS, distanceConcept: distanceConcept(goalDistanceM) });
 });
 
 // v1.7.0: Soll/Ist-Abgleich zum Ziel-Rennen — Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit.
@@ -772,6 +809,10 @@ app.get("/api/plan/goal-gap", (_req, res) => {
   const cur = rollingCsVdot(loadProfileRuns(), today, 90);
   const predicted = cur.vdot ? predictFromVdot(cur.vdot, [race.distance_m]) : [];
   const predictedTimeS = predicted.length ? predicted[0].time_s : null;
+  // C1 (#9): zweite Quelle effektive VO2max — getrennt ausgewiesen (Q1) und Fallback ohne Rennen ≤90d (Q2).
+  const effNow = effVo2maxNow(today);
+  const effPred = effNow ? predictFromVdot(effNow.value, [race.distance_m]) : [];
+  const predictedEffTimeS = effPred.length ? Math.round(effPred[0].time_s) : null;
   const goalTimeS = race.goal_time_s && race.goal_time_s > 0 ? Number(race.goal_time_s) : null;
   const weeks = Math.max(0, Math.round((Date.parse(race.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / (7 * 86400000)));
   let goalVdot: number | null = null, gapS: number | null = null, reqVdotPerWeek: number | null = null, feasible: boolean | null = null, projEndTimeS: number | null = null;
@@ -789,6 +830,10 @@ app.get("/api/plan/goal-gap", (_req, res) => {
     race: { id: race.id, name: race.name, date: race.date, distance_m: race.distance_m },
     weeks, curVdot: cur.vdot ? Math.round(cur.vdot * 10) / 10 : null, goalVdot: goalVdot ? Math.round(goalVdot * 10) / 10 : null,
     predictedTimeS, goalTimeS, gapS, reqVdotPerWeek, feasible, projEndTimeS,
+    predictedRange: predictedTimeS != null ? predRange(predictedTimeS, race.distance_m, "hoch") : null,
+    effVo2: effNow ? { value: effNow.value, confidence: effNow.confidence, calibrated: effNow.calibrated } : null,
+    predictedEffTimeS,
+    predictedEffRange: predictedEffTimeS != null && effNow ? predRange(predictedEffTimeS, race.distance_m, effNow.confidence) : null,
   });
 });
 
@@ -1200,7 +1245,15 @@ app.get("/api/bests", (_req, res) => {
       if (dist >= 1500 && time >= 180 && time <= 2400) curVdot = Math.max(curVdot, vdot(dist, time));
     }
   }
-  const predictions = curVdot > 0 ? predictFromVdot(curVdot, CS_PRED_DISTANCES) : [];
+  // Quelle 1: Renn-VDOT (aus Wettkämpfen ≤90d) — Goldstandard, Konfidenz „hoch".
+  const predictions = curVdot > 0
+    ? predictFromVdot(curVdot, CS_PRED_DISTANCES).map((p) => ({ distance_m: p.distance_m, ...predRange(p.time_s, p.distance_m, "hoch") }))
+    : [];
+  // Quelle 2: effektive VO2max (labor-kalibriert, pro Lauf) — getrennt ausgewiesen (Q1), Konfidenz aus Datenlage (Q2).
+  const effNow = effVo2maxNow(today);
+  const predictionsEff = effNow
+    ? predictFromVdot(effNow.value, CS_PRED_DISTANCES).map((p) => ({ distance_m: p.distance_m, ...predRange(p.time_s, p.distance_m, effNow.confidence) }))
+    : [];
 
   const athlete = getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
   const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
@@ -1208,7 +1261,12 @@ app.get("/api/bests", (_req, res) => {
   const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
   const vdotVal = curVdot > 0 ? Math.round(curVdot * 10) / 10 : null;
   const vdotLevel = vdotVal != null && age ? vo2maxLevel(vdotVal, age, sex) : null;
-  res.json({ pbs, vdot: vdotVal, vdotLevel, age, predictions });
+  const effLevel = effNow && age ? vo2maxLevel(effNow.value, age, sex) : null;
+  res.json({
+    pbs, vdot: vdotVal, vdotLevel, age, predictions,
+    effVo2: effNow ? { value: effNow.value, confidence: effNow.confidence, calibrated: effNow.calibrated, level: effLevel } : null,
+    predictionsEff,
+  });
 });
 
 app.put("/api/bests/override", (req, res) => {
@@ -1629,7 +1687,7 @@ app.get("/api/sessions", (req, res) => {
   res.json(ctx ? list.map((r) => {
     if (!r.prescription || r.date < today) return r;
     const res2 = resolvePlannedSession(r.prescription, r.date, ctx);
-    return res2 ? { ...r, planned_min: res2.planned_min, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, adaptNote: res2.adaptNote ?? null, resolved: true } : r;
+    return res2 ? { ...r, planned_min: res2.planned_min, planned_km: res2.planned_km ?? r.planned_km, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, adaptNote: res2.adaptNote ?? null, resolved: true } : r;
   }) : list);
 });
 
@@ -2379,7 +2437,10 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Echte Zeit-in-Zone-Verteilung (G4, v1.3.0): 3 Zonen gegen LT1/LT2 + Polarisierungs-Index + Phasen-Ziel.
   const physioDist = physioTimeZones(realZoneMin, zs.hr_zones, zs.lt1_hr, zs.lthr);
   const polIndex = polarizationIndex(physioDist.z1, physioDist.z2, physioDist.z3);
-  const phaseTarget = phaseDistributionTarget(wk?.phase, getSetting("phase_dist_overrides", {} as Record<string, string>));
+  // Item 3 (Frage B): Zieldistanz des nächsten Hauptrennens fließt ins Verteilungs-Soll ein.
+  const goalDistRow = db.prepare("SELECT distance_m FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), todayIso()) as { distance_m: number | null } | undefined;
+  const goalDistM = goalDistRow?.distance_m && goalDistRow.distance_m > 0 ? Number(goalDistRow.distance_m) : null;
+  const phaseTarget = phaseDistributionTarget(wk?.phase, getSetting("phase_dist_overrides", {} as Record<string, string>), goalDistM);
   const realPolarizationFlag = polarizationFlag(physioDist, phaseTarget, polIndex);
 
   // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).

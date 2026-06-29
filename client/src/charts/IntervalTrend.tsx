@@ -43,6 +43,23 @@ export function hasRunTrend(data: IntervalEffortStat[] | null | undefined): bool
   return !!data && runStats(data).length > 0;
 }
 
+/** Tooltip zeigt NUR die geglätteten Linien-Werte (`_avg`), nicht die Roh-Punkte (image-4). */
+function TrendTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const lines = payload.filter(
+    (p: any) => typeof p?.dataKey === "string" && p.dataKey.endsWith("_avg") && p.value != null,
+  );
+  if (!lines.length) return null;
+  return (
+    <div style={{ ...TOOLTIP_STYLE, padding: "6px 10px" }}>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{fmtDateY(String(label))}</div>
+      {lines.map((p: any, i: number) => (
+        <div key={i} style={{ color: p.color }}>{p.name}: {paceStr(p.value as number)} /km</div>
+      ))}
+    </div>
+  );
+}
+
 export default function IntervalTrend({ data, height = 260 }: { data: IntervalEffortStat[]; height?: number }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const toggleLine = (key: string) =>
@@ -80,11 +97,7 @@ export default function IntervalTrend({ data, height = 260 }: { data: IntervalEf
         <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
         <YAxis reversed domain={[min, max]} tickFormatter={(v: number) => paceStr(v)} width={44}
           tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
-        <Tooltip
-          labelFormatter={(d) => fmtDateY(String(d))}
-          formatter={(v: number, n: string) => [`${paceStr(v)} /km`, n]}
-          contentStyle={TOOLTIP_STYLE}
-        />
+        <Tooltip content={<TrendTooltip />} />
         <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
           onClick={(e) => { if (e?.dataKey) toggleLine(String(e.dataKey).replace(/_avg$/, "")); }} />
         {/* Rohe Einzel-Werte: dezente Punkte, keine Linie */}

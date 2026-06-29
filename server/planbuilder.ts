@@ -38,6 +38,7 @@ export interface ConcreteSession {
   description: string;                        // kurze Klartext-Beschreibung (Pace/Struktur)
   planned_tss: number;                        // erwarteter Plan-TSS (≈ target) — zur Anzeige/Konfidenz
   paceTarget: number | null;                  // Ziel-Pace s/km (Dauerläufe), sonst null
+  planned_km?: number | null;                 // Item 4: Gesamt-km (Σ zone_alloc.byKm) → Wochen-km/Kategorie-Summen
   adaptNote?: string | null;                  // T7: „angepasst an: Phase · TSB · Fitness · VDOT" (Live-Kontext)
 }
 

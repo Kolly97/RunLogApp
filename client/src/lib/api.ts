@@ -15,11 +15,19 @@ export interface TuneupProgress {
   tuneup: { date: string; name: string | null; distanceM: number; timeS: number; vdot: number; expectedTimeS: number | null; vsExpectedS: number | null } | null;
   goal?: { date: string; distanceM: number; goalTimeS: number; goalVdot: number; weeksTo: number; predictedTimeS: number | null; deltaS: number | null; status: "ahead" | "on_track" | "behind" | "unknown" };
 }
+// C1 (#9): Prognose-Zeit als Bereich Bestfall–Realistisch.
+export interface PredRange { time_s: number; best_s: number; realistic_s: number; }
+export interface EffVo2Src { value: number; confidence: "hoch" | "mittel" | "niedrig"; calibrated: boolean; level?: string | null; }
 export interface GoalGap {
   race: { id: number; name: string; date: string; distance_m: number } | null;
   weeks: number; curVdot: number | null; goalVdot: number | null;
   predictedTimeS: number | null; goalTimeS: number | null; gapS: number | null;
   reqVdotPerWeek: number | null; feasible: boolean | null; projEndTimeS: number | null;
+  // C1: zweite Quelle effektive VO2max (Q1 getrennt, Q2 Fallback) + Bereiche (Q4).
+  predictedRange?: PredRange | null;
+  effVo2?: EffVo2Src | null;
+  predictedEffTimeS?: number | null;
+  predictedEffRange?: PredRange | null;
 }
 // Lauf-Power (Coros via Strava, Stryd-Stil) — v1.7.0
 export interface PowerZoneBand { z: number; name: string; lo: number; hi: number | null }
@@ -48,7 +56,14 @@ export interface WPrimeLatest {
 
 // Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
-export interface BestsResult { pbs: Pb[]; vdot: number | null; vdotLevel: string | null; age: number | null; predictions: { distance_m: number; time_s: number }[]; }
+export interface PredItem extends PredRange { distance_m: number; }
+export interface BestsResult {
+  pbs: Pb[]; vdot: number | null; vdotLevel: string | null; age: number | null;
+  predictions: PredItem[];
+  // C1 (#9): zweite, getrennt ausgewiesene Quelle (effektive VO2max, labor-kalibriert).
+  effVo2?: EffVo2Src | null;
+  predictionsEff?: PredItem[];
+}
 // Lifetime-Summen für das „Lab Mode"-Panel (M7 Easter Egg).
 export interface Overview { n: number; dist_m: number; elev_m: number; moving_s: number; kcal: number; }
 // VO2max/VDOT + Renn-Prognose-Verlauf (v0.15.0, O1/O2)
@@ -292,9 +307,13 @@ export interface BlockWeek {
   isDeload: boolean; days: BlockDay[];
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
 }
+// Item 3 (#7): distanzspezifisches Trainingskonzept (Stoffwechsel + Schlüssel-Einheiten).
+export interface DistanceConcept { distanceM: number; label: string; metabolic: string; keySessions: string[]; longRunNote: string; }
 export interface BlockPlan {
   weeks: BlockWeek[]; raceDate: string | null;
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
+  goalDistanceM?: number | null;
+  distanceConcept?: DistanceConcept | null;
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).

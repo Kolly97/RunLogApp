@@ -208,10 +208,12 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   const QP = (id: string, pair: string): WorkoutPick => ({ tpl: wk(id), role: "quality", pair }); // Doppel-Tag-Hälfte
   const L = (id: string): WorkoutPick => ({ tpl: wk(id), role: "long" });
   const E = (id: string): WorkoutPick => ({ tpl: wk(id), role: "easy" });
-  // Distanz-Bucket fürs Renntempo: short ≤15k (5–10k) · mid HM · long ≥30k (Marathon). 0/null → wie short.
+  // Distanz-Stufen (Item 3): 5k (VO2/Speed) · 10k (VO2+LT2) · HM (LT2) · Marathon (LT1/MP). 0/null → wie 5k.
+  // 10k ist physiologisch eigenständig zwischen reinem 5k und HM, daher ein eigener Zweig.
   const dist = goalDistanceM ?? 0;
-  const isLong = dist >= 30000;
-  const isMid = dist >= 15000 && dist < 30000;
+  const isLong = dist >= 30000;                 // Marathon
+  const isMid = dist >= 15000 && dist < 30000;  // Halbmarathon
+  const is10k = dist >= 7000 && dist < 15000;   // 10k
 
   // v1.8.0 Coach-Matrix — Distanz × Niveau: Einsteiger bekommen einfache, gleiche Reps; Fortgeschrittene
   // gemischte/progressive Sessions (Ladder/Cut-down/Mixed). Fartlek bringt Abwechslung, lange Bergintervalle
@@ -249,7 +251,15 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
         Q("strides"), E("easy_ga1"), E("easy_recovery"),
       ];
     }
-    // short / kein Ziel: VO2-lastig (5–10k) + kurze Renntempo-Intervalle (für Fortgeschrittene Cut-down)
+    if (is10k) { // 10k: VO2max + Schwelle gleichwertig — VO2-Slot + Renntempo-1000er/Schwellen-Mix, Speed-Erhalt
+      return [
+        L(weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic"),
+        Q(rot(vo2Pool, weekInPhase)),
+        Q(rot(av([lt2Pool[0], "race_pace", lt2Pool[1] ?? "lt2_cruise", "vo2_1000s"]), weekInPhase)),
+        Q("strides"), E("easy_ga1"), E("easy_recovery"),
+      ];
+    }
+    // 5k / kein Ziel: VO2-lastig + kurze Renntempo-/Speed-Reps (für Fortgeschrittene Cut-down)
     return [
       L(weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic"),
       Q(rot(vo2Pool, weekInPhase)),
@@ -258,11 +268,21 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     ];
   }
   if (p.includes("belast") || p.includes("build") || p.includes("aufbau")) {
-    // Build: 1. Schwellen-Slot aus dem niveaugerechten LT2-Pool; 2. Slot = Berg/Fartlek/VO2-Abwechslung.
+    // Build: 1. Schwellen-Slot aus dem niveaugerechten LT2-Pool; 2. Slot = Abwechslung, distanzmoduliert.
     const thr1 = rot(lt2Pool, weekInPhase);
-    const thr2 = rot(av([hillPool[0], "fartlek_structured", "vo2_400s", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase);
-    // Marathon-Ziel: spätere Aufbauwochen bekommen den MP-Block-Longrun statt reinem Dauerlauf.
-    const picks: WorkoutPick[] = [L(isLong && weekInPhase >= 1 ? "long_mp_segments" : "long_aerobic")];
+    // Item 3 (Frage 6/D): Build dreht den Abwechslungs-Slot Richtung Zieldistanz — milder als Specific
+    // (alle Vorlagen phasen-konform „belast"). HM/M → mehr Schwellen-/Kraftausdauer-Volumen; 5k/10k → VO2/Speed (Status quo).
+    let thr2: string;
+    if (isLong || isMid) {
+      // thr1 ausschließen → keine zwei identischen Schwellen-Einheiten in derselben Woche.
+      const pool = av(["lt2_broken_tempo", lt2Pool[1] ?? "lt2_cruise", "hill_reps_long", "fartlek_structured", "lt2_1000s"].filter((id) => id !== thr1));
+      thr2 = rot(pool.length ? pool : ["lt2_broken_tempo"], weekInPhase);
+    } else {
+      thr2 = rot(av([hillPool[0], "fartlek_structured", "vo2_400s", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase);
+    }
+    // Long-Slot distanzgerecht: Marathon spät → MP-Blöcke, HM spät → schnelles Ende, sonst Dauerlauf.
+    const longTpl = isLong && weekInPhase >= 1 ? "long_mp_segments" : isMid && weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic";
+    const picks: WorkoutPick[] = [L(longTpl)];
     if (allowDoubles && fitness !== "low") {
       // Doppel-Schwellen-Tag als ZWEI Einheiten (AM 6'-Reps + PM 400er) am selben Tag (v1.7).
       picks.push(QP("norw_short_reps", "double_thr"));
@@ -275,10 +295,13 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     return picks;
   }
   // Base (Default): viel Z1/Z2, LT1 + Hügel/Speed-Ökonomie + spielerischer Fartlek, kaum LT2.
+  // Item 3 (Frage 6): mild distanzmoduliert — Marathon betont Kraftausdauer früher, sonst Speed/Ökonomie (Status quo).
+  const baseEcon = isLong ? ["hill_reps_short", "hill_sprints", "fartlek_structured", "strides"]
+    : ["hill_sprints", "strides", "reps_R", "fartlek_structured"];
   return [
     L("long_aerobic"),
     Q(rot(av(["lt1_continuous", "lt1_long_reps", "fartlek_free", "hill_reps_short"]), weekInPhase)),
-    Q(rot(av(["hill_sprints", "strides", "reps_R", "fartlek_structured"]), weekInPhase)),
+    Q(rot(av(baseEcon), weekInPhase)),
     E("easy_ga1"), E("easy_ga1"), E("easy_recovery"),
   ];
   }
@@ -369,6 +392,50 @@ export interface RenderCtx {
   zones: ZonesInput; fitness: FitnessLevel; progress: number; targetTss?: number; maxMin?: number;
   // T7: Tagesform + Fitness-Proxys + Phasen-Label für dynamische Reps + „angepasst"-Notiz.
   tsb?: number | null; vdot?: number | null; phaseLabel?: string | null;
+  goalDistanceM?: number | null;             // Item 3: Zieldistanz → Long-Run-Dauer-Deckel
+}
+
+// Item 3 (Frage 5): Long-Run-Maxdauer (min) nach Zieldistanz — 5k braucht keinen Marathon-Long-Run.
+// Quelle: distanzspezifische Aufbau-Praxis (Daniels/Canova) — Long-Run skaliert mit der Wettkampfdauer.
+export function longRunCap(goalDistanceM: number | null | undefined): number {
+  const d = goalDistanceM ?? 0;
+  if (d <= 0) return 150;       // kein Ziel → kein zusätzlicher Deckel
+  if (d <= 6000) return 75;     // 5k: kurzer Long-Run
+  if (d <= 12000) return 95;    // 10k
+  if (d <= 25000) return 120;   // Halbmarathon
+  return 165;                   // Marathon
+}
+
+// Item 3 (Frage 7): „Sportwissenschaft sichtbar machen" — distanzspezifisches Trainingskonzept (Stoffwechselwege +
+// Schlüssel-Einheiten), wie bei ambitionierten/Profi-Läufern üblich. Frame für die Auswahl (Frage 8: Distanz = Rahmen).
+export interface DistanceConcept { distanceM: number; label: string; metabolic: string; keySessions: string[]; longRunNote: string; }
+export function distanceConcept(goalDistanceM: number | null | undefined): DistanceConcept | null {
+  const d = goalDistanceM ?? 0;
+  if (d <= 0) return null;
+  if (d <= 6000) return {
+    distanceM: d, label: "5 km",
+    metabolic: "VO2max ist der Hauptlimiter, dazu anaerobe Kapazität & Laufökonomie. Schwelle stützt, ist aber nicht der Hauptreiz.",
+    keySessions: ["VO2max-Intervalle (3–5')", "kurze Renntempo-/Speed-Reps (R-Pace)", "Schwelle zur Stützung", "Bergsprints für Ökonomie"],
+    longRunNote: "Kurzer Long-Run (≈60–75') genügt — kein hohes Marathon-Volumen nötig.",
+  };
+  if (d <= 12000) return {
+    distanceM: d, label: "10 km",
+    metabolic: "VO2max + Schwellenleistung gemeinsam — die Fähigkeit, lange nahe der Schwelle/an VO2max zu laufen.",
+    keySessions: ["VO2max-Intervalle", "Schwellen-/Cruise-Intervalle", "10k-Renntempo-Reps", "Speed-Erhalt"],
+    longRunNote: "Moderater Long-Run (≈80–95') — aerobe Basis ohne Marathon-Umfang.",
+  };
+  if (d <= 25000) return {
+    distanceM: d, label: "Halbmarathon",
+    metabolic: "Laktatschwelle (LT2) ist der zentrale Limiter, plus aerobe Ausdauer & Renntempo-Ökonomie.",
+    keySessions: ["Schwellen-Volumen (Cruise/Tempo)", "Renntempo-Blöcke (lang)", "1× VO2 zur Schärfung", "Long-Run mit schnellem Ende"],
+    longRunNote: "Längerer Long-Run (≈100–120'), zunehmend mit Renntempo-Anteilen.",
+  };
+  return {
+    distanceM: d, label: "Marathon",
+    metabolic: "Aerobe Ausdauer, Fettstoffwechsel & Glykogen-Ökonomie bei Marathon-Pace; LT2 stützt, VO2 reduziert.",
+    keySessions: ["Long-Run mit MP-Blöcken", "Schwellen-Volumen", "Renntempo-/MP-Dauerläufe", "viel Z1/Z2-Grundlage"],
+    longRunNote: "Langer Long-Run (≈140–165') mit Marathon-Pace-Segmenten — Ermüdungsresistenz & Substrat-Ökonomie.",
+  };
 }
 
 /** T7: „angepasst an"-Notiz aus dem Live-Kontext (nur was bekannt ist). */
@@ -460,9 +527,22 @@ function renderStructure(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession 
 }
 
 /** Vorlage → konkrete Einheit (Pace-Bereich + HF + Pausen). Steady nutzt targetTss; Intervalle Fitness+Progression. */
+// Item 4: öffentlicher Wrapper — ergänzt zentral planned_km = Σ zone_alloc.byKm (alle Render-Pfade), damit
+// Wochen-km/Kategorie-Summen nicht 0 bleiben. Reine Lauf-km; Core (leere byKm) bleibt ohne km.
 export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession {
+  const s = renderWorkoutCore(tpl, ctx);
+  if (s.planned_km == null) {
+    const km = Object.values(s.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
+    if (km > 0) s.planned_km = Math.round(km * 100) / 100;
+  }
+  return s;
+}
+
+function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession {
   const { zones, fitness, progress } = ctx;
-  const maxMin = ctx.maxMin && ctx.maxMin > 0 ? ctx.maxMin : Infinity;
+  let maxMin = ctx.maxMin && ctx.maxMin > 0 ? ctx.maxMin : Infinity;
+  // Item 3 (5): Long-Run-Dauer nach Zieldistanz deckeln (Distanz = Rahmen).
+  if (tpl.family === "Long" && ctx.goalDistanceM) maxMin = Math.min(maxMin, longRunCap(ctx.goalDistanceM));
 
   if (tpl.kind === "core") {
     // Stabi/Core: feste kurze Einheit, trägt keine Lauf-TSS (leere zone_alloc → Server-TSS = 0).

@@ -14,6 +14,7 @@ import IntervalTrend, { hasRunTrend } from "../charts/IntervalTrend.tsx";
 import Vo2maxCard from "../charts/Vo2maxCard.tsx";
 import IntensityRatio from "../charts/IntensityRatio.tsx";
 import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
+import StreakCard from "../components/StreakCard.tsx";
 import Sparkline from "../components/Sparkline.tsx";
 import { useSparkPref } from "../lib/sparkPref.ts";
 import T from "../components/T.tsx";
@@ -238,6 +239,10 @@ export default function Dashboard() {
               phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
           </div>
         ),
+      },
+      {
+        id: "streak", title: t("dashboard.block.streak.title", "Serie"), defaultSpan: 4, defaultHeight: 300,
+        render: (h) => <StreakCard acts={acts} sessions={allSessions} height={h} />,
       },
       {
         id: "week", title: t("dashboard.block.week.title", "Aktuelle Woche"), defaultSpan: 4,
