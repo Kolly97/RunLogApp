@@ -13,6 +13,8 @@ export interface Option {
   active?: number;
   /** Nur sessionType: easy | moderate | hard — Grundlage für den TSS-Donut „nach Typ". */
   intensity?: string | null;
+  /** 1 = kanonischer, hart verdrahteter Typ (nicht löschbar/umbenennbar). */
+  locked?: number;
 }
 
 export type OptionKind = "phase" | "sport" | "sessionType" | "activityType" | "check" | "daily" | "dailyCat";

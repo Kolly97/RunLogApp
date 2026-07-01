@@ -6,6 +6,11 @@ import ConfidenceBadge, { type ConfLevel } from "../components/ConfidenceBadge.t
 import ExpertDetails from "../components/ExpertDetails.tsx";
 import OnboardingTour from "../components/OnboardingTour.tsx";
 import Sparkline from "../components/Sparkline.tsx";
+import LatentFitnessCard from "../components/LatentFitnessCard.tsx";
+import DoseResponseCard from "../components/DoseResponseCard.tsx";
+import ReadinessHealthCard from "../components/ReadinessHealthCard.tsx";
+import ProspectiveTrialCard from "../components/ProspectiveTrialCard.tsx";
+import CycleScaffoldCard from "../components/CycleScaffoldCard.tsx";
 import { useSparkPref } from "../lib/sparkPref.ts";
 
 // T15: Marker-Verläufe (Sparklines) aus bestehenden Trend-Endpoints. `dir` = Verbesserungsrichtung.
@@ -160,6 +165,21 @@ export default function Methodik() {
           </div>
         )}
       </div>
+
+      {/* Latente Fitness (ML-Engine, P1) */}
+      <LatentFitnessCard />
+
+      {/* Was wirkt bei dir? (ML-Engine, P2 — L3 Dosis-Wirkung) */}
+      <DoseResponseCard />
+
+      {/* Readiness & Gesundheit (ML-Engine, P4) */}
+      <ReadinessHealthCard />
+
+      {/* Kausal-Experiment (ML-Engine, P5 — L5 prospektiv randomisiert) */}
+      <ProspectiveTrialCard />
+
+      {/* Zyklus-Steuerung (ML-Engine, P6 — Gerüst AUS, Consent-Hard-Gate) */}
+      <CycleScaffoldCard />
 
       {/* Passive Inferenz */}
       <div className="card" style={{ marginTop: 12 }}>

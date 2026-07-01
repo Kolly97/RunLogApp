@@ -34,7 +34,7 @@ function short(s: string, n = 16): string { return s.length > n ? s.slice(0, n -
 // TSS-Tagesbalken + Wochen-TSS auf eigenen, versteckten Achsen → Fitness nutzt die linke Achse voll.
 export default function Pmc({
   data, height = 360, highlight, races = [], pbs = [], sickRanges = [],
-  phaseRuns = [], yearMarks = [], namesByDate, onPick, seasonal = false,
+  phaseRuns = [], cycleRuns = [], yearMarks = [], namesByDate, onPick, seasonal = false,
 }: {
   data: PmcPoint[]; height?: number;
   highlight?: { from: string; to: string };
@@ -45,6 +45,8 @@ export default function Pmc({
   seasonal?: boolean;
   sickRanges?: DateRange2[];
   phaseRuns?: PhaseRun[];
+  /** P6: Zyklus-Phasen-Band über dem Trainingsphasen-Band (leer ohne Consent). */
+  cycleRuns?: PhaseRun[];
   yearMarks?: YearMark[];
   /** Aktivitätsname(n) je Datum (Hover-Overlay). */
   namesByDate?: Record<string, string>;
@@ -131,7 +133,7 @@ export default function Pmc({
           <ReferenceLine yAxisId="load" x={today} stroke="var(--chart-tick)" strokeDasharray="4 4"
             label={{ value: "heute", fontSize: 10, fill: "var(--chart-tick)", position: "top" }} />
           {/* Phasenband + Jahresmarke + Phasenname über den TSS-Balken (ToDo Z.39). */}
-          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} years={yearMarks} pbs={hidden.races ? [] : pbs}
+          <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} cycleRuns={cycleRuns} years={yearMarks} pbs={hidden.races ? [] : pbs}
             phaseText={curPhase ? phaseLabel(curPhase) : ""} phaseFill={curPhase ? phaseColor(curPhase) : ""} />} />
           {/* Races zuletzt → Label im Vordergrund, von nichts überlappt (ToDo Z.27) */}
           {!hidden.races && races.map((r, i) => (

@@ -1,6 +1,6 @@
 {
   "name": "runlog",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",
@@ -16,11 +16,12 @@
     "db:template": "tsx server/reset-db.ts training.empty.db",
     "db:reset": "tsx server/reset-db.ts data/training.db",
     "electron:bundle": "node esbuild.electron.mjs",
+    "sidecar:build": "node scripts/build-sidecar.mjs",
     "electron:dev": "npm run electron:bundle && concurrently -k -n server,client,electron -c blue,green,magenta \"cross-env PORT=3000 npm:dev:server\" \"npm:dev:client\" \"cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
     "electron:start": "npm run build && npm run electron:bundle && electron .",
-    "electron:build": "npm run build && npm run electron:bundle && electron-builder --mac",
-    "electron:build:win": "npm run build && npm run electron:bundle && electron-builder --win",
-    "electron:build:linux": "npm run build && npm run electron:bundle && electron-builder --linux",
+    "electron:build": "npm run sidecar:build && npm run build && npm run electron:bundle && electron-builder --mac",
+    "electron:build:win": "npm run sidecar:build && npm run build && npm run electron:bundle && electron-builder --win",
+    "electron:build:linux": "npm run sidecar:build && npm run build && npm run electron:bundle && electron-builder --linux",
     "app:import-data": "node scripts/import-data.mjs"
   },
   "build": {
@@ -38,6 +39,10 @@
       {
         "from": "training.empty.db",
         "to": "seed/training.db"
+      },
+      {
+        "from": "build/sidecar",
+        "to": "sidecar"
       }
     ],
     "asarUnpack": [

@@ -463,6 +463,211 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_method_experiments ON method_experiments(profile_id, start_date);
   `);
+
+  // ===== ML-Engine (Plan: ML-Trainingssteuerung, P0) — additiv, profil-scoped, Bestand unangetastet =====
+  // Run-Manifest: ein Eintrag je Engine-Lauf (Reproduzierbarkeit: seed + input_hash + model_version).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_runs (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id    INTEGER NOT NULL DEFAULT 1,
+      kind          TEXT NOT NULL,
+      status        TEXT NOT NULL,
+      engine        TEXT,
+      model_version TEXT,
+      seed          INTEGER,
+      input_hash    TEXT,
+      settings_json TEXT,
+      progress      REAL DEFAULT 0,
+      error         TEXT,
+      started_at    TEXT,
+      finished_at   TEXT,
+      created_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ml_runs ON ml_runs(profile_id, kind, created_at);
+  `);
+  // Kanal-Effekte je Lauf (Forest-Plot-Daten): Reiz-Kanal × Zielgröße mit CI + Konfidenz.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_channel_effects (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id            INTEGER NOT NULL,
+      profile_id        INTEGER NOT NULL DEFAULT 1,
+      channel           TEXT NOT NULL,
+      target            TEXT NOT NULL,
+      lag_weeks         INTEGER,
+      gain_mean         REAL,
+      ci_low            REAL,
+      ci_high           REAL,
+      n_blocks          INTEGER,
+      collinearity_flag INTEGER DEFAULT 0,
+      mcid_pass         INTEGER DEFAULT 0,
+      confidence        TEXT,
+      created_at        TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ml_channel_effects ON ml_channel_effects(run_id, profile_id);
+  `);
+  // Geglättete latente Fitness-Trajektorie (L2) + Online-Readiness (Kalman-Filter): Cache je Datum.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_latent_fitness (
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      value       REAL,
+      sd          REAL,
+      run_id      INTEGER,
+      PRIMARY KEY (profile_id, date)
+    );
+    CREATE TABLE IF NOT EXISTS ml_readiness (
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      value       REAL,
+      sd          REAL,
+      PRIMARY KEY (profile_id, date)
+    );
+  `);
+  // Deterministische Gesundheits-Flags (RED-S/Übertraining) — außerhalb des Optimizers, nicht-diagnostisch.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_health_flags (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL DEFAULT 1,
+      date        TEXT NOT NULL,
+      kind        TEXT NOT NULL,
+      severity    TEXT,
+      message     TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ml_health_flags ON ml_health_flags(profile_id, date);
+  `);
+  // Engine-Einstellungen je Profil (Default AUS; channel_count 5 mit Auto-Kollaps; research_mode = Python-Sidecar).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_settings (
+      profile_id               INTEGER PRIMARY KEY,
+      enabled                  INTEGER NOT NULL DEFAULT 0,
+      channel_count            INTEGER NOT NULL DEFAULT 5,
+      mcid_json                TEXT,
+      forgetting_halflife_days INTEGER NOT NULL DEFAULT 450,
+      sensitivity              REAL NOT NULL DEFAULT 0.5,
+      research_mode_enabled    INTEGER NOT NULL DEFAULT 0,
+      schedule_mode            TEXT NOT NULL DEFAULT 'monthly',
+      updated_at               TEXT
+    );
+  `);
+  // Minimal-EMA Session-Feedback (Herzstück des Loops): wenige Tap-Felder + Auto-Kontext (Engine-gesetzt).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_feedback_v2 (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id       INTEGER NOT NULL DEFAULT 1,
+      activity_id      INTEGER,
+      date             TEXT NOT NULL,
+      session_family   TEXT,
+      rpe              INTEGER,
+      felt_vs_expected INTEGER,
+      life_stress      INTEGER,
+      notes            TEXT,
+      cycle_phase      TEXT,
+      cycle_day        INTEGER,
+      confounder_flag  TEXT,
+      created_at       TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_feedback_v2 ON session_feedback_v2(profile_id, date);
+  `);
+
+  // ===== P6 — Zyklus-Gerüst (AUS, Consent-Hard-Gate) — additiv, profil-scoped, Default aus =====
+  // Nichts läuft ohne Opt-in (cycle_consent-Setting). Verschlüsselung bewusst als spätere Folge.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cycle_training_settings (
+      profile_id               INTEGER NOT NULL PRIMARY KEY,
+      cycle_adaptive_enabled   INTEGER NOT NULL DEFAULT 0,
+      method_emphasis          TEXT    NOT NULL DEFAULT 'balanced',
+      method_emphasis_weight   REAL    NOT NULL DEFAULT 0.5,
+      phase_stimulus_map       TEXT,
+      feedback_sensitivity     REAL    NOT NULL DEFAULT 0.5,
+      symptom_override_enabled INTEGER NOT NULL DEFAULT 1,
+      observation_mode_only    INTEGER NOT NULL DEFAULT 0,
+      updated_at               TEXT
+    );
+    CREATE TABLE IF NOT EXISTS cycle_period_log_v2 (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL,
+      start_date  TEXT NOT NULL,
+      end_date    TEXT,
+      notes       TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cycle_period_log_v2 ON cycle_period_log_v2(profile_id, start_date);
+    CREATE TABLE IF NOT EXISTS cycle_symptoms_v2 (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  INTEGER NOT NULL,
+      date        TEXT NOT NULL,
+      cramps      INTEGER,
+      energy      INTEGER,
+      sleep       INTEGER,
+      mood        INTEGER,
+      flow        INTEGER,
+      notes       TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cycle_symptoms_v2 ON cycle_symptoms_v2(profile_id, date);
+    CREATE TABLE IF NOT EXISTS cycle_stimulus_evidence_v2 (
+      profile_id       INTEGER NOT NULL,
+      phase            TEXT NOT NULL,
+      stimulus         TEXT NOT NULL,
+      n_sessions       INTEGER NOT NULL DEFAULT 0,
+      mean_quality     REAL,
+      effect_size      REAL,
+      ci_low           REAL,
+      ci_high          REAL,
+      confidence       TEXT,
+      prior_weight     REAL,
+      posterior_weight REAL,
+      last_updated     TEXT,
+      PRIMARY KEY (profile_id, phase, stimulus)
+    );
+    CREATE TABLE IF NOT EXISTS cycle_stability_v2 (
+      profile_id     INTEGER PRIMARY KEY,
+      n_cycles       INTEGER,
+      median_length  REAL,
+      length_sd      REAL,
+      regularity     TEXT,
+      gate_passed    INTEGER,
+      last_evaluated TEXT
+    );
+  `);
+
+  // Prospektive randomisierte N-of-1-Blöcke (L5): erweitert method_experiments (additiv).
+  addColumn("method_experiments", "emphasis_label", "TEXT");
+  addColumn("method_experiments", "washout", "INTEGER DEFAULT 0");
+  addColumn("method_experiments", "primary_outcome", "TEXT");
+  addColumn("method_experiments", "lag_weeks", "INTEGER");
+  addColumn("method_experiments", "randomized", "INTEGER DEFAULT 0");
+  // P5 prospektiver Trial-Lebenszyklus + counterbalanced AB/BA-Design (alle additiv, nullable/default).
+  addColumn("method_experiments", "state", "TEXT");                  // proposed|accepted|declined|active|evaluated|archived|aborted_health
+  addColumn("method_experiments", "trial_kind", "TEXT");             // channel|regime
+  addColumn("method_experiments", "arm_a", "TEXT");
+  addColumn("method_experiments", "arm_b", "TEXT");
+  addColumn("method_experiments", "arm_a_label", "TEXT");
+  addColumn("method_experiments", "arm_b_label", "TEXT");
+  addColumn("method_experiments", "seed", "INTEGER");
+  addColumn("method_experiments", "n_pairs_planned", "INTEGER");
+  addColumn("method_experiments", "n_pairs_done", "INTEGER");
+  addColumn("method_experiments", "verdict", "TEXT");                // geprueft|hypothese|inconclusive|insufficient
+  addColumn("method_experiments", "theta", "REAL");
+  addColumn("method_experiments", "p_exact", "REAL");
+  addColumn("method_experiments", "consented_at", "TEXT");
+  addColumn("method_experiments", "proposal_hash", "TEXT");
+  addColumn("method_experiments", "config_json", "TEXT");            // {alpha, mcid, mcid_source, block_weeks, washout_weeks, override_mode, primary_outcome}
+  addColumn("method_experiments", "blocks_json", "TEXT");            // Block[] mit outcomes/excluded
+  // P5-Folge: getaggte Auto-Plan-Sessions eines Trials (nur diese Zeilen gehören dem Experiment; manuelle unberührt).
+  addColumn("planned_sessions", "experiment_id", "INTEGER");
+  // Modell-Leiter (5→4→3): channel_auto=1 → Leiter (Default), 0 → feste Stufe (Pin)
+  addColumn("ml_settings", "channel_auto", "INTEGER NOT NULL DEFAULT 1");
+  // L4 Robustheit auf den Kanal-Effekten (FDR/E-Value)
+  addColumn("ml_channel_effects", "p_boot", "REAL");
+  addColumn("ml_channel_effects", "q_fdr", "REAL");
+  addColumn("ml_channel_effects", "e_value", "REAL");
+  addColumn("ml_channel_effects", "e_value_ci", "REAL");
+  addColumn("ml_channel_effects", "fdr_survive", "INTEGER DEFAULT 0");
+  // Kanonische Einheitstypen: wichtig für die ML-Reiz-Klassifizierung → gesperrt (nicht löschbar/umbenennbar).
+  addColumn("options", "locked", "INTEGER NOT NULL DEFAULT 0");
+  seedCanonicalSessionTypes();
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig
@@ -520,6 +725,31 @@ function seedOptions(): void {
   DEFAULT_OPTIONS.forEach((o, i) => ins.run(o.kind, o.value, o.label, o.color, i));
 }
 
+// Kanonische Einheitstypen (gesperrt): hart verdrahtet, da sie die ML-Reiz-Klassifizierung (TYPE_CHANNEL_MAP)
+// tragen — value+label sind nicht änderbar/löschbar; zusätzliche Typen kann der Nutzer frei anlegen.
+// Idempotent (läuft bei jedem Start): legt fehlende an, setzt Label/Intensität/locked der kanonischen.
+const CANONICAL_SESSION_TYPES: { value: string; label: string; intensity: string; color: string }[] = [
+  { value: "Easy", label: "GA1-2 Dauerlauf", intensity: "easy", color: "#3b82f6" },
+  { value: "Long", label: "Longrun", intensity: "easy", color: "#6366f1" },
+  { value: "LongQ", label: "Longrun mit Qualität", intensity: "moderate", color: "#8b5cf6" },
+  { value: "Trail", label: "Trail Run", intensity: "moderate", color: "#16a34a" },
+  { value: "LT1", label: "LT1 (aerobe Schwelle)", intensity: "moderate", color: "#84cc16" },
+  { value: "LT2", label: "LT2 / Schwelle", intensity: "hard", color: "#eab308" },
+  { value: "VO2", label: "VO2max", intensity: "hard", color: "#f97316" },
+  { value: "Rep", label: "Repetitions (>VO2max)", intensity: "hard", color: "#ef4444" },
+];
+function seedCanonicalSessionTypes(): void {
+  const ins = db.prepare(
+    "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity, locked) " +
+      "VALUES('sessionType', ?, ?, ?, (SELECT COALESCE(MAX(sort),0)+1 FROM options WHERE kind='sessionType'), 1, ?, 1)",
+  );
+  const upd = db.prepare("UPDATE options SET label=?, intensity=?, locked=1 WHERE kind='sessionType' AND value=?");
+  for (const c of CANONICAL_SESSION_TYPES) {
+    ins.run(c.value, c.label, c.color, c.intensity);
+    upd.run(c.label, c.intensity, c.value);
+  }
+}
+
 // ---- Wochen-Renummerierung ----------------------------------------------
 // Wochen automatisch nach Datum einsortieren: week_no lückenlos 0..N-1 entlang start_date
 // (erste eingetragene Woche = 0), PRO PROFIL. Remappt planned_sessions.week_no + week_log_v2.week_no mit.
@@ -571,6 +801,16 @@ export function setSetting(key: string, value: unknown): void {
   ).run(key, JSON.stringify(value));
 }
 
+// Profil-gebundene Settings: persönliche Daten (athlete/thresholds/phase_dist_overrides) je Profil,
+// via Key-Suffix `key:<pid>` (gleiches Muster wie availability_N / layout:*:N). profileId explizit übergeben,
+// wo der aktive Profil-Kontext nicht garantiert ist (z.B. asynchrone ML-Jobs).
+export function getProfileSetting<T = unknown>(key: string, fallback: T, profileId: number = activeProfile()): T {
+  return getSetting(`${key}:${profileId}`, fallback);
+}
+export function setProfileSetting(key: string, value: unknown, profileId: number = activeProfile()): void {
+  setSetting(`${key}:${profileId}`, value);
+}
+
 // ---- defaults ----------------------------------------------------------
 
 export const DEFAULT_HR_ZONES = [
@@ -602,7 +842,7 @@ function seedDefaults() {
   }
 
   if (getSetting("init", false) === false) {
-    setSetting("thresholds", {
+    setProfileSetting("thresholds", {
       volume_pct: 10, // +/- % vs Phasenziel
       ctl_ramp_max: 7, // CTL-Punkte/Woche
       acwr_high: 1.3,
@@ -616,7 +856,14 @@ function seedDefaults() {
       intensity_window_weeks: 4, // Referenz-Fenster (Wochen) für Ø-TSS
     });
     setSetting("run_equiv_bike_factor", 0.25); // 1 Rad-km = 0.25 Run-km (editierbar)
-    setSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 });
+    setProfileSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 });
     setSetting("init", true);
+  }
+  // Personen-gebundene Settings einmalig vom globalen Alt-Key nach `key:1` (Profil Kolja) migrieren,
+  // damit Mehr-Profil-Nutzung korrekte Per-Person-Daten hat. Idempotent (nur wenn `key:1` noch fehlt).
+  for (const k of ["athlete", "thresholds", "phase_dist_overrides"]) {
+    const legacy = db.prepare("SELECT value FROM settings WHERE key=?").get(k) as { value: string } | undefined;
+    const scoped = db.prepare("SELECT value FROM settings WHERE key=?").get(`${k}:1`) as { value: string } | undefined;
+    if (legacy && !scoped) db.prepare("INSERT INTO settings(key, value) VALUES(?, ?)").run(`${k}:1`, legacy.value);
   }
 }

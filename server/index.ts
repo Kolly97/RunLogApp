@@ -2,7 +2,7 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { db, initSchema, getSetting, setSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
+import { db, initSchema, getSetting, setSetting, getProfileSetting, setProfileSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
 import {
   plannedTss,
   computePmc,
@@ -66,6 +66,8 @@ import {
   type EffortLine,
   type IntervalEffortStat,
   type BlockWeekInput,
+  type BlockDay,
+  type Regime,
   type MarkerActivity,
   type MarkerLactateTest,
   type WeekRegimeInput,
@@ -74,6 +76,9 @@ import type { Availability } from "./planbuilder.ts";
 import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId } from "./tutorial.ts";
 import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness } from "./mlJobs.ts";
+import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
+import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, buildFeedbackContext, evaluatePhaseStimulus, type Period, type ContraceptionStatus, type FeedbackRow } from "./cycleTraining.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -179,7 +184,7 @@ const THRESHOLD_DEFAULTS = {
 };
 // Defaults + gespeicherte Werte mischen → neue Keys gelten auch für ältere Bestände.
 function thresholds() {
-  return { ...THRESHOLD_DEFAULTS, ...getSetting("thresholds", {} as Record<string, number>) };
+  return { ...THRESHOLD_DEFAULTS, ...getProfileSetting("thresholds", {} as Record<string, number>) };
 }
 
 // Tages-TSS: real (<=heute) aus activities, geplant (>heute) aus planned_sessions.
@@ -218,11 +223,11 @@ app.get("/api/settings", (_req, res) => {
   res.json({
     thresholds: thresholds(),
     run_equiv_bike_factor: getSetting("run_equiv_bike_factor", 0.25),
-    athlete: getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }),
+    athlete: getProfileSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }),
     strava_client_id: getSetting("strava_client_id", ""),
     strava_client_secret: getSetting("strava_client_secret", ""),
     strava_sync_from: getSetting("strava_sync_from", ""), // Extraktions-Startdatum (v0.14.0); leer → Saisonstart
-    phase_dist_overrides: getSetting("phase_dist_overrides", {} as Record<string, string>), // T14: manuelle Verteilungs-Modelle pro Phase
+    phase_dist_overrides: getProfileSetting("phase_dist_overrides", {} as Record<string, string>), // T14: manuelle Verteilungs-Modelle pro Phase
   });
 });
 
@@ -275,8 +280,13 @@ app.post("/api/strava/import-zones", async (req, res) => {
   }
 });
 
+// Personen-gebundene Settings landen profil-scoped (`key:<pid>`), Rest global.
+const PERSON_SETTING_KEYS = new Set(["athlete", "thresholds", "phase_dist_overrides"]);
 app.put("/api/settings", (req, res) => {
-  for (const [k, v] of Object.entries(req.body || {})) setSetting(k, v);
+  for (const [k, v] of Object.entries(req.body || {})) {
+    if (PERSON_SETTING_KEYS.has(k)) setProfileSetting(k, v);
+    else setSetting(k, v);
+  }
   res.json({ ok: true });
 });
 
@@ -968,7 +978,7 @@ app.get("/api/cp-trend", (req, res) => {
 // v1.8.0: Running Effectiveness (Ökonomie-Trend) — Speed pro Watt je gleichmäßigem Lauf, masseunabhängiger Trend.
 app.get("/api/run-effectiveness", (req, res) => {
   const windowDays = Math.max(14, Math.min(365, Number((req.query as Record<string, string>).window) || 90));
-  const mass = Number((getSetting("athlete", { weight: 69 }) as { weight?: number }).weight) || 69;
+  const mass = Number((getProfileSetting("athlete", { weight: 69 }) as { weight?: number }).weight) || 69;
   const from = addDaysIso(todayIso(), -windowDays);
   const rows = db.prepare("SELECT date, distance_m, moving_s, run_np FROM activities WHERE profile_id=? AND sport='Run' AND date>=? AND run_np IS NOT NULL AND distance_m>0 AND moving_s>0 AND COALESCE(type,'') IN ('Easy','Long','Steady','Recovery','') ORDER BY date").all(pid(), from) as { date: string; distance_m: number; moving_s: number; run_np: number }[];
   const points = rows.map((r) => ({ date: r.date, re: runningEffectiveness(r.distance_m, r.moving_s, r.run_np, mass) })).filter((p): p is { date: string; re: number } => p.re != null);
@@ -1255,7 +1265,7 @@ app.get("/api/bests", (_req, res) => {
     ? predictFromVdot(effNow.value, CS_PRED_DISTANCES).map((p) => ({ distance_m: p.distance_m, ...predRange(p.time_s, p.distance_m, effNow.confidence) }))
     : [];
 
-  const athlete = getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
+  const athlete = getProfileSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
   const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
   const sex: "m" | "f" = athlete?.sex === "f" ? "f" : "m";
   const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
@@ -1368,7 +1378,7 @@ app.get("/api/fitness-trend", (req, res) => {
   });
 
   const current = [...points].reverse().find((p) => p.vdot != null) ?? null;
-  const athlete = getSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
+  const athlete = getProfileSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
   const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
   const sex: "m" | "f" = athlete?.sex === "f" ? "f" : "m";
   const age = birthYear ? Number(today.slice(0, 4)) - birthYear : null;
@@ -1436,13 +1446,17 @@ app.post("/api/options", (req, res) => {
 
 app.put("/api/options/:id", (req, res) => {
   const b = req.body || {};
+  const cur = db.prepare("SELECT label, locked FROM options WHERE id=?").get(req.params.id) as { label: string; locked?: number } | undefined;
+  const label = cur?.locked ? cur.label : b.label; // gesperrt: Label/Wert nicht änderbar (Farbe/Intensität/Sortierung schon)
   db.prepare("UPDATE options SET label=?, color=?, sort=?, active=?, intensity=? WHERE id=?").run(
-    b.label, b.color ?? null, b.sort ?? 0, b.active ?? 1, b.intensity ?? null, req.params.id,
+    label, b.color ?? null, b.sort ?? 0, b.active ?? 1, b.intensity ?? null, req.params.id,
   );
   res.json({ ok: true });
 });
 
 app.delete("/api/options/:id", (req, res) => {
+  const cur = db.prepare("SELECT locked FROM options WHERE id=?").get(req.params.id) as { locked?: number } | undefined;
+  if (cur?.locked) return res.status(400).json({ error: "Kanonischer Typ — gesperrt, nicht löschbar." });
   db.prepare("DELETE FROM options WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
@@ -1660,7 +1674,7 @@ function effVo2maxForRow(a: any): number | null {
   const hasIntervals = !!ef && ef !== "" && ef !== "null" && ef !== "[]";
   const typeOk = VO2MAX_STEADY_TYPES.has(t) || ((VO2MAX_CONT_THR_TYPES.has(t) || t === "") && !hasIntervals);
   if (!typeOk) return null; // Intervalle/VO2/Berg/Race + kurze Läufe ausgeschlossen
-  const ath = getSetting("athlete", { max_hr: 196 }) as { max_hr?: number; hr_rest?: number };
+  const ath = getProfileSetting("athlete", { max_hr: 196 }) as { max_hr?: number; hr_rest?: number };
   const hrMax = Number(ath?.max_hr) || 196;
   const hrRest = Number(ath?.hr_rest) || 48;
   const avgPace = a.distance_m > 0 && a.moving_s > 0 ? paceToSecPerKm(a.distance_m, a.moving_s) : null;
@@ -1961,7 +1975,7 @@ app.get("/api/threshold-trend", (req, res) => {
 app.get("/api/optimal-zones", (_req, res) => {
   const today = todayIso();
   const cur = rollingCsVdot(loadProfileRuns(), today, 90);
-  const athlete = getSetting("athlete", { max_hr: 196 }) as { max_hr?: number | null };
+  const athlete = getProfileSetting("athlete", { max_hr: 196 }) as { max_hr?: number | null };
   const zs = effectiveZoneSet(today);
   const lac = db.prepare("SELECT lt1_hr, lt2_hr, lt1_pace, lt2_pace FROM lactate_tests WHERE profile_id=? ORDER BY date DESC LIMIT 1").get(pid()) as { lt1_hr: number | null; lt2_hr: number | null; lt1_pace: number | null; lt2_pace: number | null } | undefined;
   const oz = computeOptimalZones({
@@ -2440,7 +2454,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // Item 3 (Frage B): Zieldistanz des nächsten Hauptrennens fließt ins Verteilungs-Soll ein.
   const goalDistRow = db.prepare("SELECT distance_m FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), todayIso()) as { distance_m: number | null } | undefined;
   const goalDistM = goalDistRow?.distance_m && goalDistRow.distance_m > 0 ? Number(goalDistRow.distance_m) : null;
-  const phaseTarget = phaseDistributionTarget(wk?.phase, getSetting("phase_dist_overrides", {} as Record<string, string>), goalDistM);
+  const phaseTarget = phaseDistributionTarget(wk?.phase, getProfileSetting("phase_dist_overrides", {} as Record<string, string>), goalDistM);
   const realPolarizationFlag = polarizationFlag(physioDist, phaseTarget, polIndex);
 
   // Monotonie & Strain (Foster, v1.2.0): reale Tageslast der Woche inkl. Ruhetage (0).
@@ -2606,6 +2620,422 @@ if (process.env.NODE_ENV !== "production") {
     res.json({ ok: true });
   });
 }
+
+// ---- ML-Engine (Plan: ML-Trainingssteuerung) ------------------------------
+// Latente Fitness (L2, Komposit CS/VDOT/VO2max) als Hintergrund-Batch; Settings, Frische, Fortschritt.
+app.get("/api/ml/settings", (_req, res) => {
+  const p = pid();
+  const row = db.prepare("SELECT * FROM ml_settings WHERE profile_id=?").get(p);
+  res.json(
+    row ?? {
+      profile_id: p,
+      enabled: 0,
+      channel_count: 5,
+      channel_auto: 1,
+      mcid_json: null,
+      forgetting_halflife_days: 450,
+      sensitivity: 0.5,
+      research_mode_enabled: 0,
+      schedule_mode: "monthly",
+    },
+  );
+});
+app.put("/api/ml/settings", (req, res) => {
+  const p = pid();
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  db.prepare(
+    `INSERT INTO ml_settings(profile_id, enabled, channel_count, channel_auto, mcid_json, forgetting_halflife_days, sensitivity, research_mode_enabled, schedule_mode, updated_at)
+     VALUES(?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(profile_id) DO UPDATE SET enabled=excluded.enabled, channel_count=excluded.channel_count, channel_auto=excluded.channel_auto, mcid_json=excluded.mcid_json,
+       forgetting_halflife_days=excluded.forgetting_halflife_days, sensitivity=excluded.sensitivity,
+       research_mode_enabled=excluded.research_mode_enabled, schedule_mode=excluded.schedule_mode, updated_at=excluded.updated_at`,
+  ).run(
+    p,
+    b.enabled ? 1 : 0,
+    Number(b.channel_count ?? 5),
+    b.channel_auto == null ? 1 : b.channel_auto ? 1 : 0,
+    (b.mcid_json as string) ?? null,
+    Number(b.forgetting_halflife_days ?? 450),
+    Number(b.sensitivity ?? 0.5),
+    b.research_mode_enabled ? 1 : 0,
+    (b.schedule_mode as string) ?? "monthly",
+    new Date().toISOString(),
+  );
+  res.json({ ok: true });
+});
+app.post("/api/ml/recompute", (req, res) => {
+  const k = String(req.query.kind);
+  const kind = k === "dose_response" || k === "readiness" ? k : "latent_fitness";
+  res.json(mlStartRun(kind, pid()));
+});
+app.post("/api/ml/cancel", (req, res) => {
+  mlCancelRun(Number(req.query.runId ?? (req.body as { runId?: number })?.runId));
+  res.json({ ok: true });
+});
+app.get("/api/ml/progress", (req, res) => {
+  const r = mlGetRun(Number(req.query.runId));
+  if (!r) return res.status(404).json({ error: "unbekannter run" });
+  res.json({ id: r.id, status: r.status, progress: r.progress, error: r.error });
+});
+app.get("/api/ml/status", (req, res) => {
+  const p = pid();
+  const k = String(req.query.kind);
+  const kind = k === "dose_response" || k === "readiness" ? k : "latent_fitness";
+  res.json({ freshness: mlFreshness(p, kind), latest: mlLatestRun(p, kind) });
+});
+app.get("/api/ml/latent-fitness", (_req, res) => res.json(mlGetLatentFitness(pid())));
+app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
+app.get("/api/ml/readiness", (_req, res) => res.json(mlGetReadiness(pid())));
+
+// Minimal-EMA Session-Feedback (Frage 6): RPE + felt_vs_expected + life_stress je Einheit, upsert per activity_id.
+app.get("/api/ml/feedback", (req, res) => {
+  const p = pid();
+  if (req.query.activityId != null) {
+    const row = db.prepare("SELECT * FROM session_feedback_v2 WHERE profile_id=? AND activity_id=? ORDER BY id DESC LIMIT 1").get(p, Number(req.query.activityId));
+    return res.json(row ?? null);
+  }
+  const date = req.query.date ? String(req.query.date) : null;
+  const rows = date
+    ? db.prepare("SELECT * FROM session_feedback_v2 WHERE profile_id=? AND date=? ORDER BY id").all(p, date)
+    : db.prepare("SELECT * FROM session_feedback_v2 WHERE profile_id=? ORDER BY date DESC LIMIT 300").all(p);
+  res.json(rows);
+});
+app.post("/api/ml/feedback", (req, res) => {
+  const p = pid();
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const aid = b.activity_id != null ? Number(b.activity_id) : null;
+  const date = String(b.date ?? new Date().toISOString().slice(0, 10));
+  const fam = (b.session_family as string) ?? null;
+  const rpe = b.rpe != null && b.rpe !== "" ? Number(b.rpe) : null;
+  const felt = b.felt_vs_expected != null && b.felt_vs_expected !== "" ? Number(b.felt_vs_expected) : null;
+  const stress = b.life_stress != null && b.life_stress !== "" ? Number(b.life_stress) : null;
+  const notes = (b.notes as string) ?? null;
+  // Zyklus-Auto-Tagging (nur bei aktivem Zyklus-Consent): Phase/Tag Engine-gesetzt, nicht von der Nutzerin.
+  let cyPhase: string | null = null, cyDay: number | null = null;
+  if (cycleConsented(p)) {
+    const ctx = buildFeedbackContext(loadPeriods(p), cycleContra(p), date);
+    cyPhase = ctx.cycle_phase; cyDay = ctx.cycle_day;
+  }
+  const existing = aid != null ? (db.prepare("SELECT id FROM session_feedback_v2 WHERE profile_id=? AND activity_id=? ORDER BY id DESC LIMIT 1").get(p, aid) as { id: number } | undefined) : undefined;
+  if (existing) {
+    db.prepare("UPDATE session_feedback_v2 SET date=?, session_family=?, rpe=?, felt_vs_expected=?, life_stress=?, notes=?, cycle_phase=?, cycle_day=? WHERE id=?").run(date, fam, rpe, felt, stress, notes, cyPhase, cyDay, existing.id);
+    return res.json({ id: existing.id });
+  }
+  const r = db.prepare("INSERT INTO session_feedback_v2(profile_id, activity_id, date, session_family, rpe, felt_vs_expected, life_stress, notes, cycle_phase, cycle_day, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(p, aid, date, fam, rpe, felt, stress, notes, cyPhase, cyDay, new Date().toISOString());
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+// ---- ML P5: Prospektiv randomisierte N-of-1-Blöcke (der einzige kausale Pfad) ----
+app.get("/api/ml/prospective", (_req, res) => res.json(mlProspectiveState(pid())));
+app.post("/api/ml/prospective/propose", (_req, res) => res.json(mlProposeTrial(pid())));
+app.post("/api/ml/prospective/accept", (req, res) => {
+  const b = (req.body ?? {}) as Record<string, any>;
+  if (!b.armA?.value || !b.armB?.value || !b.proposalHash) return res.status(400).json({ error: "armA/armB/proposalHash erforderlich" });
+  const id = mlCreateTrial(pid(), {
+    kind: b.kind === "regime" ? "regime" : "channel",
+    armA: { value: String(b.armA.value), label: String(b.armA.label ?? b.armA.value) },
+    armB: { value: String(b.armB.value), label: String(b.armB.label ?? b.armB.value) },
+    nPairsPlanned: Number(b.nPairsPlanned ?? 6),
+    blockWeeks: b.blockWeeks != null ? Number(b.blockWeeks) : undefined,
+    washoutWeeks: b.washoutWeeks != null ? Number(b.washoutWeeks) : undefined,
+    lagWeeks: b.lagWeeks != null ? Number(b.lagWeeks) : undefined,
+    mcid: b.mcid != null ? Number(b.mcid) : undefined,
+    alpha: b.alpha != null ? Number(b.alpha) : undefined,
+    overrideMode: b.overrideMode != null ? String(b.overrideMode) : undefined,
+    startDate: b.startDate != null ? String(b.startDate) : undefined,
+    consentedAt: String(b.consentedAt ?? new Date().toISOString()),
+    proposalHash: String(b.proposalHash),
+  });
+  res.json(id);
+});
+app.post("/api/ml/prospective/decline", (_req, res) => res.json(mlDeclineTrial(pid())));
+app.post("/api/ml/prospective/:id/evaluate", (req, res) => res.json(mlEvaluateTrial(Number(req.params.id))));
+app.post("/api/ml/prospective/:id/abort", (req, res) => {
+  const reason = (req.body as { reason?: string })?.reason === "health" ? "health" : "user";
+  res.json(mlAbortTrial(pid(), Number(req.params.id), reason));
+});
+
+// P5-Folge: Auto-Plan des AKTUELLEN Trial-Blocks (load-matched, getaggt). Arm → Reiz-Schwerpunkt (emphasis + regime);
+// Wochen-TSS bleibt phasen-/CTL-getrieben (load-match), nur der Reiz-Mix kippt. Periodisierung/Readiness/Race übersteuern.
+const ARM_STIMULUS: Record<string, { emphasis: string; regime: Regime; label: string }> = {
+  I: { emphasis: "vo2", regime: "polarized", label: "VO2max" },
+  VO2: { emphasis: "vo2", regime: "polarized", label: "VO2max" }, VO2max: { emphasis: "vo2", regime: "polarized", label: "VO2max" },
+  T: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" }, Schwelle: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" },
+  R: { emphasis: "fartlek", regime: "polarized", label: "Repetition" }, Repetition: { emphasis: "fartlek", regime: "polarized", label: "Repetition" },
+  polarized: { emphasis: "vo2", regime: "polarized", label: "Polarisiert" }, pyramidal: { emphasis: "ausgewogen", regime: "pyramidal", label: "Pyramidal" },
+  threshold: { emphasis: "schwelle", regime: "threshold", label: "Threshold" }, norwegian: { emphasis: "norwegian", regime: "norwegian", label: "Norwegian" },
+};
+const armStimulus = (arm: string) => ARM_STIMULUS[arm] ?? { emphasis: "ausgewogen", regime: "mixed" as Regime, label: arm };
+
+interface TrialBlockGen {
+  block: { pair: number; arm: string; startDate: string; endDate: string };
+  armLabel: string; emphasis: string; regime: Regime;
+  days: (BlockDay & { week_no: number | null })[]; note: string;
+}
+/** Baut die konkreten, load-matched Sessions für den aktuellen (oder nächsten) Block eines Trials. Schreibt NICHT. */
+function buildTrialBlockGen(trialId: number): TrialBlockGen | null {
+  const trial = mlGetTrial(trialId);
+  if (!trial || !trial.blocks_json) return null;
+  let blocks: { pair: number; arm: string; startDate: string; endDate: string }[];
+  try { blocks = JSON.parse(trial.blocks_json); } catch { return null; }
+  const today = todayIso();
+  const block = blocks.find((b) => b.endDate >= today) ?? blocks[blocks.length - 1];
+  if (!block) return null;
+  const stim = armStimulus(block.arm);
+
+  // Wochen des Block-Fensters (7-Tage-Raster ab Blockstart); Phase/Woche/Ziel-km aus season_weeks_v2, falls vorhanden.
+  const nWeeks = Math.max(1, Math.round((Date.parse(block.endDate) - Date.parse(block.startDate)) / (7 * 86_400_000)));
+  const weeks: BlockWeekInput[] = [];
+  for (let i = 0; i < nWeeks; i++) {
+    const ws = addDaysIso(block.startDate, i * 7);
+    const sw = db.prepare("SELECT week_no, phase, target_km FROM season_weeks_v2 WHERE profile_id=? AND start_date<=? AND end_date>=? LIMIT 1").get(pid(), ws, ws) as { week_no: number; phase: string | null; target_km: number | null } | undefined;
+    weeks.push({ week_no: sw?.week_no ?? i + 1, phase: sw?.phase ?? null, start_date: ws, dates: Array.from({ length: 7 }, (_, d) => addDaysIso(ws, d)), target_km: sw?.target_km ?? null });
+  }
+
+  // Plan-Kontext (analog /api/plan/block-suggestion)
+  const from = minIso(earliestDataDate() ?? today, today);
+  const historicalDailyTss = dailyTssMap(from, today);
+  const zs = effectiveZoneSet(today);
+  const cur = rollingCsVdot(loadProfileRuns(), today, 90);
+  const csPace = cur.csPace;
+  const raceRow = db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND goal_time_s IS NOT NULL ORDER BY date LIMIT 1").get(pid(), today) as { date: string; distance_m: number | null; goal_time_s: number | null } | undefined;
+  const goalDistanceM = raceRow?.distance_m && raceRow.distance_m > 0 ? Number(raceRow.distance_m) : null;
+  let goalPace: number | null = null;
+  if (goalDistanceM && cur.vdot) { const pr = predictFromVdot(cur.vdot, [goalDistanceM]); if (pr.length && pr[0].time_s > 0) goalPace = Math.round(pr[0].time_s / (goalDistanceM / 1000)); }
+  const zones = { pace_zones: zs.pace_zones, threshold_pace: zs.threshold_pace, lt1_pace: zs.lt1_pace, hr_zones: zs.hr_zones, cs_pace: csPace, rep_pace: csPace ? csPace - 8 : null, goal_distance_m: goalDistanceM, goal_pace: goalPace, cp: currentCp() };
+  // Availability mit Arm-Emphasis (nur wenn Profil gepflegt); der Regime-Nudge greift ohnehin über methodPreference.
+  const baseAvail = getSetting<Availability | null>(`availability_${pid()}`, null);
+  const availability: Availability | null = baseAvail ? { ...baseAvail, emphasis: stim.emphasis } : null;
+  // Readiness (heute) — identisch mit block-suggestion.
+  const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), today) as { hrv: number }[]).map((r) => r.hrv);
+  const hrvBaseline = baseHrv.length >= 3 ? (() => { const m = baseHrv.reduce((a, b) => a + b, 0) / baseHrv.length; const sd = Math.sqrt(baseHrv.reduce((a, b) => a + (b - m) ** 2, 0) / baseHrv.length); return { mean: m, sd }; })() : null;
+  const todayLog = db.prepare("SELECT hrv, recovery, soreness, sleep_h FROM daily_log_v2 WHERE profile_id=? AND date=?").get(pid(), today) as any;
+  const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
+
+  const plan = blockPlan({
+    weeks, historicalDailyTss, from, today, raceDate: raceRow?.date ?? null, zones, availability,
+    readinessLevel: readiness?.level ?? null, methodPreference: { regime: stim.regime, confidence: "hoch" },
+    goalDistanceM, curVdot: cur.vdot, goalTimeS: raceRow?.goal_time_s && raceRow.goal_time_s > 0 ? Number(raceRow.goal_time_s) : null,
+  });
+  const days = plan.weeks.flatMap((w) => w.days.filter((d) => d.date >= block.startDate && d.date <= block.endDate).map((d) => ({ ...d, week_no: w.week_no })));
+  return { block, armLabel: stim.label, emphasis: stim.emphasis, regime: stim.regime, days, note: `Reiz-Schwerpunkt „${stim.label}" — gleiches Wochen-TSS wie regulär, nur der Reiz-Mix ist auf diesen Arm gedreht. Periodisierung/Readiness/Race übersteuern.` };
+}
+
+app.get("/api/ml/prospective/:id/plan-preview", (req, res) => {
+  const gen = buildTrialBlockGen(Number(req.params.id));
+  if (!gen) return res.status(404).json({ error: "Kein planbarer Block" });
+  res.json(gen);
+});
+app.post("/api/ml/prospective/:id/plan-block", (req, res) => {
+  const id = Number(req.params.id);
+  const gen = buildTrialBlockGen(id);
+  if (!gen) return res.status(404).json({ error: "Kein planbarer Block" });
+  const p = pid();
+  // idempotent: getaggte Zeilen DIESES Trials im Block-Fenster ersetzen (andere Blöcke unangetastet)
+  db.prepare("DELETE FROM planned_sessions WHERE experiment_id=? AND profile_id=? AND date BETWEEN ? AND ?").run(id, p, gen.block.startDate, gen.block.endDate);
+  const ins = db.prepare(
+    `INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, structured, efforts, planned_tss, sort_order, prescription, experiment_id)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  );
+  let written = 0, skipped = 0;
+  db.exec("BEGIN");
+  try {
+    for (const d of gen.days) {
+      // manuelle (untagged) Einheit am selben Tag → respektieren, NICHT überschreiben
+      if (db.prepare("SELECT 1 FROM planned_sessions WHERE profile_id=? AND date=? AND experiment_id IS NULL LIMIT 1").get(p, d.date)) { skipped++; continue; }
+      ins.run(p, d.date, d.week_no ?? null, "Run", d.type, null, d.planned_min ?? null, JSON.stringify(d.zone_alloc ?? null), d.description ?? "", null, JSON.stringify(d.efforts ?? null), d.planned_tss ?? null, d.isSecond ? 1 : 0, d.prescription ? JSON.stringify(d.prescription) : null, id);
+      written++;
+    }
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  res.json({ ok: true, written, skipped, block: gen.block, armLabel: gen.armLabel });
+});
+
+// ---- P6: Zyklus-Steuerung (Gerüst, Consent-Hard-Gate) --------------------
+// Nichts läuft ohne Opt-in. Verschlüsselung bewusst als spätere Folge; Daten sind local-only.
+function cycleConsented(p: number): boolean {
+  return !!getProfileSetting<{ consented?: boolean }>("cycle_consent", {}, p).consented;
+}
+function cycleContra(p: number): ContraceptionStatus {
+  return getProfileSetting<ContraceptionStatus>("cycle_contraception", { method: "none" }, p);
+}
+function loadPeriods(p: number): Period[] {
+  return db.prepare("SELECT start_date, end_date FROM cycle_period_log_v2 WHERE profile_id=? ORDER BY start_date").all(p) as unknown as Period[];
+}
+/** Consent-Hard-Gate: ohne Opt-in → 403 { needsConsent:true }. */
+function gateConsent(res: import("express").Response, p: number): boolean {
+  if (cycleConsented(p)) return true;
+  res.status(403).json({ needsConsent: true, error: "Zyklus-Steuerung nicht aktiviert (Opt-in erforderlich)." });
+  return false;
+}
+
+app.post("/api/cycle-training/consent", (req, res) => {
+  const p = pid();
+  const b = (req.body ?? {}) as { consent?: boolean; contraception?: ContraceptionStatus };
+  if (b.consent) {
+    setProfileSetting("cycle_consent", { consented: true, consentedAt: new Date().toISOString() }, p);
+    if (b.contraception?.method) setProfileSetting("cycle_contraception", { method: b.contraception.method }, p);
+  } else {
+    setProfileSetting("cycle_consent", { consented: false, consentedAt: null }, p);
+  }
+  res.json({ ok: true, consented: !!b.consent });
+});
+
+// 1-Klick-Löschen: entfernt ALLE Zyklusdaten des Profils + widerruft Consent.
+app.delete("/api/cycle-training/data", (_req, res) => {
+  const p = pid();
+  db.exec("BEGIN");
+  try {
+    for (const t of ["cycle_period_log_v2", "cycle_symptoms_v2", "cycle_stimulus_evidence_v2", "cycle_stability_v2", "cycle_training_settings"]) db.prepare(`DELETE FROM ${t} WHERE profile_id=?`).run(p);
+    setProfileSetting("cycle_consent", { consented: false, consentedAt: null }, p);
+    setProfileSetting("cycle_contraception", { method: "none" }, p);
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  res.json({ ok: true });
+});
+
+// Kombinierter Status für die Karte (consent-gated): Gate + Phase + (off/insufficient) Empfehlung + Perioden.
+app.get("/api/cycle-training/status", (_req, res) => {
+  const p = pid();
+  if (!cycleConsented(p)) return res.json({ needsConsent: true });
+  const today = todayIso();
+  const periods = loadPeriods(p);
+  const contra = cycleContra(p);
+  const gate = gateCycleAdaptive(periods, contra, today);
+  const phase = computeCyclePhase(periods, contra, today);
+  const recommendation = phaseStimulusRecommendation(phase.phase, gate);
+  const settings = db.prepare("SELECT * FROM cycle_training_settings WHERE profile_id=?").get(p) ?? { profile_id: p, cycle_adaptive_enabled: 0, method_emphasis: "balanced", observation_mode_only: 0 };
+  const periodsUi = db.prepare("SELECT id, start_date, end_date FROM cycle_period_log_v2 WHERE profile_id=? ORDER BY start_date DESC").all(p);
+  res.json({ needsConsent: false, contraception: contra, gate, phase, recommendation, settings, periods: periodsUi });
+});
+
+app.get("/api/cycle-training/gate", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  res.json(gateCycleAdaptive(loadPeriods(p), cycleContra(p), todayIso()));
+});
+
+app.get("/api/cycle-training/recommendation", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const today = todayIso();
+  const gate = gateCycleAdaptive(loadPeriods(p), cycleContra(p), today);
+  const phase = computeCyclePhase(loadPeriods(p), cycleContra(p), today);
+  res.json(phaseStimulusRecommendation(phase.phase, gate)); // GERÜST: immer off/insufficient
+});
+
+app.get("/api/cycle-training/settings", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  res.json(db.prepare("SELECT * FROM cycle_training_settings WHERE profile_id=?").get(p) ?? {
+    profile_id: p, cycle_adaptive_enabled: 0, method_emphasis: "balanced", method_emphasis_weight: 0.5,
+    phase_stimulus_map: null, feedback_sensitivity: 0.5, symptom_override_enabled: 1, observation_mode_only: 0,
+  });
+});
+app.put("/api/cycle-training/settings", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  db.prepare(
+    `INSERT INTO cycle_training_settings(profile_id, cycle_adaptive_enabled, method_emphasis, method_emphasis_weight, phase_stimulus_map, feedback_sensitivity, symptom_override_enabled, observation_mode_only, updated_at)
+     VALUES(?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(profile_id) DO UPDATE SET cycle_adaptive_enabled=excluded.cycle_adaptive_enabled, method_emphasis=excluded.method_emphasis,
+       method_emphasis_weight=excluded.method_emphasis_weight, phase_stimulus_map=excluded.phase_stimulus_map,
+       feedback_sensitivity=excluded.feedback_sensitivity, symptom_override_enabled=excluded.symptom_override_enabled,
+       observation_mode_only=excluded.observation_mode_only, updated_at=excluded.updated_at`,
+  ).run(
+    p, b.cycle_adaptive_enabled ? 1 : 0, (b.method_emphasis as string) ?? "balanced", Number(b.method_emphasis_weight ?? 0.5),
+    (b.phase_stimulus_map as string) ?? null, Number(b.feedback_sensitivity ?? 0.5), b.symptom_override_enabled == null ? 1 : b.symptom_override_enabled ? 1 : 0,
+    b.observation_mode_only ? 1 : 0, new Date().toISOString(),
+  );
+  res.json({ ok: true });
+});
+
+// Perioden-Log (Beobachtung): Start-Datum erfassen/löschen (consent-gated).
+app.post("/api/cycle-training/period", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const b = (req.body ?? {}) as { start_date?: string; end_date?: string | null; notes?: string };
+  if (!b.start_date) return res.status(400).json({ error: "start_date erforderlich" });
+  const r = db.prepare("INSERT INTO cycle_period_log_v2(profile_id, start_date, end_date, notes, created_at) VALUES(?,?,?,?,?)")
+    .run(p, b.start_date, b.end_date ?? null, b.notes ?? null, new Date().toISOString());
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+app.delete("/api/cycle-training/period/:id", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  db.prepare("DELETE FROM cycle_period_log_v2 WHERE id=? AND profile_id=?").run(req.params.id, p);
+  res.json({ ok: true });
+});
+
+// Symptom-Log (Beobachtung): upsert je (Profil, Datum). Cramps/Energy/Sleep/Mood/Flow 1–5.
+app.get("/api/cycle-training/symptoms", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const { from, to } = req.query as { from?: string; to?: string };
+  const rows = from && to
+    ? db.prepare("SELECT id, date, cramps, energy, sleep, mood, flow, notes FROM cycle_symptoms_v2 WHERE profile_id=? AND date BETWEEN ? AND ? ORDER BY date DESC").all(p, from, to)
+    : db.prepare("SELECT id, date, cramps, energy, sleep, mood, flow, notes FROM cycle_symptoms_v2 WHERE profile_id=? ORDER BY date DESC LIMIT 120").all(p);
+  res.json(rows);
+});
+app.post("/api/cycle-training/symptoms", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  if (!b.date) return res.status(400).json({ error: "date erforderlich" });
+  const num = (x: unknown) => (x != null && x !== "" ? Number(x) : null);
+  const vals = [num(b.cramps), num(b.energy), num(b.sleep), num(b.mood), num(b.flow), (b.notes as string) ?? null];
+  const ex = db.prepare("SELECT id FROM cycle_symptoms_v2 WHERE profile_id=? AND date=? ORDER BY id DESC LIMIT 1").get(p, String(b.date)) as { id: number } | undefined;
+  if (ex) {
+    db.prepare("UPDATE cycle_symptoms_v2 SET cramps=?, energy=?, sleep=?, mood=?, flow=?, notes=? WHERE id=?").run(...vals, ex.id);
+    return res.json({ id: ex.id });
+  }
+  const r = db.prepare("INSERT INTO cycle_symptoms_v2(profile_id, date, cramps, energy, sleep, mood, flow, notes, created_at) VALUES(?,?,?,?,?,?,?,?,?)").run(p, String(b.date), ...vals, new Date().toISOString());
+  res.json({ id: Number(r.lastInsertRowid) });
+});
+
+// Auswertung (BUILDPLAN §3.2): Phase × Reiz aus getaggtem Session-Feedback → cycle_stimulus_evidence_v2. „auswerten zuerst".
+app.post("/api/cycle-training/evaluate", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const feedback = db.prepare("SELECT session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL").all(p) as unknown as FeedbackRow[];
+  const evidence = evaluatePhaseStimulus(feedback);
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM cycle_stimulus_evidence_v2 WHERE profile_id=?").run(p);
+    const ins = db.prepare("INSERT INTO cycle_stimulus_evidence_v2(profile_id, phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight, last_updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+    for (const e of evidence) ins.run(p, e.phase, e.stimulus, e.n_sessions, e.mean_quality, e.effect_size, e.ci_low, e.ci_high, e.confidence, e.prior_weight, e.posterior_weight, new Date().toISOString());
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  res.json({ ok: true, evidence, nFeedback: feedback.length });
+});
+app.get("/api/cycle-training/evidence", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  res.json(db.prepare("SELECT phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight FROM cycle_stimulus_evidence_v2 WHERE profile_id=? ORDER BY phase, stimulus").all(p));
+});
+
+// Zyklus-Phasen-Spans für das Chart-Overlay (P6, reines Sehen). Ohne Consent/Daten → [] (Band rendert nicht; kein 403).
+app.get("/api/cycle-training/phase-bands", (req, res) => {
+  const p = pid();
+  if (!cycleConsented(p)) return res.json([]);
+  const { from, to } = req.query as { from?: string; to?: string };
+  const periods = loadPeriods(p);
+  if (!periods.length || !from || !to) return res.json([]);
+  const contra = cycleContra(p);
+  const start = Math.max(Date.parse(from), Date.parse(periods[0].start_date));
+  const end = Date.parse(to);
+  const spans: { from: string; to: string; phase: string }[] = [];
+  let cur: { from: string; to: string; phase: string } | null = null;
+  for (let t = start, i = 0; t <= end && i < 800; t += 86_400_000, i++) { // tageweise Phase → zusammenhängende Spans
+    const d = new Date(t).toISOString().slice(0, 10);
+    const ph = computeCyclePhase(periods, contra, d).phase;
+    if (ph && cur && cur.phase === ph) cur.to = d;
+    else { if (cur) spans.push(cur); cur = ph ? { from: d, to: d, phase: ph } : null; }
+  }
+  if (cur) spans.push(cur);
+  res.json(spans);
+});
 
 // ---- static (production) ----------------------------------------------
 // Im Electron-Paket liegt das gebaute Frontend neben den Server-Bundles; sonst im Projekt-`dist/`.

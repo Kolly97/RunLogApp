@@ -10,8 +10,14 @@ export interface PhaseRun { fromKey: string; toKey: string; phase: string; }
 export interface YearMark { key?: string; index?: number; year: string; }
 export interface PbMark { date: string; label: string; }
 
+// Zyklus-Phasen-Palette (P6, „reines Sehen"): dezent, klinisch, deutlich vom Trainingsphasen-Band abgesetzt.
+const CYCLE_COLOR: Record<string, string> = { menstrual: "#e0698a", follicular: "#2dd4bf", ovulation: "#f0b429", early_luteal: "#7c9cf0", late_luteal: "#b47ccb" };
+const CYCLE_LABEL: Record<string, string> = { menstrual: "Menstruation", follicular: "Follikelphase", ovulation: "Ovulation", early_luteal: "Frühe Lutealphase", late_luteal: "Späte Lutealphase" };
+export const cyclePhaseColor = (p: string) => CYCLE_COLOR[p] ?? "#64748b";
+export const cyclePhaseLabel = (p: string) => CYCLE_LABEL[p] ?? p;
+
 export default function ChartDecor(props: any) {
-  const { xAxisMap, offset, runs = [], years = [], pbs = [], phaseText = "", phaseFill = "#64748b" } = props;
+  const { xAxisMap, offset, runs = [], cycleRuns = [], years = [], pbs = [], phaseText = "", phaseFill = "#64748b" } = props;
   const axis = xAxisMap && xAxisMap[Object.keys(xAxisMap)[0]];
   if (!axis || !offset) return null;
   const scale = axis.scale;
@@ -38,6 +44,18 @@ export default function ChartDecor(props: any) {
         return (
           <rect key={`pb${i}`} x={left} y={plotBottom - 6} width={width} height={6} fill={phaseColor(r.phase)} opacity={0.9} rx={1}>
             <title>{phaseLabel(r.phase)}</title>
+          </rect>
+        );
+      })}
+      {/* Zyklus-Phasen-Band (P6): schmaler Streifen knapp ÜBER dem Trainingsphasen-Band. Leer ohne Consent. */}
+      {(cycleRuns as PhaseRun[]).map((r, i) => {
+        const a = xOf(r.fromKey), b = xOf(r.toKey);
+        if (a == null || b == null || !r.phase) return null;
+        const left = Math.min(a, b);
+        const width = Math.max(1, Math.abs(b - a) + band);
+        return (
+          <rect key={`cb${i}`} x={left} y={plotBottom - 13} width={width} height={4.5} fill={cyclePhaseColor(r.phase)} opacity={0.82} rx={1}>
+            <title>{`Zyklus: ${cyclePhaseLabel(r.phase)}`}</title>
           </rect>
         );
       })}

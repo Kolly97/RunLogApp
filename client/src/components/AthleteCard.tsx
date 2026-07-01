@@ -5,7 +5,7 @@ import { api } from "../lib/api.ts";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
-interface Athlete { name?: string; weight?: number | null; max_hr?: number | null; hr_rest?: number | null; birth_year?: number | null; sex?: "m" | "f"; }
+interface Athlete { name?: string; weight?: number | null; height?: number | null; max_hr?: number | null; hr_rest?: number | null; birth_year?: number | null; sex?: "m" | "f"; }
 
 export default function AthleteCard() {
   const [a, setA] = useState<Athlete>({});
@@ -22,6 +22,8 @@ export default function AthleteCard() {
     api.saveSettings({ athlete: next }).then(() => { setSaved(true); setTimeout(() => setSaved(false), 1500); }).catch(() => {});
   };
   const numOrNull = (v: string) => { const n = Number(v); return v.trim() && isFinite(n) ? n : null; };
+  const bmi = a.weight && a.height ? (a.weight as number) / Math.pow((a.height as number) / 100, 2) : null;
+  const bmiCat = bmi == null ? "" : bmi < 18.5 ? "Untergewicht" : bmi < 25 ? "Normal" : bmi < 30 ? "Übergewicht" : "Adipositas";
 
   return (
     <div className="card">
@@ -49,6 +51,11 @@ export default function AthleteCard() {
             onBlur={(e) => save({ weight: numOrNull(e.target.value) })} />
         </label>
         <label className="field" style={{ margin: 0, width: 110 }}>
+          <span><T k="athlete.field.height">Größe (cm)</T></span>
+          <input type="number" placeholder="180" key={`h-${a.height ?? ""}`} defaultValue={a.height ?? ""}
+            onBlur={(e) => save({ height: numOrNull(e.target.value) })} />
+        </label>
+        <label className="field" style={{ margin: 0, width: 110 }}>
           <span><T k="athlete.field.maxHr">Max-HF (bpm)</T></span>
           <input type="number" key={`mh-${a.max_hr ?? ""}`} defaultValue={a.max_hr ?? ""}
             onBlur={(e) => save({ max_hr: numOrNull(e.target.value) })} />
@@ -59,6 +66,11 @@ export default function AthleteCard() {
             onBlur={(e) => save({ hr_rest: numOrNull(e.target.value) })} />
         </label>
       </div>
+      {bmi != null && (
+        <p className="tiny" style={{ marginTop: 6 }}>
+          BMI: <strong>{bmi.toFixed(1)}</strong> <span className="muted">({bmiCat} · bei Sportlern nur grobe Orientierung)</span>
+        </p>
+      )}
       <p className="tiny muted" style={{ marginTop: 6 }}><T k="athlete.hint.hrRest">Max-/Ruhe-HF speisen die Effective-VO2max-Schätzung (HF-Reserve). Nach Änderung „TSS neu berechnen" drücken, um die Läufe neu zu schätzen.</T></p>
     </div>
   );

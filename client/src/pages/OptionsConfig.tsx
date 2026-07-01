@@ -142,7 +142,7 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
         <span className="opt-handle" draggable={canDrag} title={canDrag ? "Ziehen zum Sortieren" : "Filter leeren zum Sortieren"}
           onDragStart={(ev) => { ev.dataTransfer.effectAllowed = "move"; onDragStart(); }} onDragEnd={onDragEnd}>⠿</span>
       </td>
-      <td><input value={e.label} onChange={(x) => setE({ ...e, label: x.target.value })} onBlur={() => save({ label: e.label })} /></td>
+      <td>{o.locked ? <span className="tiny" title="Kanonischer Typ — Name gesperrt">{e.label}</span> : <input value={e.label} onChange={(x) => setE({ ...e, label: x.target.value })} onBlur={() => save({ label: e.label })} />}</td>
       <td className="tiny muted">{e.value}</td>
       {o.kind === "daily" ? (
         <td>
@@ -172,8 +172,8 @@ function OptRow({ o, onChange, canDrag, dragging, over, onDragStart, onDragOver,
         </td>
       )}
       <td>
-        {o.kind === "daily" && BASE_DAILY.has(o.value)
-          ? <span className="tiny muted" title={t("opts.fixed", "fest")}><T k="opts.fixed">fest</T></span>
+        {(o.kind === "daily" && BASE_DAILY.has(o.value)) || o.locked
+          ? <span className="tiny muted" title={o.locked ? "Kanonischer Typ — gesperrt" : t("opts.fixed", "fest")}>🔒 {t("opts.fixed", "fest")}</span>
           : <button className="sm ghost danger" title="Entfernen" onClick={() => api.deleteOption(o.id!).then(onChange)}>✕</button>}
       </td>
     </tr>

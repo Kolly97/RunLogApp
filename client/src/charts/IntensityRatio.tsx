@@ -1,11 +1,12 @@
 // Intensity-Trend (v0.15.0, O3): Load Impact / Base Fitness = ATL/CTL × 100% (Acute:Chronic Workload Ratio).
 // Separater Graph (nicht im PMC). Bänder nach COROS-Logik; abgeleitet aus den vorhandenen PMC-Punkten.
 import {
-  Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer,
+  Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer, Customized,
 } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { PmcPoint } from "../lib/api.ts";
 import { fmtDate, fmtDateY, todayIso } from "../lib/util.ts";
+import ChartDecor, { type PhaseRun } from "./ChartDecor.tsx";
 
 // Bänder: [Untergrenze, Obergrenze) — Reihenfolge wie im Screenshot.
 const BANDS = [
@@ -18,7 +19,7 @@ const BANDS = [
 
 interface Row { date: string; ratio: number; }
 
-export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[]; height?: number }) {
+export default function IntensityRatio({ data, height = 240, phaseRuns = [], cycleRuns = [] }: { data: PmcPoint[]; height?: number; phaseRuns?: PhaseRun[]; cycleRuns?: PhaseRun[] }) {
   const today = todayIso();
   const rows: Row[] = (data || [])
     .filter((p) => !p.planned && p.date <= today && p.ctl >= 1)
@@ -56,6 +57,7 @@ export default function IntensityRatio({ data, height = 240 }: { data: PmcPoint[
             contentStyle={TOOLTIP_STYLE}
           />
           <Area type="monotone" dataKey="ratio" stroke="var(--ink)" strokeWidth={1.8} fill="var(--ink)" fillOpacity={0.06} dot={false} isAnimationActive={false} />
+          {(phaseRuns.length > 0 || cycleRuns.length > 0) && <Customized component={(p: any) => <ChartDecor {...p} runs={phaseRuns} cycleRuns={cycleRuns} years={[]} />} />}
         </ComposedChart>
       </ResponsiveContainer>
       <div className="row" style={{ flexWrap: "wrap", gap: "4px 14px", marginTop: 8 }}>

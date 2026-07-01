@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult, type BestsResult } from "../lib/api.ts";
+import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult, type BestsResult, type CyclePhaseSpan } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { addDays, todayIso, fmtDate, weekLabel, pbMarkers } from "../lib/util.ts";
 import { typeColor, typeLabel } from "../lib/options.ts";
 import { useCountUp, useReveal } from "../lib/motion.ts";
 import FormRibbon from "../charts/FormRibbon.tsx";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, cyclePhaseRunsByDate, yearMarksByDate } from "../lib/markers.ts";
 import Pmc from "../charts/Pmc.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
@@ -26,6 +26,7 @@ export default function Dashboard() {
   const t = useT();
   const [range, setRange] = useState<DateRange | null>(null);
   const [pmc, setPmc] = useState<{ pmc: PmcPoint[]; ctlRamp7: number; ctlRamp28: number } | null>(null);
+  const [cycleBands, setCycleBands] = useState<CyclePhaseSpan[]>([]); // P6: Zyklus-Phasen-Overlay (leer ohne Consent)
   const [rows, setRows] = useState<SeasonRow[]>([]);
   const [allSessions, setAllSessions] = useState<PlannedSession[]>([]);
   const [acts, setActs] = useState<Activity[]>([]);
@@ -60,6 +61,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!range) return;
     api.pmc(range.from, range.to).then(setPmc).catch(() => setPmc(null));
+    api.cyclePhaseBands(range.from, range.to).then(setCycleBands).catch(() => setCycleBands([]));
     // Endpoint entsteht parallel — bei 404/Fehler Chart ausblenden.
     api.intervalsTrend({ from: range.from, to: range.to }).then(setTrend).catch(() => setTrend(null));
     api.fitnessTrend(range.from, range.to).then(setFit).catch(() => setFit(null));
@@ -82,6 +84,7 @@ export default function Dashboard() {
   const sickLabels = sickWeekLabels(season);
   const pmcDates = (pmc?.pmc ?? []).map((p) => p.date);
   const phaseRuns = phaseRunsByDate(pmcDates, season);
+  const cycleRuns = cyclePhaseRunsByDate(pmcDates, cycleBands);
   const yearMarks = yearMarksByDate(pmcDates);
   const namesByDate: Record<string, string> = {};
   for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
@@ -236,7 +239,7 @@ export default function Dashboard() {
               <span className="tiny muted"><T k="dashboard.block.pmc.sub">Fitness · Fatigue · Form</T></span>
             </div>
             <Pmc data={pmc?.pmc ?? []} races={racesByDate} pbs={pbMarkers(bests?.pbs)} sickRanges={sickByDate} seasonal
-              phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
+              phaseRuns={phaseRuns} cycleRuns={cycleRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={pickDay} height={h ?? 360} />
           </div>
         ),
       },

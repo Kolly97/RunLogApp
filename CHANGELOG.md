@@ -4,6 +4,87 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [2.2.0] – 2026-07-01 — ML-Trainingssteuerung: Latente Fitness · Dosis-Wirkung · Kausal-Experiment · Zyklus-Tracking
+
+Kern-Release der datengesteuerten Trainingssteuerungs-Engine (P0–P6): sieben Ausbaustufen vom einfachen
+Fitness-Modell bis zum prospektiv-randomisierten N-of-1-Kausalexperiment und zyklusbasierter
+Trainingsforschung. Alle Auswertungen lokal, keine Cloud-Abhängigkeit.
+
+### Hinzugefügt
+
+- **P0 — Latente Fitness (`LatentFitnessCard`):** Banister-Impuls-Antwort-Modell auf Basis der
+  Trainingstagebuch-Daten. Langzeitreihe (CTL-Glättung als Proxy) + MCID-Schwelle (Minimal Clinically
+  Important Difference, Default 1,0 VO2-Äquiv.). Karte auf Methodik-Seite.
+
+- **P1 — Dosis-Wirkung / Forest-Plot (`DoseResponseCard`, `ForestPlot`):** Kanal-Effekte aus
+  `ml_channel_effects` (Reiz × Fitness-Delta), Forest-Plot mit Konfidenzintervallen, `ConfidenceBadge`
+  (insufficient / exploratory / low / medium / high). Recompute-Button, Methodenwechsel gesperrt bis
+  ausreichend Daten.
+
+- **P2 — Readiness & Gesundheits-Gate (`ReadinessHealthCard`, `ReadinessChart`):** Wellness-Aggregat
+  aus `daily_log_v2` (Schlaf, HRV, Ermüdung, Stimmung); Confounder-Tracking (Krankheit, hohe Last,
+  schlechter Schlaf → Flag). Gesundheitsstatus-Ampel + Trend. Gate blockiert ML-Empfehlungen bei
+  aktivem Confounder-Flag.
+
+- **P3 — EMA-Feedback (`FeedbackPrompt`, `session_feedback_v2`):** Nach jeder abgeschlossenen Einheit
+  optionaler Micro-Survey (felt_vs_expected −2…+2, RPE 1–10, session_family, Notiz). Confounder-Flag
+  (Krankheit, externe Stressfaktoren) explizit erfassbar. Server-seitiges Auto-Tagging mit
+  Zyklus-Kontext wenn P6-Consent aktiv.
+
+- **P4 — Feedback-Auswertung (`evaluateFeedback`, `methodInference`):** Aggregiert `session_feedback_v2`
+  nach `session_family`; identifiziert gut / schlecht tolerierte Reize; Konfidenz aus n; DoseResponse-
+  Karte zeigt Recompute-Ergebnis.
+
+- **P5 — Kausal-Experiment: Prospektiv-randomisierter N-of-1-Trial (`ProspectiveTrialCard`):**
+  - Counterbalanced AB/BA-Blockdesign, determinstischer Seed (FNV-Hash), exakter Within-Pair-
+    Permutationstest (2^P Vorzeichenflips).
+  - Verdikt-Ampel: `geprueft` (p ≤ 0,031, ≥ 6 saubere Paare ≈ 1,5–2 Jahre), `hypothese`,
+    `inconclusive`, `insufficient`.
+  - **Auto-Plan:** Load-matched Blöcke per Button+Vorschau in `planned_sessions` schreiben
+    (Wochenvolumen TSS bleibt phasen-/CTL-getrieben; nur Reiz-Mix kippt). Blöcke mit
+    `experiment_id` getaggt — Abort löscht ausschließlich getaggte Zeilen, manuelle Einheiten
+    bleiben unberührt (DB-sicher verifiziert).
+  - Hochgesundheits-Flag-Fenster werden als Blöcke ausgeschlossen, um Confounder-Bias zu verhindern.
+
+- **P6 — Zyklus-Trainingssteuerung — Scaffold OFF (`CycleScaffoldCard`):**
+  - **Consent-Hard-Gate:** alle Zyklus-Endpunkte liefern `403 {needsConsent:true}` ohne
+    explizites Opt-in; Zyklus-Daten sind lokal und unverschlüsselt (offengelegt, bewusste
+    Entscheidung; Verschlüsselung = Folge-Increment).
+  - **5 additive Tabellen:** `cycle_training_settings`, `cycle_period_log_v2`,
+    `cycle_symptoms_v2`, `cycle_stimulus_evidence_v2`, `cycle_stability_v2`.
+  - **Gate & Beobachtungsmodus:** natural + ≥ 3 stabile Zyklen → passed; suppressed (Pille /
+    Implantat) → n/a; < 3 Zyklen → Beobachtungsmodus; Amenorrhoe (> 90 d) → Gesundheits-Flag.
+  - **Perioden-Log:** Zyklusstart-Chips, löschen per Klick.
+  - **Symptom-Erfassung:** Tages-Survey cramps / energy / sleep / mood / flow (1–5 + Notiz).
+  - **Phase × Reiz-Heatmap (`evaluatePhaseStimulus`):** Standardisierter Effekt vs. Reiz-Baseline
+    je Phase (Menstruation / Follikulär / Ovulation / Früh-Luteal / Spät-Luteal × Reiz-Familie);
+    Confounder-Zeilen ausgeschlossen; Konfidenz n < 3 → insufficient / 3–5 → exploratory / ≥ 10 →
+    medium. CSS-Grid, divergierende Farben (grün/rot), insufficient-Zellen klar gemutet.
+    Empfehlung immer `off · sammelt Daten` (Scaffold).
+  - **Zyklus-Phasen-Farbband-Overlay** auf PMC-, Intensity-Ratio- und Wellness-Diagrammen
+    (LongTerm + Dashboard): Band knapp über dem Trainingsphasen-Band (`plotBottom-13`, h = 4,5);
+    5-Farb-Palette (Menstruation #e0698a, Follikulär #2dd4bf, Ovulation #f0b429,
+    Früh-Luteal #7c9cf0, Spät-Luteal #b47ccb). Rendert gar nicht ohne Consent → null Risiko
+    für Nutzer ohne Zyklus-Daten.
+  - **1-Klick-Daten-Löschen + Consent-Widerruf** (löscht alle cycle_*-Zeilen + setzt Consent zurück).
+
+### Technisch
+
+- **Neue Server-Dateien:** `server/ml/prospective.ts` (Engine), `server/mlJobs.ts` (Lifecycle),
+  `server/cycleTraining.ts` (pure Engine: Phase, Gate, Stabilität, Feedback-Auswertung).
+- **`server/db.ts`:** additive Migration: 16 neue Spalten in `method_experiments`, `experiment_id`
+  in `planned_sessions`, 5 neue Cycle-Tabellen.
+- **`server/index.ts`:** `/api/ml/prospective` (6 Routen) + `/api/cycle-training` (12+ Routen,
+  alle consent-gated).
+- **Neue Client-Komponenten:** `ProspectiveTrialCard`, `CycleScaffoldCard`, `LatentFitnessCard`,
+  `DoseResponseCard`, `ReadinessHealthCard`, `FeedbackPrompt`.
+- **Neue Client-Charts:** `ForestPlot`, `LatentFitnessChart`, `ReadinessChart`.
+- **`client/src/charts/ChartDecor.tsx`:** `cycleRuns`-Prop + Zyklus-Phasen-Band.
+- **`client/src/lib/markers.ts`:** `cyclePhaseRunsByDate()`.
+- **`client/src/lib/api.ts`:** vollständige Typen für P5 (`MlProspective*`) + P6 (`Cycle*`).
+
+---
+
 ## [2.1.0] – 2026-06-30 — Distanzadaptive Trainingsplanung + Streak-Logik + Wochenbericht-Kacheln
 
 Drei Vertiefungen am Trainingsmodell und an der Oberfläche: Wochenplanung und Blockplanung reagieren jetzt auf

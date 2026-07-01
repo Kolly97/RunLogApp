@@ -11,11 +11,11 @@ import {
   ResponsiveContainer, ReferenceLine, ReferenceArea, Customized,
 } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
-import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend, type BestsResult } from "../lib/api.ts";
+import { api, type DailyLog, type Activity, type IntervalEffortStat, type PmcPoint, type PlannedSession, type Race, type PlanAdherenceWeek, type DecouplingPoint, type ZoneHistogramData, type FitnessTrend, type EffVo2maxTrend, type BestsResult, type CyclePhaseSpan } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
-import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
+import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, cyclePhaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
 import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur, pbMarkers } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import ZoneHistogram from "../charts/ZoneHistogram.tsx";
@@ -126,6 +126,7 @@ export default function LongTerm() {
   const [fitnessTrend, setFitnessTrend] = useState<FitnessTrend | null>(null); // C4 v1.4.0
   const [effVo2, setEffVo2] = useState<EffVo2maxTrend | null>(null); // V v1.5.0
   const [bests, setBests] = useState<BestsResult | null>(null); // M5: PB-Marker im PMC
+  const [cycleBands, setCycleBands] = useState<CyclePhaseSpan[]>([]); // P6: Zyklus-Phasen-Overlay (leer ohne Consent)
   useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
   // Effizienz-Legende: Ø-Pace / Ø-HF einzeln ein-/ausblenden (wie PMC, ToDo v0.11.0).
   const [effHidden, setEffHidden] = useState<{ pace: boolean; hr: boolean }>({ pace: false, hr: false });
@@ -140,6 +141,7 @@ export default function LongTerm() {
     api.activities({ from: range.from, to: range.to }).then(setActs).catch(() => setActs([]));
     api.intervalsTrend({ from: range.from, to: range.to }).then(setTrend).catch(() => setTrend(null));
     api.pmc(range.from, range.to).then((r) => setPmc(r.pmc)).catch(() => setPmc([]));
+    api.cyclePhaseBands(range.from, range.to).then(setCycleBands).catch(() => setCycleBands([]));
     api.decouplingTrend({ from: range.from, to: range.to }).then(setDecoupling).catch(() => setDecoupling([]));
     api.zoneHistogram({ from: range.from, to: range.to }).then(setZoneHist).catch(() => setZoneHist(null));
     api.fitnessTrend(range.from, range.to).then(setFitnessTrend).catch(() => setFitnessTrend(null));
@@ -168,6 +170,7 @@ export default function LongTerm() {
   const sickLabels = sickWeekLabels(season);
   const pmcDates = pmc.map((p) => p.date);
   const phaseRuns = phaseRunsByDate(pmcDates, season);
+  const cycleRuns = cyclePhaseRunsByDate(pmcDates, cycleBands); // P6 Overlay für PMC + Intensität (data=pmc)
   const yearMarks = yearMarksByDate(pmcDates);
   const namesByDate: Record<string, string> = {};
   for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
@@ -245,6 +248,7 @@ export default function LongTerm() {
   // v0.12.0: `…All` markiert jedes vorhandene Jahr (auch ohne Jahres-Wechsel sichtbar, ToDo 4).
   const wellnessYears = yearMarksByDateAll(pointDates);
   const wellnessPhaseRuns = phaseRunsByDate(pointDates, season);
+  const wellnessCycleRuns = cyclePhaseRunsByDate(pointDates, cycleBands); // P6 Overlay für Wellness-Charts
   const effYears = yearMarksByDateAll(effDates);
   const effPhaseRuns = phaseRunsByDate(effDates, season);
   // Plan-Erfüllung (Wochenmittel) im Zeitraum (v0.14.0, ToDo 12).
@@ -315,7 +319,7 @@ export default function LongTerm() {
       <div className="card">
         <div className="spread"><h2><T k="lt.block.pmc.title">Performance Management Chart</T></h2><span className="tiny muted"><T k="lt.block.pmc.sub">Fitness · Fatigue · Form (geplant rechts von „heute")</T></span></div>
         <Pmc data={pmc} races={racesByDate} pbs={pbMarkers(bests?.pbs)} sickRanges={sickByDate} seasonal
-          phaseRuns={phaseRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} height={h ?? 360} />
+          phaseRuns={phaseRuns} cycleRuns={cycleRuns} yearMarks={yearMarks} namesByDate={namesByDate} onPick={(d) => navigate("/track?date=" + d)} height={h ?? 360} />
       </div>
       )}</EgItem>
 
@@ -323,7 +327,7 @@ export default function LongTerm() {
       <EgItem id="intensity" title={t("lt.block.intensity.title", "Last-Trend (ATL/CTL)")} defaultSpan={12} defaultHeight={240} reserve={64}>{(h) => (
       <div className="card">
         <div className="spread"><h2><T k="lt.block.intensity.title">Last-Trend (ATL/CTL)</T></h2><span className="tiny muted"><T k="lt.block.intensity.sub">akute vs. chronische Last (ATL/CTL) — nicht die Zonen-Intensität</T></span></div>
-        <IntensityRatio data={pmc} height={h ?? 240} />
+        <IntensityRatio data={pmc} height={h ?? 240} phaseRuns={phaseRuns} cycleRuns={cycleRuns} />
       </div>
       )}</EgItem>
 
@@ -377,7 +381,7 @@ export default function LongTerm() {
                       }} />
                     <Area dataKey="band" stroke="none" fill={m.color} fillOpacity={0.13} isAnimationActive={false} legendType="none" name="Streuband" />
                     <Line type="monotone" dataKey="avg" stroke={m.color} strokeWidth={1.8} dot={false} connectNulls isAnimationActive={false} />
-                    <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} years={wellnessYears} />} />
+                    <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} cycleRuns={wellnessCycleRuns} years={wellnessYears} />} />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -411,7 +415,7 @@ export default function LongTerm() {
                   <Line type="monotone" dataKey={m.key} stroke={m.color} strokeWidth={1.6}
                     dot={{ r: 1.8, fill: m.color, strokeWidth: 0 }} connectNulls />
                   {/* Phasenband + Jahres-Dreieck (ohne Phasenname — bei Sparklines zu unruhig). */}
-                  <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} years={wellnessYears} />} />
+                  <Customized component={(p: any) => <ChartDecor {...p} runs={wellnessPhaseRuns} cycleRuns={wellnessCycleRuns} years={wellnessYears} />} />
                 </LineChart>
               </ResponsiveContainer>
               )}

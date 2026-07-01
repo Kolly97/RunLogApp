@@ -18,6 +18,72 @@ export interface TuneupProgress {
 // C1 (#9): Prognose-Zeit als Bereich Bestfall–Realistisch.
 export interface PredRange { time_s: number; best_s: number; realistic_s: number; }
 export interface EffVo2Src { value: number; confidence: "hoch" | "mittel" | "niedrig"; calibrated: boolean; level?: string | null; }
+// ML-Engine (Plan: ML-Trainingssteuerung)
+export interface MlSettings { profile_id: number; enabled: number; channel_count: number; channel_auto: number; mcid_json: string | null; forgetting_halflife_days: number; sensitivity: number; research_mode_enabled: number; schedule_mode: string; }
+export interface MlFreshness { state: "fresh" | "stale" | "none" | "running"; runId: number | null; lastRun: string | null; reason?: string; }
+export interface MlRun { id: number; kind: string; status: string; progress: number; error: string | null; input_hash: string | null; model_version: string | null; engine: string | null; finished_at: string | null; created_at: string; }
+export interface MlStatus { freshness: MlFreshness; latest: MlRun | null; }
+export interface MlLatentPoint { date: string; value: number; sd: number; }
+export interface MlEffect { channel: string; target: string; gain_mean: number | null; ci_low: number | null; ci_high: number | null; n_blocks: number | null; collinearity_flag: number; mcid_pass: number; confidence: string; p_boot: number | null; q_fdr: number | null; e_value: number | null; e_value_ci: number | null; fdr_survive: number; }
+export interface MlVerdict { kind: "ranked" | "null" | "insufficient"; text: string; ranking?: string[]; }
+export interface MlLadderStep { count: number; channels: string[]; identifiable: boolean; reason: string; maxVif: number; sparseChannels: string[]; }
+export interface MlHypothesis { kind: string; text: string; strength: number; }
+export interface MlEffectsMeta { activeCount: number; ladder: MlLadderStep[]; channels: string[]; auto?: boolean; start?: number; changepoints?: string[]; exploratory?: { hypotheses: MlHypothesis[]; note: string }; verdict: { mediator: MlVerdict; composition: MlVerdict }; }
+export interface MlEffects { runId: number | null; finishedAt: string | null; meta: MlEffectsMeta | null; mediator: MlEffect[]; composition: MlEffect[]; }
+export type MlKindName = "latent_fitness" | "dose_response" | "readiness";
+export interface MlReadinessPoint { date: string; value: number; sd: number; }
+export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
+export interface MlReadiness { runId: number | null; finishedAt: string | null; meta: { insufficient?: boolean; nDays?: number; drivers?: string[]; disclaimer?: string; bmi?: number | null } | null; points: MlReadinessPoint[]; flags: MlHealthFlag[]; }
+export interface MlFeedback { id?: number; activity_id?: number | null; date?: string; session_family?: string | null; rpe?: number | null; felt_vs_expected?: number | null; life_stress?: number | null; notes?: string | null; }
+// P5 — prospektiv randomisierte N-of-1-Blöcke (der einzige kausale Pfad)
+export interface MlProspectiveArm { kind: "channel" | "regime"; value: string; label: string; }
+export interface MlProspectiveProposal {
+  kind: "channel" | "regime";
+  armA: MlProspectiveArm; armB: MlProspectiveArm;
+  rationale: string; overlap: number | null; source: "effects" | "default"; proposalHash: string;
+  defaults: { nPairsPlanned: number; blockWeeks: number; washoutWeeks: number; lagWeeks: number; mcid: number; alpha: number; pairsForSignif: number };
+}
+export interface MlProspectiveBlock { pair: number; arm: string; startDate: string; endDate: string; outcome?: number | null; outcomeSd?: number | null; excluded?: boolean; }
+export interface MlProspectiveTrial {
+  id: number; profile_id: number; state: string | null; trial_kind: string | null;
+  arm_a: string | null; arm_b: string | null; arm_a_label: string | null; arm_b_label: string | null;
+  start_date: string; end_date: string | null; seed: number | null;
+  n_pairs_planned: number | null; n_pairs_done: number | null;
+  verdict: string | null; theta: number | null; p_exact: number | null;
+  lag_weeks: number | null; washout: number | null;
+  consented_at: string | null; proposal_hash: string | null;
+  config_json: string | null; blocks_json: string | null;
+  label: string | null; notes: string | null; created_at: string;
+}
+export interface MlProspectiveState { trials: MlProspectiveTrial[]; proposal: MlProspectiveProposal | null; }
+export interface MlAcceptTrialBody {
+  kind: "channel" | "regime"; armA: { value: string; label: string }; armB: { value: string; label: string };
+  nPairsPlanned: number; proposalHash: string; consentedAt: string;
+  lagWeeks?: number; blockWeeks?: number; washoutWeeks?: number; mcid?: number; alpha?: number;
+}
+// P5-Folge: Auto-Plan des aktuellen Trial-Blocks (load-matched, getaggt)
+export interface MlTrialBlockDay { date: string; type: string; planned_min: number; planned_tss: number; description: string; isSecond: boolean; week_no: number | null; }
+export interface MlTrialBlockGen {
+  block: { pair: number; arm: string; startDate: string; endDate: string };
+  armLabel: string; emphasis: string; regime: string; note: string; days: MlTrialBlockDay[];
+}
+export interface MlTrialPlanResult { ok: boolean; written: number; skipped: number; block: { startDate: string; endDate: string }; armLabel: string; }
+// P6 — Zyklus-Steuerung (Gerüst, Consent-Hard-Gate)
+export type CycleMethod = "none" | "combined_pill" | "progestin_pill" | "hormonal_iud" | "copper_iud" | "implant" | "injection" | "ring" | "patch" | "unknown";
+export interface CycleGate { passed: boolean; mode: string; regularity: string; nCycles: number; medianLength: number | null; reasons: string[]; healthFlags: { kind: string; message: string }[]; observationMode: boolean; }
+export interface CyclePhaseInfo { phase: string | null; cycleDay: number | null; mode: string; confidence: string; }
+export interface CycleRecommendation { preferredFamilies: string[]; cautions: string[]; rationale: string; confidence: string; isHypothesis: boolean; active: boolean; }
+export interface CyclePeriodRow { id: number; start_date: string; end_date: string | null; }
+export interface CycleSettings { profile_id?: number; cycle_adaptive_enabled: number; method_emphasis: string; method_emphasis_weight?: number; feedback_sensitivity?: number; symptom_override_enabled?: number; observation_mode_only: number; }
+export interface CycleStatus {
+  needsConsent: boolean;
+  contraception?: { method: CycleMethod };
+  gate?: CycleGate; phase?: CyclePhaseInfo; recommendation?: CycleRecommendation;
+  settings?: CycleSettings; periods?: CyclePeriodRow[];
+}
+export interface CycleSymptom { id?: number; date: string; cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null; notes?: string | null; }
+export interface CycleEvidence { phase: string; stimulus: string; n_sessions: number; mean_quality: number | null; effect_size: number | null; ci_low: number | null; ci_high: number | null; confidence: string; prior_weight: number; posterior_weight: number; }
+export interface CyclePhaseSpan { from: string; to: string; phase: string; }
 export interface GoalGap {
   race: { id: number; name: string; date: string; distance_m: number } | null;
   weeks: number; curVdot: number | null; goalVdot: number | null;
@@ -585,4 +651,36 @@ export const api = {
   addTemplate: (b: SessionTemplate) => j<{ id: number }>("/api/templates", { method: "POST", body: JSON.stringify(b) }),
   updateTemplate: (id: number, b: SessionTemplate) => j(`/api/templates/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteTemplate: (id: number) => j(`/api/templates/${id}`, { method: "DELETE" }),
+
+  // ML-Engine (Plan: ML-Trainingssteuerung)
+  mlSettings: () => j<MlSettings>("/api/ml/settings"),
+  mlSaveSettings: (s: Partial<MlSettings>) => j<{ ok: boolean }>("/api/ml/settings", { method: "PUT", body: JSON.stringify(s) }),
+  mlRecompute: (kind?: MlKindName) => j<{ runId: number; reused?: boolean }>(`/api/ml/recompute${kind ? `?kind=${kind}` : ""}`, { method: "POST" }),
+  mlCancel: (runId: number) => j<{ ok: boolean }>(`/api/ml/cancel?runId=${runId}`, { method: "POST" }),
+  mlProgress: (runId: number) => j<{ id: number; status: string; progress: number; error: string | null }>(`/api/ml/progress?runId=${runId}`),
+  mlStatus: (kind?: MlKindName) => j<MlStatus>(`/api/ml/status${kind ? `?kind=${kind}` : ""}`),
+  mlLatentFitness: () => j<MlLatentPoint[]>("/api/ml/latent-fitness"),
+  mlEffects: () => j<MlEffects>("/api/ml/effects"),
+  mlReadiness: () => j<MlReadiness>("/api/ml/readiness"),
+  mlGetFeedback: (activityId: number) => j<MlFeedback | null>(`/api/ml/feedback?activityId=${activityId}`),
+  mlSaveFeedback: (b: MlFeedback) => j<{ id: number }>("/api/ml/feedback", { method: "POST", body: JSON.stringify(b) }),
+  mlProspective: () => j<MlProspectiveState>("/api/ml/prospective"),
+  mlProposeTrial: () => j<MlProspectiveProposal>("/api/ml/prospective/propose", { method: "POST" }),
+  mlAcceptTrial: (b: MlAcceptTrialBody) => j<{ id: number }>("/api/ml/prospective/accept", { method: "POST", body: JSON.stringify(b) }),
+  mlDeclineTrial: () => j<{ ok: boolean }>("/api/ml/prospective/decline", { method: "POST" }),
+  mlEvaluateTrial: (id: number) => j<MlProspectiveTrial | null>(`/api/ml/prospective/${id}/evaluate`, { method: "POST" }),
+  mlAbortTrial: (id: number, reason: "user" | "health" = "user") => j<{ ok: boolean; removedSessions?: number }>(`/api/ml/prospective/${id}/abort`, { method: "POST", body: JSON.stringify({ reason }) }),
+  mlTrialPlanPreview: (id: number) => j<MlTrialBlockGen>(`/api/ml/prospective/${id}/plan-preview`),
+  mlTrialPlanBlock: (id: number) => j<MlTrialPlanResult>(`/api/ml/prospective/${id}/plan-block`, { method: "POST" }),
+  cycleStatus: () => j<CycleStatus>("/api/cycle-training/status"),
+  cycleConsent: (consent: boolean, contraception?: { method: CycleMethod }) => j<{ ok: boolean; consented: boolean }>("/api/cycle-training/consent", { method: "POST", body: JSON.stringify({ consent, contraception }) }),
+  cycleDeleteData: () => j<{ ok: boolean }>("/api/cycle-training/data", { method: "DELETE" }),
+  cycleSaveSettings: (s: Partial<CycleSettings>) => j<{ ok: boolean }>("/api/cycle-training/settings", { method: "PUT", body: JSON.stringify(s) }),
+  cycleAddPeriod: (start_date: string) => j<{ id: number }>("/api/cycle-training/period", { method: "POST", body: JSON.stringify({ start_date }) }),
+  cycleDeletePeriod: (id: number) => j<{ ok: boolean }>(`/api/cycle-training/period/${id}`, { method: "DELETE" }),
+  cycleSymptoms: (from?: string, to?: string) => j<CycleSymptom[]>(`/api/cycle-training/symptoms${from && to ? `?from=${from}&to=${to}` : ""}`),
+  cycleSaveSymptom: (s: CycleSymptom) => j<{ id: number }>("/api/cycle-training/symptoms", { method: "POST", body: JSON.stringify(s) }),
+  cycleEvaluate: () => j<{ ok: boolean; evidence: CycleEvidence[]; nFeedback: number }>("/api/cycle-training/evaluate", { method: "POST" }),
+  cycleEvidence: () => j<CycleEvidence[]>("/api/cycle-training/evidence"),
+  cyclePhaseBands: (from: string, to: string) => j<CyclePhaseSpan[]>(`/api/cycle-training/phase-bands?from=${from}&to=${to}`),
 };

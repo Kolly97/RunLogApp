@@ -13,6 +13,14 @@ import EffortBuilder, { ZONE_COLORS, zoneRange } from "../components/EffortBuild
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 import "./track.css";
+import FeedbackPrompt from "../components/FeedbackPrompt.tsx";
+
+const QUAL_RE = /VO2|Threshold|LT2|Sub|Rep|Hill|Long|Race/i; // Schlüssel-/Qualitätseinheiten
+// EMA-Feedback bei Qualitäts-/langen Einheiten — auch OHNE gesetzten Typ (viele Läufe sind untypisiert):
+// getaggte Qualität ODER hohe TSS ODER ≥75 min.
+function showFeedback(a: Activity): boolean {
+  return (!!a.type && QUAL_RE.test(a.type)) || (a.tss ?? 0) >= 65 || (a.moving_s ?? 0) >= 75 * 60;
+}
 
 export default function WeekTrack() {
   const { season, week, weekNo, setWeekNo, loading } = useSeason();
@@ -226,7 +234,12 @@ function DayCard({ date, dayName, planned, acts, daily, zs, adh, matchBy, onChan
 
       {quick && <QuickCommute date={date} onChange={() => { setQuick(false); onChange(); }} />}
 
-      {acts.map((a) => <ActivityRow key={a.id} a={a} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={onChange} />)}
+      {acts.map((a) => (
+        <div key={a.id}>
+          <ActivityRow a={a} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={onChange} />
+          {a.id != null && showFeedback(a) && <FeedbackPrompt activityId={a.id} date={a.date} sessionFamily={a.type} />}
+        </div>
+      ))}
       {adding && <ActivityRow a={newAct} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={() => { setAdding(false); onChange(); }} isNew />}
 
       <DailyForm date={date} daily={daily} />

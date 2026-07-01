@@ -22,6 +22,11 @@ export function phaseRunsByDate(dates: string[], season: SeasonWeek[]): PhaseRun
 export function phaseRunsByWeek(rows: { label: string; phase: string }[]): PhaseRun[] {
   return collapse(rows.map((r) => ({ key: r.label, phase: r.phase })));
 }
+// P6: Zyklus-Phasen-Runs, an die Chart-Datumsdomäne gesnappt (fromKey/toKey = echte Chart-Daten → Scale trifft).
+export function cyclePhaseRunsByDate(dates: string[], spans: { from: string; to: string; phase: string }[]): PhaseRun[] {
+  if (!spans?.length) return [];
+  return collapse(dates.map((d) => ({ key: d, phase: spans.find((s) => s.from <= d && d <= s.to)?.phase || "" })));
+}
 
 // ---- Jahresmarken (erste Position eines neuen Jahres) ----
 export function yearMarksByDate(dates: string[]): YearMark[] {
