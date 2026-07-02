@@ -122,6 +122,7 @@ const QUALITY_FRAC = 0.1; // Qualitäts-Gate: Z3+ ≥ 10 % der Dauer (Frage 4)
 const TYPE_CHANNEL_MAP: Record<string, Partial<Record<ChannelCount, string>>> = {
   Easy: { 5: "E", 4: "Easy", 3: "aerob" }, GA1: { 5: "E", 4: "Easy", 3: "aerob" }, GA12: { 5: "E", 4: "Easy", 3: "aerob" },
   Long: { 4: "Long" }, LongQ: { 4: "Long" }, // Intensität in 5/3 aus Zonen; 4 = Long (egal ob Qualität)
+  MarathonPace: { 5: "M", 4: "Schwelle", 3: "aerob" },
   LT1: { 5: "M", 4: "Schwelle", 3: "aerob" }, Steady: { 5: "M", 4: "Schwelle", 3: "aerob" },
   LT2: { 5: "T", 4: "Schwelle", 3: "threshold" }, Threshold: { 5: "T", 4: "Schwelle", 3: "threshold" },
   VO2: { 5: "I", 4: "VO2", 3: "vo2" }, VO2long: { 5: "I", 4: "VO2", 3: "vo2" }, VO2short: { 5: "I", 4: "VO2", 3: "vo2" }, Hill: { 5: "I", 4: "VO2", 3: "vo2" },
@@ -134,7 +135,7 @@ export function typeOverrideChannel(type: string | null | undefined, channels: C
 }
 // Fallback ohne Pace-Zonen-Minuten: Einheitstyp → repräsentative Zone.
 const TYPE_TO_ZONE: Record<string, number> = {
-  Easy: 1, Long: 1, LT1: 2, Threshold: 4, LT2: 4, VO2: 5, VO2short: 5, VO2long: 5, Hill: 5, Race: 4,
+  Easy: 1, Long: 1, MarathonPace: 3, LT1: 2, Threshold: 4, LT2: 4, VO2: 5, VO2short: 5, VO2long: 5, Hill: 5, Race: 4,
 };
 
 function parseZoneMin(v: unknown): Record<string, number> | null {

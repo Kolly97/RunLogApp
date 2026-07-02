@@ -2,20 +2,24 @@
 // Fitness, Modell-Umschalter Mediator/Komposition (Sensitivität, Frage 11), Verdikt + ehrliches Framing.
 // BEOBACHTEND → as-if causal / Hypothese (das geprüfte Verdikt liefern erst die prospektiven Blöcke, P5).
 import { useEffect, useRef, useState } from "react";
-import { api, type MlSettings, type MlStatus, type MlEffects } from "../lib/api.ts";
+import { api, type MlSettings, type MlStatus, type MlEffects, type MlAdversarialAudit, type MlAuditStatus } from "../lib/api.ts";
 import { fmtDateY } from "../lib/util.ts";
 import ExpertDetails from "./ExpertDetails.tsx";
 import ForestPlot from "../charts/ForestPlot.tsx";
 
 const FRESH_LABEL: Record<string, string> = { fresh: "aktuell", stale: "veraltet", none: "noch nicht berechnet", running: "rechnet…" };
 const FRESH_COLOR: Record<string, string> = { fresh: "var(--ok)", stale: "var(--warn)", none: "var(--muted)", running: "#0ea5e9" };
+const AUDIT_LABEL: Record<MlAuditStatus, string> = { pass: "ok", warn: "warnung", fail: "kritisch", info: "info" };
+const AUDIT_COLOR: Record<MlAuditStatus, string> = { pass: "var(--ok)", warn: "var(--warn)", fail: "var(--danger)", info: "var(--muted)" };
 
 export default function DoseResponseCard() {
   const [status, setStatus] = useState<MlStatus | null>(null);
   const [eff, setEff] = useState<MlEffects | null>(null);
   const [settings, setSettings] = useState<MlSettings | null>(null);
+  const [audit, setAudit] = useState<MlAdversarialAudit | null>(null);
   const [model, setModel] = useState<"mediator" | "composition">("mediator");
   const [busy, setBusy] = useState(false);
+  const [auditBusy, setAuditBusy] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const load = () => {
@@ -42,6 +46,7 @@ export default function DoseResponseCard() {
 
   const recompute = async () => {
     setBusy(true);
+    setAudit(null);
     try {
       const { runId } = await api.mlRecompute("dose_response");
       startPoll(runId);
@@ -61,10 +66,20 @@ export default function DoseResponseCard() {
       };
       await api.mlSaveSettings(updated);
       setSettings(updated);
+      setAudit(null);
       const { runId } = await api.mlRecompute("dose_response");
       startPoll(runId);
     } catch {
       setBusy(false);
+    }
+  };
+
+  const runAudit = async () => {
+    setAuditBusy(true);
+    try {
+      setAudit(await api.mlAdversarialAudit());
+    } finally {
+      setAuditBusy(false);
     }
   };
 
@@ -179,6 +194,33 @@ export default function DoseResponseCard() {
               <li><strong>✓ = FDR-bestätigt</strong> (übersteht die Mehrfachtest-Korrektur). <strong>E-Value</strong> (in den Details) = wie stark ein unbeobachteter Störfaktor sein müsste, um den Effekt zu erklären — größer = robuster.</li>
               <li><strong>Korrelation, kein Beweis:</strong> wer hart trainierte, war oft frisch/in Form — das verzerrt. Das geprüfte Verdikt liefern erst die geplanten randomisierten Blöcke.</li>
             </ul>
+          </div>
+          <div style={{ marginTop: 10, padding: "8px 11px", border: "1px solid var(--border-faint)", borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div className="tiny" style={{ fontWeight: 600 }}>Adversarial Audit vor harten Schlussfolgerungen</div>
+              <button className="btn btn-ghost tiny" disabled={auditBusy || running} onClick={runAudit}>{auditBusy ? "prüft…" : "Audit laufen lassen"}</button>
+            </div>
+            {!audit ? (
+              <p className="tiny muted" style={{ margin: "5px 0 0", lineHeight: 1.5 }}>
+                Einmaliger Prüf-Workflow für Identifizierbarkeit, CV-Zeitordnung, Shrinkage/FDR, Confounder und Vorzeichen-Stabilität.
+              </p>
+            ) : (
+              <div style={{ marginTop: 7 }}>
+                <div className="tiny muted" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ color: AUDIT_COLOR[audit.summary.status], fontWeight: 700 }}>Audit {AUDIT_LABEL[audit.summary.status]}</span>
+                  <span>Run #{audit.runId ?? "—"} · {audit.designWeeks} Wochen · {fmtDateY(audit.generatedAt.slice(0, 10))}</span>
+                  <span>{audit.summary.pass} ok · {audit.summary.warn} Warnung · {audit.summary.fail} kritisch</span>
+                </div>
+                <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                  {audit.checks.map((c) => (
+                    <div key={c.key} className="tiny" style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 8, alignItems: "baseline" }}>
+                      <span style={{ color: AUDIT_COLOR[c.status], fontWeight: 700, textTransform: "uppercase", fontSize: 10 }}>{AUDIT_LABEL[c.status]}</span>
+                      <span><strong>{c.label}:</strong> <span className="muted">{c.message}</span>{c.detail ? <span className="muted"> · {c.detail}</span> : null}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

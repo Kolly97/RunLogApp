@@ -72,6 +72,23 @@ export function computeCyclePhase(periods: Period[], contraception: Contraceptio
   return { phase, cycleDay: day, mode, confidence };
 }
 
+export interface DatedPhaseRow { id: number; date: string; cycle_phase?: string | null; cycle_day?: number | null; }
+export interface PhaseStamp { id: number; date: string; phase: CyclePhase | null; cycleDay: number | null; changed: boolean; }
+/**
+ * Retroaktive Phasen-Rekonstruktion (#14): berechnet für jede (vergangene) Zeile die Zyklusphase aus der VOLLEN,
+ * aktuellen Perioden-Historie neu — statt sie nur zum ursprünglichen POST-Zeitpunkt zu stempeln. `computeCyclePhase`
+ * filtert je Zeile intern auf `start_date <= date`, also fließt keine Zukunftsinformation (nach dem Zeilendatum
+ * geloggte Perioden) in die Phase dieser Zeile ein — kein Leakage. Rein aus Quelldaten abgeleitet → idempotent.
+ * `changed` markiert Zeilen, deren Stempel sich gegenüber dem gespeicherten Wert unterscheidet (nur diese schreiben).
+ */
+export function reconstructPhases(rows: DatedPhaseRow[], periods: Period[], contraception: ContraceptionStatus | null | undefined): PhaseStamp[] {
+  return rows.map((r) => {
+    const ph = computeCyclePhase(periods, contraception, r.date);
+    const changed = (r.cycle_phase ?? null) !== (ph.phase ?? null) || (r.cycle_day ?? null) !== (ph.cycleDay ?? null);
+    return { id: r.id, date: r.date, phase: ph.phase, cycleDay: ph.cycleDay, changed };
+  });
+}
+
 export interface GateResult {
   passed: boolean; mode: CycleMode; regularity: Regularity; nCycles: number; medianLength: number | null;
   reasons: string[]; healthFlags: { kind: string; message: string }[]; observationMode: boolean;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet } from "../lib/api.ts";
+import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet, type CycleStatus, type CycleSymptom } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, todayIso, typeColor, typeLabel, sportLabel, num,
@@ -33,6 +33,8 @@ export default function WeekTrack() {
   const [matchBy, setMatchBy] = useState<Record<number, number>>({}); // v1.9.0: Auto-Match Aktivität→Einheit
   const [view, setView] = useState<"day" | "week">("day"); // Tages-Switcher (Default) vs. ganze Woche (v0.14.0, ToDo 13)
   const [selDate, setSelDate] = useState<string>(""); // gewählter Tag im Tag-Modus
+  const [cycleStatus, setCycleStatus] = useState<CycleStatus | null>(null);
+  const [weekSymptoms, setWeekSymptoms] = useState<Record<string, CycleSymptom>>({});
 
   async function reload() {
     if (!week) return;
@@ -52,6 +54,14 @@ export default function WeekTrack() {
     setMatchBy(an?.adherence?.matchByActivity ?? {});
   }
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [week?.week_no]);
+  useEffect(() => { api.cycleStatus().then(setCycleStatus).catch(() => setCycleStatus(null)); }, []);
+  // N-3: Zyklus-Symptome einmal je Woche laden (statt pro Tag) und nach Datum verteilen. Nur bei aktivem Consent.
+  useEffect(() => {
+    if (!week || cycleStatus?.needsConsent !== false) { setWeekSymptoms({}); return; }
+    api.cycleSymptoms(week.start_date, week.end_date)
+      .then((rows) => setWeekSymptoms(Object.fromEntries(rows.map((r) => [r.date, r]))))
+      .catch(() => setWeekSymptoms({}));
+  }, [week?.start_date, week?.end_date, cycleStatus?.needsConsent]);
 
   // Gewählten Tag setzen, wenn die Woche wechselt: heute (falls in der Woche), sonst Wochenstart.
   useEffect(() => {
@@ -97,7 +107,8 @@ export default function WeekTrack() {
     <DayCard key={d} date={d} dayName={DAY_NAMES[days.indexOf(d)]}
       planned={sessions.filter((s) => s.date === d)}
       acts={acts.filter((a) => a.date === d)}
-      daily={daily[d]} zs={zs} adh={adh} matchBy={matchBy} onChange={reload} />
+      daily={daily[d]} zs={zs} adh={adh} matchBy={matchBy} cycleEnabled={cycleStatus?.needsConsent === false}
+      symptom={weekSymptoms[d] ?? null} onChange={reload} />
   );
 
   return (
@@ -196,9 +207,9 @@ function WeekdayTabs({ days, sessions, acts, adh, selDate, onSelect }: {
   );
 }
 
-function DayCard({ date, dayName, planned, acts, daily, zs, adh, matchBy, onChange }: {
+function DayCard({ date, dayName, planned, acts, daily, zs, adh, matchBy, cycleEnabled, symptom, onChange }: {
   date: string; dayName: string; planned: PlannedSession[]; acts: Activity[];
-  daily?: DailyLog; zs: ZoneSet | null; adh: Record<number, { pct: number; tssOnly: boolean }>; matchBy: Record<number, number>; onChange: () => void;
+  daily?: DailyLog; zs: ZoneSet | null; adh: Record<number, { pct: number; tssOnly: boolean }>; matchBy: Record<number, number>; cycleEnabled?: boolean; symptom?: CycleSymptom | null; onChange: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [quick, setQuick] = useState(false);
@@ -243,6 +254,74 @@ function DayCard({ date, dayName, planned, acts, daily, zs, adh, matchBy, onChan
       {adding && <ActivityRow a={newAct} zs={zs} adh={adh} matchBy={matchBy} planned={planned} onChange={() => { setAdding(false); onChange(); }} isNew />}
 
       <DailyForm date={date} daily={daily} />
+      <CycleSymptomMini date={date} enabled={!!cycleEnabled} initial={symptom ?? null} />
+    </div>
+  );
+}
+
+const CYCLE_FIELDS: { key: "cramps" | "energy" | "sleep" | "mood" | "flow"; label: string }[] = [
+  { key: "cramps", label: "Krämpfe" },
+  { key: "energy", label: "Energie" },
+  { key: "sleep", label: "Schlaf" },
+  { key: "mood", label: "Stimmung" },
+  { key: "flow", label: "Blutung" },
+];
+
+// N-3: `initial` kommt gebündelt vom Wochen-Fetch im Parent (kein Fetch pro Tag mehr).
+function CycleSymptomMini({ date, enabled, initial }: { date: string; enabled: boolean; initial?: CycleSymptom | null }) {
+  const [sym, setSym] = useState<Record<string, string>>({ cramps: "", energy: "", sleep: "", mood: "", flow: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    setSaved(false);
+    const r = initial;
+    setSym({
+      cramps: r?.cramps != null ? String(r.cramps) : "",
+      energy: r?.energy != null ? String(r.energy) : "",
+      sleep: r?.sleep != null ? String(r.sleep) : "",
+      mood: r?.mood != null ? String(r.mood) : "",
+      flow: r?.flow != null ? String(r.flow) : "",
+      notes: r?.notes ?? "",
+    });
+  }, [date, enabled, initial]);
+  if (!enabled) return null;
+  const nOrNull = (v: string) => (v === "" ? null : Number(v));
+  const save = async () => {
+    const payload: CycleSymptom = {
+      date,
+      cramps: nOrNull(sym.cramps),
+      energy: nOrNull(sym.energy),
+      sleep: nOrNull(sym.sleep),
+      mood: nOrNull(sym.mood),
+      flow: nOrNull(sym.flow),
+      notes: sym.notes || null,
+    };
+    setBusy(true);
+    try { await api.cycleSaveSymptom(payload); setSaved(true); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card tight" style={{ marginTop: 10, background: "var(--surface2)" }}>
+      <div className="spread" style={{ gap: 8, alignItems: "center" }}>
+        <div>
+          <div className="tiny" style={{ fontWeight: 700 }}>Zyklus/Symptome <span className="muted">(optional, lokal, nicht-diagnostisch)</span></div>
+          <div className="tiny muted">1 = niedrig, 5 = hoch. Keine Trainingsänderung ohne Gate und klare Konfidenz.</div>
+        </div>
+        {saved && <span className="tiny" style={{ color: "var(--ok)", fontWeight: 600 }}>gespeichert</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
+        {CYCLE_FIELDS.map((f) => (
+          <label key={f.key} className="tiny muted" style={{ display: "flex", flexDirection: "column", gap: 2 }}>{f.label}
+            <select value={sym[f.key]} onChange={(e) => { setSaved(false); setSym({ ...sym, [f.key]: e.target.value }); }} disabled={busy}>
+              <option value="">—</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        ))}
+        <label className="tiny muted" style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 180, flex: 1 }}>Notiz
+          <input value={sym.notes} onChange={(e) => { setSaved(false); setSym({ ...sym, notes: e.target.value }); }} disabled={busy} />
+        </label>
+        <button className="btn btn-ghost tiny" disabled={busy} onClick={save}>{busy ? "speichert…" : "Speichern"}</button>
+      </div>
     </div>
   );
 }
@@ -343,14 +422,14 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
   if (!open) {
     // Zugeklappt direkt aus den Props rendern — zeigt nach reload() immer den Server-Stand.
     const tempo = a.distance_m && a.moving_s ? paceOrSpeed(a.sport, a.distance_m, a.moving_s) : "";
-    const sid = a.matched_session_id ?? (a.id != null ? matchBy?.[a.id] : undefined); // v1.9.0: manuell ODER Auto-Match
+    const sid = a.match_ignore ? undefined : a.matched_session_id ?? (a.id != null ? matchBy?.[a.id] : undefined); // v1.9.0/v2.2.x: manuell ODER Auto-Match, außer bewusst ignoriert
     const pa = sid != null ? adh?.[sid] : undefined; // Plan-Erfüllung (v0.14.0)
     const paColor = pa ? (pa.pct >= 90 ? "var(--ok)" : pa.pct >= 70 ? "var(--form)" : "var(--danger)") : "";
     return (
       <div className="sess" onClick={openForm} style={{ cursor: "pointer", borderLeft: `4px solid ${typeColor(a.type ?? "")}` }}>
         <span className="type-pill" style={{ background: a.source === "strava" ? "#fc5200" : "#64748b" }}>{a.source === "strava" ? "Strava" : "manuell"}</span>
         <span style={{ flex: 1 }}>{a.name || sportLabel(a.sport)}</span>
-        {pa && <span className="type-pill" style={{ background: paColor }} title={pa.tssOnly ? "nur TSS — Pace-Zonen noch nicht verfügbar (Details nachziehen)" : "Plan-Erfüllung: TSS-Treffer + Zeit in Ziel-Pace-Zone"}>{pa.pct}% Plan{pa.tssOnly ? "*" : ""}</span>}
+        {a.match_ignore ? <span className="type-pill" style={{ background: "var(--info)" }} title="Bewusst keiner geplanten Einheit zugeordnet">nicht zugeordnet</span> : pa && <span className="type-pill" style={{ background: paColor }} title={pa.tssOnly ? "nur TSS — Pace-Zonen noch nicht verfügbar (Details nachziehen)" : "Plan-Erfüllung: TSS-Treffer + Zeit in Ziel-Pace-Zone"}>{pa.pct}% Plan{pa.tssOnly ? "*" : ""}</span>}
         <span className="tiny muted nowrap">
           {a.distance_m ? (a.distance_m / 1000).toFixed(1) + " km" : ""}
           {a.sport === "Run" && a.ngp ? ` · GAP ${paceStr(a.ngp)}/km` : ""}
@@ -376,8 +455,13 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
       {!isNew && a.id != null && (planned?.filter((p) => p.id != null && p.type !== "Rest").length ?? 0) > 0 && (
         <label className="field" style={{ margin: "0 0 8px", maxWidth: 320 }}>
           <span><T k="track.field.matchSession">Gehört zu geplanter Einheit</T></span>
-          <select value={a.matched_session_id ?? ""} onChange={async (x) => { await api.matchActivity(a.id!, x.target.value ? Number(x.target.value) : null).catch(() => {}); onChange(); }}>
+          <select value={a.match_ignore ? "__ignore__" : a.matched_session_id ?? ""} onChange={async (x) => {
+            const v = x.target.value;
+            await api.matchActivity(a.id!, v && v !== "__ignore__" ? Number(v) : null, v === "__ignore__").catch(() => {});
+            onChange();
+          }}>
             <option value="">automatisch zuordnen</option>
+            <option value="__ignore__">nicht zuordnen</option>
             {planned!.filter((p) => p.id != null && p.type !== "Rest").map((p) => (
               <option key={p.id} value={p.id!}>{typeLabel(p.type)}{p.planned_tss ? ` · ${Math.round(p.planned_tss)} TSS` : ""}</option>
             ))}

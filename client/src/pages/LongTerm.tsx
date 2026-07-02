@@ -62,6 +62,47 @@ function rollingSeries(points: WPoint[], key: string): { date: string; avg: numb
   return out;
 }
 
+type MetricTrendRow = { date: string; avg: number | null; trend: number | null; monthAvg: number | null; band: [number, number] | null };
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+function metricTrendSeries<T extends { date: string }>(rows: T[], pick: (r: T) => number | null | undefined, window = 8): MetricTrendRow[] {
+  const values = rows.map((r) => ({ date: r.date, v: pick(r) })).sort((a, b) => a.date.localeCompare(b.date));
+  const valid = values.filter((p): p is { date: string; v: number } => typeof p.v === "number" && Number.isFinite(p.v));
+  const months = new Map<string, number>();
+  const grouped = new Map<string, number[]>();
+  for (const p of valid) {
+    const k = p.date.slice(0, 7);
+    grouped.set(k, [...(grouped.get(k) ?? []), p.v]);
+  }
+  for (const [k, vals] of grouped) months.set(k, r2(vals.reduce((a, b) => a + b, 0) / vals.length));
+  // je Monat nur der letzte gültige Tag trägt den Marker → ein distinkter Punkt statt einer Dauerlinie
+  const monthMarkerDate = new Map<string, string>();
+  for (const p of valid) monthMarkerDate.set(p.date.slice(0, 7), p.date);
+
+  let fit: { a: number; b: number; x0: number } | null = null;
+  if (valid.length >= 3) {
+    const x0 = Date.parse(valid[0].date);
+    const pts = valid.map((p) => ({ x: (Date.parse(p.date) - x0) / 86_400_000, y: p.v }));
+    const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+    const my = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    const den = pts.reduce((a, p) => a + (p.x - mx) ** 2, 0);
+    if (den > 0) {
+      const b = pts.reduce((a, p) => a + (p.x - mx) * (p.y - my), 0) / den;
+      fit = { a: my - b * mx, b, x0 };
+    }
+  }
+
+  return values.map((p) => {
+    const prev = valid.filter((v) => v.date <= p.date).slice(-window).map((v) => v.v);
+    const avg = prev.length ? r2(prev.reduce((a, b) => a + b, 0) / prev.length) : null;
+    const band = prev.length >= 3 ? [r2(Math.min(...prev)), r2(Math.max(...prev))] as [number, number] : null;
+    const trend = fit ? r2(fit.a + fit.b * ((Date.parse(p.date) - fit.x0) / 86_400_000)) : null;
+    const monthKey = p.date.slice(0, 7);
+    const isMonthMarker = monthMarkerDate.get(monthKey) === p.date;
+    return { date: p.date, avg, band, trend, monthAvg: isMonthMarker ? months.get(monthKey) ?? null : null };
+  });
+}
+
 function wellnessPoints(daily: DailyLog[]): WPoint[] {
   return [...daily]
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -242,6 +283,28 @@ export default function LongTerm() {
   const paceDomain: [number, number] = effPaces.length
     ? [Math.floor((Math.min(...effPaces) - 15) / 15) * 15, Math.ceil((Math.max(...effPaces) + 15) / 15) * 15]
     : [240, 480];
+  const effPaceTrend = metricTrendSeries(eff, (e) => e.pace);
+  const effHrTrend = metricTrendSeries(eff, (e) => e.hr);
+  const effEfTrend = metricTrendSeries(eff, (e) => e.ef);
+  const effCombo = eff.map((e, i) => ({
+    ...e,
+    paceBand: effPaceTrend[i]?.band ?? null,
+    paceTrend: effPaceTrend[i]?.trend ?? null,
+    paceMonth: effPaceTrend[i]?.monthAvg ?? null,
+    hrBand: effHrTrend[i]?.band ?? null,
+    hrTrend: effHrTrend[i]?.trend ?? null,
+    hrMonth: effHrTrend[i]?.monthAvg ?? null,
+    efBand: effEfTrend[i]?.band ?? null,
+    efTrend: effEfTrend[i]?.trend ?? null,
+    efMonth: effEfTrend[i]?.monthAvg ?? null,
+  }));
+  const decTrend = metricTrendSeries(decoupling, (d) => d.decoupling);
+  const decData = decoupling.map((d, i) => ({
+    ...d,
+    decBand: decTrend[i]?.band ?? null,
+    decTrend: decTrend[i]?.trend ?? null,
+    decMonth: decTrend[i]?.monthAvg ?? null,
+  }));
 
   // Chart-Dekoration (Phasenband + Jahres-Dreieck) für Wellness- (Tages-) und Effizienz- (Wochen-) Charts.
   // Eigene Marken je Datensatz, da die X-Achsen unterschiedliche Datums-Mengen haben (ToDo 1, v0.11.0).
@@ -429,7 +492,7 @@ export default function LongTerm() {
             <div className="card chart-card">
               <h3><T k="lt.block.eff.title">Ø-Pace vs. Ø-Herzfrequenz</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
-                <ComposedChart data={eff} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
+                <ComposedChart data={effCombo} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
                   <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick-${i}`} yAxisId="pace" x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -441,13 +504,27 @@ export default function LongTerm() {
                     tick={{ fontSize: 11, fill: "#d53f8c" }} />
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
-                    formatter={(v: number, n: string) => (n === "Ø-Pace" ? [`${paceStr(v)} /km`, n] : [Math.round(v), n])}
+                    formatter={(v: number | number[], n: string) => {
+                      const name = String(n);
+                      if (Array.isArray(v)) return [name.includes("Pace") ? `${paceStr(v[0])}–${paceStr(v[1])} /km` : `${Math.round(v[0])}–${Math.round(v[1])}`, name];
+                      return name.includes("Pace") ? [`${paceStr(v)} /km`, name] : [Math.round(v), name];
+                    }}
                     contentStyle={TOOLTIP_STYLE}
                   />
-                  <Line yAxisId="pace" type="monotone" dataKey="pace" name="Ø-Pace" stroke="#2b6cb0"
-                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#2b6cb0", strokeWidth: 0 }} hide={effHidden.pace} />
-                  <Line yAxisId="hr" type="monotone" dataKey="hr" name="Ø-HF" stroke="#d53f8c"
-                    strokeWidth={1.8} connectNulls dot={{ r: 3, fill: "#d53f8c", strokeWidth: 0 }} hide={effHidden.hr} />
+                  <Area yAxisId="pace" type="monotone" dataKey="paceBand" name="Pace-Streuband" stroke="none" fill="#2b6cb0" fillOpacity={0.08} hide={effHidden.pace} connectNulls isAnimationActive={false} />
+                  <Area yAxisId="hr" type="monotone" dataKey="hrBand" name="HF-Streuband" stroke="none" fill="#d53f8c" fillOpacity={0.07} hide={effHidden.hr} connectNulls isAnimationActive={false} />
+                  <Line yAxisId="pace" type="monotone" dataKey="pace" name="Ø-Pace" stroke="#2b6cb0" strokeWidth={1.1}
+                    strokeOpacity={0.35} connectNulls dot={{ r: 2, fill: "#2b6cb0", strokeWidth: 0, fillOpacity: 0.4 }} hide={effHidden.pace} isAnimationActive={false} />
+                  <Line yAxisId="hr" type="monotone" dataKey="hr" name="Ø-HF" stroke="#d53f8c" strokeWidth={1.1}
+                    strokeOpacity={0.35} connectNulls dot={{ r: 2, fill: "#d53f8c", strokeWidth: 0, fillOpacity: 0.4 }} hide={effHidden.hr} isAnimationActive={false} />
+                  <Line yAxisId="pace" type="monotone" dataKey="paceMonth" name="Pace Monatsmittel" stroke="none"
+                    dot={{ r: 4, fill: "#2b6cb0", strokeWidth: 1, stroke: "var(--card)" }} hide={effHidden.pace} isAnimationActive={false} />
+                  <Line yAxisId="hr" type="monotone" dataKey="hrMonth" name="HF Monatsmittel" stroke="none"
+                    dot={{ r: 4, fill: "#d53f8c", strokeWidth: 1, stroke: "var(--card)" }} hide={effHidden.hr} isAnimationActive={false} />
+                  <Line yAxisId="pace" type="monotone" dataKey="paceTrend" name="Pace Trend" stroke="#2b6cb0" strokeWidth={2}
+                    connectNulls dot={false} hide={effHidden.pace} isAnimationActive={false} />
+                  <Line yAxisId="hr" type="monotone" dataKey="hrTrend" name="HF Trend" stroke="#d53f8c" strokeWidth={2}
+                    connectNulls dot={false} hide={effHidden.hr} isAnimationActive={false} />
                   <Customized component={(p: any) => <ChartDecor {...p} runs={effPhaseRuns} years={effYears} />} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -471,7 +548,7 @@ export default function LongTerm() {
             <div className="card chart-card">
               <h3><T k="lt.block.ef.title">Effizienz-Faktor (m/min je Herzschlag)</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
-                <LineChart data={eff} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+                <ComposedChart data={effCombo} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
                   <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   {effSickSegments.map((s, i) => (
                     <ReferenceArea key={`esick2-${i}`} x1={s.x1} x2={s.x2} fill="#ef4444" fillOpacity={0.08} ifOverflow="hidden" />
@@ -480,13 +557,18 @@ export default function LongTerm() {
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={44} />
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `Woche ab ${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
-                    formatter={(v: number) => [v, "EF"]}
+                    formatter={(v: number | number[], n: string) => Array.isArray(v) ? [`${v[0]}–${v[1]}`, n] : [v, n === "ef" ? "EF" : n]}
                     contentStyle={TOOLTIP_STYLE}
                   />
-                  <Line type="monotone" dataKey="ef" name="EF" stroke="#16a34a" strokeWidth={1.8}
-                    connectNulls dot={{ r: 3, fill: "#16a34a", strokeWidth: 0 }} />
+                  <Area type="monotone" dataKey="efBand" name="Streuband" stroke="none" fill="#16a34a" fillOpacity={0.10} connectNulls isAnimationActive={false} />
+                  <Line type="monotone" dataKey="ef" name="EF" stroke="#16a34a" strokeWidth={1.1}
+                    strokeOpacity={0.35} connectNulls dot={{ r: 2, fill: "#16a34a", strokeWidth: 0, fillOpacity: 0.4 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="efMonth" name="Monatsmittel" stroke="none"
+                    dot={{ r: 4, fill: "#16a34a", strokeWidth: 1, stroke: "var(--card)" }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="efTrend" name="Trend" stroke="#0f766e" strokeWidth={2}
+                    connectNulls dot={false} isAnimationActive={false} />
                   <Customized component={(p: any) => <ChartDecor {...p} runs={effPhaseRuns} years={effYears} />} />
-                </LineChart>
+                </ComposedChart>
               </ResponsiveContainer>
               <p className="tiny muted" style={{ margin: "6px 0 0" }}>
                 <T k="lt.block.ef.hint">Steigender EF bei gleicher Belastung = Herz-Kreislauf-System wird ökonomischer.</T>
@@ -501,25 +583,31 @@ export default function LongTerm() {
           <div className="card chart-card">
             <h3><T k="lt.block.decoupling.title">Aerobe Entkopplung (Pa:HR-Drift)</T></h3>
             <ResponsiveContainer width="100%" height={h ?? 240}>
-              <LineChart data={decoupling} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+              <ComposedChart data={decData} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
                 <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                 <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                 <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} unit="%" />
                 <Tooltip
                   labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
-                  formatter={(v: number, _n: string, item: any) => {
+                  formatter={(v: number | number[], n: string, item: any) => {
+                    if (Array.isArray(v)) return [`${v[0]}–${v[1]} %`, n];
                     const km = item?.payload?.distance_km;
-                    return [`${v} %${km ? ` · ${km} km` : ""}`, "Entkopplung"];
+                    return [`${v} %${km ? ` · ${km} km` : ""}`, n === "decoupling" ? "Entkopplung" : n];
                   }}
                   contentStyle={TOOLTIP_STYLE}
                 />
                 <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
                 <ReferenceLine y={5} stroke="#f59e0b" strokeDasharray="4 3"
                   label={{ value: "5% Schwelle", fontSize: 9, fill: "#f59e0b", position: "right" }} />
-                <Line type="monotone" dataKey="decoupling" name="Entkopplung" stroke="#8b5cf6" strokeWidth={1.8}
-                  connectNulls dot={{ r: 3, fill: "#8b5cf6", strokeWidth: 0 }} />
+                <Area type="monotone" dataKey="decBand" name="Streuband" stroke="none" fill="#8b5cf6" fillOpacity={0.10} connectNulls isAnimationActive={false} />
+                <Line type="monotone" dataKey="decoupling" name="Entkopplung" stroke="#8b5cf6" strokeWidth={1.1}
+                  strokeOpacity={0.35} connectNulls dot={{ r: 2, fill: "#8b5cf6", strokeWidth: 0, fillOpacity: 0.4 }} isAnimationActive={false} />
+                <Line type="monotone" dataKey="decMonth" name="Monatsmittel" stroke="none"
+                  dot={{ r: 4, fill: "#8b5cf6", strokeWidth: 1, stroke: "var(--card)" }} isAnimationActive={false} />
+                <Line type="monotone" dataKey="decTrend" name="Trend" stroke="#6d28d9" strokeWidth={2}
+                  connectNulls dot={false} isAnimationActive={false} />
                 <Customized component={(p: any) => <ChartDecor {...p} runs={[]} years={yearMarksByDateAll(decoupling.map((x) => x.date))} />} />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
             <p className="tiny muted" style={{ margin: "6px 0 0" }}>
               <T k="lt.block.decoupling.hint">Herzfrequenz-Drift langer Läufe (≥30 min): unter 5% = gute aerobe Ausdauer. Nur Läufe mit Herzfrequenz-Stream.</T>
@@ -591,25 +679,37 @@ export default function LongTerm() {
           const p = estByDate.get(d);
           return { date: d, est: p?.est ?? null, calibrated: p?.calibrated ?? null, lab: labByDate.get(d) ?? null };
         });
+        const vo2Trend = metricTrendSeries(data, (p) => p.calibrated ?? p.est);
+        const vo2Data = data.map((d, i) => ({
+          ...d,
+          vo2Band: vo2Trend[i]?.band ?? null,
+          vo2Trend: vo2Trend[i]?.trend ?? null,
+          vo2Month: vo2Trend[i]?.monthAvg ?? null,
+        }));
         const evYears = yearMarksByDateAll(dates);
         return (
           <EgItem id="eff-vo2max" title={t("lt.block.effvo2.title", "Effective VO2max")} defaultSpan={6} defaultHeight={240} reserve={130}>{(h) => (
             <div className="card chart-card">
               <h3><T k="lt.block.effvo2.title">Effective VO2max je Lauf</T></h3>
               <ResponsiveContainer width="100%" height={h ?? 240}>
-                <ComposedChart data={data} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
+                <ComposedChart data={vo2Data} margin={{ top: 8, right: 12, left: -14, bottom: 26 }}>
                   <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                   <XAxis dataKey="date" tickFormatter={fmtDate} minTickGap={28} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={40} unit="" />
                   <Tooltip
                     labelFormatter={(d) => { const p = phaseAtDate(String(d)); return `${fmtDateY(String(d))}${p ? ` · ${p}` : ""}`; }}
-                    formatter={(v: number, n: string) => [Math.round(v * 10) / 10, n]}
+                    formatter={(v: number | number[], n: string) => Array.isArray(v) ? [`${r2(v[0])}–${r2(v[1])}`, n] : [Math.round(v * 10) / 10, n]}
                     contentStyle={TOOLTIP_STYLE}
                   />
+                  <Area type="monotone" dataKey="vo2Band" name="Streuband" stroke="none" fill="#0ea5e9" fillOpacity={0.10} connectNulls isAnimationActive={false} />
                   {effVo2.calibrated && (
-                    <Line type="monotone" dataKey="est" name="Schätzung (roh)" stroke="#cbd5e1" strokeWidth={1.2} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="est" name="Schätzung (roh)" stroke="#cbd5e1" strokeOpacity={0.5} strokeWidth={1} dot={false} connectNulls />
                   )}
-                  <Line type="monotone" dataKey="calibrated" name={effVo2.calibrated ? "Kalibriert" : "Effective VO2max"} stroke="#0ea5e9" strokeWidth={1.8} dot={false} connectNulls />
+                  <Line type="monotone" dataKey="calibrated" name={effVo2.calibrated ? "Kalibriert" : "Effective VO2max"} stroke="#0ea5e9" strokeOpacity={0.35} strokeWidth={1.1} dot={false} connectNulls />
+                  <Line type="monotone" dataKey="vo2Month" name="Monatsmittel" stroke="none"
+                    dot={{ r: 4, fill: "#0ea5e9", strokeWidth: 1, stroke: "var(--card)" }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="vo2Trend" name="Trend" stroke="#0369a1" strokeWidth={2}
+                    dot={false} connectNulls isAnimationActive={false} />
                   <Line dataKey="lab" name="Labor" stroke="none" dot={{ r: 5, fill: "#16a34a", strokeWidth: 0 }} connectNulls={false} />
                   <Customized component={(p: any) => <ChartDecor {...p} runs={[]} years={evYears} />} />
                 </ComposedChart>

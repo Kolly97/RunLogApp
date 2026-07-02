@@ -17,18 +17,43 @@ const pairsForSignif = (t: MlProspectiveTrial): number => {
 };
 const achievableMinP = (p: number) => (p > 0 ? 2 / Math.pow(2, p) : 1);
 
+// Klartext, warum eine Alternative niedriger rankt: größte Score-Differenz zum Spitzenreiter (rein rechnerisch, kein neues Modell).
+const SCORE_DIM_LABEL: Record<keyof MlProspectiveProposal["scores"], string> = {
+  data: "Datenlage", benefit: "erwarteter Nutzen", duration: "Dauer bis zum Verdikt", risk: "Risiko", explainability: "Erklärbarkeit",
+};
+function whyNotReason(top: MlProspectiveProposal, alt: MlProspectiveProposal): string {
+  const dims = Object.keys(top.scores) as (keyof MlProspectiveProposal["scores"])[];
+  let worst: keyof MlProspectiveProposal["scores"] = dims[0];
+  let worstGap = -Infinity;
+  for (const d of dims) {
+    const gap = top.scores[d] - alt.scores[d];
+    if (gap > worstGap) { worstGap = gap; worst = d; }
+  }
+  return worstGap > 0 ? `niedrigere ${SCORE_DIM_LABEL[worst]} (${alt.scores[worst]} vs. ${top.scores[worst]})` : "insgesamt niedrigerer Gesamt-Score";
+}
+
 export default function ProspectiveTrialCard() {
   const [st, setSt] = useState<MlProspectiveState | null>(null);
   const [busy, setBusy] = useState(false);
   const [nPairs, setNPairs] = useState(6);
   const [showInfo, setShowInfo] = useState(false);
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
 
-  const load = () => api.mlProspective().then((s) => { setSt(s); if (s.proposal) setNPairs(s.proposal.defaults.nPairsPlanned); }).catch(() => setSt(null));
+  const load = () => api.mlProspective().then((s) => {
+    setSt(s);
+    const p = s.proposals?.[0] ?? s.proposal;
+    if (p) { setNPairs(p.defaults.nPairsPlanned); setSelectedHash(p.proposalHash); }
+  }).catch(() => setSt(null));
   useEffect(() => { load(); }, []);
 
   const active = st?.trials.find((t) => t.state === "active") ?? null;
   const evaluated = st?.trials.find((t) => t.state === "evaluated") ?? null;
-  const proposal = !active ? st?.proposal ?? null : null;
+  const proposals = !active ? (st?.proposals?.length ? st.proposals : st?.proposal ? [st.proposal] : []) : [];
+  const proposal = proposals.find((p) => p.proposalHash === selectedHash) ?? proposals[0] ?? null;
+  const selectProposal = (p: MlProspectiveProposal) => {
+    setSelectedHash(p.proposalHash);
+    setNPairs(p.defaults.nPairsPlanned);
+  };
 
   const accept = async (p: MlProspectiveProposal) => {
     setBusy(true);
@@ -62,7 +87,8 @@ export default function ProspectiveTrialCard() {
           {evaluated && !active && <ResultView t={evaluated} />}
           {proposal && (
             <ProposalView
-              p={proposal} nPairs={nPairs} setNPairs={setNPairs} showInfo={showInfo} setShowInfo={setShowInfo}
+              p={proposal} proposals={proposals} onSelectProposal={selectProposal}
+              nPairs={nPairs} setNPairs={setNPairs} showInfo={showInfo} setShowInfo={setShowInfo}
               onAccept={() => accept(proposal)} onDecline={decline} busy={busy}
               secondary={!!evaluated}
             />
@@ -76,16 +102,51 @@ export default function ProspectiveTrialCard() {
 }
 
 // ---- Zustand 1: Vorschlag + zweistufiger Consent ----------------------------
-function ProposalView({ p, nPairs, setNPairs, showInfo, setShowInfo, onAccept, onDecline, busy, secondary }: {
-  p: MlProspectiveProposal; nPairs: number; setNPairs: (n: number) => void; showInfo: boolean; setShowInfo: (b: boolean) => void;
+function ProposalView({ p, proposals, onSelectProposal, nPairs, setNPairs, showInfo, setShowInfo, onAccept, onDecline, busy, secondary }: {
+  p: MlProspectiveProposal; proposals: MlProspectiveProposal[]; onSelectProposal: (p: MlProspectiveProposal) => void;
+  nPairs: number; setNPairs: (n: number) => void; showInfo: boolean; setShowInfo: (b: boolean) => void;
   onAccept: () => void; onDecline: () => void; busy: boolean; secondary: boolean;
 }) {
   const blocks = nPairs * 2;
   const weeksTotal = blocks * (p.defaults.blockWeeks + p.defaults.washoutWeeks);
   return (
     <div style={{ marginTop: secondary ? 6 : 12, border: "1px solid var(--border-faint)", borderRadius: 10, padding: 14 }}>
+      {proposals.length > 1 && (
+        <div style={{ marginBottom: 12 }}>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 5 }}>Trial-Ranking</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
+            {proposals.map((q, i) => (
+              <button key={q.proposalHash} type="button" className="btn btn-ghost" onClick={() => onSelectProposal(q)}
+                style={{ display: "flex", alignItems: "center", gap: 6, textAlign: "left", justifyContent: "flex-start", borderColor: q.proposalHash === p.proposalHash ? "var(--accent)" : "var(--border-faint)", background: q.proposalHash === p.proposalHash ? "var(--surface2)" : undefined }}>
+                <span style={{ fontWeight: 700 }}>#{i + 1}</span>
+                <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{q.armA.label} vs {q.armB.label}</span>
+                <span className="tiny muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{q.score}/100</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 15, fontWeight: 700 }}>Vorschlag: <span style={{ color: "var(--accent, #0ea5e9)" }}>{p.armA.label}</span> vs <span style={{ color: "var(--accent, #0ea5e9)" }}>{p.armB.label}</span></div>
-      <p className="tiny muted" style={{ marginTop: 4 }}>{p.rationale}</p>
+      <div className="tiny muted" style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, color: "var(--accent)" }}>Score {p.score}/100</span>
+        <span>{p.rankLabel}</span>
+        <span>Risiko {p.risk}</span>
+        <span>ca. {p.durationWeeks} Wochen bis zum geprüften Verdikt</span>
+      </div>
+      <p className="tiny muted" style={{ marginTop: 4 }}><strong>Warum dieser Vorschlag:</strong> {p.rationale}</p>
+      <div className="tiny muted" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+        <span>Daten {p.scores.data}</span><span>Nutzen {p.scores.benefit}</span><span>Dauer {p.scores.duration}</span><span>Risiko {p.scores.risk}</span><span>Erklärbarkeit {p.scores.explainability}</span>
+      </div>
+      {proposals.length > 1 && p.proposalHash === proposals[0]?.proposalHash && (
+        <div className="tiny muted" style={{ marginTop: 6 }}>
+          <strong>Warum nicht die anderen:</strong>
+          <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>
+            {proposals.slice(1).map((alt) => (
+              <li key={alt.proposalHash}>{alt.armA.label} vs {alt.armB.label} — {whyNotReason(p, alt)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <button className="btn btn-ghost tiny" style={{ marginTop: 2 }} onClick={() => setShowInfo(!showInfo)}>{showInfo ? "▾ Aufklärung ausblenden" : "▸ Was heißt das? (bitte vor dem Annehmen lesen)"}</button>
       {showInfo && (

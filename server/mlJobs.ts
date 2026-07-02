@@ -337,6 +337,169 @@ export function getEffects(profileId: number): EffectsResult {
   };
 }
 
+export type AuditStatus = "pass" | "warn" | "fail" | "info";
+export interface AuditCheck {
+  key: string;
+  label: string;
+  status: AuditStatus;
+  message: string;
+  detail?: string;
+  evidence?: Record<string, unknown>;
+}
+export interface AdversarialAuditResult {
+  generatedAt: string;
+  modelVersion: string;
+  runId: number | null;
+  activeCount: number | null;
+  designWeeks: number;
+  summary: { status: AuditStatus; pass: number; warn: number; fail: number; info: number };
+  checks: AuditCheck[];
+}
+
+interface DoseMetaForAudit {
+  activeCount?: number;
+  ladder?: { count: number; identifiable: boolean; reason: string; maxVif: number; sparseChannels?: string[] }[];
+  channels?: string[];
+  changepoints?: string[];
+}
+
+function auditSummary(checks: AuditCheck[]): AdversarialAuditResult["summary"] {
+  const count = (s: AuditStatus) => checks.filter((c) => c.status === s).length;
+  const fail = count("fail"), warn = count("warn"), pass = count("pass"), info = count("info");
+  return { status: fail ? "fail" : warn ? "warn" : "pass", pass, warn, fail, info };
+}
+function finiteSign(v: number | null | undefined): -1 | 0 | 1 {
+  if (v == null || !Number.isFinite(v) || Math.abs(v) < 0.05) return 0;
+  return v > 0 ? 1 : -1;
+}
+
+export function adversarialAudit(profileId: number): AdversarialAuditResult {
+  const generatedAt = nowIso();
+  const effects = getEffects(profileId);
+  const meta = (effects.meta ?? {}) as DoseMetaForAudit;
+  const fr = freshness(profileId, "dose_response");
+  const checks: AuditCheck[] = [];
+  const activeCount = (meta.activeCount === 3 || meta.activeCount === 4 || meta.activeCount === 5)
+    ? (meta.activeCount as ChannelCount)
+    : channelCountFor(profileId);
+
+  let designWeeks = 0;
+  let firstDate: string | null = null;
+  let lastDate: string | null = null;
+  try {
+    const { acts, inds } = loadIndicators(profileId);
+    const fit = fitLatentFitness(inds);
+    const design = fit ? buildDoseDesign(acts, fit.points, activeCount) : [];
+    designWeeks = design.length;
+    firstDate = design[0]?.date ?? null;
+    lastDate = design[design.length - 1]?.date ?? null;
+    const dates = design.map((d) => d.date);
+    const sorted = dates.every((d, i) => i === 0 || dates[i - 1] <= d);
+    const unique = new Set(dates).size === dates.length;
+    checks.push({
+      key: "cv_leakage",
+      label: "CV-Leakage und Zeitordnung",
+      status: !sorted || !unique ? "fail" : designWeeks < 24 ? "warn" : "pass",
+      message: !sorted || !unique
+        ? "Design-Wochen sind nicht eindeutig zeitlich sortiert."
+        : designWeeks < 24
+          ? `Nur ${designWeeks} Design-Wochen. Die Engine nutzt rolling-origin CV, aber die Basis ist noch dünn.`
+          : `Zeitlich sortiertes Weekly-Design mit ${designWeeks} Wochen; Lambda-CV läuft als expanding-window/rolling-origin.`,
+      detail: firstDate && lastDate ? `${firstDate} bis ${lastDate}` : undefined,
+      evidence: { designWeeks, firstDate, lastDate, sorted, unique },
+    });
+  } catch (e) {
+    checks.push({ key: "cv_leakage", label: "CV-Leakage und Zeitordnung", status: "fail", message: "Design konnte nicht rekonstruiert werden.", detail: String((e as Error)?.message || e) });
+  }
+
+  if (!effects.runId || !effects.mediator.length) {
+    checks.push({ key: "run_available", label: "Dosis-Wirkungs-Lauf", status: "fail", message: "Noch kein abgeschlossener Dosis-Wirkungs-Lauf vorhanden. Erst neu berechnen, dann auditieren." });
+  } else {
+    checks.push({
+      key: "freshness",
+      label: "Frische",
+      status: fr.state === "fresh" ? "pass" : fr.state === "stale" ? "warn" : "info",
+      message: fr.state === "fresh" ? "Der Audit prüft den aktuell frischen Lauf." : fr.reason ?? `Status: ${fr.state}`,
+      evidence: { state: fr.state, runId: fr.runId, lastRun: fr.lastRun },
+    });
+  }
+
+  const activeStep = meta.ladder?.find((s) => s.count === activeCount) ?? meta.ladder?.at(-1);
+  checks.push({
+    key: "identifiability",
+    label: "Identifizierbarkeit",
+    status: activeStep?.identifiable ? "pass" : "warn",
+    message: activeStep?.identifiable
+      ? `${activeCount} Kanäle sind trennbar (max. VIF ${activeStep.maxVif}).`
+      : `Aktiver Kanal-Satz bleibt fragil: ${activeStep?.reason ?? "keine Leiterdiagnostik"}.`,
+    evidence: { activeCount, maxVif: activeStep?.maxVif ?? null, sparseChannels: activeStep?.sparseChannels ?? [] },
+  });
+
+  const robustRows = [...effects.mediator, ...effects.composition].filter((r) => r.fdr_survive && r.mcid_pass);
+  const anyFdr = [...effects.mediator, ...effects.composition].some((r) => r.fdr_survive);
+  const nBlocks = Math.max(0, ...effects.mediator.map((r) => Number(r.n_blocks) || 0));
+  checks.push({
+    key: "priors_shrinkage",
+    label: "Priors, Shrinkage und FDR",
+    status: robustRows.length ? "pass" : anyFdr ? "warn" : "info",
+    message: robustRows.length
+      ? `${robustRows.length} Effekt(e) überstehen MCID und FDR.`
+      : anyFdr
+        ? "Mindestens ein Effekt übersteht FDR, aber nicht gleichzeitig das MCID-Gate."
+        : "Kein Kanal übersteht aktuell FDR plus MCID. Als Hypothese lesen, nicht als Steuerregel.",
+    evidence: { robustEffects: robustRows.length, anyFdr, nBlocks },
+  });
+
+  const medByChannel = new Map(effects.mediator.map((r) => [r.channel, r]));
+  const comparable = effects.composition
+    .map((r) => ({ channel: r.channel, mediator: medByChannel.get(r.channel), composition: r }))
+    .filter((p) => p.mediator);
+  const flips = comparable.filter((p) => {
+    const a = finiteSign(p.mediator?.gain_mean);
+    const b = finiteSign(p.composition.gain_mean);
+    return a !== 0 && b !== 0 && a !== b;
+  });
+  checks.push({
+    key: "sign_stability",
+    label: "Vorzeichen-Stabilität",
+    status: flips.length ? "warn" : comparable.length ? "pass" : "info",
+    message: flips.length
+      ? `${flips.length} Kanal/Kanäle kippen zwischen absoluter und volumen-bereinigter Sicht.`
+      : comparable.length
+        ? "Absolut und volumen-bereinigt widersprechen sich in der Richtung nicht."
+        : "Keine vergleichbaren Effekte vorhanden.",
+    evidence: { flips: flips.map((f) => f.channel), comparable: comparable.length },
+  });
+
+  const rangeFilter = firstDate && lastDate ? "AND date BETWEEN ? AND ?" : "";
+  const params = firstDate && lastDate ? [profileId, firstDate, lastDate] : [profileId];
+  const sick = db.prepare(`SELECT COUNT(*) n FROM daily_log_v2 WHERE profile_id=? AND COALESCE(sick,0)<>0 ${rangeFilter}`).get(...params) as { n: number };
+  const highFlags = db.prepare(`SELECT COUNT(*) n FROM ml_health_flags WHERE profile_id=? AND severity='high' ${rangeFilter}`).get(...params) as { n: number };
+  const warnFlags = db.prepare(`SELECT COUNT(*) n FROM ml_health_flags WHERE profile_id=? AND severity='warn' ${rangeFilter}`).get(...params) as { n: number };
+  const changepoints = meta.changepoints ?? [];
+  const confounderStatus: AuditStatus = highFlags.n > 0 || sick.n >= 5 ? "warn" : "pass";
+  checks.push({
+    key: "confounders",
+    label: "Confounder-Sensitivität",
+    status: confounderStatus,
+    message: confounderStatus === "warn"
+      ? `Gesundheits-/Krankheitsfenster liegen im Modellbereich (${sick.n} krank, ${highFlags.n} high flags).`
+      : "Keine starken Gesundheits-Confounder im geprüften Modellfenster gefunden.",
+    detail: changepoints.length ? `${changepoints.length} Strukturbruch/Strukturbrüche erkannt.` : undefined,
+    evidence: { sickDays: sick.n, highFlags: highFlags.n, warnFlags: warnFlags.n, changepoints },
+  });
+
+  return {
+    generatedAt,
+    modelVersion: MODEL_VERSION,
+    runId: effects.runId,
+    activeCount,
+    designWeeks,
+    summary: auditSummary(checks),
+    checks,
+  };
+}
+
 export interface ReadinessPointRow { date: string; value: number; sd: number; }
 export interface HealthFlagRow { date: string; kind: string; severity: string; message: string; }
 export interface ReadinessResult2 {
@@ -385,11 +548,70 @@ export interface ProspectiveProposal {
   overlap: number | null;
   source: "effects" | "default";
   proposalHash: string;
+  score: number;
+  rankLabel: string;
+  durationWeeks: number;
+  risk: "niedrig" | "mittel" | "hoch";
+  scores: { data: number; benefit: number; duration: number; risk: number; explainability: number };
   defaults: { nPairsPlanned: number; blockWeeks: number; washoutWeeks: number; lagWeeks: number; mcid: number; alpha: number; pairsForSignif: number };
 }
 
-/** Empfehler: aus den L3-Mediator-Effekten den unklarsten Kontrast; Fallback Default Schwelle vs VO2max. */
-export function proposeProspectiveTrial(profileId: number): ProspectiveProposal {
+const DEFAULT_PROPOSAL_DEFAULTS = { nPairsPlanned: PAIRS_FOR_SIGNIF, blockWeeks: 4, washoutWeeks: 1, lagWeeks: 3, mcid: DEFAULT_MCID, alpha: 0.05, pairsForSignif: PAIRS_FOR_SIGNIF };
+// Kanal-Vokabular (siehe featureBackbone TYPE_CHANNEL_MAP / prospective CH_LABEL). HART = ≥ Schwellen-Intensität
+// (Verletzungs-/Überlastungsrisiko); Marathon-Pace, aerob, Easy und Long zählen bewusst NICHT als hart.
+const HARD_CHANNELS = new Set(["VO2", "I", "vo2", "Schwelle", "T", "threshold", "R"]);
+const KNOWN_CHANNELS = new Set(["VO2", "I", "vo2", "Schwelle", "T", "threshold", "R", "aerob", "E", "Easy", "M", "Marathon", "Long"]);
+const DEFAULT_ARMS: [ProspectiveArm, ProspectiveArm][] = [
+  [{ kind: "channel", value: "Schwelle", label: "Schwelle" }, { kind: "channel", value: "VO2", label: "VO2max" }],
+  [{ kind: "channel", value: "aerob", label: "Aerob" }, { kind: "channel", value: "Schwelle", label: "Schwelle" }],
+  [{ kind: "channel", value: "VO2", label: "VO2max" }, { kind: "channel", value: "aerob", label: "Aerob" }],
+  [{ kind: "channel", value: "Marathon", label: "Marathon-Pace" }, { kind: "channel", value: "Schwelle", label: "Schwelle" }],
+];
+
+export function buildProposal(
+  profileId: number,
+  armA: ProspectiveArm,
+  armB: ProspectiveArm,
+  input: { source: "effects" | "default"; rationale: string; overlap: number | null; ordinal: number },
+): ProspectiveProposal {
+  const defaults = DEFAULT_PROPOSAL_DEFAULTS;
+  const durationWeeks = defaults.nPairsPlanned * 2 * (defaults.blockWeeks + defaults.washoutWeeks);
+  // Anzahl physiologisch HARTER Arme (≥ Schwelle) — treibt Risiko. Explizites Set statt Substring-Match:
+  // der frühere /VO2|Schwelle|threshold|I|T/i matchte über die Einzelbuchstaben „I"/„T" JEDES Wort mit i/t
+  // (z.B. „Marathon" → „t") und zählte Marathon-Pace fälschlich als hartes Intervall (ist ~84% VO2max, moderat).
+  const hard = [armA.value, armB.value].filter((v) => HARD_CHANNELS.has(v)).length;
+  // Datenlage: wie stark ist der Kontrast in EIGENEN Daten verankert (dose-response-Effekte) vs. generischer Default.
+  const data = input.source === "effects" ? 30 : Math.max(10, 20 - input.ordinal * 3);
+  // Nutzen = Value-of-Information: am größten, wo die Beobachtungsdaten am unklarsten sind (CI-Überlappung).
+  // Ohne Overlap-Signal (Defaults) ist der klassische Steuerungs-Fork (ordinal 0) am nützlichsten.
+  const infoGain = input.overlap != null ? Math.round(16 * input.overlap) : (input.ordinal === 0 ? 8 : 4);
+  const benefit = Math.min(28, 12 + infoGain);
+  const duration = durationWeeks <= 40 ? 16 : durationWeeks <= 60 ? 12 : 8;
+  const risk = hard >= 2 ? 11 : hard === 1 ? 14 : 16;
+  const explainability = [armA.value, armB.value].every((v) => KNOWN_CHANNELS.has(v)) ? 16 : 12;
+  const score = Math.max(0, Math.min(100, data + benefit + duration + risk + explainability));
+  const proposalHash = "p" + fnv(`${profileId}|${armA.kind}:${armA.value}|${armB.value}|${defaults.mcid}|${defaults.alpha}|${input.ordinal}`).toString(16);
+  const riskLabel: ProspectiveProposal["risk"] = hard >= 2 ? "mittel" : "niedrig";
+  const rankLabel = score >= 80 ? "sehr guter Trial-Kandidat" : score >= 65 ? "guter Trial-Kandidat" : "beobachten";
+  return {
+    kind: armA.kind,
+    armA,
+    armB,
+    rationale: input.rationale,
+    overlap: input.overlap,
+    source: input.source,
+    proposalHash,
+    score,
+    rankLabel,
+    durationWeeks,
+    risk: riskLabel,
+    scores: { data, benefit, duration, risk, explainability },
+    defaults,
+  };
+}
+
+/** Empfehler: sortiert mehrere Trial-Kandidaten nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit. */
+export function proposeProspectiveTrials(profileId: number): ProspectiveProposal[] {
   const run = latestRun(profileId, "dose_response");
   let contrast = null;
   if (run && run.status === "done") {
@@ -398,14 +620,30 @@ export function proposeProspectiveTrial(profileId: number): ProspectiveProposal 
       .all(run.id) as { channel: string; gain_mean: number | null; ci_low: number | null; ci_high: number | null }[];
     contrast = proposeChannelContrast(effects);
   }
-  const armA: ProspectiveArm = contrast ? contrast.armA : { kind: "channel", value: "Schwelle", label: "Schwelle" };
-  const armB: ProspectiveArm = contrast ? contrast.armB : { kind: "channel", value: "VO2", label: "VO2max" };
-  const rationale = contrast
-    ? contrast.rationale
-    : "Default-Kontrast Schwelle vs VO2max — der klassische Steuerungs-Fork, solange noch keine belastbaren Kanal-Effekte vorliegen.";
-  const defaults = { nPairsPlanned: PAIRS_FOR_SIGNIF, blockWeeks: 4, washoutWeeks: 1, lagWeeks: 3, mcid: DEFAULT_MCID, alpha: 0.05, pairsForSignif: PAIRS_FOR_SIGNIF };
-  const proposalHash = "p" + fnv(`${profileId}|${armA.kind}:${armA.value}|${armB.value}|${defaults.mcid}|${defaults.alpha}`).toString(16);
-  return { kind: armA.kind, armA, armB, rationale, overlap: contrast ? contrast.overlap : null, source: contrast ? "effects" : "default", proposalHash, defaults };
+  const out: ProspectiveProposal[] = [];
+  if (contrast) {
+    out.push(buildProposal(profileId, contrast.armA, contrast.armB, { source: "effects", rationale: contrast.rationale, overlap: contrast.overlap, ordinal: 0 }));
+  }
+  DEFAULT_ARMS.forEach(([armA, armB], i) => {
+    const rationale = i === 0
+      ? "Default-Kontrast Schwelle vs VO2max — der klassische Steuerungs-Fork, solange noch keine belastbaren Kanal-Effekte vorliegen."
+      : "Alternativer Forschungs-Kontrast für einen späteren Block: plausibel steuerbar, gut erklärbar und mit der vorhandenen Planung abbildbar.";
+    out.push(buildProposal(profileId, armA, armB, { source: "default", rationale, overlap: null, ordinal: i + (contrast ? 1 : 0) }));
+  });
+  const seen = new Set<string>();
+  return out
+    .filter((p) => {
+      const key = [p.armA.value, p.armB.value].sort().join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+/** Rückwärtskompatibler Einzelvorschlag: erster Kandidat der Ranking-Liste. */
+export function proposeProspectiveTrial(profileId: number): ProspectiveProposal {
+  return proposeProspectiveTrials(profileId)[0];
 }
 
 export interface ProspectiveTrialRow {
@@ -538,7 +776,7 @@ export function declineProspectiveTrial(profileId: number, weeks = 4): { ok: boo
   return { ok: true };
 }
 
-export interface ProspectiveState { trials: ProspectiveTrialRow[]; proposal: ProspectiveProposal | null }
+export interface ProspectiveState { trials: ProspectiveTrialRow[]; proposal: ProspectiveProposal | null; proposals: ProspectiveProposal[] }
 /** Liefert Trials + (falls kein aktiver Trial & kein Cooldown) einen frischen Vorschlag. Tickt vorher Outcomes. */
 export function getProspectiveState(profileId: number): ProspectiveState {
   tickProspectiveBlocks(profileId);
@@ -546,5 +784,6 @@ export function getProspectiveState(profileId: number): ProspectiveState {
   const hasOpen = trials.some((t) => t.state === "active" || t.state === "accepted");
   const cooldownUntil = getProfileSetting<string | null>(COOLDOWN_KEY, null, profileId);
   const onCooldown = cooldownUntil != null && cooldownUntil >= nowIso().slice(0, 10);
-  return { trials, proposal: hasOpen || onCooldown ? null : proposeProspectiveTrial(profileId) };
+  const proposals = hasOpen || onCooldown ? [] : proposeProspectiveTrials(profileId);
+  return { trials, proposal: proposals[0] ?? null, proposals };
 }

@@ -57,6 +57,19 @@ export function tssPerMin(z: number, zones: ZonesInput): number {
 }
 const r0 = (n: number) => Math.round(n);
 const r1 = (n: number) => Math.round(n * 10) / 10;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+function byMinToByKm(byMin: Record<number, number>, zones: ZonesInput): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const [k, min] of Object.entries(byMin)) {
+    const z = Number(k), m = Number(min) || 0;
+    const pace = paceOf(z, zones);
+    if (z > 0 && m > 0 && pace > 0) out[z] = r2((m * 60) / pace);
+  }
+  return out;
+}
+function kmSum(byKm: Record<number, number>): number {
+  return r2(Object.values(byKm).reduce((a, b) => a + (b || 0), 0));
+}
 /** Pace s/km → "m:ss". */
 export function paceStr(s: number): string {
   const m = Math.floor(s / 60), sec = Math.round(s % 60);
@@ -88,8 +101,10 @@ export function concretizeSession(
     min = Math.max(10, r0(min));
     const pace = z === 3 && zones.lt1_pace ? zones.lt1_pace : paceOf(z, zones);
     const tss = r1(min * tpm);
+    const byMin = { [z]: min };
+    const byKm = byMinToByKm(byMin, zones);
     return {
-      type, planned_min: min, zone_alloc: { byMin: { [z]: min } },
+      type, planned_min: min, planned_km: kmSum(byKm), zone_alloc: { byMin, byKm },
       efforts: null, paceTarget: pace,
       description: `${min} min ${label} @ ~${paceStr(pace)}/km (Z${z})`,
       planned_tss: tss,
@@ -112,6 +127,7 @@ export function concretizeSession(
     const workMin = reps * repMin;
     const z1Min = wuCd + recTotal;
     const byMin: Record<number, number> = { 1: z1Min, [workZ]: workMin };
+    const byKm = byMinToByKm(byMin, zones);
     const planned_min = r0(z1Min + workMin);
     const workPace = paceOf(workZ, zones);
     const tss = r1(z1Min * tpmEasy + workMin * tpmWork);
@@ -120,7 +136,7 @@ export function concretizeSession(
     ];
     const wu = r0(wuCd / 2);
     return {
-      type, planned_min, zone_alloc: { byMin }, efforts, paceTarget: workPace,
+      type, planned_min, planned_km: kmSum(byKm), zone_alloc: { byMin, byKm }, efforts, paceTarget: workPace,
       description: `${wu}' WU · ${reps}×${repMin}' @ ${label} (~${paceStr(workPace)}/km) / ${recMin}' Trab · ${wu}' CD`,
       planned_tss: tss,
     };
@@ -129,8 +145,10 @@ export function concretizeSession(
   if (t === "long") return steady(2, "Longrun Z1/Z2");
   if (t === "easy" || t === "recovery" || t === "regeneration") return steady(2, "locker");
   if (t === "lt1" || t === "steady" || t === "tempo") return steady(3, "Steady/LT1");
+  if (t === "marathonpace" || t === "marathon") return steady(3, "Marathon-Pace"); // ~84 % VO2max (Daniels M), moderater Dauerlauf Z3 — NICHT Easy
   if (t === "threshold" || t === "lt2") return intervals(4, 12, 3, [2, 5], "LT2-Pace");
   if (t === "vo2" || t === "vo2max" || t === "vo2short" || t === "vo2long") return intervals(5, 4, 3, [4, 6], "VO2max-Pace");
+  if (t === "rep" || t === "repetitions") return intervals(6, 1, 2, [6, 10], "Rep-Pace"); // ~107 % VO2max (Daniels R), kurz & schnell, volle Erholung
   if (t === "hill") return intervals(4, 1, 2, [6, 10], "Berg/Z4");
   if (t === "race") return steady(4, "Renntempo");
   // Unbekannt/Strength/Physio/Rest → locker als Default
@@ -210,8 +228,12 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
 
   // 2) Qualität: STRIKT kein harter Tag an einem Folgetag (v1.7.0). Hügel bevorzugt hillDay.
   //    Findet kein spacing-konformer Tag → Einheit wird abgestuft (downgrade → rendert als Easy).
-  const hardDayPref = (availability.hardDays?.length ? availability.hardDays : trainingDays)
-    .filter((d) => (budget[d] || 0) > 0).sort((a, b) => a - b);
+  // #3: Der bevorzugte Berg-Tag ist zugleich ein flexibler Qualitätstag — an ihm darf auch ein Tempo-/Schwellenlauf
+  // liegen (Berg-Units behalten via `wish` unten die Erst-Präferenz). So ist „ein Tag, mal Berg, mal Tempo" möglich,
+  // statt den Tag starr auf Berg festzunageln. Welcher Typ konkret kommt, entscheidet die Phasen-Rotation upstream.
+  const qualityDaySet = new Set<number>(availability.hardDays?.length ? availability.hardDays : trainingDays);
+  if (availability.hillDay != null) qualityDaySet.add(availability.hillDay);
+  const hardDayPref = [...qualityDaySet].filter((d) => (budget[d] || 0) > 0).sort((a, b) => a - b);
   const placedHard = new Set<number>();
   const spacingOk = (d: number) => !used.has(d) && (budget[d] || 0) > 0 && !placedHard.has(d - 1) && !placedHard.has(d + 1);
 
@@ -231,6 +253,8 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   }
 
   // 2b) Einzel-Qualität: STRIKT kein harter Tag an einem Folgetag. Hügel bevorzugt hillDay.
+  //     Berg-Units zuerst, damit sie ihren Wunschtag vor konkurrierenden Tempo-Units belegen.
+  soloHards.sort((a, b) => Number(isHillUnit(b.type)) - Number(isHillUnit(a.type)));
   for (const u of soloHards) {
     const wish = isHillUnit(u.type) && availability.hillDay != null ? availability.hillDay : null;
     let idx: number | undefined;

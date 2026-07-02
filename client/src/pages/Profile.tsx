@@ -6,6 +6,7 @@ import ZoneSets from "../components/ZoneSets.tsx";
 import LactateTests from "../components/LactateTests.tsx";
 import AthleteCard from "../components/AthleteCard.tsx";
 import Vo2maxLabCard from "../components/Vo2maxLab.tsx";
+import CycleActivationCard from "../components/CycleActivationCard.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -50,6 +51,7 @@ export default function ProfilePage() {
     { key: "athlete", title: t("profile.sec.athlete", "Athlet") },
     { key: "zones", title: t("profile.sec.zones", "Zonen & Schwellen") },
     { key: "tests", title: t("profile.sec.tests", "Leistungstests") },
+    { key: "cycle", title: t("profile.sec.cycle", "Zyklus") },
     { key: "accounts", title: t("profile.sec.accounts", "Profile / Accounts") },
   ];
 
@@ -73,6 +75,7 @@ export default function ProfilePage() {
           {section === "athlete" && <AthleteCard />}
           {section === "zones" && <ZoneSets />}
           {section === "tests" && <><LactateTests /><Vo2maxLabCard /></>}
+          {section === "cycle" && <CycleActivationCard />}
           {section === "accounts" && (
             <div className="card">
               <h2><T k="profile.accounts.title">Profile / Accounts</T></h2>
@@ -92,10 +95,10 @@ export default function ProfilePage() {
                   ))}
                 </tbody>
               </table>
-              {/* Tutorial-Profil (v1.8.0): Beispieljahr zum Ausprobieren aller Funktionen. */}
+              {/* Tutorial-Profil: Mara-Demo zum Ausprobieren aller Funktionen. */}
               <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <div className="tiny muted" style={{ marginBottom: 6 }}>
-                  <T k="profile.tutorial.hint">Das „Tutorial"-Profil enthält ein erfundenes, realistisches Beispieljahr (Alex Demo) — wechsle oben darauf, um alle Funktionen mit Daten zu sehen. Deine echten Daten bleiben unberührt.</T>
+                  <T k="profile.tutorial.hint">„Tutorial: Mara" enthält 18 Monate fiktive, physiologisch plausible Halbmarathon-Daten plus Zukunftsplan, Feedback und Zyklus-Demo. Deine echten Daten bleiben unberührt.</T>
                 </div>
                 <div className="row" style={{ gap: 8 }}>
                   <button className="sm ghost" onClick={async () => { if (!window.confirm("Tutorial-Profil neu erzeugen? (überschreibt das vorhandene Tutorial-Profil)")) return; await api.regenerateTutorial().catch(() => {}); setMsg("Tutorial-Profil neu erzeugt."); reload(); }}>

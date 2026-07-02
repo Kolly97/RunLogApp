@@ -1,31 +1,115 @@
-// Tutorial-Profil (v1.8.0): erzeugt ein vollständiges, realistisches Beispieljahr für einen fiktiven Sportler
-// („Alex Demo", 10-km-Fokus). Strikt auf einem EIGENEN profile_id — Bestandsdaten werden nie berührt.
-// Idempotent (ensureTutorialProfile), löschbar (deleteTutorial), neu erzeugbar (regenerateTutorial).
-// Deterministisch (seeded RNG) → gleiche Demo bei jedem Neuaufbau. Deckt alle Seiten/Funktionen mit Daten ab.
-import { db, setSetting, DEFAULT_HR_ZONES } from "./db.ts";
+// Tutorial-Profil (v2.2.x): erzeugt ein vollständiges, realistisches Demo-Profil für Mara,
+// eine fiktive Halbmarathonläuferin. Strikt auf eigenem profile_id: echte Profile bleiben unberührt.
+// Deterministisch (seeded RNG), idempotent, löschbar, mit 78 Wochen Historie + 6 Wochen Ziel-HM-Plan.
+import { db, setSetting, getSetting, setProfileSetting, DEFAULT_HR_ZONES } from "./db.ts";
+import {
+  buildFeedbackContext,
+  evaluateCycleStability,
+  evaluatePhaseStimulus,
+  type ContraceptionStatus,
+  type Period,
+} from "./cycleTraining.ts";
+import { createProspectiveTrial } from "./mlJobs.ts";
 
-const TUT = "Tutorial";
-const MASS = 68; // kg (für Watt/RE)
+const TUT = "Tutorial: Mara";
+const LEGACY_TUT = "Tutorial";
+const TUTORIAL_NAMES = [TUT, LEGACY_TUT];
+const MASS = 61; // kg
+const HEIGHT_CM = 168;
+const DAY_MS = 86_400_000;
+
+type ProfileRow = { id: number; name: string };
+
+// N-1: Marker-Set als autoritative Demo-Erkennung. Damit kann ein echtes Nutzerprofil (auch wenn es zufällig
+// „Tutorial" heißt) NIE als Demo gelöscht/regeneriert werden. Namensauflösung bleibt nur als einmaliger
+// Legacy-Fallback für Installationen VOR Einführung des Markers (Migration Alt-„Tutorial"/Alex → Mara).
+const TUT_IDS_KEY = "tutorial_profile_ids";
+function markedTutorialIds(): number[] {
+  const raw = getSetting<number[]>(TUT_IDS_KEY, []);
+  const ids = Array.isArray(raw) ? raw.map(Number).filter((n) => Number.isFinite(n)) : [];
+  if (!ids.length) return [];
+  const ph = ids.map(() => "?").join(",");
+  const existing = db.prepare(`SELECT id FROM profiles WHERE id IN (${ph})`).all(...ids) as { id: number }[];
+  return existing.map((r) => r.id);
+}
+function addTutorialMarker(id: number): void {
+  const ids = new Set(markedTutorialIds()); ids.add(id);
+  setSetting(TUT_IDS_KEY, [...ids]);
+}
+function removeTutorialMarkers(ids: number[]): void {
+  setSetting(TUT_IDS_KEY, markedTutorialIds().filter((x) => !ids.includes(x)));
+}
 
 export function tutorialProfileId(): number | null {
-  const r = db.prepare("SELECT id FROM profiles WHERE name=?").get(TUT) as { id: number } | undefined;
-  return r?.id ?? null;
+  const marked = markedTutorialIds();
+  if (marked.length) {
+    const ph = marked.map(() => "?").join(",");
+    const mara = db.prepare(`SELECT id FROM profiles WHERE name=? AND id IN (${ph}) LIMIT 1`).get(TUT, ...marked) as { id: number } | undefined;
+    return mara?.id ?? marked[0];
+  }
+  const primary = db.prepare("SELECT id FROM profiles WHERE name=? ORDER BY id LIMIT 1").get(TUT) as { id: number } | undefined;
+  if (primary) return primary.id;
+  const legacy = db.prepare("SELECT id FROM profiles WHERE name=? ORDER BY id LIMIT 1").get(LEGACY_TUT) as { id: number } | undefined;
+  return legacy?.id ?? null;
+}
+
+function tutorialProfiles(): ProfileRow[] {
+  const marked = markedTutorialIds();
+  if (marked.length) {
+    const ph = marked.map(() => "?").join(",");
+    return db.prepare(`SELECT id, name FROM profiles WHERE id IN (${ph}) ORDER BY CASE WHEN name=? THEN 0 ELSE 1 END, id`)
+      .all(...marked, TUT) as ProfileRow[];
+  }
+  // Legacy-Fallback (kein Marker vorhanden): einmalige Namensauflösung für die Migration.
+  const ph = TUTORIAL_NAMES.map(() => "?").join(",");
+  return db.prepare(`SELECT id, name FROM profiles WHERE name IN (${ph}) ORDER BY CASE WHEN name=? THEN 0 ELSE 1 END, id`)
+    .all(...TUTORIAL_NAMES, TUT) as ProfileRow[];
 }
 
 export function deleteTutorial(): void {
-  const id = tutorialProfileId();
-  if (!id) return;
-  for (const t of ["activities", "planned_sessions", "season_weeks_v2", "daily_log_v2", "races", "lactate_tests", "zone_sets", "week_log_v2", "method_experiments"]) {
-    try { db.prepare(`DELETE FROM ${t} WHERE profile_id=?`).run(id); } catch { /* Tabelle evtl. nicht vorhanden */ }
+  const rows = tutorialProfiles();
+  if (!rows.length) return;
+  const ids = rows.map((r) => r.id);
+  const active = Number(getActive());
+  db.exec("BEGIN");
+  try {
+    for (const id of ids) {
+      for (const t of [
+        "activities", "planned_sessions", "season_weeks_v2", "daily_log_v2", "races", "lactate_tests", "vo2max_lab",
+        "zone_sets", "week_log_v2", "method_experiments", "session_feedback_v2", "cycle_period_log_v2",
+        "cycle_symptoms_v2", "cycle_stimulus_evidence_v2", "cycle_stability_v2", "cycle_training_settings",
+        "ml_runs", "ml_latent_fitness", "ml_channel_effects", "ml_readiness", "ml_health_flags",
+      ]) {
+        try { db.prepare(`DELETE FROM ${t} WHERE profile_id=?`).run(id); } catch { /* Tabelle evtl. nicht vorhanden */ }
+      }
+      for (const key of [
+        `availability_${id}`,
+        `athlete:${id}`,
+        `thresholds:${id}`,
+        `phase_dist_overrides:${id}`,
+        `cycle_consent:${id}`,
+        `cycle_contraception:${id}`,
+        `prospective_cooldown:${id}`,
+      ]) db.prepare("DELETE FROM settings WHERE key=?").run(key);
+      db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`layout:%:${id}`);
+      db.prepare("DELETE FROM profiles WHERE id=?").run(id);
+    }
+    removeTutorialMarkers(ids);
+    if (ids.includes(active)) setSetting("active_profile", 1);
+    db.exec("COMMIT");
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore */ }
+    throw e;
   }
-  db.prepare("DELETE FROM settings WHERE key=?").run(`availability_${id}`);
-  if (Number(getActive()) === id) setSetting("active_profile", 1); // nicht das Tutorial aktiv lassen
-  db.prepare("DELETE FROM profiles WHERE id=?").run(id);
 }
 
 export function ensureTutorialProfile(today: string): void {
-  if (!tutorialProfileId()) generateTutorial(today);
+  const rows = tutorialProfiles();
+  const primary = rows.find((r) => r.name === TUT);
+  if (!rows.length) generateTutorial(today);
+  else if (!primary) regenerateTutorial(today); // alte "Tutorial"/Alex-Installationen durch Mara ersetzen
 }
+
 export function regenerateTutorial(today: string): number {
   deleteTutorial();
   return generateTutorial(today);
@@ -34,150 +118,402 @@ export function regenerateTutorial(today: string): number {
 const getActive = () => (db.prepare("SELECT value FROM settings WHERE key='active_profile'").get() as { value: string } | undefined)?.value ?? "1";
 
 // ---- Helfer ----
-const addDays = (iso: string, n: number): string => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const mondayOf = (iso: string): string => { const d = new Date(iso + "T00:00:00Z"); const wd = (d.getUTCDay() + 6) % 7; return addDays(iso, -wd); };
+const addDays = (iso: string, n: number): string => {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS);
+const mondayOf = (iso: string): string => {
+  const d = new Date(iso + "T00:00:00Z");
+  const wd = (d.getUTCDay() + 6) % 7;
+  return addDays(iso, -wd);
+};
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const round1 = (v: number) => Math.round(v * 10) / 10;
+const round2 = (v: number) => Math.round(v * 100) / 100;
+const paceStr = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 // Deterministischer RNG (LCG) — reproduzierbare Demo.
-let _seed = 987654321;
+let _seed = 22446688;
 const rnd = () => (_seed = (_seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 const jit = (base: number, amp: number) => base + (rnd() * 2 - 1) * amp;
+const chance = (p: number) => rnd() < p;
 
-type Key = "recovery" | "easy" | "long" | "threshold" | "vo2" | "fartlek";
-const SESS: Record<Key, { type: string; durMin: number; durMax: number; if: number; z: Record<number, number>; eff?: boolean; work?: number; hr: number }> = {
-  recovery: { type: "Easy", durMin: 32, durMax: 42, if: 0.70, z: { 1: 0.35, 2: 0.65 }, hr: 126 },
-  easy: { type: "Easy", durMin: 50, durMax: 68, if: 0.78, z: { 1: 0.1, 2: 0.9 }, hr: 141 },
-  long: { type: "Long", durMin: 92, durMax: 132, if: 0.84, z: { 2: 0.82, 3: 0.18 }, hr: 151 },
-  threshold: { type: "Threshold", durMin: 48, durMax: 60, if: 0.92, z: { 2: 0.45, 3: 0.1, 4: 0.45 }, eff: true, work: -2, hr: 167 },
-  vo2: { type: "VO2", durMin: 44, durMax: 54, if: 0.95, z: { 2: 0.5, 4: 0.15, 5: 0.35 }, eff: true, work: -22, hr: 176 },
-  fartlek: { type: "VO2", durMin: 46, durMax: 56, if: 0.90, z: { 2: 0.5, 4: 0.2, 5: 0.3 }, eff: true, work: -12, hr: 164 },
+type Key = "recovery" | "easy" | "long" | "marathon" | "threshold" | "vo2" | "reps";
+type Phase = "Base" | "HM-Build" | "Threshold/HM-Pace" | "Specific" | "Taper";
+type Disturbance = "illness" | "travel" | "niggle" | null;
+type ActivitySeed = { id: number; date: string; type: string; key: Key; phase: Phase; disturbance: Disturbance };
+
+const SESS: Record<Key, {
+  type: string; label: string; durMin: number; durMax: number; if: number; z: Record<number, number>;
+  hr: number; family: "easy" | "long" | "threshold" | "vo2"; workOffset?: number; eff?: boolean;
+}> = {
+  recovery: { type: "Recovery", label: "Regenerationslauf", durMin: 34, durMax: 46, if: 0.68, z: { 1: 0.45, 2: 0.55 }, hr: 126, family: "easy" },
+  easy: { type: "Easy", label: "Lockerer Dauerlauf", durMin: 48, durMax: 72, if: 0.73, z: { 1: 0.15, 2: 0.85 }, hr: 139, family: "easy" },
+  long: { type: "Long", label: "Longrun", durMin: 92, durMax: 145, if: 0.78, z: { 2: 0.78, 3: 0.22 }, hr: 149, family: "long", eff: true },
+  marathon: { type: "MarathonPace", label: "HM-/Marathon-Pace", durMin: 56, durMax: 78, if: 0.84, z: { 2: 0.42, 3: 0.48, 4: 0.10 }, hr: 158, family: "threshold", workOffset: 10, eff: true },
+  threshold: { type: "Threshold", label: "Schwelle", durMin: 54, durMax: 74, if: 0.89, z: { 2: 0.45, 3: 0.12, 4: 0.43 }, hr: 166, family: "threshold", workOffset: 0, eff: true },
+  vo2: { type: "VO2", label: "VO2max", durMin: 44, durMax: 58, if: 0.93, z: { 2: 0.48, 4: 0.15, 5: 0.37 }, hr: 174, family: "vo2", workOffset: -20, eff: true },
+  reps: { type: "Repetitions", label: "Repetitions", durMin: 38, durMax: 50, if: 0.88, z: { 1: 0.30, 2: 0.38, 5: 0.20, 6: 0.12 }, hr: 168, family: "vo2", workOffset: -30, eff: true },
 };
 
-// Wochen-Struktur je Phase (Wochentag 0=Mo..6=So → Session-Key).
-function weekKeys(phase: string, wi: number): Record<number, Key> {
-  if (phase === "Entlastung") return { 0: "easy", 2: "threshold", 4: "recovery", 6: "long" };
-  if (phase === "Race-Week") return { 1: "vo2", 3: "easy", 5: "recovery" };
-  if (phase === "Specific") return { 0: "easy", 1: "vo2", 2: "easy", 3: wi % 2 ? "threshold" : "fartlek", 4: "recovery", 6: "long" };
-  if (phase === "Belastung") return { 0: "easy", 1: "threshold", 2: "easy", 3: wi % 2 ? "vo2" : "fartlek", 4: "recovery", 6: "long" };
-  return { 0: "easy", 1: "threshold", 2: "easy", 3: "fartlek", 4: "recovery", 6: "long" }; // Base
-}
-
-function phaseFor(weeksToRace: number): string {
-  if (weeksToRace === 0) return "Race-Week";
-  if (weeksToRace <= 4) return "Specific";
-  if (weeksToRace <= 16) return weeksToRace % 4 === 0 ? "Entlastung" : "Belastung";
+function phaseForWeek(w: number, todayWeekIndex: number): Phase {
+  if (w >= todayWeekIndex + 4) return "Taper";
+  if (w >= todayWeekIndex - 10) return "Specific";
+  if (w >= todayWeekIndex - 30) return "Threshold/HM-Pace";
+  if (w >= todayWeekIndex - 54) return "HM-Build";
   return "Base";
 }
 
+function weekKeys(phase: Phase, w: number, deload: boolean): Record<number, Key> {
+  if (phase === "Taper") return w % 2 === 0 ? { 0: "easy", 1: "threshold", 3: "marathon", 5: "recovery", 6: "long" } : { 0: "easy", 2: "threshold", 4: "recovery", 6: "long" };
+  if (deload) return { 0: "easy", 2: "threshold", 4: "recovery", 6: "long" };
+  if (phase === "Specific") return { 0: "easy", 1: "threshold", 2: "easy", 3: w % 3 === 0 ? "reps" : "marathon", 4: "recovery", 6: "long" };
+  if (phase === "Threshold/HM-Pace") return { 0: "easy", 1: "threshold", 2: "easy", 3: "marathon", 4: "recovery", 6: "long" };
+  if (phase === "HM-Build") return { 0: "easy", 1: "threshold", 2: "easy", 4: "recovery", 6: "long", ...(w % 3 === 1 ? { 3: "vo2" as Key } : { 3: "easy" as Key }) };
+  return w % 2 === 0
+    ? { 0: "easy", 2: "easy", 3: "easy", 4: "recovery", 6: "long" }
+    : { 0: "easy", 1: "marathon", 2: "easy", 4: "recovery", 6: "long" };
+}
+
+function targetKmFor(phase: Phase, progress: number, deload: boolean): number {
+  const base = 45 + 33 * progress;
+  const phaseBump = phase === "Base" ? -2 : phase === "HM-Build" ? 0 : phase === "Threshold/HM-Pace" ? 3 : phase === "Specific" ? 4 : -20;
+  const km = base + phaseBump;
+  return Math.round(clamp(deload ? km * 0.76 : km, 32, 80));
+}
+
+function zoneKmFromMinutes(zMin: Record<number, number>, repPace: number[]): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const [z, min] of Object.entries(zMin)) out[+z] = round2((min * 60) / repPace[+z - 1]);
+  return out;
+}
+
+function addRaceSplits(totalS: number, kmCount: number, hrStart: number): string {
+  return JSON.stringify(Array.from({ length: kmCount }, (_, i) => {
+    const drift = i < 2 ? 2 : i > kmCount - 3 ? -2 : 0;
+    return { km: i + 1, time_s: Math.round(totalS / kmCount + drift), avg_hr: hrStart + Math.min(8, Math.floor(i / 2)) };
+  }));
+}
+
+function disturbanceFor(date: string, anchors: { illnessStart: string; travelStart: string; niggleStart: string }): Disturbance {
+  if (date >= anchors.illnessStart && date <= addDays(anchors.illnessStart, 5)) return "illness";
+  if (date >= anchors.travelStart && date <= addDays(anchors.travelStart, 6)) return "travel";
+  if (date >= anchors.niggleStart && date <= addDays(anchors.niggleStart, 14)) return "niggle";
+  return null;
+}
+
+function generateCycleData(profileId: number, week0: string, today: string, nowIso: string): Period[] {
+  const lastStart = addDays(today, -17); // heute = Zyklustag 18
+  const starts: string[] = [];
+  let cur = lastStart;
+  for (let i = 0; cur >= addDays(week0, -35) && i < 24; i++) {
+    starts.push(cur);
+    const len = [29, 28, 29, 30, 28, 29, 29, 28][i % 8];
+    cur = addDays(cur, -len);
+  }
+  const periods = starts.reverse().map((start) => ({ start_date: start, end_date: addDays(start, 4) }));
+  const insPeriod = db.prepare("INSERT INTO cycle_period_log_v2(profile_id, start_date, end_date, notes, created_at) VALUES(?,?,?,?,?)");
+  const insSymptom = db.prepare("INSERT INTO cycle_symptoms_v2(profile_id, date, cramps, energy, sleep, mood, flow, notes, created_at) VALUES(?,?,?,?,?,?,?,?,?)");
+  for (const p of periods) {
+    insPeriod.run(profileId, p.start_date, p.end_date, "Tutorial: stabiler natürlicher Zyklus (Kupferspirale).", nowIso);
+  }
+  for (let d = 0; addDays(week0, d) <= today; d++) {
+    const date = addDays(week0, d);
+    const ctx = buildFeedbackContext(periods, { method: "copper_iud" }, date);
+    const cd = ctx.cycle_day ?? 0;
+    if (cd >= 1 && cd <= 5) {
+      insSymptom.run(profileId, date, cd <= 2 ? 4 : 2, cd <= 2 ? 2 : 3, 3, 3, cd <= 2 ? 5 : 3, cd <= 2 ? "Flow/Krämpfe stärker." : "Menstruation klingt ab.", nowIso);
+    } else if (cd >= 25 && cd <= 29) {
+      insSymptom.run(profileId, date, 1, 3, 3, 2 + (cd % 2), 1, "Späte Lutealphase: etwas weniger Energie/Mood.", nowIso);
+    } else if (cd === 14 || cd === 15) {
+      insSymptom.run(profileId, date, null, 4, 4, 4, null, "Unauffällig, eher hohe Energie.", nowIso);
+    }
+  }
+  const stab = evaluateCycleStability(periods, today);
+  db.prepare("INSERT OR REPLACE INTO cycle_stability_v2(profile_id, n_cycles, median_length, length_sd, regularity, gate_passed, last_evaluated) VALUES(?,?,?,?,?,?,?)")
+    .run(profileId, stab.nCycles, stab.medianLength, stab.lengthSd, stab.regularity, stab.regularity === "stable" ? 1 : 0, nowIso);
+  return periods;
+}
+
+function feedbackPattern(family: string, phase: string | null, disturbance: Disturbance): number {
+  let v = family === "easy" ? 0.1 : family === "long" ? 0.0 : family === "threshold" ? -0.05 : -0.12;
+  if (phase === "follicular" && (family === "threshold" || family === "vo2")) v += 0.35;
+  if (phase === "follicular" && family === "easy") v += 0.08;
+  if (phase === "early_luteal" && family === "long") v += 0.14;
+  if (phase === "early_luteal" && family === "threshold") v += 0.10;
+  if (phase === "late_luteal" && (family === "threshold" || family === "vo2")) v -= 0.42;
+  if (phase === "late_luteal" && family === "long") v -= 0.15;
+  if (phase === "menstrual" && (family === "threshold" || family === "vo2")) v -= 0.32;
+  if (phase === "menstrual" && family === "easy") v -= 0.08;
+  if (disturbance === "illness") v -= 1.2;
+  if (disturbance === "travel") v -= 0.45;
+  if (disturbance === "niggle") v -= 0.35;
+  return v;
+}
+
+function generateFeedbackData(profileId: number, activities: ActivitySeed[], periods: Period[], contraception: ContraceptionStatus, nowIso: string): void {
+  const ins = db.prepare("INSERT INTO session_feedback_v2(profile_id, activity_id, date, session_family, rpe, felt_vs_expected, life_stress, notes, cycle_phase, cycle_day, confounder_flag, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+  for (const a of activities) {
+    const s = SESS[a.key];
+    const isKey = ["long", "threshold", "marathon", "vo2", "reps"].includes(a.key);
+    if (!isKey && !chance(0.64)) continue;
+    if (isKey && !chance(0.93)) continue;
+    const ctx = buildFeedbackContext(periods, contraception, a.date);
+    const raw = feedbackPattern(s.family, ctx.cycle_phase, a.disturbance) + jit(0, 0.42);
+    const felt = clamp(Math.round(raw), -2, 2);
+    const rpeBase = s.family === "easy" ? 3.3 : s.family === "long" ? 5.2 : s.family === "threshold" ? 7.0 : 7.8;
+    const rpe = clamp(Math.round(rpeBase - raw * 0.55 + jit(0, 0.7)), 1, 10);
+    const stress = clamp(Math.round(jit(a.disturbance ? 5.2 : 2.6, a.disturbance ? 1.2 : 1.0)), 1, 7);
+    const notes = a.disturbance === "illness" ? "Erkältung als Confounder markiert."
+      : a.disturbance === "travel" ? "Reisewoche, Schlaf/Timing nicht ideal."
+        : a.disturbance === "niggle" ? "Leichtes Waden-/Achilles-Ziehen, konservativ bewertet."
+          : null;
+    ins.run(profileId, a.id, a.date, s.family, rpe, felt, stress, notes, ctx.cycle_phase, ctx.cycle_day, a.disturbance, nowIso);
+  }
+  seedCycleEvidence(profileId, nowIso);
+}
+
+function seedCycleEvidence(profileId: number, nowIso: string): void {
+  const feedback = db.prepare("SELECT session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL")
+    .all(profileId) as unknown as Parameters<typeof evaluatePhaseStimulus>[0];
+  const evidence = evaluatePhaseStimulus(feedback);
+  const ins = db.prepare("INSERT INTO cycle_stimulus_evidence_v2(profile_id, phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight, last_updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+  db.prepare("DELETE FROM cycle_stimulus_evidence_v2 WHERE profile_id=?").run(profileId);
+  for (const e of evidence) {
+    ins.run(profileId, e.phase, e.stimulus, e.n_sessions, e.mean_quality, e.effect_size, e.ci_low, e.ci_high, e.confidence, e.prior_weight, e.posterior_weight, nowIso);
+  }
+}
+
+function generateRaceAndLabData(profileId: number, today: string, raceDay: string, nowIso: string): void {
+  const insRace = db.prepare("INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, avg_hr, max_hr, elevation_m, source, goal_time_s, is_tuneup) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  insRace.run(profileId, addDays(today, -430), "10-km-Testlauf Frühform", 10000, 43 * 60 + 34, "Trainingsrennen", "Ausgangsniveau: kontrolliert, noch wenig spezifische Schwelle.", addRaceSplits(43 * 60 + 34, 10, 165), 169, 183, 44, "manual", null, 1);
+  insRace.run(profileId, addDays(today, -278), "15-km-Test im HM-Build", 15000, 64 * 60 + 22, "5. AK", "Aerobe Kontinuität zeigt Wirkung; guter Longrun-Transfer.", addRaceSplits(64 * 60 + 22, 15, 164), 170, 184, 72, "manual", null, 1);
+  insRace.run(profileId, addDays(today, -132), "Halbmarathon-Test", 21097.5, 91 * 60 + 18, "PB", "Solider HM-Test vor dem spezifischen Block, Potenzial klar unter 1:30 sichtbar.", addRaceSplits(91 * 60 + 18, 21, 162), 168, 184, 96, "manual", null, 1);
+  insRace.run(profileId, raceDay, "Ziel-Halbmarathon", 21097.5, null, "", "Zielrennen in 6 Wochen. Wunschzeit: 1:27:00.", "[]", null, null, 68, "manual", 87 * 60, 0);
+
+  const insLac = db.prepare("INSERT INTO lactate_tests(profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr, lt2_pace, confidence, warnings, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+  insLac.run(profileId, addDays(today, -365), "Run", "Labortest", "Basisdiagnostik: gute Grundlage, Schwelle noch ausbaufähig.", 146, 306, 166, 257, "mittel", "[]", nowIso);
+  insLac.run(profileId, addDays(today, -82), "Run", "Labortest", "Spezifischer Block: LT1 stabiler, LT2 Richtung HM-Ziel verbessert.", 151, 292, 169, 244, "hoch", "[]", nowIso);
+
+  const insVo2 = db.prepare("INSERT INTO vo2max_lab(profile_id, date, value, source, notes, created_at) VALUES(?,?,?,?,?,?)");
+  insVo2.run(profileId, addDays(today, -360), 49.2, "Lab", "Baseline vor kontinuierlichem HM-Aufbau.", nowIso);
+  insVo2.run(profileId, addDays(today, -76), 52.7, "Lab", "Moderater Anstieg, passend zu Race-/Laktatdaten.", nowIso);
+}
+
+function seedActiveTrial(profileId: number, today: string, nowIso: string): void {
+  const trialStart = mondayOf(addDays(today, 7));
+  createProspectiveTrial(profileId, {
+    kind: "channel",
+    armA: { value: "aerob", label: "Aerob/Longrun-Fokus" },
+    armB: { value: "threshold", label: "Schwelle/HM-Pace-Fokus" },
+    nPairsPlanned: 3,
+    blockWeeks: 3,
+    washoutWeeks: 1,
+    lagWeeks: 3,
+    consentedAt: nowIso,
+    proposalHash: "tutorial-mara-aerob-longrun-vs-threshold-hmpace",
+    startDate: trialStart,
+  });
+}
+
 function generateTutorial(today: string): number {
-  _seed = 987654321;
-  const pid = Number(db.prepare("INSERT INTO profiles(name) VALUES(?)").run(TUT).lastInsertRowid);
+  _seed = 22446688;
   const nowIso = new Date().toISOString();
+  const pastWeeks = 78;
+  const futureWeeks = 6;
+  const totalWeeks = pastWeeks + futureWeeks;
+  const todayWeekIndex = pastWeeks - 1;
+  const week0 = addDays(mondayOf(today), -7 * (pastWeeks - 1));
+  const raceDay = addDays(today, 42);
+  const anchors = {
+    illnessStart: addDays(today, -252),
+    travelStart: addDays(today, -166),
+    niggleStart: addDays(today, -74),
+  };
+  const activities: ActivitySeed[] = [];
 
-  // Zonen (10-km-Sportler, Schwelle ~4:00/km).
-  const hrZones = DEFAULT_HR_ZONES.map((z, i) => ({ ...z, min: [0, 131, 151, 162, 173, 185][i], max: [130, 150, 161, 172, 184, 999][i] }));
-  const paceZones = [330, 285, 258, 244, 222, 150];
-  // Repräsentative Pace je Zone (s/km) für TSS-neutrale km-Aufteilung: byKm[z] = byMin[z]·60 / repPace[z].
-  const repPace = paceZones.map((p, i) => (i === 0 ? p + 25 : Math.round((paceZones[i - 1] + p) / 2))); // [355,307,271,251,233,186]
-  db.prepare(`INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, lthr, ftp, threshold_pace, source, note, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-    .run(pid, addDays(today, -400), JSON.stringify(hrZones), JSON.stringify(paceZones), 168, 250, 244, "Tutorial", "Demo-Zonen (Alex Demo)", nowIso);
-
-  // Verfügbarkeit (für Block-/Wochen-Vorschlag).
-  setSetting(`availability_${pid}`, { minutesByWeekday: [60, 75, 60, 80, 50, 90, 150], longRunDay: 6, hardDays: [1, 3], hillDay: 4, allowDoubles: false, corePerWeek: 2, coreDays: [0, 2], emphasis: "ausgewogen" });
-
-  const NWEEKS = 52;
-  const raceDay = addDays(today, 21);
-  const week0 = addDays(mondayOf(raceDay), -7 * (NWEEKS - 1)); // Montag der ersten Demo-Woche
-
-  const insAct = db.prepare(`INSERT INTO activities(profile_id, date, sport, source, name, type, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, tss, zones, zone_min, zone_km, pace_zone_min, ngp, decoupling, eff_vo2max, run_np, power_curve, best_efforts, efforts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const insWeek = db.prepare(`INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes) VALUES(?,?,?,?,?,?,?,?,?)`);
-  const insPlan = db.prepare(`INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, planned_tss, sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
-  const insLog = db.prepare(`INSERT INTO daily_log_v2(profile_id, date, hrv, resting_hr, recovery, sleep_h, soreness, motivation, rpe) VALUES(?,?,?,?,?,?,?,?,?)`);
-  const insWeekLog = db.prepare(`INSERT INTO week_log_v2(profile_id, week_no, run_km, week_tss, checks) VALUES(?,?,?,?,?)`); // v1.9.0 Wochen-Checks
-
-  const DAY_NAME = ["Lockerer Dauerlauf", "Schwellenlauf", "Lockerer Dauerlauf", "Tempo/Intervalle", "Regeneration", "", "Longrun"];
   db.exec("BEGIN");
   try {
-    for (let w = 0; w < NWEEKS; w++) {
+    const pid = Number(db.prepare("INSERT INTO profiles(name) VALUES(?)").run(TUT).lastInsertRowid);
+    addTutorialMarker(pid); // N-1: ab jetzt autoritativ per Marker statt Name erkannt
+
+    setProfileSetting("athlete", {
+      name: "Mara Demo",
+      sex: "f",
+      birth_year: 1995,
+      weight: MASS,
+      height: HEIGHT_CM,
+      max_hr: 192,
+      hr_rest: 44,
+    }, pid);
+    setProfileSetting("cycle_consent", { consented: true, consentedAt: nowIso }, pid);
+    setProfileSetting("cycle_contraception", { method: "copper_iud" }, pid);
+    setProfileSetting("thresholds", {
+      lthr: 169,
+      threshold_pace: 244,
+      lt1_hr: 151,
+      lt1_pace: 292,
+    }, pid);
+    setSetting(`availability_${pid}`, {
+      minutesByWeekday: [60, 75, 55, 80, 45, 0, 145],
+      longRunDay: 6,
+      hardDays: [1, 3],
+      hillDay: 4,
+      allowDoubles: false,
+      corePerWeek: 2,
+      coreDays: [0, 4],
+      emphasis: "HM-spezifisch: Aerob + Schwelle",
+    });
+
+    const hrZones = DEFAULT_HR_ZONES.map((z, i) => ({
+      ...z,
+      min: [0, 128, 146, 158, 169, 181][i],
+      max: [127, 145, 157, 168, 180, 999][i],
+    }));
+    const paceZones = [390, 330, 292, 244, 222, 185];
+    const repPace = paceZones.map((p, i) => (i === 0 ? p + 20 : Math.round((paceZones[i - 1] + p) / 2)));
+    db.prepare("INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, lthr, ftp, threshold_pace, lt1_hr, lt1_pace, source, note, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(pid, addDays(today, -560), JSON.stringify(hrZones), JSON.stringify(paceZones), 169, 232, 244, 151, 292, "Tutorial", "Demo-Zonen fuer Mara (HM-Fokus).", nowIso);
+
+    db.prepare(
+      `INSERT INTO cycle_training_settings(profile_id, cycle_adaptive_enabled, method_emphasis, method_emphasis_weight, phase_stimulus_map, feedback_sensitivity, symptom_override_enabled, observation_mode_only, updated_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`,
+    ).run(pid, 0, "hm_specific", 0.6, null, 0.6, 1, 1, nowIso);
+
+    const periods = generateCycleData(pid, week0, today, nowIso);
+
+    const insAct = db.prepare(`INSERT INTO activities(profile_id, date, sport, source, name, type, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, tss, zones, zone_min, zone_km, pace_zone_min, ngp, decoupling, eff_vo2max, run_np, power_curve, best_efforts, efforts, notes, match_ignore) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const insWeek = db.prepare("INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes) VALUES(?,?,?,?,?,?,?,?,?)");
+    const insPlan = db.prepare("INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, efforts, planned_tss, sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+    const insLog = db.prepare("INSERT INTO daily_log_v2(profile_id, date, weight, resting_hr, hrv, recovery, strain, sleep_h, soreness, motivation, rpe, sick, travel, pain, pain_location, notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    const insWeekLog = db.prepare("INSERT INTO week_log_v2(profile_id, week_no, run_km, week_tss, checks) VALUES(?,?,?,?,?)");
+
+    for (let w = 0; w < totalWeeks; w++) {
       const start = addDays(week0, w * 7);
       const end = addDays(start, 6);
-      const weeksToRace = NWEEKS - 1 - w;
-      const phase = phaseFor(weeksToRace);
-      const tp = Math.round(jit(250 - 12 * (w / (NWEEKS - 1)), 1.5)); // Schwellen-Pace verbessert sich übers Jahr
-      const effBase = 53 + 5 * (w / (NWEEKS - 1));
-      const targetKm = Math.round(phase === "Entlastung" ? 42 : phase === "Race-Week" ? 28 : phase === "Specific" ? 70 : phase === "Belastung" ? 64 : 52);
-      insWeek.run(pid, w + 1, `KW ${w + 1}`, phase, start, end, targetKm,
-        weeksToRace === 0 ? "10 km Frühjahrslauf (Ziel 36:00)" : "",
-        w === 0 ? "Saisonstart — ruhiger Wiedereinstieg." : phase === "Specific" ? "Wettkampfspezifik, polarisiert." : "");
+      const phase = phaseForWeek(w, todayWeekIndex);
+      const deload = w % 4 === 3 && phase !== "Taper";
+      const progress = clamp(w / (pastWeeks - 1), 0, 1);
+      const thresholdPace = 262 - 18 * progress;
+      const hmPotentialS = 94 * 60 - 7 * 60 * progress;
+      const hmPace = hmPotentialS / 21.0975;
+      const effBase = 48.4 + 4.7 * progress + Math.sin(w / 9) * 0.35;
+      const targetKm = targetKmFor(phase, progress, deload);
+      const phaseNote = phase === "Base" ? "Aerobe Kontinuitaet und ruhige Longruns."
+        : phase === "HM-Build" ? "Longruns wachsen, erste stabile Schwellenarbeit."
+          : phase === "Threshold/HM-Pace" ? "Haupttreiber: Schwelle und HM-Pace, VO2 dosiert."
+            : phase === "Specific" ? "Spezifischer HM-Block mit Race-Pace-Anteilen."
+              : "Taper: Last runter, Schaerfe erhalten.";
+      insWeek.run(pid, w + 1, `Mara W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote);
 
-      const keys = weekKeys(phase, w);
-      let weekKm = 0, weekTss = 0; // für die Wochen-Checks (week_log_v2)
+      const keys = weekKeys(phase, w, deload);
+      let weekKm = 0;
+      let weekTss = 0;
       for (let d = 0; d < 7; d++) {
         const date = addDays(start, d);
         const k = keys[d];
-        const isPast = date < today;
-        const isRecent = date >= addDays(today, -8 * 7); // letzte 8 Wochen → auch Plan (für Adherence)
-        // Wellness (Vergangenheit + HEUTE, damit Readiness rechnet; leichte Schwankung, ein paar müde Tage).
-        if (date <= today) insLog.run(pid, date, Math.round(jit(62, 6)), Math.round(jit(46, 3)), Math.round(jit(70, 14)), Math.round(jit(7.4, 0.8) * 10) / 10, clamp(Math.round(jit(2, 1.5)), 0, 6), clamp(Math.round(jit(7, 2)), 1, 10), k ? clamp(Math.round(jit(SESS[k].if * 10, 1)), 1, 10) : 1);
+        const disturb = disturbanceFor(date, anchors);
+        const recentLow = date >= addDays(today, -5) && date <= today;
+        if (date <= today) {
+          const sick = disturb === "illness" ? 1 : 0;
+          const travel = disturb === "travel" ? 1 : 0;
+          const pain = disturb === "niggle" ? clamp(Math.round(jit(3, 1)), 1, 5) : clamp(Math.round(jit(0.5, 0.8)), 0, 2);
+          const sleep = round1(jit(recentLow ? 6.45 : disturb ? 6.4 : 7.45, recentLow ? 0.35 : 0.65));
+          const hrv = Math.round(jit(recentLow ? 55 : sick ? 50 : 62, recentLow ? 3 : 5));
+          const rhr = Math.round(jit(recentLow ? 49 : sick ? 53 : 45, recentLow ? 1.5 : 2.2));
+          const recovery = clamp(Math.round(jit(recentLow ? 54 : sick ? 42 : 72, recentLow ? 8 : 12)), 20, 95);
+          insLog.run(pid, date, round1(jit(MASS, 0.35)), rhr, hrv, recovery, round1(jit(k ? SESS[k].if * 12 : 2.2, 1.4)), sleep,
+            clamp(Math.round(jit(disturb === "niggle" ? 5 : 2, 1.2)), 0, 8), clamp(Math.round(jit(recentLow ? 6 : 7.5, 1.5)), 1, 10),
+            k ? clamp(Math.round(jit(SESS[k].if * 10, 1)), 1, 10) : 1, sick, travel, pain,
+            disturb === "niggle" ? "Wade/Achilles" : null,
+            disturb === "illness" ? "Erkaeltung, Last bewusst reduziert." : disturb === "travel" ? "Reisewoche." : disturb === "niggle" ? "Leichter Waden-/Achilles-Niggle." : null);
+        }
         if (!k) continue;
+        if (disturb === "illness" && date >= anchors.illnessStart && date <= addDays(anchors.illnessStart, 4)) continue;
         const s = SESS[k];
-        const ifv = clamp(jit(s.if, 0.02), 0.6, 1.05);
-        const dur = Math.round(jit((s.durMin + s.durMax) / 2, (s.durMax - s.durMin) / 2));
+        const isPast = date < today;
+        const isRecentPlan = date >= addDays(today, -56);
+        const durationScale = deload ? 0.82 : phase === "Taper" ? 0.70 : 1;
+        const matureVolumeTrim = 1 - 0.09 * progress;
+        const baseIntroTrim = phase === "Base" ? 0.78 + 0.18 * progress : 1;
+        const dur = Math.round(jit((s.durMin + s.durMax) / 2, (s.durMax - s.durMin) / 2) * durationScale * matureVolumeTrim * baseIntroTrim * (disturb === "travel" ? 0.78 : disturb === "niggle" && k !== "easy" ? 0.70 : 1));
+        const ifv = clamp(jit(s.if, 0.02) * (disturb === "niggle" && ["threshold", "vo2", "reps"].includes(k) ? 0.88 : 1), 0.58, 1.02);
         const movingS = dur * 60;
-        const avgPace = Math.round(tp / ifv);
+        const avgPace = Math.round(thresholdPace / ifv);
         const distM = Math.round((movingS / avgPace) * 1000);
-        const tss = Math.round((movingS / 3600) * ifv * ifv * 100 * 10) / 10;
-        const avgHr = clamp(Math.round(jit(s.hr, 3)), 100, 195);
-        const maxHr = clamp(avgHr + Math.round(jit(k === "vo2" ? 14 : k === "long" ? 10 : 12, 3)), avgHr + 4, 198);
-        const zoneMin: Record<number, number> = {}, paceZoneMin: Record<number, number> = {}, zoneKm: Record<number, number> = {};
-        for (const [z, frac] of Object.entries(s.z)) {
-          const zi = +z, mins = Math.round(dur * frac * 10) / 10;
-          zoneMin[zi] = mins; paceZoneMin[zi] = mins;
-          zoneKm[zi] = Math.round((mins * 60 / repPace[zi - 1]) * 100) / 100; // km in Zone (TSS-neutral)
-        }
-        const wp = tp + (s.work ?? 0);
-        const bests = s.eff ? JSON.stringify({ 1000: Math.round(wp), 3000: Math.round(wp * 3 * 1.01), 5000: Math.round(wp * 5 * 1.02) }) : null;
-        const np = Math.round(jit(MASS * 4.0 * ifv + 25, 4));
-        const isSteady = k === "easy" || k === "long" || k === "recovery";
-        const decoup = isSteady && dur >= 30 ? Math.round(jit(k === "long" ? 4.5 : 2.6, 1.2) * 10) / 10 : null;
-        const effV = isSteady && dur >= 30 ? Math.round(jit(effBase, 1.2) * 10) / 10 : null;
-        const pc = s.eff ? JSON.stringify({ 300: np + 18, 600: np + 6, 1200: Math.max(0, np - 2) }) : (k === "long" ? JSON.stringify({ 1800: Math.max(0, np - 6), 3600: Math.max(0, np - 14) }) : null);
-        const efforts = (k === "vo2" || k === "threshold" || k === "fartlek")
-          ? JSON.stringify([{ reps: k === "vo2" ? 5 : k === "fartlek" ? 8 : 4, sec: k === "vo2" ? 180 : k === "fartlek" ? 60 : 480, dist_m: null, zone: k === "vo2" || k === "fartlek" ? 5 : 4, pace_s: wp, rest_s: k === "fartlek" ? 60 : 90, rest_type: "jog", label: s.type }]) : null;
+        const tss = round1((movingS / 3600) * ifv * ifv * 100);
+        const avgHr = clamp(Math.round(jit(s.hr, 3) - (deload ? 1 : 0)), 105, 190);
+        const maxHr = clamp(avgHr + Math.round(jit(s.family === "vo2" ? 15 : s.family === "threshold" ? 11 : 8, 3)), avgHr + 4, 194);
+        const zoneMin: Record<number, number> = {};
+        for (const [z, frac] of Object.entries(s.z)) zoneMin[+z] = round1(dur * frac);
+        const zoneKm = zoneKmFromMinutes(zoneMin, repPace);
+        const workPace = Math.round(k === "marathon" ? hmPace + 2 : thresholdPace + (s.workOffset ?? 0));
+        const bests = s.eff ? JSON.stringify({
+          1000: Math.round(workPace * (k === "reps" ? 0.96 : 1.02)),
+          3000: Math.round(workPace * 3 * 1.01),
+          5000: Math.round((thresholdPace - 5) * 5 * 1.015),
+          10000: Math.round((hmPace - 3) * 10),
+        }) : null;
+        const runNp = Math.round(jit(MASS * 3.45 * ifv + 28, 5));
+        const decoup = ["long", "easy", "recovery"].includes(k) ? round1(jit(k === "long" ? 5.2 - 1.6 * progress : 3.0 - 0.8 * progress, 0.9)) : null;
+        const effV = ["long", "easy", "recovery", "marathon"].includes(k) && dur >= 40 ? round1(jit(effBase, 1.0)) : null;
+        const powerCurve = s.eff ? JSON.stringify({ 300: runNp + 22, 600: runNp + 10, 1200: runNp + 3, 1800: runNp - 2, 3600: runNp - 12 }) : null;
+        const efforts = ["threshold", "marathon", "vo2", "reps"].includes(k)
+          ? JSON.stringify([{
+            reps: k === "vo2" ? 5 : k === "reps" ? 8 : k === "marathon" ? 3 : 4,
+            sec: k === "vo2" ? 180 : k === "reps" ? 60 : k === "marathon" ? 900 : 480,
+            dist_m: null,
+            zone: k === "vo2" || k === "reps" ? 5 : k === "marathon" ? 3 : 4,
+            pace_s: workPace,
+            rest_s: k === "reps" ? 75 : 120,
+            rest_type: "jog",
+            label: s.type,
+          }])
+          : null;
+        const desc = k === "threshold" ? `${dur}' inkl. 4x8' @ ${paceStr(workPace)}/km`
+          : k === "marathon" ? `${dur}' inkl. 3x15' @ ${paceStr(workPace)}/km`
+            : k === "vo2" ? `${dur}' inkl. 5x3' @ ${paceStr(workPace)}/km`
+              : k === "reps" ? `${dur}' inkl. 8x1' zuegig`
+                : k === "long" ? `${dur}' Longrun ruhig`
+                  : `${dur}' ${s.type}`;
+        const note = disturb === "travel" ? "Tutorial-Confounder: Reisewoche."
+          : disturb === "niggle" ? "Tutorial-Confounder: leichter Waden-/Achilles-Niggle."
+            : null;
         if (isPast) {
-          insAct.run(pid, date, "Run", "tutorial", `${DAY_NAME[d] || s.type} (Alex Demo)`, s.type, distM, movingS, movingS + Math.round(jit(120, 60)), avgHr, maxHr, np, Math.round(jit(k === "long" ? 180 : 60, 40)), Math.round(jit(172, 6)), tss, null, JSON.stringify(zoneMin), JSON.stringify(zoneKm), JSON.stringify(paceZoneMin), avgPace, decoup, effV, np, pc, bests, efforts);
-          weekKm += distM / 1000; weekTss += tss;
+          const info = insAct.run(pid, date, "Run", "tutorial", `${s.label} (Mara Demo)`, s.type, distM, movingS, movingS + Math.round(jit(90, 50)), avgHr, maxHr,
+            runNp, Math.round(jit(k === "long" ? 180 : 55, 35)), Math.round(jit(174, 6)), tss, null, JSON.stringify(zoneMin),
+            JSON.stringify(zoneKm), JSON.stringify(zoneMin), avgPace, decoup, effV, runNp, powerCurve, bests, efforts, note, 0);
+          activities.push({ id: Number(info.lastInsertRowid), date, type: s.type, key: k, phase, disturbance: disturb });
+          weekKm += distM / 1000;
+          weekTss += tss;
         }
-        // Plan: kommende Wochen + jüngste Vergangenheit (für Plan-Erfüllung). Beschreibung kurz.
-        if (!isPast || isRecent) {
-          const desc = k === "threshold" ? `${dur}' inkl. 4×8' @ ${paceStr(wp)}/km` : k === "vo2" ? `${dur}' inkl. 5×3' @ ${paceStr(wp)}/km` : k === "fartlek" ? `${dur}' Fartlek 8×1'` : k === "long" ? `${dur}' Longrun ruhig` : `${dur}' ${s.type}`;
-          insPlan.run(pid, date, w + 1, "Run", s.type, Math.round(distM / 100) / 10, dur, JSON.stringify({ byMin: zoneMin, byKm: zoneKm }), desc, tss, d);
+        if (!isPast || isRecentPlan) {
+          insPlan.run(pid, date, w + 1, "Run", s.type, round1(distM / 1000), dur, JSON.stringify({ byMin: zoneMin, byKm: zoneKm }), desc, efforts, tss, d);
         }
       }
-      // Wochen-Checks für abgeschlossene Wochen abhaken (passend zur realen Trainingswoche).
       if (end < today) {
-        const checks = { mileage: true, threshold2x: phase !== "Entlastung" && phase !== "Race-Week", longrun: true, plyo: true, physio: (w % 3) !== 0 };
-        insWeekLog.run(pid, w + 1, Math.round(weekKm * 10) / 10, Math.round(weekTss), JSON.stringify(checks));
+        const checks = {
+          mileage: weekKm >= targetKm * 0.82,
+          threshold2x: phase === "Threshold/HM-Pace" || phase === "Specific",
+          longrun: weekKm > 0,
+          plyo: w % 2 === 0,
+          physio: w % 3 !== 0,
+          note: disturbanceFor(start, anchors) ?? null,
+        };
+        insWeekLog.run(pid, w + 1, round1(weekKm), Math.round(weekTss), JSON.stringify(checks));
       }
     }
 
-    // Wettkämpfe: 5 km (vor ~5 Monaten), 10 km (vor ~2 Monaten), 10 km Ziel (raceDay, mit Wunsch-Zielzeit).
-    const insRace = db.prepare(`INSERT INTO races(profile_id, date, name, distance_m, time_s, placement, notes, splits, avg_hr, max_hr, elevation_m, source, goal_time_s) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-    const splits10 = (total: number) => JSON.stringify(Array.from({ length: 10 }, (_, i) => ({ km: i + 1, time_s: Math.round(total / 10 + (i < 2 ? 2 : i > 7 ? -2 : 0)), avg_hr: 168 + (i > 5 ? 6 : 0), pace_s: Math.round(total / 10) })));
-    insRace.run(pid, addDays(today, -150), "Stadtlauf 5 km", 5000, 17 * 60 + 40, "8. AK", "Solider Frühform-Test.", JSON.stringify(Array.from({ length: 5 }, (_, i) => ({ km: i + 1, time_s: 212 + (i > 3 ? -3 : 0), avg_hr: 175 }))), 176, 188, 35, "manual", null);
-    insRace.run(pid, addDays(today, -60), "Herbst 10 km", 10000, 37 * 60 + 10, "12. gesamt", "PB! Pacing gut getroffen.", splits10(37 * 60 + 10), 173, 187, 70, "manual", null);
-    insRace.run(pid, raceDay, "Frühjahrslauf 10 km", 10000, null, "", "Zielwettkampf — Wunschzeit 36:00.", "[]", null, null, 60, "manual", 36 * 60);
+    generateRaceAndLabData(pid, today, raceDay, nowIso);
+    generateFeedbackData(pid, activities, periods, { method: "copper_iud" }, nowIso);
+    seedActiveTrial(pid, today, nowIso);
 
-    // Laktat-Test (vor ~3 Monaten) — eicht LT1/LT2.
-    db.prepare(`INSERT INTO lactate_tests(profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr, lt2_pace, confidence, warnings, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(pid, addDays(today, -90), "Run", "Feldtest", "Stufentest auf der Bahn (6 Stufen).", 151, 280, 172, 244, "hoch", "[]", nowIso);
-
-    // Methoden-Experiment (für die Methodik-Seite).
-    db.prepare(`INSERT INTO method_experiments(profile_id, start_date, end_date, method, label, notes, created_at) VALUES(?,?,?,?,?,?,?)`)
-      .run(pid, addDays(today, -120), addDays(today, -92), "norwegian_double_threshold", "Norwegian-Block (4 Wo.)", "Doppel-Schwellen-Tage getestet.", nowIso);
     db.exec("COMMIT");
-  } catch (e) { try { db.exec("ROLLBACK"); } catch { /* */ } throw e; }
-  return pid;
+    return pid;
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore */ }
+    throw e;
+  }
 }
-
-const paceStr = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;

@@ -86,7 +86,7 @@ export default function Lernen() {
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button className="primary" onClick={() => startTour("whatis")} title="Jede Grafik & Tabelle einmal erklärt">▶ Tour „Was ist was"</button>
-          <button className="primary" onClick={() => startTour("profit")} title="Am Beispiel Alex Demo: Daten lesen & Training steuern">▶ Tour „Wie profitiere ich"</button>
+          <button className="primary" onClick={() => startTour("profit")} title="Am Beispiel Mara Demo: Daten lesen & Training steuern">▶ Tour „Wie profitiere ich"</button>
         </div>
       </div>
 

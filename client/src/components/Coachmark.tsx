@@ -25,19 +25,19 @@ const TOUR_WHATIS: Step[] = [
   { route: "/bests", selector: "[data-tour='power']", title: "Leistungsmarker", body: "Aus Bestzeiten: VDOT/VO₂max + Renn-Prognose. Aus den Lauf-Watt: Critical Power und W′ (anaerobe Reserve oberhalb CP)." },
   { route: "/longterm", selector: "[data-tour='threshold-trend']", title: "Schwellen-Trend", body: "Schwellen-Pace (schneller = oben) und Critical Power über die Zeit. Steigende Schwelle = die Fitness wächst." },
   { route: "/longterm", title: "Wellness mit Normalbereich", body: "HRV, Ruhepuls, Recovery, Strain, Schlaf — mit 30-Tage-Normalbereich (Band). Lange Zeiträume werden auf 7-Tage-Mittel geglättet." },
-  { route: "/methodik", title: "Was wirkt bei DIR? (N-of-1)", body: "Geführte Vorher/Nachher-Experimente + Korrelationen aus deinen Daten. Wichtig: Korrelation ≠ Kausalität — kleine Stichproben sind als explorativ markiert." },
+  { route: "/methodik", title: "Research-Lab", body: "Vier Tabs trennen Status, Beobachtungs-ML, randomisierte Experimente und Zyklus. Korrelationen bleiben Hypothesen; nur prospektiv randomisierte Trials können später als geprüft gelten." },
 ];
 
-// Tour 2 — „Wie profitiere ich": erzählerisch anhand der Tutorial-Person (Alex Demo), wie man die Daten nutzt.
+// Tour 2 — „Wie profitiere ich": erzählerisch anhand der Tutorial-Person (Mara Demo), wie man die Daten nutzt.
 const TOUR_PROFIT: Step[] = [
-  { route: "/", selector: "[data-tour='pmc']", title: "Form lesen wie Alex", body: "Alex' CTL steigt über die Wochen — die Fitness wächst. Die Form (TSB) verrät, ob er frisch oder müde ist: produktiv müde (−10 bis −25) baut auf, vor dem Rennen taperst du sie nach oben." },
-  { route: "/plan", selector: "[data-tour='week-pmc']", title: "Aufbau kontrollieren", body: "Steuere die CTL-Ramp: Alex baut mit +3 bis +6/Woche auf — schnell genug für Fortschritt, langsam genug, um gesund zu bleiben. Über +8 würde es riskant." },
-  { route: "/plan", selector: "[data-tour='readiness']", title: "Auf den Körper hören", body: "Sind Alex' HRV/Schlaf schwach, entschärft er die nächste harte Einheit statt sie durchzuziehen — so beugt er Überlastung/Krankheit vor, ohne den Plan zu sprengen." },
-  { route: "/coach", selector: "[data-tour='optimal-zones']", title: "Richtig dosieren", body: "Alex trainiert in den berechneten Zonen: Easy wirklich locker (Erholung + Fettstoffwechsel), Schwelle exakt an der Schwelle. Falsche Intensität = vergeudete Tage." },
-  { route: "/coach", title: "Den großen Bogen planen", body: "Alex plant den Block bis zum Renntag mit Taper + Erholung. Ein Test-Wettkampf zwischendrin zeigt ihm, ob er auf Kurs zur Zielzeit ist — ohne voll dafür zu tapern." },
-  { route: "/longterm", selector: "[data-tour='threshold-trend']", title: "Wirkt das Training?", body: "Der ehrlichste Check: Alex' Schwellen-Pace wird über die Monate schneller und seine Critical Power steigt — das Training greift. Stagnation hieße: etwas ändern." },
-  { route: "/bests", selector: "[data-tour='power']", title: "Fortschritt messen", body: "Bestzeiten → VDOT/VO₂max, Lauf-Watt → CP/W′. Steigen sie, verbessert sich auch Alex' Renn-Prognose. So sieht er schwarz auf weiß, dass er besser wird." },
-  { route: "/methodik", title: "Was wirkt bei DIR?", body: "RunLog wertet aus, welches Trainings-Regime bei Alex am stärksten mit Fortschritt korreliert (z. B. polarisiert). So findet er SEINEN Hebel — nicht den aus dem Lehrbuch." },
+  { route: "/", selector: "[data-tour='pmc']", title: "Form lesen wie Mara", body: "Maras CTL steigt über die Wochen — die Fitness wächst. Die Form (TSB) verrät, ob sie frisch oder müde ist: produktiv müde (−10 bis −25) baut auf, vor dem Rennen tapert sie sie nach oben." },
+  { route: "/plan", selector: "[data-tour='week-pmc']", title: "Aufbau kontrollieren", body: "Steuere die CTL-Ramp: Mara baut mit +3 bis +6/Woche auf — schnell genug für Fortschritt, langsam genug, um gesund zu bleiben. Über +8 würde es riskant." },
+  { route: "/plan", selector: "[data-tour='readiness']", title: "Auf den Körper hören", body: "Sind Maras HRV/Schlaf schwach, entschärft sie die nächste harte Einheit statt sie durchzuziehen — so beugt sie Überlastung/Krankheit vor, ohne den Plan zu sprengen." },
+  { route: "/coach", selector: "[data-tour='optimal-zones']", title: "Richtig dosieren", body: "Mara trainiert in den berechneten Zonen: Easy wirklich locker (Erholung + Fettstoffwechsel), Schwelle exakt an der Schwelle. Falsche Intensität = vergeudete Tage." },
+  { route: "/coach", title: "Den großen Bogen planen", body: "Mara plant den Block bis zum Halbmarathon mit Taper + Erholung. Ein Test-Wettkampf zwischendrin zeigt ihr, ob sie auf Kurs zur Zielzeit ist — ohne voll dafür zu tapern." },
+  { route: "/longterm", selector: "[data-tour='threshold-trend']", title: "Wirkt das Training?", body: "Der ehrlichste Check: Maras Schwellen-Pace wird über die Monate schneller und ihre aerobe Effizienz steigt — das Training greift. Stagnation hieße: etwas ändern." },
+  { route: "/bests", selector: "[data-tour='power']", title: "Fortschritt messen", body: "Bestzeiten → VDOT/VO₂max, Lauf-Watt → CP/W′. Steigen sie, verbessert sich auch Maras Renn-Prognose. So sieht sie schwarz auf weiß, dass sie besser wird." },
+  { route: "/methodik", title: "Was wirkt bei DIR?", body: "RunLog trennt Hypothesen aus Beobachtungsdaten von geprüften N-of-1-Trials. Mara startet nur Vorschläge, die nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit sinnvoll gerankt sind." },
   { route: "/lernen", title: "Das Zusammenspiel", body: "Fähigkeit (VDOT/CS/CP) setzt deine Zonen → Zonen erzeugen Last (TSS) → Last formt über Wochen deine Form (PMC) → Readiness entscheidet den nächsten Tag. Wer diesen Kreis liest, steuert sein Training datenbasiert." },
 ];
 
@@ -71,7 +71,7 @@ export default function Coachmark() {
   useEffect(() => {
     api.profiles().then((r) => {
       const act = r.profiles.find((p) => p.id === r.active);
-      if (act?.name === "Tutorial" && !localStorage.getItem("runlog-tour-tutorial")) {
+      if ((act?.name === "Tutorial: Mara" || act?.name === "Tutorial") && !localStorage.getItem("runlog-tour-tutorial")) {
         try { localStorage.setItem("runlog-tour-tutorial", "1"); } catch { /* ignore */ }
         window.setTimeout(() => { setChoosing(true); setActive(true); }, 900);
       }
@@ -136,7 +136,7 @@ export default function Coachmark() {
             <strong>Was ist was</strong><br /><span className="tiny" style={{ opacity: 0.85 }}>Jede Grafik &amp; Tabelle einmal erklärt — der komplette Rundgang.</span>
           </button>
           <button className="primary" style={{ display: "block", width: "100%", textAlign: "left" }} onClick={() => pick("profit")}>
-            <strong>Wie profitiere ich</strong><br /><span className="tiny" style={{ opacity: 0.85 }}>Am Beispiel „Alex Demo": wie man Verlauf liest und sein Training steuert.</span>
+            <strong>Wie profitiere ich</strong><br /><span className="tiny" style={{ opacity: 0.85 }}>Am Beispiel „Mara Demo": wie man Verlauf liest und sein Training steuert.</span>
           </button>
           <div style={{ textAlign: "right", marginTop: 10 }}><button className="sm ghost" onClick={close}>Schließen</button></div>
         </div>

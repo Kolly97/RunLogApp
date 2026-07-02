@@ -60,6 +60,7 @@ import {
   compareMarkers,
   methodInference,
   resolvePlannedSession,
+  enrichZoneAllocKm,
   type IntLevel,
   type PlannedSession,
   type CategoryTotals,
@@ -75,10 +76,13 @@ import {
 import type { Availability } from "./planbuilder.ts";
 import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId } from "./tutorial.ts";
-import { stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp } from "./strava.ts";
-import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness } from "./mlJobs.ts";
-import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
-import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, buildFeedbackContext, evaluatePhaseStimulus, type Period, type ContraceptionStatus, type FeedbackRow } from "./cycleTraining.ts";
+import {
+  stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
+  stravaBackfillStatus, stravaBackfillStart, stravaBackfillStep, stravaBackfillCancel,
+} from "./strava.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit } from "./mlJobs.ts";
+import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, proposeProspectiveTrials as mlProposeTrials, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
+import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow } from "./cycleTraining.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -91,7 +95,7 @@ initSchema();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-// v1.8.0: Beim ersten Start ein „Tutorial"-Profil mit Beispieljahr anlegen (idempotent, eigenes profile_id).
+// Tutorial-Profil beim Start sicherstellen (idempotent, eigenes profile_id; Legacy-Tutorial wird migriert).
 try { ensureTutorialProfile(todayIso()); } catch (e) { console.warn("Tutorial-Profil konnte nicht angelegt werden:", String(e)); }
 /** YYYY-MM-DD um n Tage verschieben (UTC). */
 const addDaysIso = (iso: string, n: number): string => {
@@ -238,6 +242,10 @@ app.get("/api/strava/login", stravaLogin);
 app.get("/api/strava/callback", stravaCallback);
 app.post("/api/strava/sync", stravaSync);
 app.post("/api/strava/enrich", stravaEnrich);
+app.get("/api/strava/backfill/status", stravaBackfillStatus);
+app.post("/api/strava/backfill/start", stravaBackfillStart);
+app.post("/api/strava/backfill/step", stravaBackfillStep);
+app.post("/api/strava/backfill/cancel", stravaBackfillCancel);
 
 // HF-/Power-Zonen aus Strava importieren (v0.14.0, ToDo 10) → neues zone_set ab gewähltem Datum.
 app.post("/api/strava/import-zones", async (req, res) => {
@@ -956,7 +964,7 @@ app.delete("/api/custom-workouts/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-// v1.8.0: Tutorial-Profil verwalten (Beispieljahr neu erzeugen / löschen). Berührt nur das eigene profile_id.
+// Tutorial-Profil verwalten (neu erzeugen / löschen). Berührt nur das eigene profile_id.
 app.get("/api/tutorial", (_req, res) => res.json({ id: tutorialProfileId() }));
 app.post("/api/tutorial/regenerate", (_req, res) => { const id = regenerateTutorial(todayIso()); res.json({ ok: true, id }); });
 app.delete("/api/tutorial", (_req, res) => { deleteTutorial(); res.json({ ok: true }); });
@@ -1354,9 +1362,10 @@ app.get("/api/fitness-trend", (req, res) => {
   for (let w = to; w >= from; w = addDaysIso(w, -7)) weekEnds.push(w);
   weekEnds.reverse();
 
-  const points = weekEnds.map((w) => {
-    const lo = addDaysIso(w, -FITNESS_WINDOW_DAYS);
-    const inWin = efforts.filter((e) => e.date > lo && e.date <= w);
+  const pointAt = (date: string) => {
+    const effectiveDate = date > today ? today : date;
+    const lo = addDaysIso(effectiveDate, -FITNESS_WINDOW_DAYS);
+    const inWin = efforts.filter((e) => e.date > lo && e.date <= effectiveDate);
     const bestPerDist = new Map<number, number>();
     for (const e of inWin) {
       const cur = bestPerDist.get(e.distance_m);
@@ -1368,16 +1377,17 @@ app.get("/api/fitness-trend", (req, res) => {
     for (const p of distPts) if (p.distance_m >= 1500 && p.time_s >= 180 && p.time_s <= 2400) bestVdot = Math.max(bestVdot, vdot(p.distance_m, p.time_s));
     const pmap = new Map((bestVdot > 0 ? predictFromVdot(bestVdot, CS_PRED_DISTANCES) : []).map((x) => [x.distance_m, x.time_s]));
     return {
-      date: w,
+      date,
       vdot: bestVdot > 0 ? Math.round(bestVdot * 10) / 10 : null,
       p5000: pmap.get(5000) ?? null,
       p10000: pmap.get(10000) ?? null,
       p21097: pmap.get(21097) ?? null,
       p42195: pmap.get(42195) ?? null,
     };
-  });
+  };
+  const points = weekEnds.map(pointAt);
 
-  const current = [...points].reverse().find((p) => p.vdot != null) ?? null;
+  const current = pointAt(today);
   const athlete = getProfileSetting("athlete", { name: "Kolja", weight: 69, max_hr: 196 }) as { birth_year?: number; sex?: string };
   const birthYear = athlete?.birth_year ? Number(athlete.birth_year) : null;
   const sex: "m" | "f" = athlete?.sex === "f" ? "f" : "m";
@@ -1407,11 +1417,11 @@ app.get("/api/plan-adherence", (_req, res) => {
   const weeks = db.prepare("SELECT week_no, start_date, end_date FROM season_weeks_v2 WHERE profile_id=? ORDER BY start_date").all(pid()) as { week_no: number; start_date: string; end_date: string }[];
   const out = weeks.map((w) => {
     const sessions = db.prepare("SELECT id, planned_tss, zone_alloc FROM planned_sessions WHERE profile_id=? AND date BETWEEN ? AND ?").all(pid(), w.start_date, w.end_date) as any[];
-    const acts = db.prepare("SELECT tss, pace_zone_min, matched_session_id FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").all(pid(), w.start_date, w.end_date) as any[];
+    const acts = db.prepare("SELECT tss, pace_zone_min, matched_session_id, match_ignore FROM activities WHERE profile_id=? AND date BETWEEN ? AND ?").all(pid(), w.start_date, w.end_date) as any[];
     const paceZones = effectiveZoneSet(w.start_date).pace_zones;
     const pcts: number[] = [];
     for (const s of sessions) {
-      const a = acts.find((x) => x.matched_session_id === s.id);
+      const a = acts.find((x) => !x.match_ignore && x.matched_session_id === s.id);
       if (!a) continue;
       const comp = sessionCompletion(
         { planned_tss: s.planned_tss, zone_alloc: parseJson(s.zone_alloc, null) },
@@ -1597,6 +1607,11 @@ function computeSessionTss(b: any): number {
   const zs = effectiveZoneSet(b.date || todayIso());
   return plannedSessionTss(b, zs.hr_zones, zs.lthr, zs.pace_zones, zs.power_zones, zs.ftp, zs.threshold_pace);
 }
+function normalizeSessionZoneKm<T extends Record<string, any>>(row: T): T {
+  const base = { ...row, sport: row.sport || "Run" };
+  const zs = effectiveZoneSet(base.date || todayIso());
+  return enrichZoneAllocKm(base as unknown as PlannedSession, zs.pace_zones) as unknown as T;
+}
 
 // Server-autoritative Lauf-TSS: rTSS (NGP falls vorhanden, sonst Ø-Pace), COROS-unabhängig (ToDo v0.9.0).
 // Ausnahme: Nutzer hat tss explizit überschrieben (overrides enthält 'tss'). Bike/sonstige: Client-Wert.
@@ -1696,12 +1711,14 @@ app.get("/api/sessions", (req, res) => {
   else rows = db.prepare("SELECT * FROM planned_sessions WHERE profile_id=? ORDER BY date, sort_order").all(pid());
   // v1.7.0: zukünftige Einheiten mit Intention live aus aktueller+projizierter Fitness neu rendern (Pace passt sich an).
   const today = todayIso();
-  const list = (rows as any[]).map((r) => ({ ...r, zone_alloc: parseJson(r.zone_alloc, null), structured: parseJson(r.structured, null), efforts: parseJson(r.efforts, null), prescription: parseJson(r.prescription, null) }));
+  const list = (rows as any[])
+    .map((r) => ({ ...r, zone_alloc: parseJson(r.zone_alloc, null), structured: parseJson(r.structured, null), efforts: parseJson(r.efforts, null), prescription: parseJson(r.prescription, null) }))
+    .map((r) => normalizeSessionZoneKm(r));
   const ctx = list.some((r) => r.prescription && r.date >= today) ? buildResolveCtx() : null;
   res.json(ctx ? list.map((r) => {
     if (!r.prescription || r.date < today) return r;
     const res2 = resolvePlannedSession(r.prescription, r.date, ctx);
-    return res2 ? { ...r, planned_min: res2.planned_min, planned_km: res2.planned_km ?? r.planned_km, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, adaptNote: res2.adaptNote ?? null, resolved: true } : r;
+    return res2 ? normalizeSessionZoneKm({ ...r, planned_min: res2.planned_min, planned_km: res2.planned_km ?? r.planned_km, zone_alloc: res2.zone_alloc, efforts: res2.efforts, description: res2.description, paceTarget: res2.paceTarget, adaptNote: res2.adaptNote ?? null, resolved: true }) : r;
   }) : list);
 });
 
@@ -1721,7 +1738,7 @@ function buildResolveCtx() {
 }
 
 app.post("/api/sessions", (req, res) => {
-  const b = req.body || {};
+  const b = normalizeSessionZoneKm(req.body || {});
   const tss = computeSessionTss(b);
   const r = db
     .prepare(
@@ -1748,7 +1765,7 @@ app.post("/api/sessions", (req, res) => {
 });
 
 app.put("/api/sessions/:id", (req, res) => {
-  const b = req.body || {};
+  const b = normalizeSessionZoneKm(req.body || {});
   const tss = computeSessionTss(b);
   // v1.7.0: manuelle Bearbeitung „pinnt" die Einheit → Intention löschen, damit die Live-Resolution nicht überschreibt.
   db.prepare(
@@ -1783,10 +1800,11 @@ app.post("/api/sessions/:id/apply-adjustment", (req, res) => {
     zone_alloc: b.zone_alloc ?? null, efforts: b.efforts ?? null,
     description: b.description ?? ex.description,
   };
-  const tss = computeSessionTss(merged);
+  const normalized = normalizeSessionZoneKm(merged);
+  const tss = computeSessionTss(normalized);
   db.prepare(
     "UPDATE planned_sessions SET type=?, planned_min=?, planned_km=?, zone_alloc=?, efforts=?, description=?, planned_tss=? WHERE id=? AND profile_id=?",
-  ).run(merged.type, merged.planned_min, null, JSON.stringify(b.zone_alloc ?? null), JSON.stringify(b.efforts ?? null), merged.description, tss, req.params.id, pid());
+  ).run(normalized.type, normalized.planned_min, normalized.planned_km ?? null, JSON.stringify(normalized.zone_alloc ?? null), JSON.stringify(normalized.efforts ?? null), normalized.description, tss, req.params.id, pid());
   res.json({ ok: true, planned_tss: tss });
 });
 
@@ -1872,8 +1890,8 @@ app.post("/api/activities", (req, res) => {
   const b = req.body || {};
   const r = db
     .prepare(
-      `INSERT INTO activities(profile_id, strava_id, date, sport, type, source, name, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, training_load, tss, kcal, zones, zone_min, zone_km, efforts, overrides, matched_session_id, notes)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO activities(profile_id, strava_id, date, sport, type, source, name, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, training_load, tss, kcal, zones, zone_min, zone_km, efforts, overrides, matched_session_id, match_ignore, notes)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       pid(),
@@ -1899,7 +1917,8 @@ app.post("/api/activities", (req, res) => {
       JSON.stringify(b.zone_km || null),
       JSON.stringify(b.efforts || null),
       JSON.stringify(b.overrides || []),
-      b.matched_session_id ?? null,
+      b.match_ignore ? null : b.matched_session_id ?? null,
+      b.match_ignore ? 1 : 0,
       b.notes || "",
     );
   const newId = Number(r.lastInsertRowid);
@@ -1912,7 +1931,7 @@ app.put("/api/activities/:id", (req, res) => {
   db.prepare(
     // Commute (sport=General): desc_fetched=1 setzen, damit der Strava-Sync die geleerte Notiz nicht neu füllt (ToDo Z.14).
     // efforts_locked=1 (v0.15.5 O6): manuell bearbeitete/gelöschte Intervalle werden vom Re-Sync nicht mehr angefasst.
-    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?), efforts_locked=1 WHERE id=?`,
+    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, match_ignore=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?), efforts_locked=1 WHERE id=?`,
   ).run(
     b.date,
     b.sport || "Run",
@@ -1935,7 +1954,8 @@ app.put("/api/activities/:id", (req, res) => {
     JSON.stringify(b.zone_km || null),
     JSON.stringify(b.efforts || null),
     JSON.stringify(b.overrides || []),
-    b.matched_session_id ?? null,
+    b.match_ignore ? null : b.matched_session_id ?? null,
+    b.match_ignore ? 1 : 0,
     b.notes || "",
     b.sport === "General" ? 1 : 0,
     req.params.id,
@@ -1991,7 +2011,9 @@ app.get("/api/optimal-zones", (_req, res) => {
 // v1.9.0: Aktivität manuell einer geplanten Einheit zuordnen (oder Zuordnung lösen). Überschreibt das Auto-Match.
 app.post("/api/activities/:id/match", (req, res) => {
   const sid = req.body?.session_id;
-  db.prepare("UPDATE activities SET matched_session_id=? WHERE id=? AND profile_id=?").run(sid != null ? Number(sid) : null, req.params.id, pid());
+  const ignore = req.body?.ignore === true || req.body?.ignore === 1;
+  db.prepare("UPDATE activities SET matched_session_id=?, match_ignore=? WHERE id=? AND profile_id=?")
+    .run(ignore ? null : sid != null ? Number(sid) : null, ignore ? 1 : 0, req.params.id, pid());
   res.json({ ok: true });
 });
 
@@ -2311,7 +2333,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
   let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity: Record<number, number> } = { perSession: [], weekPct: null, matchByActivity: {} };
   if (wk) {
     const acts = db
-      .prepare("SELECT id, date, sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT id, date, sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id, match_ignore FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -2346,7 +2368,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
       const t = a.tss || 0;
       realTotalTss += t;
       if (t > 0) {
-        const type = a.type || (a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined);
+        const type = a.type || (!a.match_ignore && a.matched_session_id != null ? typeBySession.get(a.matched_session_id) : undefined);
         const typeCls = type ? typeIntensity(type) : null;
         if (typeCls === "hard") {
           realTssAcc.hard += t;
@@ -2383,7 +2405,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
 
     // Plan-Erfüllung je geplanter Einheit (v1.9.0): robustes Auto-Match (manuelle Zuordnung gewinnt).
     const matchMap = matchActivities(
-      acts.map((a) => ({ id: a.id, date: a.date, type: a.type ?? null, tss: a.tss ?? null, moving_s: a.moving_s ?? null, matched_session_id: a.matched_session_id ?? null, sport: a.sport })),
+      acts.map((a) => ({ id: a.id, date: a.date, type: a.type ?? null, tss: a.tss ?? null, moving_s: a.moving_s ?? null, matched_session_id: a.matched_session_id ?? null, sport: a.sport, match_ignore: a.match_ignore ?? 0 })),
       planned.filter((p) => p.id != null).map((p) => ({ id: p.id as number, date: p.date, type: p.type, planned_tss: p.planned_tss ?? null, planned_min: p.planned_min ?? null })),
     );
     const actBySession = new Map<number, typeof acts[number]>();
@@ -2686,6 +2708,7 @@ app.get("/api/ml/status", (req, res) => {
 app.get("/api/ml/latent-fitness", (_req, res) => res.json(mlGetLatentFitness(pid())));
 app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
 app.get("/api/ml/readiness", (_req, res) => res.json(mlGetReadiness(pid())));
+app.post("/api/ml/audit", (_req, res) => res.json(mlAdversarialAudit(pid())));
 
 // Minimal-EMA Session-Feedback (Frage 6): RPE + felt_vs_expected + life_stress je Einheit, upsert per activity_id.
 app.get("/api/ml/feedback", (req, res) => {
@@ -2727,6 +2750,7 @@ app.post("/api/ml/feedback", (req, res) => {
 
 // ---- ML P5: Prospektiv randomisierte N-of-1-Blöcke (der einzige kausale Pfad) ----
 app.get("/api/ml/prospective", (_req, res) => res.json(mlProspectiveState(pid())));
+app.get("/api/ml/prospective/proposals", (_req, res) => res.json(mlProposeTrials(pid())));
 app.post("/api/ml/prospective/propose", (_req, res) => res.json(mlProposeTrial(pid())));
 app.post("/api/ml/prospective/accept", (req, res) => {
   const b = (req.body ?? {}) as Record<string, any>;
@@ -2762,6 +2786,8 @@ const ARM_STIMULUS: Record<string, { emphasis: string; regime: Regime; label: st
   VO2: { emphasis: "vo2", regime: "polarized", label: "VO2max" }, VO2max: { emphasis: "vo2", regime: "polarized", label: "VO2max" },
   T: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" }, Schwelle: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" },
   R: { emphasis: "fartlek", regime: "polarized", label: "Repetition" }, Repetition: { emphasis: "fartlek", regime: "polarized", label: "Repetition" },
+  aerob: { emphasis: "ausgewogen", regime: "pyramidal", label: "Aerob" }, Aerob: { emphasis: "ausgewogen", regime: "pyramidal", label: "Aerob" },
+  M: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" }, Marathon: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" }, MarathonPace: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" },
   polarized: { emphasis: "vo2", regime: "polarized", label: "Polarisiert" }, pyramidal: { emphasis: "ausgewogen", regime: "pyramidal", label: "Pyramidal" },
   threshold: { emphasis: "schwelle", regime: "threshold", label: "Threshold" }, norwegian: { emphasis: "norwegian", regime: "norwegian", label: "Norwegian" },
 };
@@ -2952,6 +2978,21 @@ app.put("/api/cycle-training/settings", (req, res) => {
 });
 
 // Perioden-Log (Beobachtung): Start-Datum erfassen/löschen (consent-gated).
+// #14 — retroaktive Rekonstruktion: re-stempelt cycle_phase/cycle_day des getaggten Session-Feedbacks aus der
+// aktuellen, vollen Perioden-Historie. Nur die abgeleiteten Phasen-Spalten werden angefasst (RPE/Notizen/Perioden
+// bleiben unberührt), in einer Transaktion, und nur geänderte Zeilen. Läuft nach jedem Perioden-Add/-Delete.
+function backfillCyclePhases(p: number): { scanned: number; updated: number } {
+  const rows = db.prepare("SELECT id, date, cycle_phase, cycle_day FROM session_feedback_v2 WHERE profile_id=?").all(p) as unknown as DatedPhaseRow[];
+  if (!rows.length) return { scanned: 0, updated: 0 };
+  const stamps = reconstructPhases(rows, loadPeriods(p), cycleContra(p)).filter((s) => s.changed);
+  if (!stamps.length) return { scanned: rows.length, updated: 0 };
+  const upd = db.prepare("UPDATE session_feedback_v2 SET cycle_phase=?, cycle_day=? WHERE id=? AND profile_id=?");
+  db.exec("BEGIN");
+  try { for (const s of stamps) upd.run(s.phase, s.cycleDay, s.id, p); db.exec("COMMIT"); }
+  catch (e) { try { db.exec("ROLLBACK"); } catch { /* ignore */ } throw e; }
+  return { scanned: rows.length, updated: stamps.length };
+}
+
 app.post("/api/cycle-training/period", (req, res) => {
   const p = pid();
   if (!gateConsent(res, p)) return;
@@ -2959,13 +3000,21 @@ app.post("/api/cycle-training/period", (req, res) => {
   if (!b.start_date) return res.status(400).json({ error: "start_date erforderlich" });
   const r = db.prepare("INSERT INTO cycle_period_log_v2(profile_id, start_date, end_date, notes, created_at) VALUES(?,?,?,?,?)")
     .run(p, b.start_date, b.end_date ?? null, b.notes ?? null, new Date().toISOString());
-  res.json({ id: Number(r.lastInsertRowid) });
+  const backfilled = backfillCyclePhases(p);
+  res.json({ id: Number(r.lastInsertRowid), backfilled });
 });
 app.delete("/api/cycle-training/period/:id", (req, res) => {
   const p = pid();
   if (!gateConsent(res, p)) return;
   db.prepare("DELETE FROM cycle_period_log_v2 WHERE id=? AND profile_id=?").run(req.params.id, p);
-  res.json({ ok: true });
+  const backfilled = backfillCyclePhases(p);
+  res.json({ ok: true, backfilled });
+});
+// Manuelle Rekonstruktion (z.B. nach Import älterer Perioden).
+app.post("/api/cycle-training/backfill-phases", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  res.json(backfillCyclePhases(p));
 });
 
 // Symptom-Log (Beobachtung): upsert je (Profil, Datum). Cramps/Energy/Sleep/Mood/Flow 1–5.

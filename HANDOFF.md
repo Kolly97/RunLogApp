@@ -2,7 +2,57 @@
 
 > Lies dieses Dokument zuerst, dann kannst du ohne weiteres Erkunden weiterarbeiten.
 > Detaillierte Versionshistorie: `CHANGELOG.md`. Offene Wünsche: `ToDo.md`. Anleitung im Programm: `client/public/usage.html`.
-> Stand: **v2.0.0** (29.6.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+> Stand: **v2.3.0** (02.07.2026). Lokale Trainings-App (Langstreckenlauf) im TrainingPeaks-Stil.
+
+### Neu in v2.3.0 (Kurz)
+- **Langzeit-Charts vereinheitlicht** (`client/src/pages/LongTerm.tsx`): dezente Rohpunkte + klare Trendlinie +
+  Monatsmittel-Marker + Streuband über Pace-vs-HF, Effizienz, Entkopplung, effective VO2max.
+- **Zyklus optional per Profil** (`Profile.tsx` → `CycleActivationCard.tsx`, nutzt bestehende `cycleConsent`-API);
+  steuert Methodik-Zyklus-Tab (`Methodik.tsx`) und das Symptom-Modul im Tracking.
+- **Marathon-Pace & Repetitions**: Konkretisierung korrigiert in `planbuilder.concretizeSession` (M ≈ Z3-Dauerlauf,
+  R ≈ schnelle Z6-Intervalle, Daniels); Labels/Farben in `lib/options.ts`.
+- **Flexibler Qualitätstag** (`planbuilder.scheduleWeek`): bevorzugter Berg-Tag ist zugleich Qualitätstag (Berg
+  oder Tempo, periodengerecht).
+- **Kausal-Vorschläge**: `mlJobs.buildProposal` — Regex-Bug (Marathon fälschlich „hart") behoben, Value-of-Information
+  korrekt der Nutzen-Dimension zugeordnet; `ProspectiveTrialCard` zeigt „warum dieser / warum nicht die anderen".
+- **Zyklus-Backfill #14**: `cycleTraining.reconstructPhases()` + `backfillCyclePhases()` in `index.ts` (läuft nach
+  Perioden-Add/-Delete + `POST /api/cycle-training/backfill-phases`), leakage-frei/additiv.
+- **Robustheit (Audit-Fixes)**: Strava-Backup-Retention (`strava.pruneBackfillBackups`), Symptom-Wochen-Batch
+  (`WeekTrack`), Tutorial-Marker statt Name (`tutorial.ts`). Audit-Report: `ToDo/Codex/CODEX_AUDIT_v2.3.0.md`.
+- **Tests**: 14 Kern-Tests (`tests/runlog-core.test.ts`), `npm test` grün. **Doku/Version** überall auf v2.3.0.
+
+### Nachtrag nach v2.2.1 (02.07.2026)
+- **Adversarial Audit jetzt als Workflow:** `server/mlJobs.ts` liefert `adversarialAudit()`, `server/index.ts`
+  exposed `POST /api/ml/audit`, `client/src/components/DoseResponseCard.tsx` zeigt den per Button erzeugten
+  Report. Prüft Design-Zeitordnung/CV-Basis, Frische, Identifizierbarkeit, FDR/MCID, Vorzeichen-Stabilität
+  und Gesundheits-Confounder.
+- **Zyklus/Verhütung erklärt konkretes App-Verhalten:** `CycleScaffoldCard.tsx` zeigt pro Methode, ob RunLog
+  natürlich, ovulationsunterdrückt oder unsicher modelliert und was das für Gate, Beobachtung und Vorschläge
+  bedeutet.
+- **km-je-Zone-Fix:** `planbuilder.concretizeSession()` erzeugt `planned_km` und `zone_alloc.byKm`; `analysis.enrichZoneAllocKm()`
+  ergänzt alte byMin-Sessions beim Laden/Speichern; `sessionCompletion()` versteht `byMin` direkt.
+
+### Neu in v2.2.1 (Kurz)
+- **Stabilisierung Coach-Kern:** `activities.match_ignore` + Match-API `ignore`; bewusst nicht zugeordnete
+  Aktivitäten zählen zur realen Last, aber nicht zur Plan-Erfüllung. `analysis.matchActivities` und
+  `/api/plan-adherence` respektieren das.
+- **VDOT/VO2max-Saison-Bug:** `/api/fitness-trend` nutzt für Future-Range-Punkte kein in die Zukunft
+  verschobenes 90-Tage-Fenster mehr; `current` wird stabil zum heutigen Datum berechnet.
+- **Testbasis:** `npm test` läuft über `node --import tsx --test tests/**/*.test.ts`; Kern-Tests decken
+  Load/PMC, Analyse, Planbuilder, Pacing, Laktat und ML-Feature-Backbone ab.
+- **Taxonomie:** `MarathonPace` und `Repetitions` sind kanonisch und im ML-Feature-Backbone gemappt.
+- **Strava-Erstanreicherung:** neue Queue-Endpunkte `/api/strava/backfill/status|start|step|cancel`;
+  Start legt ein SQLite-Backup an, Steps nutzen `enrichBudgeted` und respektieren Rate-Limits.
+- **Langzeit:** Pace-vs-HF, Effizienz-Faktor, Entkopplung und effective VO2max zeigen Trendlinie,
+  Monatsmittel und Streuband.
+- **Methodik Research-Lab:** Tabs `Status`/`Was wirkt?`/`Experimente`/`Zyklus`; prospektive Trial-Proposals
+  kommen als Ranking-Liste (`proposals`) mit Score-Komponenten. Einzel-`proposal` bleibt rückwärtskompatibel.
+- **Tracking/Zyklus:** optionales Symptom-Modul in Tracking nur nach Consent; bleibt lokal/nicht-diagnostisch.
+- **Doku/Version:** `package.json`, Footer-Stand, README, CHANGELOG und HANDOFF auf v2.2.1.
+
+### Neu in v2.2.0 (Kurz)
+- **ML-Trainingssteuerung:** Latente Fitness, Dosis-Wirkung, Readiness/Gesundheits-Gate, Feedback,
+  prospektiv-randomisierte N-of-1-Trials und Zyklus-Scaffold (Consent-Hard-Gate), siehe CHANGELOG.
 
 ### Neu in v1.12.1 (Kurz)
 - **Bugfix StructureEditor:** `CountField`/`Row` von innen nach außen auf Modul-Ebene gehoben → Fokus-Verlust

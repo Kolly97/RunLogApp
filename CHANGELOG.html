@@ -192,7 +192,11 @@
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
+    <a href="#v230"><span class="v-badge">2.3.0</span>2026-07-02</a>
     <h4>Versionen</h4>
+    <a href="#v221"><span class="v-badge">2.2.1</span>2026-07-02</a>
+    <a href="#v220"><span class="v-badge">2.2.0</span>2026-07-01</a>
+    <a href="#v210"><span class="v-badge">2.1.0</span>2026-06-30</a>
     <a href="#v2000"><span class="v-badge">2.0.0</span>2026-06-29</a>
     <a href="#v1121"><span class="v-badge">1.12.1</span>2026-06-29</a>
     <a href="#v1120"><span class="v-badge">1.12.0</span>2026-06-28</a>
@@ -230,9 +234,213 @@
   <main>
     <!-- stats -->
     <div class="stats">
-      <div class="stat"><div class="stat-num">32</div><div class="stat-label">Versionen</div></div>
-      <div class="stat"><div class="stat-num">18</div><div class="stat-label">Tage Entwicklung</div></div>
-      <div class="stat"><div class="stat-num">v2.0.0</div><div class="stat-label">Aktuelle Release</div></div>
+      <div class="stat"><div class="stat-num">36</div><div class="stat-label">Versionen</div></div>
+      <div class="stat"><div class="stat-num">22</div><div class="stat-label">Tage Entwicklung</div></div>
+      <div class="stat"><div class="stat-num">v2.3.0</div><div class="stat-label">Aktuelle Release</div></div>
+    </div>
+
+    <!-- ═══════════════════ 2.3.0 ═══════════════════ -->
+    <div class="version open" id="v230">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">2.3.0</span>
+        <span class="version-title">Analytik-Feinschliff, flexible Planung &amp; ehrliche Kausal-Vorschläge</span>
+        <span class="version-date">2026-07-02</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Baut auf dem Research-Lab von v2.2.1 auf: klarere Langzeit-Analytik,
+          flexiblere Wochenplanung, ehrlichere kausale Vorschläge — und der gesamte Zuwachs ist durch einen Architektur-
+          und Stabilitäts-Audit gegangen. Migrationen bleiben additiv, echte Trainingsdaten werden nie verändert.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Langzeit-Charts, einheitlicher Trend-Look:</strong> Pace-vs-HF, Effizienz-Faktor, aerobe
+              Entkopplung und effective VO2max mit dezenten Rohpunkten, klarer Trendlinie, Monatsmittel als distinkte
+              Marker und subtilem Streuband — analytisch, nicht überladen.</li>
+            <li><strong>Zyklus-Steuerung als Profil-Option:</strong> im Profil aktivierbar; erst danach erscheinen der
+              Methodik-Zyklus-Tab und das Symptom-Tagesmodul im Tracking. Standardmäßig aus, lokal, nicht-diagnostisch.</li>
+            <li><strong>Marathon-Pace &amp; Repetitions voll integriert:</strong> eigene Labels/Farben und korrekte
+              Konkretisierung — Marathon-Pace als moderater Z3-Dauerlauf (~84 % VO2max, Daniels M), Repetitions als kurze,
+              schnelle Z6-Intervalle mit voller Erholung (~107 % VO2max, Daniels R).</li>
+            <li><strong>Flexibler Qualitätstag:</strong> ein bevorzugter Berg-Tag ist zugleich Qualitätstag — je nach Phase
+              kann dort Berg <em>oder</em> Tempodauerlauf liegen, statt den Tag starr festzunageln.</li>
+            <li><strong>„Warum dieser Vorschlag / warum nicht die anderen":</strong> Trial-Vorschläge begründen im Klartext
+              das Ranking (Datenlage, Nutzen, Dauer, Risiko, Erklärbarkeit — bewusst ohne „Erfolgswahrscheinlichkeit").</li>
+            <li><strong>Zyklus-Phasen rückwirkend:</strong> neu geloggte Periodenstarts rekonstruieren die Phase der bereits
+              getaggten Einheiten aus der vollen Historie — leakage-frei und additiv.</li>
+            <li><strong>Adversarial Audit-Workflow:</strong> <code>POST /api/ml/audit</code> prüft Zeitordnung/CV-Basis,
+              Frische, Identifizierbarkeit, Shrinkage/FDR/MCID, Vorzeichen-Stabilität und Gesundheits-Confounder.</li>
+            <li><strong>Verhütung/Status-Mehrwert:</strong> die Zyklus-Karte erklärt je Methode, ob RunLog natürlich,
+              ovulationsunterdrückt oder unsicher modelliert — und was das für Gate und Vorschläge bedeutet.</li>
+            <li><strong>„Alles neu berechnen":</strong> nach der Strava-Erstanreicherung sichtbar verankert, damit die
+              nachgezogenen Details/Streams (NGP/NP) in die TSS einfließen.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-fixed">✓ Behoben</div>
+          <ul class="changes">
+            <li><strong>Kausal-Scoring:</strong> Marathon-Pace wurde durch einen Buchstaben-Regex fälschlich als hartes
+              Intervall gezählt; der Informationsgewinn (CI-Überlappung) ist jetzt korrekt der Nutzen-Dimension zugeordnet.</li>
+            <li><strong>Trainingstypen-Pace:</strong> Marathon-Pace und Repetitions rendern nicht mehr versehentlich als
+              lockerer Dauerlauf.</li>
+            <li><strong>Geplante km je Zone:</strong> fehlende <code>zone_alloc.byKm</code> werden serverseitig aus
+              <code>byMin</code> ergänzt; Plan-Erfüllung arbeitet direkt mit <code>byMin</code>.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">↻ Geändert / Robustheit</div>
+          <ul class="changes">
+            <li><strong>Strava-Backups begrenzt</strong> auf die letzten drei — kein unbegrenztes Plattenwachstum mehr.</li>
+            <li><strong>Tracking-Performance:</strong> Zyklus-Symptome werden je Woche gebündelt geladen statt pro Tag.</li>
+            <li><strong>Tutorial-Demo „Mara"</strong> wird über einen stabilen Marker statt über den Profilnamen erkannt —
+              echte Profile können nie als Demo behandelt werden.</li>
+            <li><strong>Testbasis</strong> auf 14 Kern-Tests erweitert (Kausal-Scoring, Zyklus-Backfill, Plan-Tag, Pace-Zonen).</li>
+            <li><strong>Architektur-/Stabilitäts-Audit</strong> des gesamten Zuwachses (additive Migrationen, unveränderte
+              Export-Signaturen, Transaktions-/Settings-Konventionen).</li>
+            <li><code>package.json</code>, <code>README.md</code>, <code>HANDOFF.md</code>, Footer-Stand → <strong>2.3.0</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 2.2.1 ═══════════════════ -->
+    <div class="version" id="v221">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">2.2.1</span>
+        <span class="version-title">Stabiler Coach-Kern + Research-Lab</span>
+        <span class="version-date">2026-07-02</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Stabilisierungs- und Forschungs-Inkrement nach v2.2.0: robustere
+          Plan-Erfüllung, kontrolliert fortsetzbare Strava-Erstanreicherung, analytischere Langzeit-Charts und die
+          Methodik-Seite als Research-Lab. Keine destruktiven Migrationen.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Testbasis:</strong> <code>npm test</code> via <code>node --import tsx --test</code>; Kern-Tests
+              für Load/PMC, Analyse, Planbuilder, Pacing, Laktat und ML-Feature-Backbone.</li>
+            <li><strong>Bewusste Nicht-Zuordnung:</strong> <code>activities.match_ignore</code> + Match-API
+              <code>ignore</code>. Solche Aktivitäten zählen zur realen Last, aber nicht zur Plan-Erfüllung.</li>
+            <li><strong>Trainings-Taxonomie:</strong> kanonische Typen <code>MarathonPace</code> und
+              <code>Repetitions</code> inkl. ML-sicherer Kanal-/Zonen-Mappings.</li>
+            <li><strong>Strava-Erstanreicherung:</strong> resumierbare Queue (Status/Start/Step/Cancel), Backup vor
+              Start, Rate-Limit-Schutz und Fortschritt in den Einstellungen.</li>
+            <li><strong>Langzeit-Charts:</strong> Pace-vs-HF, Effizienz-Faktor, aerobe Entkopplung und effective VO2max
+              mit Trendlinie, Monatsmittel und Streuband.</li>
+            <li><strong>Research-Lab:</strong> Methodik-Tabs <code>Status</code>/<code>Was wirkt?</code>/<code>Experimente</code>/<code>Zyklus</code>;
+              Trial-Vorschläge als Ranking nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit.</li>
+            <li><strong>Tracking:</strong> optionales Zyklus/Symptom-Tagesmodul, nur nach aktivem Consent, lokal und
+              nicht-diagnostisch.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-fixed">✓ Behoben</div>
+          <ul class="changes">
+            <li><strong>VDOT/VO2max-Saisonansicht:</strong> Future-Range-Punkte nutzen kein künstlich in die Zukunft
+              verschobenes 90-Tage-Fenster mehr; Dashboard, Langzeit und Bestzeiten bleiben konsistent.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">↻ Geändert</div>
+          <ul class="changes">
+            <li><strong>Beobachtungs-ML klarer geframed:</strong> Dosis-Wirkung bleibt Hypothese/Korrelation; „geprüft"
+              bleibt dem prospektiv-randomisierten N-of-1-Pfad vorbehalten.</li>
+            <li><strong>Adversarial Audit verankert:</strong> Identifizierbarkeit, CV-Leakage, Priors/Shrinkage,
+              Confounder-Sensitivität und Vorzeichen-Stabilität als sichtbare Audit-Checkliste.</li>
+            <li><code>package.json</code>, README, CHANGELOG, HANDOFF und Footer-Stand → 2.2.1</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 2.2.0 ═══════════════════ -->
+    <div class="version" id="v220">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">2.2.0</span>
+        <span class="version-title">ML-Trainingssteuerung: Latente Fitness · Dosis-Wirkung · Kausal-Experiment · Zyklus-Tracking</span>
+        <span class="version-date">2026-07-01</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Kern-Release der datengesteuerten Trainingssteuerungs-Engine
+          (P0–P6): sieben Ausbaustufen vom einfachen Fitness-Modell bis zum prospektiv-randomisierten
+          N-of-1-Kausalexperiment und zyklusbasierter Trainingsforschung. Alle Auswertungen lokal, keine Cloud.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>P0 — Latente Fitness (<code>LatentFitnessCard</code>):</strong> Banister-Impuls-Antwort-Modell
+              aus den Trainingstagebuch-Daten; Langzeitreihe + MCID-Schwelle (Default 1,0 VO2-Äquiv.).</li>
+            <li><strong>P1 — Dosis-Wirkung / Forest-Plot (<code>DoseResponseCard</code>, <code>ForestPlot</code>):</strong>
+              Kanal-Effekte (Reiz × Fitness-Delta) mit Konfidenzintervallen, <code>ConfidenceBadge</code>, Recompute;
+              Methodenwechsel gesperrt bis genug Daten.</li>
+            <li><strong>P2 — Readiness &amp; Gesundheits-Gate (<code>ReadinessHealthCard</code>):</strong> Wellness-Aggregat
+              aus <code>daily_log_v2</code>; Confounder-Tracking (Krankheit, hohe Last, schlechter Schlaf → Flag) blockt
+              ML-Empfehlungen.</li>
+            <li><strong>P3 — EMA-Feedback (<code>FeedbackPrompt</code>):</strong> Micro-Survey nach jeder Einheit
+              (felt_vs_expected, RPE, session_family, Confounder-Flag); Auto-Tagging mit Zyklus-Kontext bei P6-Consent.</li>
+            <li><strong>P4 — Feedback-Auswertung (<code>methodInference</code>):</strong> aggregiert nach
+              <code>session_family</code>; identifiziert gut/schlecht tolerierte Reize mit Konfidenz aus n.</li>
+            <li><strong>P5 — Kausal-Experiment / Prospektiv-N-of-1 (<code>ProspectiveTrialCard</code>):</strong>
+              counterbalanced AB/BA, deterministischer Seed, exakter Within-Pair-Permutationstest; Verdikt-Ampel
+              (geprüft ≥ 6 saubere Paare); Auto-Plan schreibt load-matched Blöcke (per <code>experiment_id</code> getaggt,
+              Abort löscht nur diese).</li>
+            <li><strong>P6 — Zyklus-Trainingssteuerung (Scaffold OFF, <code>CycleScaffoldCard</code>):</strong>
+              Consent-Hard-Gate (403 ohne Opt-in), 5 additive Tabellen, Gate/Beobachtungsmodus, Perioden- &amp;
+              Symptom-Log, Phase×Reiz-Heatmap, Zyklus-Phasen-Farbband auf PMC/Intensity/Wellness, 1-Klick-Löschen.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">↻ Technisch</div>
+          <ul class="changes">
+            <li>Neue Server-Dateien <code>ml/prospective.ts</code>, <code>mlJobs.ts</code>, <code>cycleTraining.ts</code>;
+              additive Migration in <code>db.ts</code> (16 Spalten in <code>method_experiments</code>,
+              <code>experiment_id</code> in <code>planned_sessions</code>, 5 Cycle-Tabellen).</li>
+            <li><code>index.ts</code>: <code>/api/ml/prospective</code> (6 Routen) + <code>/api/cycle-training</code>
+              (12+ consent-gated Routen).</li>
+            <li>Neue Komponenten/Charts: <code>ProspectiveTrialCard</code>, <code>CycleScaffoldCard</code>,
+              <code>LatentFitnessCard</code>, <code>DoseResponseCard</code>, <code>ReadinessHealthCard</code>,
+              <code>FeedbackPrompt</code>, <code>ForestPlot</code>, <code>LatentFitnessChart</code>, <code>ReadinessChart</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 2.1.0 ═══════════════════ -->
+    <div class="version" id="v210">
+      <div class="version-header" onclick="toggle(this)">
+        <span class="version-num">2.1.0</span>
+        <span class="version-title">Distanzadaptive Trainingsplanung + Streak-Logik + Wochenbericht-Kacheln</span>
+        <span class="version-date">2026-06-30</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="version-body">
+        <p style="margin:0 0 12px;color:var(--muted)">Drei Vertiefungen: Wochen-/Blockplanung reagieren auf die
+          Wettkampfdistanz (5k–Marathon), die Streak-Karte zeigt die korrekte laufende Serie, und Wochenbericht-
+          Kategorien erscheinen als kompakte Stat-Felder.</p>
+        <div class="group">
+          <div class="group-label label-added">+ Hinzugefügt</div>
+          <ul class="changes">
+            <li><strong>Distanzadaptiver Workout-Picker (4 Buckets):</strong> neues <code>is10k</code>-Bucket (7–15 km)
+              neben 5k/HM/Marathon; phasen- und distanzabhängige Qualitäts-Pools.</li>
+            <li><strong><code>phaseDistributionTarget</code> distanzabhängig:</strong> 5k/10k → polarisierter (+Z3),
+              HM/M → pyramidal (+Z2), fließend abgestuft.</li>
+            <li><strong>km-Alignment in <code>blockPlan</code>:</strong> bei gesetztem <code>target_km</code> skaliert ein
+              Faktor (0.7–1.4) die Easy/Long-TSS ans Kilometerziel; Quality-Sessions bleiben unberührt.</li>
+            <li><strong>Wettkampfdistanz durchgereicht</strong> an <code>week-suggestion</code>,
+              <code>block-suggestion</code> und <code>analyze-week</code>.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <div class="group-label label-changed">↻ Geändert</div>
+          <ul class="changes">
+            <li><strong>Streak „nur echtes Training":</strong> <code>sport ≠ General</code> verlängert die Serie,
+              reiner Commute-Tag bricht, eingetragener Ruhetag überbrückt; Headline = laufende Serie bis heute.</li>
+            <li><strong>Wochenbericht-Kategorien</strong> als drei kompakte Stat-Kacheln (Lauf/Rad/Kraft) mit
+              Ist/Plan-Wert und farbiger Completion-Bar statt einer überdehnten Zeile.</li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════════════ 2.0.0 ═══════════════════ -->

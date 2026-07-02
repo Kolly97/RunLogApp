@@ -47,6 +47,13 @@ const REGIME_LABEL: Record<string, string> = {
 };
 const VERDICT_COLOR: Record<string, string> = { besser: "var(--ok)", schlechter: "var(--danger)", flach: "var(--warn)", unklar: "#94a3b8" };
 const CONF_LABEL: Record<string, string> = { hoch: "hohe Konfidenz", mittel: "mittlere Konfidenz", niedrig: "niedrige Konfidenz" };
+type MethodikTab = "status" | "effects" | "experiments" | "cycle";
+const METHODIK_TABS: { key: MethodikTab; label: string }[] = [
+  { key: "status", label: "Status" },
+  { key: "effects", label: "Was wirkt?" },
+  { key: "experiments", label: "Experimente" },
+  { key: "cycle", label: "Zyklus" },
+];
 
 function fmtVal(key: string, v: number | null): string {
   if (v == null) return "—";
@@ -73,10 +80,18 @@ export default function Methodik() {
   const [evalR, setEvalR] = useState<MethodEvaluationResult | null>(null);
   const [form, setForm] = useState({ start_date: "", end_date: "", method: "polarized", label: "", notes: "" });
   const [sparks, setSparks] = useState<Record<string, SparkSeries>>({});
+  const [tab, setTab] = useState<MethodikTab>("status");
+  const [cycleEnabled, setCycleEnabled] = useState(false);
   const showSparks = useSparkPref();
+  const tabs = METHODIK_TABS.filter((x) => x.key !== "cycle" || cycleEnabled);
 
   const reload = () => api.methodExperiments().then(setExps).catch(() => setExps([]));
   useEffect(() => {
+    // Zyklus-Tab entrümpelt Methodik standardmäßig weg — sichtbar erst nach Aktivierung im Profil (Q9/Q14).
+    api.cycleStatus().then((s) => {
+      setCycleEnabled(s.needsConsent === false);
+      if (s.needsConsent !== false) setTab((cur) => (cur === "cycle" ? "status" : cur));
+    }).catch(() => setCycleEnabled(false));
     api.markers(undefined, 14).then(setMarkers).catch(() => setMarkers(null));
     api.methodInference().then(setInference).catch(() => setInference(null));
     // T15: Kern-Marker-Verläufe aus bestehenden Trend-Endpoints (kein neuer Endpoint).
@@ -133,6 +148,16 @@ export default function Methodik() {
 
       <OnboardingTour storageKey="tour-methodik" steps={METHODIK_TOUR} />
 
+      <div style={{ margin: "10px 0 12px" }}>
+        <span className="seg" title="Methodik-Laborbereich auswählen">
+          {tabs.map((x) => (
+            <button key={x.key} className={tab === x.key ? "active" : ""} onClick={() => setTab(x.key)}>{x.label}</button>
+          ))}
+        </span>
+      </div>
+
+      {tab === "status" && (
+      <>
       {/* Einführung (ausklappbar, v1.8.0) */}
       <details className="card" open style={{ marginBottom: 12 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>So nutzt du die Methodik-Seite</summary>
@@ -169,17 +194,15 @@ export default function Methodik() {
       {/* Latente Fitness (ML-Engine, P1) */}
       <LatentFitnessCard />
 
-      {/* Was wirkt bei dir? (ML-Engine, P2 — L3 Dosis-Wirkung) */}
-      <DoseResponseCard />
-
       {/* Readiness & Gesundheit (ML-Engine, P4) */}
       <ReadinessHealthCard />
+      </>
+      )}
 
-      {/* Kausal-Experiment (ML-Engine, P5 — L5 prospektiv randomisiert) */}
-      <ProspectiveTrialCard />
-
-      {/* Zyklus-Steuerung (ML-Engine, P6 — Gerüst AUS, Consent-Hard-Gate) */}
-      <CycleScaffoldCard />
+      {tab === "effects" && (
+      <>
+      {/* Was wirkt bei dir? (ML-Engine, P2 — L3 Dosis-Wirkung) */}
+      <DoseResponseCard />
 
       {/* Passive Inferenz */}
       <div className="card" style={{ marginTop: 12 }}>
@@ -242,6 +265,13 @@ export default function Methodik() {
           </>
         )}
       </div>
+      </>
+      )}
+
+      {tab === "experiments" && (
+      <>
+      {/* Kausal-Experiment (ML-Engine, P5 — L5 prospektiv randomisiert) */}
+      <ProspectiveTrialCard />
 
       {/* Geführte Experimente */}
       <div className="card" style={{ marginTop: 12 }}>
@@ -277,6 +307,12 @@ export default function Methodik() {
 
       {/* Auswertung des gewählten Experiments */}
       {evalR && <div className="card" style={{ marginTop: 12 }}><EvaluationView ev={evalR} title="Auswertung" /></div>}
+      </>
+      )}
+
+      {tab === "cycle" && (
+        <CycleScaffoldCard />
+      )}
     </div>
   );
 }

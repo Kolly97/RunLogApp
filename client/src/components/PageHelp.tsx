@@ -19,6 +19,8 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
   ] },
   track: { title: "Tracking — gelaufene Einheiten", bullets: [
     "Hier erscheinen Strava-Importe und manuelle Einträge. Intervalle inkl. Pausen sind erfassbar.",
+    "Aktivitäten können bewusst 'nicht zuordnen' sein: sie zählen weiter zur realen Last, aber nicht zur Plan-Erfüllung.",
+    "Zyklus/Symptome erscheinen nur nach Opt-in im Methodik-Tab 'Zyklus' und bleiben lokale Beobachtungsdaten.",
     "TSS wird geräteneutral aus Pace/NGP gegen deine Schwelle berechnet — unabhängig vom Uhren-Wert.",
   ] },
   report: { title: "Wochenbericht — diese Woche im Detail", bullets: [
@@ -39,14 +41,14 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
     "W′ = anaerobe Reserve oberhalb CP. Kacheln verschieb-/ausblendbar.",
   ] },
   methodik: { title: "Methodik — was bei DIR wirkt (N-of-1)", bullets: [
-    "Marker-Batterie (Critical Speed primär) mit Mini-Sparklines. Passive Inferenz wertet zusammenhängende Regime-Blöcke aus — korrektere Δ-CS als frühere überlappende Wochenpaare.",
-    "Periodisierungs-Ziel je Saisonphase (pyramidal/polarisiert/regenerativ) mit Begründung — Override möglich im Wochenbericht.",
-    "Wichtig: Korrelation, nicht Kausalität — kleine Stichproben sind als 'explorativ' markiert. Beratend, nie zwingend.",
+    "Tabs: Status zeigt Marker/Readiness, 'Was wirkt?' zeigt Beobachtungs-ML, Experimente enthält randomisierte Trials, Zyklus bleibt separat opt-in.",
+    "Beobachtungs-ML liefert Hypothesen/Korrelationen. Nur prospektiv randomisierte N-of-1-Blöcke dürfen später als 'geprüft' gelten.",
+    "Trial-Vorschläge sind gerankt nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit. Beratend, nie zwingend.",
   ] },
   profile: { title: "Profil — Athlet, Zonen & Präferenzen", bullets: [
     "Athlet · Zonen/Schwellen · Verfügbarkeit · Block-Präferenzen (Schwerpunkt, Lieblings/Vermeiden) · Leistungstests.",
     "Eigene Einheiten: Coros-artiger Builder — Segmente & Gruppen, Spielraum auf Anzahl, Pausen, Pace-Offset. Engine löst Tageswert nach Form auf.",
-    "Das 'Tutorial'-Profil enthält ein komplettes Beispieljahr zum gefahrlosen Ausprobieren.",
+    "'Tutorial: Mara' enthält 18 Monate HM-Demo-Daten plus Zukunftsplan zum gefahrlosen Ausprobieren.",
   ] },
 };
 

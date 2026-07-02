@@ -5,7 +5,9 @@
 //   3. Zeit-/km-in-Zone aus den Streams (budgetiert je Sync)
 // Credentials (Client-ID/Secret der eigenen Strava-API-App) liegen in settings; Tokens ebenso.
 import type { Request, Response } from "express";
-import { db, getSetting, setSetting, activeProfile } from "./db.ts";
+import { readdirSync, unlinkSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { db, DB_PATH, getSetting, setSetting, activeProfile } from "./db.ts";
 import { runTss, computeNgp, computeNp, streamZoneSplit, paceZoneSplit, powerTss, bikeTssEstimate, computeKmSplits, aerobicDecoupling, powerDurationCurve } from "./load.ts";
 import { effectiveZoneSet } from "./zones.ts";
 
@@ -13,6 +15,18 @@ const API = "https://www.strava.com/api/v3";
 const DETAIL_BUDGET_PER_SYNC = 50; // Detail-Abrufe (description/kcal) pro Sync-Lauf
 
 interface Tokens { access: string; refresh: string; expires_at: number; athlete?: string }
+interface BackfillState {
+  active: boolean;
+  after: string;
+  total: number;
+  remaining: number;
+  enriched: number;
+  last_step_enriched?: number;
+  backup?: string | null;
+  message?: string | null;
+  started_at?: string;
+  updated_at?: string;
+}
 
 function creds(): { id: string; secret: string } | null {
   const id = getSetting<string>("strava_client_id", "");
@@ -90,6 +104,59 @@ function mapSport(t: string): string {
   if (t === "VirtualRide") return "BikeIndoor";
   if (t === "WeightTraining" || t === "Workout" || t === "Crossfit") return "Strength";
   return "Other";
+}
+
+const nowIso = () => new Date().toISOString();
+const backfillKey = (profile: number) => `strava_backfill:${profile}`;
+const backfillState = (profile: number): BackfillState => getSetting<BackfillState>(backfillKey(profile), {
+  active: false, after: "2000-01-01", total: 0, remaining: 0, enriched: 0, backup: null, message: null,
+});
+const saveBackfillState = (profile: number, s: BackfillState): BackfillState => {
+  const next = { ...s, updated_at: nowIso() };
+  setSetting(backfillKey(profile), next);
+  return next;
+};
+
+function stravaBackfillRemaining(profile: number, after: string): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) n FROM activities
+       WHERE source='strava' AND profile_id=? AND date >= ?
+         AND (desc_fetched=0
+              OR (sport='Run' AND best_efforts IS NULL)
+              OR ((sport='Run' OR sport LIKE 'Bike%') AND streams_fetched=0)
+              OR ((sport='Run' OR sport LIKE 'Bike%') AND laps_fetched=0 AND COALESCE(efforts_locked,0)=0
+                  AND (efforts IS NULL OR efforts='' OR efforts='null' OR efforts='[]'))
+              OR (sport='Run' AND streams_fetched=1 AND decoupling IS NULL AND avg_hr IS NOT NULL AND moving_s >= 1200
+                  AND COALESCE(type,'') NOT IN ('VO2','VO2short','VO2long','Hill','Race','Threshold','LT2'))
+              OR (sport='Run' AND streams_fetched=1 AND power_curve IS NULL AND moving_s >= 600))`,
+    )
+    .get(profile, after) as { n: number };
+  return row.n || 0;
+}
+
+const BACKFILL_BAK_SUFFIX = "-strava-backfill.bak";
+const BACKFILL_BAK_KEEP = 3; // Retention: nur die letzten N Backups behalten (N-2, Daten-Hygiene).
+
+/** Alte Backfill-Backups aufräumen — behält die neuesten N (ISO-Zeitstempel im Namen → lexikografisch sortierbar). */
+function pruneBackfillBackups(): void {
+  try {
+    const dir = dirname(DB_PATH);
+    const prefix = basename(DB_PATH) + ".";
+    const baks = readdirSync(dir)
+      .filter((f) => f.startsWith(prefix) && f.endsWith(BACKFILL_BAK_SUFFIX))
+      .sort(); // aufsteigend → älteste zuerst
+    for (const f of baks.slice(0, Math.max(0, baks.length - BACKFILL_BAK_KEEP))) {
+      try { unlinkSync(join(dir, f)); } catch { /* Datei evtl. schon weg */ }
+    }
+  } catch { /* Verzeichnis nicht lesbar → Backup selbst bleibt unberührt */ }
+}
+
+function backupForBackfill(): string {
+  const bak = `${DB_PATH}.${new Date().toISOString().replace(/[:.]/g, "-")}${BACKFILL_BAK_SUFFIX}`;
+  db.exec(`VACUUM INTO '${bak.replace(/'/g, "''")}'`);
+  pruneBackfillBackups();
+  return bak;
 }
 
 function tssFromAvgHr(movingS: number, avgHr: number, lthr: number): number {
@@ -480,6 +547,70 @@ export async function stravaEnrich(req: Request, res: Response): Promise<void> {
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
+}
+
+export function stravaBackfillStatus(_req: Request, res: Response): void {
+  const profile = activeProfile();
+  const s = backfillState(profile);
+  const remaining = stravaBackfillRemaining(profile, s.after);
+  res.json(saveBackfillState(profile, { ...s, remaining, active: s.active && remaining > 0 }));
+}
+
+export function stravaBackfillStart(req: Request, res: Response): void {
+  try {
+    const profile = activeProfile();
+    const after = String(req.body?.after || getSetting<string>("strava_sync_from", "") || "2000-01-01");
+    const total = stravaBackfillRemaining(profile, after);
+    const backup = backupForBackfill();
+    const state = saveBackfillState(profile, {
+      active: total > 0,
+      after,
+      total,
+      remaining: total,
+      enriched: 0,
+      last_step_enriched: 0,
+      backup,
+      message: total > 0 ? "Backfill gestartet. Nutze Schritt/Weiter, bis der Rest 0 ist." : "Keine offenen Strava-Details gefunden.",
+      started_at: nowIso(),
+    });
+    res.json(state);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+export async function stravaBackfillStep(_req: Request, res: Response): Promise<void> {
+  const profile = activeProfile();
+  const s = backfillState(profile);
+  if (!s.active) return void res.json(s);
+  try {
+    const enriched = await enrichBudgeted(profile, s.after);
+    const remaining = stravaBackfillRemaining(profile, s.after);
+    const active = remaining > 0 && !dayBudgetExhausted();
+    const msg = remaining === 0
+      ? "Backfill vollständig."
+      : dayBudgetExhausted()
+        ? rateLimitMessage()
+        : `${remaining} Aktivitäten offen. Später oder direkt mit dem nächsten Schritt fortsetzen.`;
+    const state = saveBackfillState(profile, {
+      ...s,
+      active,
+      remaining,
+      enriched: (s.enriched || 0) + enriched,
+      last_step_enriched: enriched,
+      message: msg,
+    });
+    res.json(state);
+  } catch (e) {
+    const state = saveBackfillState(profile, { ...s, active: false, message: String(e) });
+    res.status(500).json(state);
+  }
+}
+
+export function stravaBackfillCancel(_req: Request, res: Response): void {
+  const profile = activeProfile();
+  const s = backfillState(profile);
+  res.json(saveBackfillState(profile, { ...s, active: false, message: "Backfill pausiert." }));
 }
 
 /** Endpoint: Intervalle EINER Aktivität sofort aus den Strava-Laps neu erzeugen (hebt die manuelle Sperre auf).

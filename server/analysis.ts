@@ -1615,6 +1615,37 @@ export function injuryRiskFlag(args: {
   return { level: "ok", code: "injury_risk_ok", message: "Belastung im grünen Bereich (ACWR/Monotonie/Ramp/Readiness unauffällig).", params };
 }
 
+/** Ergänzt geplante Lauf-km je Zone aus Minuten und Pace-Zonen, ohne vorhandene manuelle byKm zu überschreiben. */
+export function enrichZoneAllocKm<T extends PlannedSession>(session: T, paceZones?: number[]): T {
+  if (session.sport !== "Run") return session;
+  const alloc = session.zone_alloc;
+  const byMin = alloc?.byMin;
+  if (!byMin || !Object.values(byMin).some((v) => (Number(v) || 0) > 0)) return session;
+  if (alloc?.byKm && Object.values(alloc.byKm).some((v) => (Number(v) || 0) > 0)) return session;
+
+  const raw: Record<number, number> = {};
+  for (const [k, v] of Object.entries(byMin)) {
+    const z = Number(k);
+    const min = Number(v) || 0;
+    if (z <= 0 || min <= 0) continue;
+    const pace = paceZones?.[z - 1] || DEFAULT_ZONE_PACE[z - 1];
+    if (pace > 0) raw[z] = (min * 60) / pace;
+  }
+  const rawSum = Object.values(raw).reduce((a, b) => a + b, 0);
+  if (rawSum <= 0) return session;
+
+  const targetKm = session.planned_km && session.planned_km > 0 ? session.planned_km : rawSum;
+  const scale = targetKm > 0 ? targetKm / rawSum : 1;
+  const byKm: Record<number, number> = {};
+  for (const [k, v] of Object.entries(raw)) byKm[Number(k)] = Math.round(v * scale * 100) / 100;
+  const kmSum = Object.values(byKm).reduce((a, b) => a + b, 0);
+  return {
+    ...session,
+    planned_km: session.planned_km ?? (kmSum > 0 ? Math.round(kmSum * 100) / 100 : session.planned_km),
+    zone_alloc: { ...alloc, byKm },
+  };
+}
+
 /** Geplante km je HF-Zone (nur Lauf): aus zone_alloc (byKm bevorzugt, sonst byMin via Pace) oder Typ-Default. */
 export function zoneKmOf(sessions: PlannedSession[], zones: HrZone[], paceZones?: number[]): Record<number, number> {
   const zk: Record<number, number> = {};
@@ -1823,14 +1854,14 @@ export interface AnalyzeContext {
  * jede Einheit höchstens einmal. Liefert Map activityId → sessionId (für korrekte Plan-Erfüllung statt Fehl-%).
  */
 export function matchActivities(
-  activities: { id: number; date: string; type: string | null; tss: number | null; moving_s: number | null; matched_session_id: number | null; sport: string }[],
+  activities: { id: number; date: string; type: string | null; tss: number | null; moving_s: number | null; matched_session_id: number | null; sport: string; match_ignore?: number | boolean | null }[],
   sessions: { id: number; date: string; type: string; planned_tss: number | null; planned_min: number | null }[],
 ): Map<number, number> {
   const out = new Map<number, number>();
   const usedSessions = new Set<number>();
   const sessionIds = new Set(sessions.map((s) => s.id));
   // 1) manuelle Zuordnungen fixieren.
-  for (const a of activities) if (a.matched_session_id != null && sessionIds.has(a.matched_session_id)) { out.set(a.id, a.matched_session_id); usedSessions.add(a.matched_session_id); }
+  for (const a of activities) if (!a.match_ignore && a.matched_session_id != null && sessionIds.has(a.matched_session_id)) { out.set(a.id, a.matched_session_id); usedSessions.add(a.matched_session_id); }
   // 2) auto: Score je (Aktivität, freie Einheit), beste Paare greedy zuerst.
   const score = (a: typeof activities[number], s: typeof sessions[number]): number => {
     const dd = Math.abs(Date.parse(a.date + "T00:00:00Z") - Date.parse(s.date + "T00:00:00Z")) / 86400000;
@@ -1843,7 +1874,7 @@ export function matchActivities(
   };
   const pairs: { a: number; s: number; sc: number }[] = [];
   for (const a of activities) {
-    if (out.has(a.id) || a.sport !== "Run") continue;
+    if (out.has(a.id) || a.match_ignore || a.sport !== "Run") continue;
     for (const s of sessions) if (!usedSessions.has(s.id)) { const sc = score(a, s); if (sc > 0) pairs.push({ a: a.id, s: s.id, sc }); }
   }
   pairs.sort((x, y) => y.sc - x.sc);
@@ -1853,7 +1884,7 @@ export function matchActivities(
 }
 
 export function sessionCompletion(
-  planned: { planned_tss?: number | null; zone_alloc?: { byKm?: Record<number, number> } | null },
+  planned: { planned_tss?: number | null; zone_alloc?: { byKm?: Record<number, number>; byMin?: Record<number, number> } | null },
   act: { tss?: number | null; pace_zone_min?: Record<number, number> | null },
   paceZones: number[] | undefined,
 ): { pct: number; tssScore: number; zoneScore: number | null; tssOnly: boolean } | null {
@@ -1863,13 +1894,22 @@ export function sessionCompletion(
 
   let zoneScore: number | null = null;
   const byKm = planned.zone_alloc?.byKm || null;
+  const byMin = planned.zone_alloc?.byMin || null;
   const aMin = act.pace_zone_min || null;
-  if (byKm && Object.keys(byKm).length && aMin && Object.keys(aMin).length) {
+  if (((byKm && Object.keys(byKm).length) || (byMin && Object.keys(byMin).length)) && aMin && Object.keys(aMin).length) {
     const pTime: Record<number, number> = {}; // geplante Zeit je Zone = km_z · pace_z
-    for (const [z, km] of Object.entries(byKm)) {
-      const zi = Number(z), kmv = Number(km) || 0;
-      if (kmv <= 0) continue;
-      pTime[zi] = kmv * (paceZones?.[zi - 1] || DEFAULT_ZONE_PACE[zi - 1] || 300);
+    if (byKm && Object.keys(byKm).length) {
+      for (const [z, km] of Object.entries(byKm)) {
+        const zi = Number(z), kmv = Number(km) || 0;
+        if (kmv <= 0) continue;
+        pTime[zi] = kmv * (paceZones?.[zi - 1] || DEFAULT_ZONE_PACE[zi - 1] || 300);
+      }
+    } else if (byMin) {
+      for (const [z, min] of Object.entries(byMin)) {
+        const zi = Number(z), mv = Number(min) || 0;
+        if (mv <= 0) continue;
+        pTime[zi] = mv * 60;
+      }
     }
     const pSum = Object.values(pTime).reduce((s, x) => s + x, 0);
     const aSum = Object.values(aMin).reduce((s, x) => s + (Number(x) || 0), 0);

@@ -6,7 +6,7 @@ import { api, type CycleStatus, type CycleMethod, type CycleEvidence } from "../
 import { fmtDate } from "../lib/util.ts";
 import ExpertDetails from "./ExpertDetails.tsx";
 
-const METHOD_LABEL: Record<CycleMethod, string> = {
+export const METHOD_LABEL: Record<CycleMethod, string> = {
   none: "Keine / natürlicher Zyklus", combined_pill: "Kombinierte Pille", progestin_pill: "Gestagen-Pille (POP)",
   hormonal_iud: "Hormonspirale", copper_iud: "Kupferspirale", implant: "Implantat", injection: "Dreimonatsspritze",
   ring: "Vaginalring", patch: "Verhütungspflaster", unknown: "Unbekannt",
@@ -19,6 +19,101 @@ const SYMPTOMS: { key: "cramps" | "energy" | "sleep" | "mood" | "flow"; label: s
   { key: "cramps", label: "Krämpfe" }, { key: "energy", label: "Energie" }, { key: "sleep", label: "Schlaf" }, { key: "mood", label: "Stimmung" }, { key: "flow", label: "Blutung" },
 ];
 const DISCLAIMER = "Nicht-diagnostisch, nicht-wertend. Zyklusdaten bleiben lokal auf diesem Gerät (noch unverschlüsselt). Im Zweifel mit einer Fachperson sprechen.";
+type MethodImpact = { mode: string; changes: string[] };
+const METHOD_IMPACT: Record<CycleMethod, MethodImpact> = {
+  none: {
+    mode: "Natürlicher Zyklus",
+    changes: [
+      "Phasen-Schätzung ist grundsätzlich möglich, aber erst nach mindestens 3 vollständigen, stabilen Zyklen.",
+      "Bis das Gate offen ist, sammelt RunLog nur Periodenstarts, Symptome und Feedback; keine Trainingsvorschläge werden phasenbasiert geändert.",
+      "Wenn später genug Daten vorliegen, werden Phase und Zyklustag nur beratend markiert und mit deinen eigenen Reiz-Feedbacks gegengeprüft.",
+    ],
+  },
+  copper_iud: {
+    mode: "Nicht-hormonell, natürlicher Zyklus wahrscheinlich",
+    changes: [
+      "RunLog behandelt die Auswahl wie natürlichen Zyklus, weil keine systemische Ovulationsunterdrückung angenommen wird.",
+      "Blutung und Beschwerden können trotzdem durch die Spirale beeinflusst sein; Symptome zählen deshalb stärker als Kalenderannahmen.",
+      "Phasenhinweise bleiben gesperrt, bis Periodenstarts stabil genug sind und keine Gesundheitsflags dagegen sprechen.",
+    ],
+  },
+  combined_pill: {
+    mode: "Ovulation unterdrückt",
+    changes: [
+      "Keine natürliche Follikel-/Luteal-Periodisierung; RunLog bleibt bei phasen-neutraler Trainingsplanung.",
+      "Abbruchblutung oder Pillenpause wird nicht als belastbarer natürlicher Zyklus interpretiert.",
+      "Symptome können zur Readiness-Einordnung beobachtet werden, erzeugen aber keine aktiven Phasenempfehlungen.",
+    ],
+  },
+  ring: {
+    mode: "Ovulation unterdrückt",
+    changes: [
+      "Der Vaginalring wird wie kombinierte hormonelle Verhütung behandelt: keine natürliche Phasensteuerung.",
+      "Entzugsblutung oder ringfreie Woche öffnet das Gate nicht automatisch.",
+      "RunLog nutzt erfasste Symptome nur beschreibend für Belastbarkeit, Schlaf, Energie und Feedback.",
+    ],
+  },
+  patch: {
+    mode: "Ovulation unterdrückt",
+    changes: [
+      "Das Pflaster wird wie kombinierte hormonelle Verhütung behandelt: keine natürliche Phasensteuerung.",
+      "Pflasterpause oder Entzugsblutung wird nicht als stabiler natürlicher Zyklus gewertet.",
+      "Symptomdaten bleiben hilfreich für Beobachtung und Readiness, aber nicht für automatische Trainingsphasen.",
+    ],
+  },
+  implant: {
+    mode: "Ovulation meist unterdrückt oder stark verändert",
+    changes: [
+      "RunLog hält das Phasen-Gate geschlossen und schlägt keine zyklusadaptiven Einheiten vor.",
+      "Unregelmäßige Blutungen werden als Statussignal, nicht als zuverlässiger Zyklusanker behandelt.",
+      "Tracking bleibt sinnvoll für individuelle Muster wie Energie, Krämpfe, Schlaf und Trainingsqualität.",
+    ],
+  },
+  injection: {
+    mode: "Ovulation meist unterdrückt",
+    changes: [
+      "Die Dreimonatsspritze schließt natürliche Phasensteuerung in RunLog aus.",
+      "Blutungsfreiheit oder unregelmäßige Blutungen werden nicht als Follikel-/Lutealphase modelliert.",
+      "Die App bleibt im Beobachtungsmodus und nutzt Symptome nur zur Einordnung, nicht zur Planänderung.",
+    ],
+  },
+  progestin_pill: {
+    mode: "Unsicher, je nach Präparat und Person",
+    changes: [
+      "RunLog kann nicht sicher annehmen, ob Ovulation stattfindet; deshalb bleibt das Gate konservativ.",
+      "Periodenstarts und Symptome werden gesammelt, aber Phasenempfehlungen bleiben aus, bis Daten sehr stabil wirken.",
+      "Bei unregelmäßigen Blutungen zählt die App eher Beobachtung und Readiness als Kalenderphase.",
+    ],
+  },
+  hormonal_iud: {
+    mode: "Unsicher, Zyklus kann weiterlaufen",
+    changes: [
+      "RunLog behandelt die Hormonspirale konservativ, weil Ovulation möglich ist, Blutungsmuster aber oft verändert sind.",
+      "Phasenhinweise entstehen nur bei klaren, wiederholbaren Periodenstarts und bleiben sonst Beobachtung.",
+      "Symptom- und Feedbackdaten sind hier wichtiger als reine Zyklustag-Schätzung.",
+    ],
+  },
+  unknown: {
+    mode: "Unklarer Status",
+    changes: [
+      "RunLog aktiviert keine Phasensteuerung, solange die Methode oder der Zyklusstatus unklar ist.",
+      "Du kannst Symptome und Periodenstarts erfassen; die App liest sie nur beschreibend.",
+      "Sobald der Status geklärt ist, entscheidet das Gate neu zwischen natürlichem Zyklus, unterdrückt oder unsicher.",
+    ],
+  },
+};
+
+function MethodImpactPanel({ method }: { method: CycleMethod }) {
+  const impact = METHOD_IMPACT[method] ?? METHOD_IMPACT.unknown;
+  return (
+    <div style={{ marginTop: 8, padding: "8px 10px", border: "1px solid var(--border-faint)", borderRadius: 8 }}>
+      <div className="tiny" style={{ fontWeight: 700 }}>Was ändert sich konkret? <span className="muted" style={{ fontWeight: 500 }}>{impact.mode}</span></div>
+      <ul className="tiny muted" style={{ margin: "4px 0 0", paddingLeft: 16, lineHeight: 1.5 }}>
+        {impact.changes.map((c, i) => <li key={i}>{c}</li>)}
+      </ul>
+    </div>
+  );
+}
 
 export default function CycleScaffoldCard() {
   const [st, setSt] = useState<CycleStatus | null>(null);
@@ -90,6 +185,7 @@ export default function CycleScaffoldCard() {
             <div style={{ flex: 1 }} />
             <button className="btn" disabled={busy} onClick={optIn}>Aktivieren (Opt-in)</button>
           </div>
+          <MethodImpactPanel method={method} />
           <p className="tiny muted" style={{ marginTop: 8, fontStyle: "italic" }}>{DISCLAIMER}</p>
         </>
       ) : (
@@ -102,6 +198,7 @@ export default function CycleScaffoldCard() {
               </select>
             </label>
           </div>
+          <MethodImpactPanel method={method} />
 
           {/* Gate-Status */}
           {st.gate && (

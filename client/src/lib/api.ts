@@ -34,6 +34,13 @@ export type MlKindName = "latent_fitness" | "dose_response" | "readiness";
 export interface MlReadinessPoint { date: string; value: number; sd: number; }
 export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
 export interface MlReadiness { runId: number | null; finishedAt: string | null; meta: { insufficient?: boolean; nDays?: number; drivers?: string[]; disclaimer?: string; bmi?: number | null } | null; points: MlReadinessPoint[]; flags: MlHealthFlag[]; }
+export type MlAuditStatus = "pass" | "warn" | "fail" | "info";
+export interface MlAuditCheck { key: string; label: string; status: MlAuditStatus; message: string; detail?: string; evidence?: Record<string, unknown>; }
+export interface MlAdversarialAudit {
+  generatedAt: string; modelVersion: string; runId: number | null; activeCount: number | null; designWeeks: number;
+  summary: { status: MlAuditStatus; pass: number; warn: number; fail: number; info: number };
+  checks: MlAuditCheck[];
+}
 export interface MlFeedback { id?: number; activity_id?: number | null; date?: string; session_family?: string | null; rpe?: number | null; felt_vs_expected?: number | null; life_stress?: number | null; notes?: string | null; }
 // P5 — prospektiv randomisierte N-of-1-Blöcke (der einzige kausale Pfad)
 export interface MlProspectiveArm { kind: "channel" | "regime"; value: string; label: string; }
@@ -41,6 +48,8 @@ export interface MlProspectiveProposal {
   kind: "channel" | "regime";
   armA: MlProspectiveArm; armB: MlProspectiveArm;
   rationale: string; overlap: number | null; source: "effects" | "default"; proposalHash: string;
+  score: number; rankLabel: string; durationWeeks: number; risk: "niedrig" | "mittel" | "hoch";
+  scores: { data: number; benefit: number; duration: number; risk: number; explainability: number };
   defaults: { nPairsPlanned: number; blockWeeks: number; washoutWeeks: number; lagWeeks: number; mcid: number; alpha: number; pairsForSignif: number };
 }
 export interface MlProspectiveBlock { pair: number; arm: string; startDate: string; endDate: string; outcome?: number | null; outcomeSd?: number | null; excluded?: boolean; }
@@ -55,7 +64,7 @@ export interface MlProspectiveTrial {
   config_json: string | null; blocks_json: string | null;
   label: string | null; notes: string | null; created_at: string;
 }
-export interface MlProspectiveState { trials: MlProspectiveTrial[]; proposal: MlProspectiveProposal | null; }
+export interface MlProspectiveState { trials: MlProspectiveTrial[]; proposal: MlProspectiveProposal | null; proposals?: MlProspectiveProposal[]; }
 export interface MlAcceptTrialBody {
   kind: "channel" | "regime"; armA: { value: string; label: string }; armB: { value: string; label: string };
   nPairsPlanned: number; proposalHash: string; consentedAt: string;
@@ -119,6 +128,18 @@ export interface WPrimeLatest {
   cp?: number; wPrime?: number; minBal?: number; minPct?: number; timeInDeficitS?: number; tau?: number;
   curve?: { t: number; bal: number }[]; verdict?: string;
 }
+export interface StravaBackfillState {
+  active: boolean;
+  after: string;
+  total: number;
+  remaining: number;
+  enriched: number;
+  last_step_enriched?: number;
+  backup?: string | null;
+  message?: string | null;
+  started_at?: string;
+  updated_at?: string;
+}
 
 // Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
@@ -181,7 +202,7 @@ export interface Activity {
   decoupling?: number | null; // aerobe Entkopplung Pa:HR (%, Lauf) — v1.2.0
   zones?: Record<number, number> | null; zone_min?: Record<number, number> | null;
   zone_km?: Record<number, number> | null; efforts?: Effort[] | null;
-  overrides?: string[]; matched_session_id?: number | null; notes?: string;
+  overrides?: string[]; matched_session_id?: number | null; match_ignore?: number | boolean | null; notes?: string;
 }
 export interface DailyLog { date: string; [k: string]: unknown; }
 export interface PmcPoint { date: string; tss: number; ctl: number; atl: number; tsb: number; planned?: boolean; }
@@ -473,6 +494,10 @@ export const api = {
   deleteZoneset: (id: number) => j(`/api/zonesets/${id}`, { method: "DELETE" }),
   // HF-/Power-Zonen aus Strava importieren (v0.14.0, ToDo 10)
   importStravaZones: (valid_from: string) => j<{ ok: true }>("/api/strava/import-zones", { method: "POST", body: JSON.stringify({ valid_from }) }),
+  stravaBackfillStatus: () => j<StravaBackfillState>("/api/strava/backfill/status"),
+  stravaBackfillStart: (after: string) => j<StravaBackfillState>("/api/strava/backfill/start", { method: "POST", body: JSON.stringify({ after }) }),
+  stravaBackfillStep: () => j<StravaBackfillState>("/api/strava/backfill/step", { method: "POST" }),
+  stravaBackfillCancel: () => j<StravaBackfillState>("/api/strava/backfill/cancel", { method: "POST" }),
 
   // v1.3.0 (G3) — Laktat-/Feldtest-Diagnostik
   lactateTests: () => j<LactateTest[]>("/api/lactate-tests"),
@@ -541,7 +566,7 @@ export const api = {
   addActivity: (b: Activity) => j<{ id: number }>("/api/activities", { method: "POST", body: JSON.stringify(b) }),
   updateActivity: (id: number, b: Activity) => j(`/api/activities/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   deleteActivity: (id: number) => j(`/api/activities/${id}`, { method: "DELETE" }),
-  matchActivity: (id: number, sessionId: number | null) => j(`/api/activities/${id}/match`, { method: "POST", body: JSON.stringify({ session_id: sessionId }) }), // v1.9.0
+  matchActivity: (id: number, sessionId: number | null, ignore = false) => j(`/api/activities/${id}/match`, { method: "POST", body: JSON.stringify({ session_id: sessionId, ignore }) }), // v1.9.0/v2.2.x
   relinkEfforts: (id: number) => j(`/api/activities/${id}/relink-efforts`, { method: "POST" }),
 
   daily: (q: { from?: string; to?: string }) => {
@@ -662,9 +687,11 @@ export const api = {
   mlLatentFitness: () => j<MlLatentPoint[]>("/api/ml/latent-fitness"),
   mlEffects: () => j<MlEffects>("/api/ml/effects"),
   mlReadiness: () => j<MlReadiness>("/api/ml/readiness"),
+  mlAdversarialAudit: () => j<MlAdversarialAudit>("/api/ml/audit", { method: "POST" }),
   mlGetFeedback: (activityId: number) => j<MlFeedback | null>(`/api/ml/feedback?activityId=${activityId}`),
   mlSaveFeedback: (b: MlFeedback) => j<{ id: number }>("/api/ml/feedback", { method: "POST", body: JSON.stringify(b) }),
   mlProspective: () => j<MlProspectiveState>("/api/ml/prospective"),
+  mlProspectiveProposals: () => j<MlProspectiveProposal[]>("/api/ml/prospective/proposals"),
   mlProposeTrial: () => j<MlProspectiveProposal>("/api/ml/prospective/propose", { method: "POST" }),
   mlAcceptTrial: (b: MlAcceptTrialBody) => j<{ id: number }>("/api/ml/prospective/accept", { method: "POST", body: JSON.stringify(b) }),
   mlDeclineTrial: () => j<{ ok: boolean }>("/api/ml/prospective/decline", { method: "POST" }),

@@ -1,6 +1,6 @@
 {
   "name": "runlog",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",
@@ -12,6 +12,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite",
     "build": "vite build",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "db:template": "tsx server/reset-db.ts training.empty.db",
     "db:reset": "tsx server/reset-db.ts data/training.db",

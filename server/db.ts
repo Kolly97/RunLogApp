@@ -237,6 +237,9 @@ function migrate(): void {
   // power_curve = JSON {dauer_s: beste_mittlere_Watt}. '{}' = Streams geholt, aber keine Watt (kein Re-Fetch).
   addColumn("activities", "run_np", "REAL");
   addColumn("activities", "power_curve", "TEXT");
+  // v2.2.x: Aktivität bewusst NICHT einer geplanten Einheit zuordnen (Einlaufen, Zusatzlauf, Commute).
+  // Zählt weiter zur realen Last, aber nicht zur Plan-Erfüllung / Auto-Match.
+  addColumn("activities", "match_ignore", "INTEGER DEFAULT 0");
 
   // ToDo 13/24: konfigurierbare Auswahllisten (Phasen, Sportarten, Einheitstypen, Aktivitätstypen)
   db.exec(`
@@ -733,10 +736,12 @@ const CANONICAL_SESSION_TYPES: { value: string; label: string; intensity: string
   { value: "Long", label: "Longrun", intensity: "easy", color: "#6366f1" },
   { value: "LongQ", label: "Longrun mit Qualität", intensity: "moderate", color: "#8b5cf6" },
   { value: "Trail", label: "Trail Run", intensity: "moderate", color: "#16a34a" },
+  { value: "MarathonPace", label: "Marathon-Pace", intensity: "moderate", color: "#0ea5e9" },
   { value: "LT1", label: "LT1 (aerobe Schwelle)", intensity: "moderate", color: "#84cc16" },
   { value: "LT2", label: "LT2 / Schwelle", intensity: "hard", color: "#eab308" },
   { value: "VO2", label: "VO2max", intensity: "hard", color: "#f97316" },
   { value: "Rep", label: "Repetitions (>VO2max)", intensity: "hard", color: "#ef4444" },
+  { value: "Repetitions", label: "Repetitions", intensity: "hard", color: "#ef4444" },
 ];
 function seedCanonicalSessionTypes(): void {
   const ins = db.prepare(

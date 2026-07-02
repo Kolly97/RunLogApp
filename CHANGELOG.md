@@ -4,6 +4,86 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [2.3.0] – 2026-07-02 — Analytik-Feinschliff, flexible Planung & ehrliche Kausal-Vorschläge
+
+Baut auf dem Research-Lab-Fundament von v2.2.1 auf: die Langzeit-Analytik wird klarer, die Wochenplanung
+flexibler, die kausalen Trainingsvorschläge ehrlicher — und der gesamte Zuwachs ist durch einen Architektur-
+und Stabilitäts-Audit gegangen. Alle Migrationen bleiben additiv, echte Trainingsdaten werden nie verändert.
+
+### Hinzugefügt
+- **Langzeit-Charts, einheitlicher Trend-Look:** Pace-vs-HF, Effizienz-Faktor, aerobe Entkopplung und effective
+  VO2max zeigen jetzt dezente Rohpunkte, eine klare Trendlinie, das Monatsmittel als distinkte Marker und ein
+  subtiles Streuband — analytisch, nicht überladen.
+- **Zyklus-Steuerung als Profil-Option:** im Profil aktivierbar; erst danach erscheinen der Methodik-Zyklus-Tab
+  und das Symptom-Tagesmodul im Tracking. Standardmäßig aus, lokal, nicht-diagnostisch.
+- **Marathon-Pace & Repetitions voll integriert:** eigene Auswahl-Labels/Farben und wissenschaftlich korrekte
+  Konkretisierung — Marathon-Pace als moderater Z3-Dauerlauf (~84 % VO2max, Daniels M), Repetitions als kurze,
+  schnelle Z6-Intervalle mit voller Erholung (~107 % VO2max, Daniels R).
+- **Flexibler Qualitätstag:** ein bevorzugter Berg-Tag ist zugleich Qualitätstag — je nach Trainingsphase kann
+  dort Berg **oder** Tempodauerlauf liegen, statt den Tag starr auf einen Typ festzunageln.
+- **„Warum dieser Vorschlag / warum nicht die anderen":** die Trial-Vorschläge begründen im Klartext, warum ein
+  Kontrast oben steht und warum die Alternativen niedriger ranken (nach Datenlage, Nutzen, Dauer, Risiko,
+  Erklärbarkeit — bewusst ohne „Erfolgswahrscheinlichkeit").
+- **Zyklus-Phasen rückwirkend:** neu geloggte Periodenstarts rekonstruieren die Phase der bereits getaggten
+  Einheiten aus der vollen Historie (statt nur zum Erfassungszeitpunkt zu stempeln) — leakage-frei und additiv.
+- **Echter adversarial Audit-Workflow:** `POST /api/ml/audit` rekonstruiert das aktuelle Dosis-Wirkungs-Design
+  und prüft Zeitordnung/CV-Basis, Frische, Identifizierbarkeit, Shrinkage/FDR/MCID, Vorzeichen-Stabilität
+  sowie Gesundheits-Confounder. Die Methodik-Karte zeigt den Report per „Audit laufen lassen".
+- **Verhütung/Status-Mehrwert:** die Zyklus-Karte erklärt je Methode konkret, ob RunLog natürlich,
+  ovulationsunterdrückt oder unsicher modelliert und was das für Gate, Beobachtung und Vorschläge bedeutet.
+- **„Alles neu berechnen":** nach der Strava-Erstanreicherung erscheint der Neuberechnen-Schritt sichtbar, damit
+  die nachgezogenen Details/Streams (NGP/NP) auch in die TSS einfließen.
+
+### Behoben
+- **Kausal-Scoring:** Marathon-Pace wurde durch einen Buchstaben-Regex fälschlich als hartes Intervall gezählt;
+  der Informationsgewinn (CI-Überlappung) ist jetzt korrekt der Nutzen- statt der Datenlage-Dimension zugeordnet.
+- **Trainingstypen-Pace:** Marathon-Pace und Repetitions rendern nicht mehr versehentlich als lockerer Dauerlauf.
+- **Geplante km je Zone:** fehlende `zone_alloc.byKm` werden serverseitig aus `byMin` ergänzt; Plan-Erfüllung
+  arbeitet direkt mit `byMin`, ohne dass Einheiten manuell neu gespeichert werden müssen.
+
+### Geändert / Robustheit
+- **Strava-Backups begrenzt:** die Backfill-Backups behalten nur die letzten drei — kein unbegrenztes
+  Plattenwachstum mehr.
+- **Tracking-Performance:** Zyklus-Symptome werden je Woche gebündelt geladen statt pro Tag.
+- **Tutorial-Demo robuster:** „Mara" wird über einen stabilen Marker statt über den Profilnamen erkannt — echte
+  Profile können nie als Demo behandelt werden.
+- **Testbasis erweitert:** 14 Kern-Tests, u.a. Kausal-Scoring, Zyklus-Backfill, flexibler Plan-Tag und die
+  Pace-Zonen für Marathon-Pace/Repetitions.
+- **Architektur-/Stabilitäts-Audit:** der gesamte Zuwachs wurde gegen die bestehenden Muster geprüft (additive
+  Migrationen, unveränderte Export-Signaturen, Transaktions- und Settings-Konventionen).
+- **Doku/Version:** README, Changelog, Handoff, Footer-Stand und Paketversion auf v2.3.0 synchronisiert.
+
+## [2.2.1] – 2026-07-02 — Stabiler Coach-Kern + Research-Lab
+
+Stabilisierungs- und Forschungs-Inkrement nach v2.2.0: Plan-Erfüllung wird robuster, Strava-Erstanreicherung
+ist kontrolliert fortsetzbar, Langzeit-Charts werden analytischer und die Methodik-Seite ist als Research-Lab
+strukturiert. Keine destruktiven Migrationen.
+
+### Hinzugefügt
+- **Testbasis:** `npm test` via `node --import tsx --test`, erste Kern-Tests für Load/PMC, Analyse,
+  Planbuilder, Pacing, Laktat und ML-Feature-Backbone.
+- **Bewusste Nicht-Zuordnung:** `activities.match_ignore` + Match-API `ignore`. Aktivitäten zählen weiter zur
+  realen Last, aber nicht zur Plan-Erfüllung.
+- **Trainings-Taxonomie:** kanonische Typen `MarathonPace` und `Repetitions` inkl. ML-sicherer Kanal-/Zonen-Mappings.
+- **Strava-Erstanreicherung:** resumierbare Queue mit Status/Start/Step/Cancel, Backup vor Start,
+  Rate-Limit-Schutz und Fortschritt in den Einstellungen.
+- **Langzeit-Charts:** Pace-vs-HF, Effizienz-Faktor, aerobe Entkopplung und effective VO2max mit Trendlinie,
+  Monatsmittel und Streuband.
+- **Research-Lab:** Methodik-Tabs `Status`, `Was wirkt?`, `Experimente`, `Zyklus`; Trial-Vorschläge als
+  Ranking nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit.
+- **Tracking:** optionales Zyklus/Symptom-Tagesmodul, nur nach aktivem Consent, lokal und nicht-diagnostisch.
+
+### Behoben
+- **VDOT/VO2max-Saisonansicht:** Future-Range-Punkte verwenden für das aktuelle Fitness-Signal kein künstlich
+  in die Zukunft verschobenes 90-Tage-Fenster mehr. Dashboard, Langzeit und Bestzeiten bleiben konsistent.
+
+### Geändert
+- **Beobachtungs-ML klarer geframed:** Dosis-Wirkung bleibt Hypothese/Korrelation; “geprüft” bleibt dem
+  prospektiv-randomisierten N-of-1-Pfad vorbehalten.
+- **Adversarial Audit verankert:** Identifizierbarkeit, CV-Leakage, Priors/Shrinkage, Confounder-Sensitivität
+  und Vorzeichen-Stabilität stehen sichtbar als Audit-Checkliste in der Dosis-Wirkungs-Karte.
+- **Doku/Version:** README, Changelog, Handoff, Footer-Stand und Paketversion auf v2.2.1 synchronisiert.
+
 ## [2.2.0] – 2026-07-01 — ML-Trainingssteuerung: Latente Fitness · Dosis-Wirkung · Kausal-Experiment · Zyklus-Tracking
 
 Kern-Release der datengesteuerten Trainingssteuerungs-Engine (P0–P6): sieben Ausbaustufen vom einfachen

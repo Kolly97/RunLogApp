@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type SeasonWeek } from "../lib/api.ts";
+import { api, type SeasonWeek, type StravaBackfillState } from "../lib/api.ts";
 import { useLang, useT } from "../lib/i18n.tsx";
 import T from "../components/T.tsx";
 
@@ -88,8 +88,10 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [progress, setProgress] = useState<{ total: number; details: number; streams: number } | null>(null);
+  const [backfill, setBackfill] = useState<StravaBackfillState | null>(null);
   const loadProgress = () => api.enrichProgress().then(setProgress).catch(() => setProgress(null));
-  useEffect(() => { loadProgress(); }, []);
+  const loadBackfill = () => api.stravaBackfillStatus().then(setBackfill).catch(() => setBackfill(null));
+  useEffect(() => { loadProgress(); loadBackfill(); }, []);
 
   const saveSyncFrom = (v: string) => { setSyncFrom(v); api.saveSettings({ strava_sync_from: v }); };
 
@@ -128,6 +130,47 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
       loadProgress();
     } catch (e) {
       setResult(`Fehler: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startBackfill() {
+    setBusy(true);
+    setResult("Strava-Erstanreicherung wird vorbereitet (Backup)…");
+    try {
+      const s = await api.stravaBackfillStart(syncFrom || seasonStart);
+      setBackfill(s);
+      setResult(s.message || `Backfill vorbereitet: ${s.remaining}/${s.total} Aktivitäten offen.`);
+    } catch (e) {
+      setResult(`Fehler: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stepBackfill() {
+    setBusy(true);
+    setResult("Backfill-Schritt läuft…");
+    try {
+      const s = await api.stravaBackfillStep();
+      setBackfill(s);
+      setResult(s.message || `✓ ${s.last_step_enriched ?? 0} Aktivitäten in diesem Schritt angereichert.`);
+      loadProgress();
+    } catch (e) {
+      await loadBackfill();
+      setResult(`Fehler: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelBackfill() {
+    setBusy(true);
+    try {
+      const s = await api.stravaBackfillCancel();
+      setBackfill(s);
+      setResult(s.message || "Backfill pausiert.");
     } finally {
       setBusy(false);
     }
@@ -211,6 +254,40 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
           <span className="tiny muted" style={{ maxWidth: 240 }}>
             <T k="settings.enrich.hint">Anteil der Aktivitäten mit nachgezogenen Details bzw. Streams (NGP/NP, Zonen, Splits, Effective VO2max). „Details/Splits nachziehen" füllt den Rest budgetiert auf.</T>
           </span>
+        </div>
+      )}
+      {status?.connected && (
+        <div style={{ marginTop: 12, padding: "10px 12px", border: "1px solid var(--border-faint)", borderRadius: 8, background: "var(--surface2)" }}>
+          <div className="spread">
+            <div>
+              <strong style={{ fontSize: 13 }}>Erstanreicherung</strong>
+              <div className="tiny muted">Resumierbar · legt vor dem Start ein DB-Backup an · respektiert Strava-Limits.</div>
+            </div>
+            {backfill && backfill.total > 0 && (
+              <span className="tiny muted">{Math.max(0, backfill.total - backfill.remaining)}/{backfill.total} erledigt</span>
+            )}
+          </div>
+          {backfill && backfill.total > 0 && (
+            <div style={{ height: 6, borderRadius: 999, background: "var(--line)", overflow: "hidden", marginTop: 8 }}>
+              <div style={{ height: "100%", width: `${Math.round(((backfill.total - backfill.remaining) / Math.max(1, backfill.total)) * 100)}%`, background: "var(--ok)" }} />
+            </div>
+          )}
+          <div className="row" style={{ marginTop: 8, gap: 8 }}>
+            <button className="ghost" disabled={busy} onClick={startBackfill}>Backup + Queue starten</button>
+            <button className="ghost" disabled={busy || !backfill?.active} onClick={stepBackfill}>Nächster Schritt</button>
+            <button className="ghost" disabled={busy || !backfill?.active} onClick={cancelBackfill}>pausieren</button>
+            {backfill?.message && <span className="tiny muted">{backfill.message}</span>}
+          </div>
+          {backfill?.backup && <div className="tiny muted" style={{ marginTop: 4 }}>Backup: {backfill.backup.split("/").pop()}</div>}
+          {backfill && backfill.total > 0 && backfill.remaining === 0 && (
+            <div className="row" style={{ marginTop: 8, gap: 8, alignItems: "center" }}>
+              <button className="ghost" disabled={busy} onClick={recompute}
+                title={t("settings.strava.recomputeAfterBackfillTitle", "Nachgezogene Details/Streams ändern NGP/NP und damit TSS — nach der Erstanreicherung einmal neu berechnen.")}>
+                🧮 <T k="settings.strava.recomputeAfterBackfill">TSS & Werte neu berechnen</T>
+              </button>
+              <span className="tiny muted"><T k="settings.strava.recomputeAfterBackfillHint">Erstanreicherung fertig — die neuen Details/Streams wirken sich erst nach diesem Schritt auf TSS aus.</T></span>
+            </div>
+          )}
         </div>
       )}
       {result && <p className="tiny" style={{ marginTop: 8 }}>{result}</p>}
