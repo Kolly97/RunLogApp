@@ -19,7 +19,7 @@ export interface TuneupProgress {
 export interface PredRange { time_s: number; best_s: number; realistic_s: number; }
 export interface EffVo2Src { value: number; confidence: "hoch" | "mittel" | "niedrig"; calibrated: boolean; level?: string | null; }
 // ML-Engine (Plan: ML-Trainingssteuerung)
-export interface MlSettings { profile_id: number; enabled: number; channel_count: number; channel_auto: number; mcid_json: string | null; forgetting_halflife_days: number; sensitivity: number; research_mode_enabled: number; schedule_mode: string; }
+export interface MlSettings { profile_id: number; enabled: number; channel_count: number; channel_auto: number; mcid_json: string | null; forgetting_halflife_days: number; sensitivity: number; research_mode_enabled: number; schedule_mode: string; mcid?: AnchoredMcid; }
 export interface MlFreshness { state: "fresh" | "stale" | "none" | "running"; runId: number | null; lastRun: string | null; reason?: string; }
 export interface MlRun { id: number; kind: string; status: string; progress: number; error: string | null; input_hash: string | null; model_version: string | null; engine: string | null; finished_at: string | null; created_at: string; }
 export interface MlStatus { freshness: MlFreshness; latest: MlRun | null; }
@@ -38,7 +38,9 @@ export interface MlEffects { runId: number | null; finishedAt: string | null; me
 export interface VerdictFinding { key: string; label: string; effect: number | null; unit: string; betterWhenNegative: boolean; ciLow: number | null; ciHigh: number | null; confidence: string; practical: boolean; direction: "hilft" | "neutral" | "kostet"; causalProven: boolean; halfLifeWeeks?: number | null; pBetter?: number | null; nBlocks?: number | null; }
 export interface VerdictAxis { axis: "dose" | "regime" | "emphasis"; title: string; question: string; best: VerdictFinding | null; ranking: VerdictFinding[]; insight: string; confidence: string; layer: "observed" | "causal"; engine?: string | null; }
 export interface VerdictTrialSuggestion { axis: string; key: string; label: string; reason: string; }
-export interface TrainingVerdict { headline: string; axes: VerdictAxis[]; trialSuggestions: VerdictTrialSuggestion[]; overallConfidence: string; note: string; }
+// Verankerte Praxisschwellen (MCID): latent = Δ latente Fitness (VO2-äquiv., Trials) · cs = s/km · dosePerSd = per-SD-Gate.
+export interface AnchoredMcid { latent: number; cs: number; dosePerSd: number; source: "anchored" | "default"; basisSd: number | null; }
+export interface TrainingVerdict { headline: string; axes: VerdictAxis[]; trialSuggestions: VerdictTrialSuggestion[]; overallConfidence: string; note: string; mcid?: AnchoredMcid; builtAt?: string; }
 export interface MethodBayesAxis { engine: string; findings: VerdictFinding[]; }
 export interface MethodBayesResult { regime?: MethodBayesAxis; emphasis?: MethodBayesAxis; }
 // F3: Regime/Schwerpunkt-Dosis-Wirkung auf die latente Fitness (höher β = baut mehr Fitness)
@@ -112,11 +114,15 @@ export interface EmphasisEvaluation {
 }
 export interface CyclePeriodRow { id: number; start_date: string; end_date: string | null; }
 export interface CycleSettings { profile_id?: number; cycle_adaptive_enabled: number; method_emphasis: string; method_emphasis_weight?: number; feedback_sensitivity?: number; symptom_override_enabled?: number; observation_mode_only: number; }
+// 4. „Was hilft dir?"-Panel: was der Zyklus je Phase favorisieren würde + ob er den Plan steuert.
+export interface CyclePhaseFavor { phase: string; label: string; emphasis: string | null; soften: boolean; tier: "measured" | "prior" | null; }
+export interface CyclePlanningSummary { currentPhase: string | null; currentLabel: string | null; steering: boolean; adaptiveEnabled: boolean; gatePassed: boolean; perPhase: CyclePhaseFavor[]; }
 export interface CycleStatus {
   needsConsent: boolean;
   contraception?: { method: CycleMethod };
   gate?: CycleGate; phase?: CyclePhaseInfo; recommendation?: CycleRecommendation;
   settings?: CycleSettings; periods?: CyclePeriodRow[]; evalEngine?: string | null;
+  planningSummary?: CyclePlanningSummary;
 }
 export interface CycleSymptom { id?: number; date: string; cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null; notes?: string | null; }
 export interface CycleEvidence { phase: string; stimulus: string; n_sessions: number; mean_quality: number | null; effect_size: number | null; ci_low: number | null; ci_high: number | null; confidence: string; prior_weight: number; posterior_weight: number; }
@@ -424,6 +430,7 @@ export interface BlockWeek {
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: individuelle IR-Fitness-Prognose je Woche (falls Dose-Run vorliegt)
+  cyclePhase?: string | null; // Zyklus-Steuerung: (ggf. prognostizierte) Zyklusphase dieser Woche (Timeline-Band)
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
 }
 // Item 3 (#7): distanzspezifisches Trainingskonzept (Stoffwechsel + Schlüssel-Einheiten).

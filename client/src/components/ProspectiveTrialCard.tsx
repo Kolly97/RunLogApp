@@ -164,6 +164,7 @@ function ProposalView({ p, proposals, onSelectProposal, nPairs, setNPairs, showI
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li><strong>Wie:</strong> {nPairs} Paare à 2 Blöcke ({p.defaults.blockWeeks} Wo Training + {p.defaults.washoutWeeks} Wo Washout). Je Paar wird die Reihenfolge (A→B oder B→A) per festem Seed <em>ausgewürfelt</em> — das neutralisiert Saison-Trend und Nachwirkungen.</li>
             <li><strong>Load-matched:</strong> beide Arme haben dasselbe Wochen-TSS. Nur der Reiz-Mix unterscheidet sich — das ist der ganze Kontrast.</li>
+            <li><strong>Erfolgsschwelle:</strong> als bedeutsam zählt ein Vorsprung von <strong>Δ ≥ {p.defaults.mcid}</strong> latenten Fitness-Punkten — an deine Messgenauigkeit angepasst (nie unter dem physiologischen Minimum). So wird Messrauschen nicht als Effekt verkauft.</li>
             <li><strong>Ehrlichkeit:</strong> Ein „geprüft"-Verdikt ist frühestens ab <strong>{p.defaults.pairsForSignif} sauberen Paaren</strong> möglich (bestes erreichbares zweiseitiges p = 2/2^P). {nPairs} Paare ≈ {weeksTotal} Wochen. Vorher: „Hypothese" oder „nicht trennbar" — beides gültige Ergebnisse.</li>
             <li><strong>Sicherheit geht vor:</strong> Periodisierung, rote Readiness und Gesundheits-Flags übersteuern den Block <em>immer</em> (pausieren · easy substituieren · verlängern). Korrumpierte Fenster werden aus dem Kontrast ausgeschlossen.</li>
           </ul>

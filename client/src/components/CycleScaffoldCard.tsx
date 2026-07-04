@@ -242,11 +242,12 @@ export default function CycleScaffoldCard() {
             </div>
           )}
 
-          {/* Teil 5: Master-Schalter „Aktivierung erlauben" — nur bei stabilem natürlichen Zyklus sinnvoll. */}
+          {/* Master-Schalter „Zyklus steuert meinen Plan" — nur bei stabilem natürlichen Zyklus. Steuert den Coach-Block
+              gestuft (gemessen stark, Prior sanft) & health-first; kein Freischalten je Zelle nötig. */}
           {st.gate?.passed && (
             <label className="tiny" style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 10 }}>
               <input type="checkbox" checked={!!st.settings?.cycle_adaptive_enabled} disabled={busy} onChange={(e) => setAdaptive(e.target.checked)} style={{ width: "auto", flex: "0 0 auto", appearance: "auto", padding: 0, margin: "2px 0 0", border: "none", background: "transparent", borderRadius: 0 }} />
-              <span><strong>Aktivierung erlauben</strong> <span className="muted">— belastbar gemessene Phasen-Effekte dürfen als beratende Empfehlung erscheinen (du schaltest sie je Effekt frei; kein Planer-Eingriff).</span></span>
+              <span><strong>Zyklus steuert meinen Plan</strong> <span className="muted">— der Coach betont in günstigen Phasen die passende Qualität und hält Menstruation/Symptomtage lockerer (gemessen stark, sonst schwacher Prior als Hypothese; sanft &amp; health-first; Periodisierung/km-Ceiling/Gesundheit übersteuern immer; jederzeit übersteuerbar). Jede Anpassung ist im Coach begründet.</span></span>
             </label>
           )}
           {/* Empfehlung — Teil 5: datengetrieben (Phase-vs-Rest, Hedges' g, Replikation), NUR Anzeige/beratend */}

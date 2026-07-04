@@ -34,6 +34,15 @@ function phaseColor(phase: string | null | undefined, isDeload: boolean): string
   if (/recovery|erholung|regener/.test(p)) return "#64748b";
   return "#3b82f6"; // base / default
 }
+// Zyklus-Phasen (Menstruationszyklus) — eigene Semantik/Farben, getrennt vom Periodisierungs-Band.
+const CYCLE_PHASE_META: Record<string, { short: string; label: string; color: string }> = {
+  menstrual: { short: "Men", label: "Menstruation", color: "#ef4444" },
+  follicular: { short: "Fol", label: "Follikelphase", color: "#22c55e" },
+  ovulation: { short: "Ovu", label: "Ovulation", color: "#eab308" },
+  early_luteal: { short: "fLut", label: "Frühe Luteal", color: "#38bdf8" },
+  late_luteal: { short: "sLut", label: "Späte Luteal", color: "#a78bfa" },
+};
+
 function shortPhase(phase: string | null | undefined, isDeload: boolean): string {
   const p = (phase ?? "").toLowerCase();
   if (isDeload || /entlast|deload/.test(p)) return "Deload";
@@ -68,6 +77,23 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
   });
   const zoneKeys = [1, 2, 3, 4, 5, 6].filter((z) => zonesSeen.has(z));
   const famKeys = TYPE_FAMILIES.filter((f) => famsSeen.has(f.key));
+
+  // Zyklus-Steuerung: je Woche Phase + Σ km + Σ TSS (km aus byKm, TSS aus planned_tss — beide schon vorhanden).
+  const weekMeta = weeks.map((w) => {
+    let km = 0, tss = 0;
+    for (const d of w.days) { km += Object.values(d.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0); tss += d.planned_tss; }
+    return { wk: `${w.week_no}`, km: Math.round(km * 10) / 10, tss: Math.round(tss), cyclePhase: w.cyclePhase ?? null };
+  });
+  const metaByWk = new Map(weekMeta.map((m) => [m.wk, m]));
+  const hasCycle = weekMeta.some((m) => m.cyclePhase && CYCLE_PHASE_META[m.cyclePhase]);
+  // Phasen-Aggregat: Ø km / TSS je Zyklusphase (nur wenn Phasen vorliegen).
+  const cycleAgg = hasCycle
+    ? Object.keys(CYCLE_PHASE_META).map((ph) => {
+        const ws = weekMeta.filter((m) => m.cyclePhase === ph);
+        if (!ws.length) return null;
+        return { ph, n: ws.length, km: Math.round(ws.reduce((a, m) => a + m.km, 0) / ws.length), tss: Math.round(ws.reduce((a, m) => a + m.tss, 0) / ws.length) };
+      }).filter((x): x is { ph: string; n: number; km: number; tss: number } => !!x)
+    : [];
 
   // Phasen-Band als zusammenhängende Spannen (flex-gewichtet) → lange Labels clippen nicht.
   const spans: { label: string; color: string; count: number }[] = [];
@@ -106,9 +132,12 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
     const items = all.filter((p) => p.dataKey !== "readiness" && (p.value ?? 0) > 0);
     const rd = all.find((p) => p.dataKey === "readiness");
     const total = items.reduce((a, p) => a + (p.value || 0), 0);
+    const wm = metaByWk.get(String(label));
+    const cyc = wm?.cyclePhase ? CYCLE_PHASE_META[wm.cyclePhase] : null;
     return (
       <div style={{ ...TOOLTIP_STYLE, padding: "8px 10px" }}>
-        <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--ink)" }}>Woche {label} · Σ {Math.round(total)} {unit}{rd ? ` · Readiness ${Math.round(rd.value)}` : ""}</div>
+        <div style={{ fontWeight: 700, marginBottom: 2, color: "var(--ink)" }}>Woche {label} · Σ {Math.round(total)} {unit}{rd ? ` · Readiness ${Math.round(rd.value)}` : ""}</div>
+        {wm && <div style={{ fontSize: 11, marginBottom: 4, color: "var(--muted)" }}>{wm.km} km · {wm.tss} TSS{cyc ? ` · Zyklus: ${cyc.label}` : ""}</div>}
         {items.map((p) => (
           <div key={p.dataKey} style={{ color: p.color, fontSize: 12, lineHeight: 1.55 }}>
             {p.name}: {Math.round(p.value)} {unit} <span style={{ opacity: 0.8 }}>({total > 0 ? Math.round((p.value / total) * 100) : 0}%)</span>
@@ -148,6 +177,20 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
         ))}
       </div>
 
+      {/* Zyklus-Band: eine Zelle je Woche (Phasen wechseln wöchentlich), Farbe/Kürzel je Zyklusphase (prognostiziert). */}
+      {hasCycle && (
+        <div style={{ display: "flex", gap: 2, marginBottom: 3, marginLeft: YAXIS_W, marginRight: 4 }} title="Zyklusphase je Woche (vorausberechnet)">
+          {weekMeta.map((m, i) => {
+            const meta = m.cyclePhase ? CYCLE_PHASE_META[m.cyclePhase] : null;
+            return (
+              <div key={i} style={{ flex: 1, height: 13, background: meta?.color ?? "transparent", opacity: meta ? 0.8 : 0.12, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 2, overflow: "hidden" }}>
+                <span style={{ fontSize: 8.5, color: "#fff", fontWeight: 700, whiteSpace: "nowrap" }}>{meta?.short ?? ""}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={210}>
         <ComposedChart data={rows} margin={{ top: 18, right: 4, left: 0, bottom: 2 }} barCategoryGap="12%"
           onClick={(s: { activeLabel?: string | number }) => { if (s?.activeLabel != null) onSelectWeek?.(Number(s.activeLabel)); }}
@@ -175,6 +218,20 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
           </span>
         ))}
       </div>
+
+      {/* Zyklus-Phasen-Aggregat: Ø km / TSS je Phase (macht km & TSS pro Zyklusphase sichtbar). */}
+      {cycleAgg.length > 0 && (
+        <div style={{ marginTop: 5, fontSize: 11, color: "var(--muted)", display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "center" }}>
+          <span style={{ fontWeight: 700 }}>Zyklus Ø/Woche:</span>
+          {cycleAgg.map((a) => (
+            <span key={a.ph} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: CYCLE_PHASE_META[a.ph].color, display: "inline-block" }} />
+              {CYCLE_PHASE_META[a.ph].label}: {a.km} km · {a.tss} TSS
+            </span>
+          ))}
+          <span style={{ fontStyle: "italic" }}>· Phasen vorausberechnet</span>
+        </div>
+      )}
     </div>
   );
 }

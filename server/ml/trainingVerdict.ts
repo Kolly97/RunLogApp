@@ -5,7 +5,12 @@
 // → Trial-Vorschlag. Sobald die schwere Bayes-Engine (Deliverable B) läuft, speist sie dieselben Achsen-
 // Inputs (Fallback-transparent) — die Synthese bleibt unverändert.
 
+import type { AnchoredMcid } from "./mcidAnchor.ts";
+
 export type Conf = "hoch" | "mittel" | "niedrig" | "unzureichend";
+/** Verankerte Praxis-Gates (aus mcidAnchor); optionaler Verdikt-Input. Fehlt er, greifen die dokumentierten
+ *  Default-Konstanten (DOSE_MCID / MIN_CS) → pure, regressionssicher testbar. */
+export interface McidGates { cs?: number; dosePerSd?: number }
 const CONF_RANK: Record<Conf, number> = { unzureichend: 0, niedrig: 1, mittel: 2, hoch: 3 };
 /** Normalisiert die (leicht unterschiedlichen) Konfidenz-Strings der Teilmodelle auf eine Skala. */
 export function normConf(c: string | null | undefined): Conf {
@@ -74,6 +79,8 @@ export interface TrainingVerdict {
   trialSuggestions: TrialSuggestion[];
   overallConfidence: Conf;
   note: string;
+  mcid?: AnchoredMcid;   // verankerte Praxisschwellen (für den UI-Erklär-Block) — additiv, von der Route gesetzt
+  builtAt?: string;      // Zeitpunkt der Berechnung (Cache-Transparenz) — additiv, von der Route gesetzt
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -97,7 +104,7 @@ function trialProves(trials: TrialResultLite[], key: string): boolean {
 }
 
 /** Dosis-Achse: Kanäle nach Δ latenter Fitness je +1 SD (Mediator) ranken; Komposition liefert Mix-Hinweis. */
-function doseAxis(inp: VerdictInputs): AxisVerdict {
+function doseAxis(inp: VerdictInputs, dosePerSd: number = DOSE_MCID): AxisVerdict {
   const med = inp.dose.mediator;
   let engine: string | null = null;
   const findings: AxisFinding[] = med.map((e) => {
@@ -112,7 +119,7 @@ function doseAxis(inp: VerdictInputs): AxisVerdict {
     // geprüft an DERSELBEN Schätzung, die angezeigt wird (Bayes: HDI-Grenze · TS: mcid_pass-Flag) — sonst kann
     // ein Bayes-Posterior von +0.96 fälschlich als „nicht praktisch" (weil der TS-Wert klein ist) durchfallen.
     const significant = useBayes ? ciExcl0 : e.fdr_survive === 1;
-    const mcidOk = useBayes ? (ciLo != null && ciHi != null && (ciLo > DOSE_MCID || ciHi < -DOSE_MCID)) : e.mcid_pass === 1;
+    const mcidOk = useBayes ? (ciLo != null && ciHi != null && (ciLo > dosePerSd || ciHi < -dosePerSd)) : e.mcid_pass === 1;
     const practical = significant && mcidOk;
     const dir: AxisFinding["direction"] = eff == null || !practical ? "neutral" : eff > 0 ? "hilft" : "kostet";
     return {
@@ -190,19 +197,19 @@ export function empiricalBayesGroups(blocks: EbBlock[]): EbPost[] {
   });
 }
 /** EbPost[] → AxisFinding[] (praktisch/Direction/Label). Geteilt von ebAxis (analytisch) und dem Sidecar-Bayes-Pfad. */
-export function ebFindings(posts: EbPost[], label: (k: string) => string, trials: TrialResultLite[]): AxisFinding[] {
+export function ebFindings(posts: EbPost[], label: (k: string) => string, trials: TrialResultLite[], cs: number = MIN_CS): AxisFinding[] {
   return posts.map((p) => {
-    const practical = p.ciHigh < 0 && Math.abs(p.mean) >= MIN_CS && p.nBlocks >= 2; // CI ganz < 0 · Größe · Replikation
+    const practical = p.ciHigh < 0 && Math.abs(p.mean) >= cs && p.nBlocks >= 2; // CI ganz < 0 · Größe (verankert) · Replikation
     return {
       key: p.group, label: label(p.group), effect: p.mean, unit: "s/km CS", betterWhenNegative: true,
       ciLow: p.ciLow, ciHigh: p.ciHigh, confidence: (p.nBlocks >= 3 && practical ? "hoch" : p.nBlocks >= 2 && practical ? "mittel" : "niedrig") as Conf,
-      practical, direction: (p.mean < -MIN_CS ? "hilft" : p.mean > MIN_CS ? "kostet" : "neutral") as AxisFinding["direction"],
+      practical, direction: (p.mean < -cs ? "hilft" : p.mean > cs ? "kostet" : "neutral") as AxisFinding["direction"],
       causalProven: trialProves(trials, p.group), pBetter: p.pBetter, nBlocks: p.nBlocks,
     };
   }).sort((a, b) => (a.effect ?? Infinity) - (b.effect ?? Infinity));
 }
-function ebAxis(axis: "regime" | "emphasis", title: string, question: string, blocks: EbBlock[], label: (k: string) => string, trials: TrialResultLite[]): AxisVerdict {
-  const findings = ebFindings(empiricalBayesGroups(blocks), label, trials);
+function ebAxis(axis: "regime" | "emphasis", title: string, question: string, blocks: EbBlock[], label: (k: string) => string, trials: TrialResultLite[], cs: number = MIN_CS): AxisVerdict {
+  const findings = ebFindings(empiricalBayesGroups(blocks), label, trials, cs);
   if (!findings.length) return { axis, title, question, best: null, ranking: [], insight: "Noch keine belastbare Präferenz — zu wenig Blöcke.", confidence: "unzureichend", layer: "observed" };
   const top = findings.find((f) => f.practical && f.direction === "hilft") ?? null;
   const insight = top
@@ -238,9 +245,10 @@ function latentAxis(axis: "regime" | "emphasis", title: string, question: string
  * Synthese der drei Achsen zu einem geschichteten Gesamturteil + Trial-Vorschlägen.
  * Headline = das handlungsleitendste positive Finding mit der höchsten Konfidenz über alle Achsen.
  */
-export function synthesizeTrainingVerdict(inp: VerdictInputs): TrainingVerdict {
+export function synthesizeTrainingVerdict(inp: VerdictInputs, gates: McidGates = {}): TrainingVerdict {
+  const dosePerSd = gates.dosePerSd ?? DOSE_MCID; // per-SD-Gate (Dosis-Achse); cs greift in der EB/CS-Auswertung
   const axes: AxisVerdict[] = [
-    doseAxis(inp),
+    doseAxis(inp, dosePerSd),
     latentAxis("regime", "Intensitäts-Verteilung", "Welche Wochen-Verteilung baut deine Fitness?", inp.regime.cells, (k) => REGIME_LABEL[k] ?? k, inp.trials),
     latentAxis("emphasis", "Qualitäts-Schwerpunkt", "Welcher Schwerpunkt baut deine Fitness?", inp.emphasis.cells, (k) => EMPHASIS_LABEL[k] ?? k, inp.trials),
   ];

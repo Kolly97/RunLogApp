@@ -9,6 +9,7 @@
 // MCID-Gate + Confidence + "kein Kanal hebt sich ab"-Verdikt (Frage 7). BEOBACHTEND → as-if causal / Hypothese.
 import { CHANNEL_SETS, type ChannelCount } from "./featureBackbone.ts";
 import { benjaminiHochberg, eValue } from "./causalObs.ts";
+import { DOSE_PER_SD_MCID } from "./mcidAnchor.ts";
 
 export type Confidence = "insufficient" | "niedrig" | "mittel" | "hoch";
 
@@ -338,7 +339,8 @@ export function estimateDoseResponse(
 ): DoseResult {
   const o: Required<DoseOpts> = {
     seed: opts.seed ?? 42,
-    mcid: opts.mcid ?? 0.4,
+    mcid: opts.mcid ?? DOSE_PER_SD_MCID, // zentrale per-SD-Dosis-Schwelle (eine Wahrheitsquelle mit dem Verdikt)
+
     bootReps: opts.bootReps ?? 600,
     blockWeeks: opts.blockWeeks ?? 10,
     minWeeks: opts.minWeeks ?? 24,

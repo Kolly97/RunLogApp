@@ -78,6 +78,7 @@ import {
   type MarkerActivity,
   type MarkerLactateTest,
   type WeekRegimeInput,
+  type CycleWeekBias,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
 import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
@@ -86,13 +87,13 @@ import {
   stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
   stravaBackfillStatus, stravaBackfillStart, stravaBackfillStep, stravaBackfillCancel,
 } from "./strava.ts";
-import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit, blockIrFitness } from "./mlJobs.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
 import { synthesizeTrainingVerdict, empiricalBayesGroups, ebFindings, REGIME_LABEL, EMPHASIS_LABEL, type VerdictInputs, type TrialResultLite, type EbPost, type TrainingVerdict } from "./ml/trainingVerdict.ts";
 import { deriveCoachingPrefs, coachHealthCap, type CoachingPrefs } from "./coachSynthesis.ts";
 import { runWithFallback as sidecarRunWithFallback } from "./ml/sidecar.ts";
 import { weeklyLabelExposure } from "./ml/featureBackbone.ts";
 import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, proposeProspectiveTrials as mlProposeTrials, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, clearProspectiveCooldown as mlReactivateTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
-import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, calibrateStimulusWeights, cycleIndexOf, applySymptomOverride, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, isReliable as cycleCellReliable, cellKey as cycleCellKey, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow, type TodaySymptoms, type StimulusRecommendation } from "./cycleTraining.ts";
+import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, calibrateStimulusWeights, cycleIndexOf, applySymptomOverride, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, projectedPhaseForDate, cyclePlanningBias, PHASE_LABEL as CYCLE_PHASE_LABEL, isReliable as cycleCellReliable, cellKey as cycleCellKey, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow, type TodaySymptoms, type StimulusRecommendation, type CyclePhase } from "./cycleTraining.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -861,7 +862,27 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
   // Baustein B1: per-Einheiten-Typ Volumen-Loop aus den letzten Rückmeldungen (RPE + felt_vs_expected, Confounder raus).
   const fbRows = db.prepare("SELECT session_family, rpe, felt_vs_expected, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND date>=? ORDER BY date DESC LIMIT 80").all(pid(), addDaysIso(today, -70)) as { session_family: string | null; rpe: number | null; felt_vs_expected: number | null; confounder_flag: string | null }[];
   const vol = typeVolumeFactors(fbRows);
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors });
+  // 4. Steuer-Input: Zyklus (nur bei Consent). Phase je Woche für die Timeline; STEUERUNG nur bei Master-Schalter + Gate.
+  // Reihenfolge im Plan: Health-Cap > Periodisierung > Zyklus (je Woche, gestuft+bounded) > Block-Schwerpunkt.
+  let cycleByWeek: Map<number, CycleWeekBias> | undefined;
+  if (cycleConsented(pid())) {
+    const cyPeriods = loadPeriods(pid());
+    const cyContra = cycleContra(pid());
+    const cyGate = gateCycleAdaptive(cyPeriods, cyContra, today);
+    const cySettings = db.prepare("SELECT cycle_adaptive_enabled, feedback_sensitivity, symptom_override_enabled FROM cycle_training_settings WHERE profile_id=?").get(pid()) as { cycle_adaptive_enabled?: number; feedback_sensitivity?: number; symptom_override_enabled?: number } | undefined;
+    const cyAdaptive = !!(cySettings?.cycle_adaptive_enabled);
+    const cyCalibrated = calibrateStimulusWeights(evaluatePhaseStimulus(loadCycleFeedback(pid(), cyPeriods)).evidence, { sensitivity: cySettings?.feedback_sensitivity ?? 0.5 });
+    // Symptom-Override von heute (nur die unmittelbar nächste Woche): drückt Qualität runter (health-first).
+    const symToday = db.prepare("SELECT cramps, energy, sleep FROM cycle_symptoms_v2 WHERE profile_id=? AND date=? ORDER BY id DESC LIMIT 1").get(pid(), today) as { cramps: number | null; energy: number | null; sleep: number | null } | undefined;
+    const symOverride = !!(cySettings?.symptom_override_enabled ?? 1) && !!symToday && ((symToday.cramps ?? 0) >= 4 || (symToday.energy != null && symToday.energy <= 2) || (symToday.sleep != null && symToday.sleep <= 2));
+    cycleByWeek = new Map<number, CycleWeekBias>();
+    weeks.forEach((w, wi) => {
+      const ph = projectedPhaseForDate(cyPeriods, cyContra, w.start_date, today).phase;
+      const bias = cyclePlanningBias(ph, cyCalibrated, cyGate, { adaptiveEnabled: cyAdaptive, symptomOverride: wi === 0 && symOverride });
+      cycleByWeek!.set(w.week_no, { phase: ph, emphasis: bias.emphasis, loadFactor: bias.loadFactor, qualityVolFactor: bias.qualityVolFactor, tier: bias.tier, soften: bias.soften, reason: bias.reason });
+    });
+  }
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
   for (const n of vol.notes) plan.reasons.push({ code: "rpe_loop", text: n });
   // Baustein 2.3: individuelle Fitness-Prognose (IR-Faltung) additiv je Woche, wenn ein Dose-Response-Run vorliegt.
   const doseEff = mlGetEffects(pid());
@@ -2721,9 +2742,11 @@ if (process.env.NODE_ENV !== "production") {
 // Latente Fitness (L2, Komposit CS/VDOT/VO2max) als Hintergrund-Batch; Settings, Frische, Fortschritt.
 app.get("/api/ml/settings", (_req, res) => {
   const p = pid();
-  const row = db.prepare("SELECT * FROM ml_settings WHERE profile_id=?").get(p);
-  res.json(
-    row ?? {
+  const row = db.prepare("SELECT * FROM ml_settings WHERE profile_id=?").get(p) as Record<string, unknown> | undefined;
+  // `mcid` live aus der Verankerung (Reliable-Change, gefloort am Marker) — Praxisschwelle fürs UI, immer frisch.
+  const mcid = getAnchoredMcid(p);
+  res.json({
+    ...(row ?? {
       profile_id: p,
       enabled: 0,
       channel_count: 5,
@@ -2733,8 +2756,9 @@ app.get("/api/ml/settings", (_req, res) => {
       sensitivity: 0.5,
       research_mode_enabled: 0,
       schedule_mode: "monthly",
-    },
-  );
+    }),
+    mcid,
+  });
 });
 app.put("/api/ml/settings", (req, res) => {
   const p = pid();
@@ -2786,7 +2810,31 @@ app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
  * „Was hilft dir?"-Synthese server-seitig (geteilt von der Verdikt-Route UND dem adaptiven Coach) — dieselbe
  * Engine wie die Karten (exposure_dose, Block-Bootstrap → autokorrelations-robust) für konsistente Zahlen.
  */
-async function buildTrainingVerdict(p: number): Promise<TrainingVerdict> {
+// FNV-1a (32-bit) → Hex; deterministischer Fingerprint über die Verdikt-Inputs (billig, ohne Sidecar).
+function fnvHex(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16);
+}
+/** Fingerprint = latest latent/dose Run-Id + bewertete-Trials-Signatur + verankerte MCID. Ändert sich einer davon,
+ *  invalidiert der Cache automatisch (neue Berechnung); sonst Cache-Treffer. */
+function verdictFingerprint(p: number, mcid: { latent: number; cs: number; dosePerSd: number; source: string }): string {
+  const latentRun = mlLatestRun(p, "latent_fitness")?.id ?? 0;
+  const doseRun = mlLatestRun(p, "dose_response")?.id ?? 0;
+  const trials = db.prepare("SELECT id, verdict FROM method_experiments WHERE profile_id=? AND state='evaluated' AND verdict IS NOT NULL ORDER BY id").all(p) as { id: number; verdict: string }[];
+  const trialSig = trials.map((t) => `${t.id}:${t.verdict}`).join(",");
+  return fnvHex(`${latentRun}|${doseRun}|${trialSig}|${mcid.latent}:${mcid.cs}:${mcid.dosePerSd}:${mcid.source}`);
+}
+
+async function buildTrainingVerdict(p: number, opts: { fresh?: boolean } = {}): Promise<TrainingVerdict> {
+  // Verdikt-Caching (Fingerprint-Auto): der teure Teil sind zwei Sidecar-exposure_dose-Läufe (je bis 120 s) — die
+  // hier je Coach-/Verdikt-Laden anfielen. Bei unverändertem Input aus dem Cache antworten; ?fresh erzwingt neu.
+  const mcid = getAnchoredMcid(p);
+  const fp = verdictFingerprint(p, mcid);
+  if (!opts.fresh) {
+    const cached = db.prepare("SELECT verdict_json FROM ml_verdict_cache WHERE profile_id=? AND fingerprint=?").get(p, fp) as { verdict_json: string } | undefined;
+    if (cached) { try { return JSON.parse(cached.verdict_json) as TrainingVerdict; } catch { /* korrupt → neu berechnen */ } }
+  }
   const dose = mlGetEffects(p);
   const latCells = async (axis: "regime" | "emphasis") => {
     const d = buildExposureDesign(p, axis);
@@ -2807,10 +2855,15 @@ async function buildTrainingVerdict(p: number): Promise<TrainingVerdict> {
     emphasis: { cells: await latCells("emphasis") },
     trials: trials.map<TrialResultLite>((t) => ({ arm: t.emphasis_label ?? t.arm_a_label ?? t.label ?? "", label: t.label, verdict: t.verdict, kind: t.trial_kind, theta: t.theta })),
   };
-  return synthesizeTrainingVerdict(inputs);
+  const verdict = synthesizeTrainingVerdict(inputs, { cs: mcid.cs, dosePerSd: mcid.dosePerSd });
+  const builtAt = new Date().toISOString();
+  const out: TrainingVerdict = { ...verdict, mcid, builtAt };
+  db.prepare("INSERT INTO ml_verdict_cache(profile_id, fingerprint, verdict_json, built_at) VALUES(?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET fingerprint=excluded.fingerprint, verdict_json=excluded.verdict_json, built_at=excluded.built_at")
+    .run(p, fp, JSON.stringify(out), builtAt);
+  return out;
 }
-app.get("/api/ml/training-verdict", async (_req, res) => {
-  res.json(await buildTrainingVerdict(pid()));
+app.get("/api/ml/training-verdict", async (req, res) => {
+  res.json(await buildTrainingVerdict(pid(), { fresh: req.query.fresh != null }));
 });
 // „Neu berechnen" für Passive Inferenz (Regime) + Methoden-Schwerpunkt — hierarchisch (Partial Pooling), optional
 // über die komplexe Python-Engine (Sidecar `blocks_bayes`, PyMC), sonst analytischer EB-Fallback (identisches Modell).
@@ -2832,7 +2885,7 @@ app.post("/api/ml/method-bayes", async (req, res) => {
       { timeoutMs: 120_000 },
     );
     const posts: EbPost[] = r.result.groups.map((g) => ({ group: g.group, mean: g.mean, ciLow: g.hdi_low, ciHigh: g.hdi_high, pBetter: g.p_better, nBlocks: g.n_blocks }));
-    return { engine: r.result.method, findings: ebFindings(posts, (k) => labelMap[k] ?? k, trials) };
+    return { engine: r.result.method, findings: ebFindings(posts, (k) => labelMap[k] ?? k, trials, getAnchoredMcid(p).cs) };
   }
   const out: Record<string, unknown> = {};
   if (!only || only === "regime") out.regime = await axis("regime", REGIME_LABEL);
@@ -3133,6 +3186,27 @@ function buildCycleRecommendation(p: number, today: string): StimulusRecommendat
   const sym = db.prepare("SELECT cramps, energy, sleep, mood, flow FROM cycle_symptoms_v2 WHERE profile_id=? AND date=? ORDER BY id DESC LIMIT 1").get(p, today) as TodaySymptoms | undefined;
   return applySymptomOverride(rec, sym ?? null, !!(settings?.symptom_override_enabled ?? 1));
 }
+/**
+ * Kompakte Planungs-Zusammenfassung (4. „Was hilft dir?"-Panel): aktuelle Phase + je Phase, was der Zyklus
+ * favorisieren WÜRDE (gemessen/Hypothese) + ob er den Plan tatsächlich steuert (Master-Schalter + Gate).
+ */
+function buildCyclePlanningSummary(p: number, today: string) {
+  const periods = loadPeriods(p);
+  const contra = cycleContra(p);
+  const gate = gateCycleAdaptive(periods, contra, today);
+  const s = db.prepare("SELECT cycle_adaptive_enabled, feedback_sensitivity FROM cycle_training_settings WHERE profile_id=?").get(p) as { cycle_adaptive_enabled?: number; feedback_sensitivity?: number } | undefined;
+  const adaptiveEnabled = !!(s?.cycle_adaptive_enabled);
+  const calibrated = calibrateStimulusWeights(evaluatePhaseStimulus(loadCycleFeedback(p, periods)).evidence, { sensitivity: s?.feedback_sensitivity ?? 0.5 });
+  const cur = computeCyclePhase(periods, contra, today);
+  const perPhase = (["menstrual", "follicular", "ovulation", "early_luteal", "late_luteal"] as CyclePhase[]).map((ph) => {
+    const b = cyclePlanningBias(ph, calibrated, gate, { adaptiveEnabled: true }); // „was würde es tun" — unabhängig vom Schalter
+    return { phase: ph, label: CYCLE_PHASE_LABEL[ph], emphasis: b.emphasis, soften: b.soften, tier: b.tier };
+  });
+  return {
+    currentPhase: cur.phase, currentLabel: cur.phase ? CYCLE_PHASE_LABEL[cur.phase] : null,
+    steering: adaptiveEnabled && gate.passed, adaptiveEnabled, gatePassed: gate.passed, perPhase,
+  };
+}
 /** Consent-Hard-Gate: ohne Opt-in → 403 { needsConsent:true }. */
 function gateConsent(res: import("express").Response, p: number): boolean {
   if (cycleConsented(p)) return true;
@@ -3178,7 +3252,7 @@ app.get("/api/cycle-training/status", (_req, res) => {
   const recommendation = buildCycleRecommendation(p, today);
   const periodsUi = db.prepare("SELECT id, start_date, end_date FROM cycle_period_log_v2 WHERE profile_id=? ORDER BY start_date DESC").all(p);
   const evalEngine = getProfileSetting<string | null>("cycle_eval_engine", null, p);
-  res.json({ needsConsent: false, contraception: contra, gate, phase, recommendation, settings, periods: periodsUi, evalEngine });
+  res.json({ needsConsent: false, contraception: contra, gate, phase, recommendation, settings, periods: periodsUi, evalEngine, planningSummary: buildCyclePlanningSummary(p, today) });
 });
 
 app.get("/api/cycle-training/gate", (_req, res) => {

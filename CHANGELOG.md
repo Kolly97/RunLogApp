@@ -4,6 +4,44 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [Unreleased]
+
+### Hinzugefügt
+- **Zyklus steuert jetzt den Plan (4. Steuer-Input, gestuft + health-first):** Die menstruationszyklus-adaptive
+  Steuerung ist nicht mehr nur Anzeige — mit dem Master-Schalter **„Zyklus steuert meinen Plan"** fließt sie neben
+  Dosis/Regime/Schwerpunkt in den Coach-Blockplan ein. **Gestuft:** an DEINEN Daten belastbar gemessene Phasen×Reiz-
+  Effekte (≥2 Zyklen, CI ohne 0, |g|≥0.2) steuern real; sonst nudged nur der schwache mechanistische Prior sanft (klar
+  „Hypothese"). **Hebel Typ + sanfte Last:** in günstigen Phasen wird eine Qualität Richtung VO2/Schwelle gedreht, in
+  Menstruation/später Lutealphase aerob/lockerer + etwas weniger Wochenlast — alles **geklemmt** ins Periodisierungs-
+  Band; Health-Cap, km-Ceiling (ACWR) und Periodisierung übersteuern **immer**, jede Anpassung im Coach begründet.
+  Heutige starke Symptome dämpfen die nächste Woche zusätzlich (health-first). (`server/cycleTraining.ts`
+  `cyclePlanningBias`/`projectedPhaseForDate`, `server/analysis.ts` `blockPlan` `cycleByWeek`, `server/index.ts`.)
+- **Zyklus-Band + km/TSS je Woche in der Coach-Timeline:** Die Überblicksgrafik zeigt zusätzlich zum Periodisierungs-
+  Band ein **Zyklus-Phasen-Band je Woche** (Men/Fol/Ovu/fLut/sLut, vorausberechnet), der Tooltip nennt **Σ km und
+  Σ TSS** je Woche + Phase, plus eine **Ø km/TSS-je-Phase**-Zeile. (`client/src/charts/BlockTimeline.tsx`.)
+- **4. Zyklus-Panel im „Was hilft dir?"-Verdikt:** zusammengefasste Zyklus-Antwort (aktuelle Phase, was je Phase
+  favorisiert wird — gemessen/Hypothese — und ob er den Plan steuert), consent-gated. (`TrainingVerdictCard.tsx`,
+  `GET /api/cycle-training/status` `planningSummary`.)
+- **MCID an die eigene Messgenauigkeit verankert (Reliable-Change + Marker-Floor):** Die Praxisschwelle „ab hier zählt
+  ein Effekt als echt" ist keine feste Magic-Number mehr, sondern wird aus dem **eigenen latenten Messrauschen**
+  abgeleitet (Median der latenten `sd`) und nach unten am physiologischen Test-Retest-Minimum gefloort — verrauschte/
+  dünne Daten heben die Schwelle, präzise Daten senken sie bis zum Minimum, nie darunter. Verankert werden die
+  **latente MCID** (Trials/Prospektiv, Erfolgsschwelle wird am Design-Zeitpunkt fixiert = Prä-Registrierung) und die
+  **CS-Achse** (jetzt aus einer Quelle `MARKER_MCID` statt doppeltem `MIN_CS`-Literal); die per-SD-Dosis-Schwelle
+  (`DOSE_PER_SD_MCID`) ist zentralisiert, aber bewusst fix (Slope ohne Marker-Analog). Neue pure Kern-Datei
+  `server/ml/mcidAnchor.ts`; Trials setzen `mcid_source` = `anchored|default|user`.
+- **Praxisschwellen-Erklär-Block im „Was hilft dir?"-Verdikt:** transparenter Block „Deine Praxisschwelle (MCID)"
+  (`TrainingVerdictCard.tsx`) — was die Schwelle bedeutet, dass sie an die eigene Messgenauigkeit gekoppelt ist,
+  aktuelle Werte + Quelle; das Kausal-Experiment nennt seine verankerte Erfolgsschwelle. `GET /api/ml/settings`
+  liefert die verankerte MCID live mit.
+
+### Geändert
+- **Verdikt-Caching (Fingerprint-Auto):** Das „Was hilft dir?"-Verdikt wird je Profil gecacht
+  (`ml_verdict_cache`, additiv). Der teure Teil — zwei Sidecar-`exposure_dose`-Läufe (je bis 120 s), die bisher bei
+  **jedem Coach-Laden** neu anfielen — wird nur noch berechnet, wenn sich die Inputs ändern (neuer ML-Run, neuer
+  bewerteter Trial, geänderte MCID); sonst Cache-Treffer. `?fresh=1` erzwingt Neuberechnung. Coach lädt spürbar
+  schneller. (`server/index.ts` `buildTrainingVerdict`/`verdictFingerprint`, `server/db.ts`.)
+
 ## [2.4.0] – 2026-07-04 — Coach-Cockpit, Wettkampf-Prognose & adaptive Steuerung
 
 ### Hinzugefügt

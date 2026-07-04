@@ -487,6 +487,14 @@ function migrate(): void {
       created_at    TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_ml_runs ON ml_runs(profile_id, kind, created_at);
+    -- „Was hilft dir?"-Verdikt gecacht je Profil (Fingerprint aus Run-Ids + bewerteten Trials + verankerter MCID):
+    -- spart die doppelten Sidecar-exposure_dose-Läufe beim Coach-/Verdikt-Laden; invalidiert automatisch bei Input-Änderung.
+    CREATE TABLE IF NOT EXISTS ml_verdict_cache (
+      profile_id   INTEGER PRIMARY KEY,
+      fingerprint  TEXT NOT NULL,
+      verdict_json TEXT NOT NULL,
+      built_at     TEXT NOT NULL
+    );
   `);
   // Kanal-Effekte je Lauf (Forest-Plot-Daten): Reiz-Kanal × Zielgröße mit CI + Konfidenz.
   db.exec(`

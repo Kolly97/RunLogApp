@@ -591,6 +591,10 @@ const MARKER_SPEC: { key: keyof Markers; label: string; unit: string; mcid: numb
   { key: "pi", label: "Polarisierungs-Index", unit: "", mcid: 0.3, lowerBetter: false, scored: false },
 ];
 
+/** Einzelne Wahrheitsquelle der physiologischen Marker-Floors (Test-Retest-MCIDs) für die MCID-Verankerung
+ *  (`ml/mcidAnchor.ts`) — direkt aus MARKER_SPEC abgeleitet, damit CS/effVo2max nirgends doppelt hart kodiert sind. */
+export const MARKER_MCID = Object.fromEntries(MARKER_SPEC.map((s) => [s.key, s.mcid])) as Record<keyof Markers, number>;
+
 /** Vorher/Nachher-Vergleich zweier Snapshots → Marker-Deltas + Verdikt (Primär = CS) + Konfidenz (n + Konsistenz). */
 export function compareMarkers(start: Markers, end: Markers): MethodEvaluation {
   const deltas: MarkerDelta[] = [];
@@ -1310,7 +1314,19 @@ export interface BlockWeek {
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: IR-Faltungs-Fitness je Woche (additiv im Endpoint gesetzt, wenn ein Dose-Run vorliegt)
+  cyclePhase?: string | null; // Zyklus-Steuerung: (ggf. prognostizierte) Menstruationszyklus-Phase dieser Woche (nur Anzeige/Timeline)
   reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
+}
+
+/** Zyklus-Bias je Planwoche (4. Steuer-Input) — vom Aufrufer (Coach-Route) aus der Zyklus-Engine abgeleitet, bounded. */
+export interface CycleWeekBias {
+  phase: string | null;
+  emphasis: string | null;      // Planer-Emphasis (vo2|schwelle|berg|norwegian|fartlek) oder null (kein Typ-Tilt)
+  loadFactor: number;           // sanfter Wochenlast-Faktor (~0.9..1.08), auf das Periodisierungs-Band geklemmt
+  qualityVolFactor: number;     // Qualitäts-Volumen-Dämpfung (~0.85..1) bei aerob-/soften-Phasen
+  tier: "measured" | "prior" | null;
+  soften: boolean;
+  reason: string | null;
 }
 export interface BlockPlan {
   weeks: BlockWeek[]; raceDate: string | null;
@@ -1529,6 +1545,7 @@ export function blockPlan(args: {
   taperWeeks?: number; // Baustein 2.4: Taper-Länge (Race-Specific-Wochen vor der Race Week); Default 2
   kmCeilingBase?: number | null; // Baustein A1: verletzungssicheres km-Ceiling (nächste Woche); wächst ~7%/Blockwoche
   volumeByFamily?: Record<string, number>; // Baustein B1: Volumen-Faktor je Qualitäts-Familie (RPE/Completion-Loop)
+  cycleByWeek?: Map<number, CycleWeekBias>; // 4. Steuer-Input: Zyklus-Bias je Woche (week_no), gestuft + bounded
 }): BlockPlan {
   const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
   const outWeeks: BlockWeek[] = [];
@@ -1545,8 +1562,11 @@ export function blockPlan(args: {
 
   args.weeks.forEach((w, wi) => {
     const phase = phases[wi] ?? w.phase;
+    // 4. Steuer-Input: Zyklus-Bias dieser Woche (bounded); null = kein Eingriff. Reuse taperFactor/target/emphasis-Hebel.
+    const cyc = args.cycleByWeek?.get(w.week_no) ?? null;
     // Baustein 2.4: Taper/Deload → Qualitäts-VOLUMEN runter (Reps), Pace/Intensität bleibt (Race Week 0.5, Deload 0.7).
-    const taperFactor = /race ?week|race-week/i.test(phase ?? "") ? 0.5 : /entlast|deload/i.test(phase ?? "") ? 0.7 : 1;
+    // Zyklus (Typ+sanfte Last): qualityVolFactor dämpft die Qualitäts-Reps in aerob-/soften-Phasen zusätzlich (health-first).
+    const taperFactor = (/race ?week|race-week/i.test(phase ?? "") ? 0.5 : /entlast|deload/i.test(phase ?? "") ? 0.7 : 1) * (cyc?.qualityVolFactor ?? 1);
     // Baustein B1: Volumen-Faktor je Pick aus dem RPE/Completion-Loop (Familie des Templates).
     const volFor = (t?: WorkoutTemplate | null): number => (t ? (args.volumeByFamily?.[normFamily(t.family)] ?? 1) : 1);
     // Projizierte Zonen dieser Woche (Paces wachsen Richtung Ziel); ohne Projektion = Basis-Zonen.
@@ -1570,7 +1590,11 @@ export function blockPlan(args: {
       goalDistanceM: args.goalDistanceM ?? null,
       healthCap: wi === 0 ? (args.healthCap ?? null) : null, // Gesundheits-Cap nur auf die unmittelbar nächste Woche (Zukunft = Erholung erhofft)
     });
-    const target = rec.tssRange.target;
+    // Zyklus-Last (sanft): Ziel-TSS × loadFactor, GEKLEMMT ins Periodisierungs-Band [min,max] → km-Ceiling + Health-Cap
+    // kappen unverändert darüber; Menstruation/späte Luteal etwas weniger, günstige Phase minimal mehr.
+    const target = cyc?.loadFactor && cyc.loadFactor !== 1
+      ? Math.max(rec.tssRange.min, Math.min(rec.tssRange.max, Math.round(rec.tssRange.target * cyc.loadFactor)))
+      : rec.tssRange.target;
 
     // v1.6.1: konkrete Einheiten aus der Workout-Bibliothek — Rotation + Progression + Fitness-Skalierung.
     const { weekInPhase, phaseLen } = phaseProgress(phases, wi);
@@ -1578,7 +1602,8 @@ export function blockPlan(args: {
     const fitness = fitnessLevel(ctl, weekZones.cs_pace ?? null, args.curVdot); // T7: VDOT verfeinert das Level
     // Coach ToDo 35: der aufgelöste Schwerpunkt (Evidenz gewinnt bei Belastbarkeit, sonst manuell) ersetzt die
     // Availability-Emphasis. pickWeekWorkouts dreht daraufhin EINE Qualität Richtung Schwerpunkt (nur Build/Specific).
-    const effEmphasis = args.emphasisPreference ?? args.availability?.emphasis ?? null;
+    // Zyklus-Typ-Tilt der Woche gewinnt über den Block-Schwerpunkt (Reihenfolge: Health-Cap > Periodisierung > Zyklus > Block).
+    const effEmphasis = cyc?.emphasis ?? args.emphasisPreference ?? args.availability?.emphasis ?? null;
     let picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
       { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts });
     // Gesundheits-Cap (nur nächste Woche): höchste Intensität raus — VO2-Qualitäten entfernen (Easy/Long füllen die Last).
@@ -1735,6 +1760,7 @@ export function blockPlan(args: {
     }
 
     if (rec.confidence === "niedrig") lowConf = true;
+    if (cyc?.reason) rec.reasons.push({ code: "cycle", text: cyc.reason }); // 4. Steuer-Input transparent im Verdikt
     const pl = (rec.headline || "").toLowerCase();
     const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
     outWeeks.push({
@@ -1742,7 +1768,7 @@ export function blockPlan(args: {
       headline: rec.headline, periodizationModel: rec.periodizationModel,
       tssTarget: Math.round(target), tssActual: Math.round(tssActual),
       ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null,
-      isDeload, days, reasons: rec.reasons, confidence: rec.confidence,
+      isDeload, days, cyclePhase: cyc?.phase ?? null, reasons: rec.reasons, confidence: rec.confidence,
     });
   });
 

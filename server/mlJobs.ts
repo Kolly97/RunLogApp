@@ -17,6 +17,8 @@ import {
 } from "./ml/featureBackbone.ts";
 import { fitLatentFitness, type LatentPoint } from "./ml/latentFitness.ts";
 import { estimateDoseResponse, type DesignRow, type DoseModelResult } from "./ml/doseResponse.ts";
+import { computeAnchoredMcid, type AnchoredMcid } from "./ml/mcidAnchor.ts";
+import { MARKER_MCID } from "./analysis.ts";
 import { runWithFallback } from "./ml/sidecar.ts";
 import { detectChangepoints } from "./ml/causalObs.ts";
 import { exploratoryScan } from "./ml/exploratory.ts";
@@ -400,6 +402,16 @@ export function getLatentFitness(profileId: number): LatentPointRow[] {
   return db.prepare("SELECT date, value, sd FROM ml_latent_fitness WHERE profile_id=? ORDER BY date").all(profileId) as unknown as LatentPointRow[];
 }
 
+/**
+ * Verankerte MCID (Praxisschwelle) für dieses Profil: Reliable-Change aus dem eigenen latenten Messrauschen,
+ * gefloort am physiologischen Marker (MARKER_MCID). Reine Ableitung aus der persistierten Latenz-Trajektorie —
+ * geteilt von Trials (Prospektiv), der Verdikt-Synthese und dem UI-Erklär-Block. Siehe `ml/mcidAnchor.ts`.
+ */
+export function getAnchoredMcid(profileId: number): AnchoredMcid {
+  const pts = getLatentFitness(profileId); // {date,value,sd} — die DB-Zeile führt kein observed-Flag → ganze Reihe
+  return computeAnchoredMcid(pts, { effVo2max: MARKER_MCID.effVo2max, csPace: MARKER_MCID.csPace });
+}
+
 export interface EffectRow {
   channel: string;
   target: string;
@@ -739,7 +751,8 @@ export function buildProposal(
   armB: ProspectiveArm,
   input: { source: "effects" | "default"; rationale: string; overlap: number | null; ordinal: number },
 ): ProspectiveProposal {
-  const defaults = DEFAULT_PROPOSAL_DEFAULTS;
+  // MCID an die eigene Messgenauigkeit verankert (Reliable-Change, gefloort am Marker); DEFAULT_MCID bleibt Fallback.
+  const defaults = { ...DEFAULT_PROPOSAL_DEFAULTS, mcid: getAnchoredMcid(profileId).latent };
   const durationWeeks = defaults.nPairsPlanned * 2 * (defaults.blockWeeks + defaults.washoutWeeks);
   // Anzahl physiologisch HARTER Arme (≥ Schwelle) — treibt Risiko. Explizites Set statt Substring-Match:
   // der frühere /VO2|Schwelle|threshold|I|T/i matchte über die Einzelbuchstaben „I"/„T" JEDES Wort mit i/t
@@ -859,7 +872,10 @@ export function createProspectiveTrial(profileId: number, input: CreateTrialInpu
   const blockWeeks = input.blockWeeks ?? 4;
   const washoutWeeks = input.washoutWeeks ?? 1;
   const lagWeeks = input.lagWeeks ?? 3;
-  const mcid = input.mcid ?? DEFAULT_MCID;
+  // MCID am Design-Zeitpunkt FIXIEREN (Prä-Registrierung: Schwelle nicht nachträglich verschieben). Manuell > verankert > Floor.
+  const anchored = getAnchoredMcid(profileId);
+  const mcid = input.mcid ?? anchored.latent;
+  const mcidSource = input.mcid != null ? "user" : anchored.source; // "user" | "anchored" | "default"
   const alpha = input.alpha ?? 0.05;
   const overrideMode = input.overrideMode ?? "pause_substitute_extend";
   const startDate = input.startDate ?? nowIso().slice(0, 10);
@@ -868,7 +884,7 @@ export function createProspectiveTrial(profileId: number, input: CreateTrialInpu
   const blocks = buildBlockSchedule(input.armA.value, input.armB.value, pairOrders, startDate, blockWeeks, washoutWeeks);
   const endDate = blocks.length ? blocks[blocks.length - 1].endDate : startDate;
   const label = `${input.armA.label} vs ${input.armB.label}`;
-  const config = { alpha, mcid, mcid_source: "default", block_weeks: blockWeeks, washout_weeks: washoutWeeks, override_mode: overrideMode, primary_outcome: "latent_fitness" };
+  const config = { alpha, mcid, mcid_source: mcidSource, block_weeks: blockWeeks, washout_weeks: washoutWeeks, override_mode: overrideMode, primary_outcome: "latent_fitness" };
   const info = db
     .prepare(
       `INSERT INTO method_experiments(profile_id, start_date, end_date, method, label, emphasis_label, washout, primary_outcome, lag_weeks, randomized, state, trial_kind, arm_a, arm_b, arm_a_label, arm_b_label, seed, n_pairs_planned, n_pairs_done, consented_at, proposal_hash, config_json, blocks_json, created_at)

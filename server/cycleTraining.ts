@@ -15,6 +15,17 @@ export interface ContraceptionStatus { method: ContraceptionMethod }
 
 const DAY = 86_400_000;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY);
+const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
+
+/** Tag-im-Zyklus (1-basiert) → Phase (Ovulation ~ len−14, Luteal ~14 Tage fix). Geteilt von computeCyclePhase + Projektion. */
+function phaseFromCycleDay(day: number, len: number): CyclePhase {
+  const ovDay = Math.round(len - 14);
+  if (day <= 5) return "menstrual";
+  if (day < ovDay - 1) return "follicular";
+  if (day <= ovDay + 1) return "ovulation";
+  if (day <= ovDay + 6) return "early_luteal";
+  return "late_luteal";
+}
 const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const sd = (xs: number[]) => { if (xs.length < 2) return 0; const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)); };
 
@@ -61,13 +72,7 @@ export function computeCyclePhase(periods: Period[], contraception: Contraceptio
   const day = daysBetween(lastStart, today) + 1;
   if (day > 45) return { phase: null, cycleDay: day, mode, confidence: "insufficient" }; // überfällig → keine belastbare Phase
   const len = stab.medianLength && stab.medianLength >= 21 && stab.medianLength <= 45 ? stab.medianLength : 28;
-  const ovDay = Math.round(len - 14); // Lutealphase ~14 Tage fix
-  let phase: CyclePhase;
-  if (day <= 5) phase = "menstrual";
-  else if (day < ovDay - 1) phase = "follicular";
-  else if (day <= ovDay + 1) phase = "ovulation";
-  else if (day <= ovDay + 6) phase = "early_luteal";
-  else phase = "late_luteal";
+  const phase = phaseFromCycleDay(day, len);
   const confidence: Confidence = mode === "uncertain" ? "low" : stab.regularity === "stable" ? "medium" : stab.regularity === "irregular" ? "low" : "insufficient";
   return { phase, cycleDay: day, mode, confidence };
 }
@@ -478,4 +483,93 @@ export function evaluatePhaseStimulus(feedback: FeedbackRow[]): PhaseStimulusRes
   }
   evidence.sort((a, b) => (CYCLE_PHASES.indexOf(a.phase) - CYCLE_PHASES.indexOf(b.phase)) || a.stimulus.localeCompare(b.stimulus));
   return { evidence, symptomByPhase, symptomAdjusted: slope != null, symptomSlope: slope != null ? Math.round(slope * 100) / 100 : null };
+}
+
+// ---- Planungs-Steuerung (Teil: „Zyklus steuert den Plan") — pure, bounded, gestuft --------------------------------
+export interface ProjectedPhase { phase: CyclePhase | null; cycleDay: number | null; projected: boolean; confidence: Confidence }
+const CONF_LADDER: Confidence[] = ["insufficient", "exploratory", "low", "medium", "high"];
+const decayConf = (c: Confidence, steps: number): Confidence => CONF_LADDER[Math.max(0, CONF_RANK[c] - Math.max(0, steps))];
+/**
+ * Zyklusphase für ein (auch ZUKÜNFTIGES) Datum — für die Blockplanung/Timeline. Bis 45 Tage nach dem letzten Start =
+ * echte Phase (wie computeCyclePhase). Weiter voraus nur bei STABILEM natürlichem Zyklus mit der Median-Länge
+ * fortgerollt (prognostiziert, Konfidenz sinkt je Zyklus voraus); sonst null. Stabilität wird an HEUTE bewertet
+ * (nicht am Zukunftsdatum — sonst würde daysSinceLast fälschlich das Amenorrhö-Flag auslösen). Kein Leakage in die
+ * Vergangenheit: `computeCyclePhase` bleibt für das rückwirkende Session-Tagging die Quelle.
+ */
+export function projectedPhaseForDate(
+  periods: Period[], contraception: ContraceptionStatus | null | undefined, date: string, today: string,
+): ProjectedPhase {
+  const mode = contraceptionMode(contraception);
+  if (mode === "suppressed") return { phase: null, cycleDay: null, projected: false, confidence: "insufficient" };
+  const starts = periods.map((p) => p.start_date).filter((d) => d && d <= date).sort();
+  if (!starts.length) return { phase: null, cycleDay: null, projected: false, confidence: "insufficient" };
+  const stab = evaluateCycleStability(periods, today);
+  const lastStart = starts[starts.length - 1];
+  const daysOut = daysBetween(lastStart, date);
+  const isFuture = date > today;
+  const len = stab.medianLength && stab.medianLength >= 21 && stab.medianLength <= 45 ? stab.medianLength : 28;
+  if (daysOut > 45 && !(mode === "natural" && stab.regularity === "stable")) {
+    return { phase: null, cycleDay: daysOut + 1, projected: isFuture, confidence: "insufficient" };
+  }
+  const dayInCycle = (daysOut % len) + 1;
+  const cyclesAhead = Math.max(0, Math.floor(daysOut / len));
+  const base: Confidence = mode === "uncertain" ? "low" : stab.regularity === "stable" ? "medium" : stab.regularity === "irregular" ? "low" : "insufficient";
+  return { phase: phaseFromCycleDay(dayInCycle, len), cycleDay: dayInCycle, projected: isFuture, confidence: decayConf(base, cyclesAhead) };
+}
+
+export interface CyclePlanningBias {
+  phase: CyclePhase | null;
+  emphasis: string | null;      // Planer-Emphasis (vo2|schwelle|berg|norwegian|fartlek) oder null (kein Typ-Tilt)
+  loadFactor: number;           // sanfter Wochenlast-Faktor (~0.9..1.08)
+  qualityVolFactor: number;     // Qualitäts-Volumen-Dämpfung (~0.8..1) bei aerob-/soften-Phasen
+  tier: "measured" | "prior" | null;
+  soften: boolean;
+  reason: string | null;
+}
+// Reiz-Familie → Planer-Emphasis-Vokabular (workouts.ts pickWeekWorkouts). long/easy = KEIN Qualitäts-Tilt → aerob/soften.
+const FAMILY_TO_EMPHASIS: Record<string, string> = { vo2: "vo2", threshold: "schwelle", hill: "berg", norwegian: "norwegian", speed: "fartlek" };
+// Phasen-Last-Prior (sanft, health-first, physiologisch): Menstruation/späte Luteal etwas runter, Follikel leicht rauf.
+const PHASE_LOAD: Record<CyclePhase, number> = { menstrual: 0.94, follicular: 1.05, ovulation: 1.02, early_luteal: 1.0, late_luteal: 0.96 };
+/**
+ * Gestufte, gebundene Planungs-Steuerung je Phase (der 4. Steuer-Input, „Typ + sanfte Last"):
+ *  - belastbar GEMESSEN (`isReliable`: Konf≥mittel · CI≠0 · |g|≥0.2 · ≥2 Zyklen) → voller Typ-Tilt + Phasen-Last-Faktor.
+ *  - sonst schwacher Prior (`PHASE_PRIOR`) → nur sanfter Tie-Breaker (halber Last-Nudge), tier `prior` (= Hypothese).
+ *  - ohne Master-Schalter (`adaptiveEnabled`) oder ohne Gate → tier `null` (kein Eingriff, nur Anzeige).
+ *  - heutiger Symptom-Override → soften erzwungen (health-first). Alles klein & geklemmt; Periodisierung/km-Ceiling/
+ *    Health-Cap übersteuern IMMER (das passiert eine Ebene höher in blockPlan).
+ */
+export function cyclePlanningBias(
+  phase: CyclePhase | null,
+  calibrated: CalibratedTendency[],
+  gate: GateResult,
+  opts: { adaptiveEnabled?: boolean; symptomOverride?: boolean } = {},
+): CyclePlanningBias {
+  const off: CyclePlanningBias = { phase, emphasis: null, loadFactor: 1, qualityVolFactor: 1, tier: null, soften: false, reason: null };
+  if (!phase || !gate.passed || !opts.adaptiveEnabled) return off;
+  if (opts.symptomOverride) {
+    return { phase, emphasis: null, loadFactor: 0.92, qualityVolFactor: 0.8, tier: "measured", soften: true,
+      reason: `Zyklus (${PHASE_LABEL[phase]}): heutige Symptome deutlich → Qualität sanfter, Last −8 % (health-first).` };
+  }
+  const here = calibrated.filter((c) => c.phase === phase);
+  const reliablePos = here.filter((c) => isReliable(c) && (c.effect ?? 0) > 0).sort((a, b) => (b.effect ?? 0) - (a.effect ?? 0));
+  const reliableAny = here.some((c) => isReliable(c));
+  const loadPhase = PHASE_LOAD[phase];
+  if (reliableAny) {
+    const top = reliablePos[0];
+    const emph = top ? (FAMILY_TO_EMPHASIS[top.stimulus] ?? null) : null;
+    const soften = !emph;
+    return { phase, emphasis: emph, loadFactor: round2(clamp(loadPhase, 0.9, 1.08)), qualityVolFactor: soften ? 0.85 : 1, tier: "measured", soften,
+      reason: emph
+        ? `Zyklus (${PHASE_LABEL[phase]}, gemessen): ${famLabel(top!.stimulus)} wirkt bei dir hier überdurchschnittlich → betont.`
+        : `Zyklus (${PHASE_LABEL[phase]}, gemessen): hier lockere/aerobe Reize besser → Qualität sanfter.` };
+  }
+  const priorFams = PHASE_PRIOR[phase]?.families ?? [];
+  const emphP = priorFams.map((f) => FAMILY_TO_EMPHASIS[f]).find((e): e is string => !!e) ?? null;
+  const soften = !emphP && (phase === "menstrual" || phase === "late_luteal");
+  if (!emphP && !soften) return { phase, emphasis: null, loadFactor: 1, qualityVolFactor: 1, tier: "prior", soften: false, reason: null };
+  const loadPrior = 1 + (loadPhase - 1) * 0.5;
+  return { phase, emphasis: emphP, loadFactor: round2(clamp(loadPrior, 0.94, 1.05)), qualityVolFactor: soften ? 0.9 : 1, tier: "prior", soften,
+    reason: emphP
+      ? `Zyklus (${PHASE_LABEL[phase]}, Hypothese): ${famLabel(priorFams[0])} könnte hier besser anschlagen → leicht betont (noch nicht an deinen Daten bestätigt).`
+      : `Zyklus (${PHASE_LABEL[phase]}, Hypothese): tendenziell lockerer → Qualität leicht sanfter (health-first).` };
 }
