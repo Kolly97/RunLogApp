@@ -633,6 +633,15 @@ function migrate(): void {
       gate_passed    INTEGER,
       last_evaluated TEXT
     );
+    -- Komponente B (v2.4.0): deklarierter Block-Schwerpunkt als Schrittfunktion (jüngste effective_date ≤ Woche gilt).
+    CREATE TABLE IF NOT EXISTS method_emphasis_history_v2 (
+      id             INTEGER PRIMARY KEY,
+      profile_id     INTEGER NOT NULL,
+      effective_date TEXT NOT NULL,
+      emphasis       TEXT NOT NULL,
+      created_at     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_method_emphasis_history_v2 ON method_emphasis_history_v2(profile_id, effective_date);
   `);
 
   // Prospektive randomisierte N-of-1-Blöcke (L5): erweitert method_experiments (additiv).
@@ -668,6 +677,15 @@ function migrate(): void {
   addColumn("ml_channel_effects", "e_value", "REAL");
   addColumn("ml_channel_effects", "e_value_ci", "REAL");
   addColumn("ml_channel_effects", "fdr_survive", "INTEGER DEFAULT 0");
+  // B1: Bayes-Posterior je Kanal (Sidecar PyMC/Conjugate) — additiv, primär wenn gesetzt, sonst TS-Effekt.
+  addColumn("ml_channel_effects", "posterior_mean", "REAL");
+  addColumn("ml_channel_effects", "hdi_low", "REAL");
+  addColumn("ml_channel_effects", "hdi_high", "REAL");
+  addColumn("ml_channel_effects", "p_positive", "REAL");
+  addColumn("ml_channel_effects", "bayes_engine", "TEXT");
+  // B2a: Impulse-Response — gefitteter Zerfall τ (Wochen) + Halbwertszeit je Kanal (Retention).
+  addColumn("ml_channel_effects", "tau_weeks", "REAL");
+  addColumn("ml_channel_effects", "half_life_weeks", "REAL");
   // Kanonische Einheitstypen: wichtig für die ML-Reiz-Klassifizierung → gesperrt (nicht löschbar/umbenennbar).
   addColumn("options", "locked", "INTEGER NOT NULL DEFAULT 0");
   seedCanonicalSessionTypes();

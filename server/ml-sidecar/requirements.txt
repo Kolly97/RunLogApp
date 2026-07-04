@@ -1,10 +1,9 @@
 # RunLog ML-Sidecar — Python-Abhängigkeiten für die ECHTEN Modelle (L2/L3/L6).
-# Hinweis: Der Spike-Harness (engine.py: health/echo/ols) braucht KEINE davon — stdlib-only.
+# health/echo/ols = stdlib-only (kein Paket nötig). dose_bayes = numpy-Conjugate-Fallback (nur numpy)
+# ODER PyMC-MCMC (wenn installiert). Verifiziert auf CPython 3.14 (arm64-Wheels vorhanden).
 # Diese Liste wird beim Packaging in die gebündelte CPython installiert (scripts/build-sidecar.mjs).
-# Versionen pinnen, sobald die echten Modelle stehen.
-numpy>=1.26
+numpy>=1.26          # PFLICHT: trägt den Conjugate-Bayes-Fallback (dose_bayes) + alle numerischen Modelle
+pymc>=5.16           # B0/B1: Bayes-Dosis-Wirkung (MCMC). Fehlt sie → automatischer numpy-Conjugate-Fallback
 lightgbm>=4.3        # L6 exploratives Mining
 shap>=0.45           # nur intern (hinter ExpertDetails), nicht athleten-facing, nicht kausal
-numpyro>=0.15        # L3 Bayes/HMC — leichter als PyMC/Stan, CPU
-jax[cpu]>=0.4
-# Alternative zu numpyro (mehr Abhängigkeiten): pymc>=5.16
+# Optionaler Alternativ-Stack zu PyMC (leichter, JAX): numpyro>=0.15 · jax[cpu]>=0.4

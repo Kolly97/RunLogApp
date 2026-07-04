@@ -151,7 +151,7 @@ export function fitnessLevel(ctl: number, csPace?: number | null, vdot?: number 
 }
 
 // ---------------- Wochen-Komposition (Phase + Rotation + Doubles) ----------------
-export interface WorkoutPick { tpl: WorkoutTemplate; role: "quality" | "long" | "easy" | "core"; pair?: string } // v1.7: pair = Doppel-Tag (AM+PM)
+export interface WorkoutPick { tpl: WorkoutTemplate; role: "quality" | "long" | "easy" | "core"; pair?: string; emph?: boolean } // v1.7: pair = Doppel-Tag (AM+PM) · emph = durch Schwerpunkt gedreht
 const rot = <T,>(arr: T[], i: number): T => arr[((i % arr.length) + arr.length) % arr.length];
 
 /**
@@ -168,6 +168,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   const avoid = new Set(prefs?.avoidWorkouts ?? []);
   const favs = (prefs?.favoriteWorkouts ?? []).filter((id) => hasWk(id));
   const EMPH: Record<string, (t: WorkoutTemplate) => boolean> = {
+    lt1: (t) => t.family === "LT1",
     schwelle: (t) => t.family === "LT2", vo2: (t) => t.family === "VO2" && !t.id.startsWith("fartlek"),
     berg: (t) => t.family === "Hill", norwegian: (t) => t.id.startsWith("norw"), fartlek: (t) => t.id.startsWith("fartlek"),
   };
@@ -179,24 +180,48 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     return out;
   };
   const EMPH_POOL: Record<string, string[]> = {
+    lt1: ["lt1_long_reps", "lt1_continuous"], // LT1-Vorlagen sind phases:[base,belast] → in Specific leerer Pool = kein Swap (korrekt: LT1 = Base/Build-Reiz)
     berg: ["hill_reps_xlong", "hill_reps_short", "hill_reps_long"],
     fartlek: ["fartlek_structured", "fartlek_free"],
     vo2: ["vo2_long", "vo2_45", "vo2_1000s"],
     schwelle: ["lt2_cruise", "lt2_ladder", "lt2_mixed", "lt2_1000s", "lt2_broken_tempo"],
     norwegian: ["norw_400s", "norw_short_reps"],
   };
-  // Eine einzelne Qualität (nicht strides/Doppel) Richtung Schwerpunkt drehen — nur Build/Specific, phasengerecht.
+  // Base-legale Präkursoren je Schwerpunkt (jede ID hat "base" in .phases) — der Schwerpunkt wirkt auch in Base,
+  // physiologisch korrekt (LT1/aerobe Power/Berg statt harter Bahnarbeit), keine LT2/VO2-Qualität in die Basis zwingen.
+  const EMPH_POOL_BASE: Record<string, string[]> = {
+    lt1: ["lt1_long_reps", "lt1_continuous"],
+    schwelle: ["lt1_long_reps", "lt1_continuous"],
+    vo2: ["fartlek_structured", "hill_sprints"],
+    berg: ["hill_reps_short", "hill_sprints"],
+    norwegian: ["lt1_long_reps"],
+    fartlek: ["fartlek_structured", "fartlek_free"],
+  };
+  // Eine einzelne Qualität (nicht strides/Doppel) Richtung Schwerpunkt drehen — in Build/Specific über die harte
+  // Familie, in Base über den base-legalen Präkursor. Deload/Taper/Race-Week/Recovery/krank bleiben unangetastet.
   const emphasize = (picks: WorkoutPick[]): WorkoutPick[] => {
     if (!emphMatch || !prefs?.emphasis) return picks;
     const ph = (phase || "").toLowerCase();
-    if (!(ph.includes("belast") || ph.includes("build") || ph.includes("aufbau") || ph.includes("spec"))) return picks;
-    const pool = (EMPH_POOL[prefs.emphasis] ?? []).filter((id) => !avoid.has(id) && hasWk(id) && getWk(id)!.phases.some((x) => ph.includes(x)));
+    const isQualityPhase = ph.includes("belast") || ph.includes("build") || ph.includes("aufbau") || ph.includes("spec");
+    const isBaseLike = !isQualityPhase && !/krank|recovery|erholung|race|entlast|deload/.test(ph);
+    if (!isQualityPhase && !isBaseLike) return picks;
+    const poolIds = isQualityPhase ? EMPH_POOL[prefs.emphasis] : EMPH_POOL_BASE[prefs.emphasis];
+    // Base matcht über die konkrete Präkursor-Liste (die Familie weicht ab, z.B. Schwelle→LT1); Build/Specific über die Familie.
+    const baseSet = new Set(EMPH_POOL_BASE[prefs.emphasis] ?? []);
+    const match = isQualityPhase ? emphMatch! : (t: WorkoutTemplate) => baseSet.has(t.id);
+    const pool = (poolIds ?? []).filter((id) => !avoid.has(id) && hasWk(id) && (isBaseLike ? getWk(id)!.phases.includes("base") : getWk(id)!.phases.some((x) => ph.includes(x))));
     if (!pool.length) return picks;
-    if (picks.some((p) => p.role === "quality" && !p.pair && emphMatch!(p.tpl))) return picks; // schon vertreten
-    const idx = picks.map((p, i) => ({ p, i })).reverse().find(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides" && !emphMatch!(p.tpl))?.i;
+    // Schon vertreten (durch Swap ODER die reguläre Phasen-Wahl, z.B. LT1-Slot in Base) → nur markieren,
+    // damit die Evidenz in JEDER Woche sichtbar bleibt (kein zweiter Slot, keine Monokultur).
+    const repIdx = picks.findIndex((p) => p.role === "quality" && !p.pair && match(p.tpl));
+    if (repIdx >= 0) {
+      if (picks[repIdx].emph) return picks;
+      const marked = [...picks]; marked[repIdx] = { ...marked[repIdx], emph: true }; return marked;
+    }
+    const idx = picks.map((p, i) => ({ p, i })).reverse().find(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides")?.i;
     if (idx == null) return picks;
     const next = [...picks];
-    next[idx] = { tpl: wk(rot(pool, weekInPhase)), role: "quality" };
+    next[idx] = { tpl: wk(rot(pool, weekInPhase)), role: "quality", emph: true };
     return next;
   };
 
@@ -392,6 +417,8 @@ export interface RenderCtx {
   zones: ZonesInput; fitness: FitnessLevel; progress: number; targetTss?: number; maxMin?: number;
   // T7: Tagesform + Fitness-Proxys + Phasen-Label für dynamische Reps + „angepasst"-Notiz.
   tsb?: number | null; vdot?: number | null; phaseLabel?: string | null;
+  taperFactor?: number;  // Baustein 2.4: <1 reduziert das Qualitäts-VOLUMEN (Reps) im Taper/Deload — Pace/Intensität bleibt
+  volumeFactor?: number; // Baustein B1: RPE/Completion-Loop je Einheiten-Typ — <1 (zuletzt zu hart) / >1 (zu leicht), bidirektional
   goalDistanceM?: number | null;             // Item 3: Zieldistanz → Long-Run-Dauer-Deckel
 }
 
@@ -651,6 +678,17 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
   const center = anchorCenter(tpl.anchor, zones);
   // T7: Band (von-bis) + dynamischer Zielwert (Progress + TSB) statt Einzelwert.
   const band = repsBand(tpl, fitness, progress, ctx.tsb);
+  // Baustein 2.4 (Taper) + B1 (RPE-Loop): Qualitäts-VOLUMEN skalieren (Reps), Pace/Intensität bleibt. `taperFactor` < 1
+  // reduziert im Taper/Deload; `volumeFactor` justiert je Einheiten-Typ nach RPE/Completion (zu hart → <1, zu leicht → >1).
+  // Beide multiplikativ; nur echte Qualität (effort > 2), Steigerungen bleiben voll.
+  const tf = ctx.taperFactor != null && ctx.taperFactor > 0 ? ctx.taperFactor : 1;
+  const vf = ctx.volumeFactor != null && ctx.volumeFactor > 0 ? ctx.volumeFactor : 1;
+  const volF = tf * vf;
+  if (Math.abs(volF - 1) > 0.01 && tpl.effort > 2) {
+    band.target = Math.max(2, Math.round(band.target * volF));
+    band.hi = Math.max(band.target, Math.round(band.hi * volF));
+    band.lo = Math.max(2, Math.min(band.lo, band.target));
+  }
   const repPaceForTime = center ?? paceOf(z, zones);
   const repMin = tpl.repDist_m ? (tpl.repDist_m / 1000) * repPaceForTime / 60 : (tpl.repSec ?? 60) / 60;
   const restSec = tpl.restSec ?? 60;

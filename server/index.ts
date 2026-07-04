@@ -7,6 +7,7 @@ import {
   plannedTss,
   computePmc,
   ctlRamp,
+  kmCeiling,
   runTss,
   powerTss,
   bikeTssEstimate,
@@ -52,6 +53,7 @@ import {
   dailyRecommendation,
   tssRecommendation,
   sessionCompletion,
+  typeVolumeFactors,
   matchActivities,
   blockPlan,
   injuryRiskFlag,
@@ -59,6 +61,10 @@ import {
   markerSnapshot,
   compareMarkers,
   methodInference,
+  evaluateMethodEmphasis,
+  blockDeltas,
+  classifyWeekRegime,
+  classifyWeekEmphasis,
   resolvePlannedSession,
   enrichZoneAllocKm,
   type IntLevel,
@@ -80,9 +86,13 @@ import {
   stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
   stravaBackfillStatus, stravaBackfillStart, stravaBackfillStep, stravaBackfillCancel,
 } from "./strava.ts";
-import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit } from "./mlJobs.ts";
-import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, proposeProspectiveTrials as mlProposeTrials, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
-import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow } from "./cycleTraining.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit, blockIrFitness } from "./mlJobs.ts";
+import { synthesizeTrainingVerdict, empiricalBayesGroups, ebFindings, REGIME_LABEL, EMPHASIS_LABEL, type VerdictInputs, type TrialResultLite, type EbPost, type TrainingVerdict } from "./ml/trainingVerdict.ts";
+import { deriveCoachingPrefs, coachHealthCap, type CoachingPrefs } from "./coachSynthesis.ts";
+import { runWithFallback as sidecarRunWithFallback } from "./ml/sidecar.ts";
+import { weeklyLabelExposure } from "./ml/featureBackbone.ts";
+import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, proposeProspectiveTrials as mlProposeTrials, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, clearProspectiveCooldown as mlReactivateTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
+import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, calibrateStimulusWeights, cycleIndexOf, applySymptomOverride, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, isReliable as cycleCellReliable, cellKey as cycleCellKey, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow, type TodaySymptoms, type StimulusRecommendation } from "./cycleTraining.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -232,6 +242,8 @@ app.get("/api/settings", (_req, res) => {
     strava_client_secret: getSetting("strava_client_secret", ""),
     strava_sync_from: getSetting("strava_sync_from", ""), // Extraktions-Startdatum (v0.14.0); leer → Saisonstart
     phase_dist_overrides: getProfileSetting("phase_dist_overrides", {} as Record<string, string>), // T14: manuelle Verteilungs-Modelle pro Phase
+    readiness_gate_mode: getSetting("readiness_gate_mode", "advisory"), // v1.5.0: Adaptiver-Coach-Modus (fehlte im GET → Toggle sprang zurück)
+    coach_emphasis_mode: getSetting("coach_emphasis_mode", "auto"), // Coach ToDo 35: "auto" (Evidenz gewinnt) | "manual" (Availability-Emphasis pinnen)
   });
 });
 
@@ -437,8 +449,17 @@ app.get("/api/availability", (_req, res) => {
   res.json(getSetting<Availability | null>(`availability_${pid()}`, null) ?? null);
 });
 app.put("/api/availability", (req, res) => {
+  const p = pid();
   const av: Availability = req.body;
-  setSetting(`availability_${pid()}`, av);
+  const prev = getSetting<Availability | null>(`availability_${p}`, null);
+  setSetting(`availability_${p}`, av);
+  // Komponente B: deklarierten Block-Schwerpunkt als Schrittfunktion mitloggen (nur bei Änderung).
+  const nextEmph = av?.emphasis ?? "ausgewogen";
+  const prevEmph = prev?.emphasis ?? null;
+  if (nextEmph !== prevEmph) {
+    db.prepare("INSERT INTO method_emphasis_history_v2(profile_id, effective_date, emphasis, created_at) VALUES(?,?,?,?)")
+      .run(p, todayIso(), nextEmph, new Date().toISOString());
+  }
   res.json({ ok: true });
 });
 
@@ -741,12 +762,15 @@ app.get("/api/plan/week-suggestion", (req, res) => {
   // Item 3 (Frage B): Zieldistanz des nächsten Hauptrennens → verschiebt das Verteilungs-Soll leicht.
   const goalRow = db.prepare("SELECT distance_m FROM races WHERE profile_id=? AND date>=? AND distance_m IS NOT NULL AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(pid(), today) as { distance_m: number | null } | undefined;
   const goalDistanceM = goalRow?.distance_m && goalRow.distance_m > 0 ? Number(goalRow.distance_m) : null;
-  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM });
+  const healthCap = coachHealthCap(mlGetReadiness(pid()).flags); // Coach ToDo 35: Gesundheits-Veto auch im Wochen-Vorschlag
+  const rec = weekStructureRecommendation({ ctl, tsb, ctlRamp: ramp, phase, weekNo, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM, healthCap });
   res.json({ week: wk, phase, form: { ctl: round1(ctl), tsb: tsb != null ? round1(tsb) : null, ramp }, readiness, recommendation: rec, methodPreference });
 });
 
 // Mesozyklus-/Block-Vorschlag bis Renntag (v1.4.0, A4) — Vorschlag-Modus, schreibt nichts.
-app.get("/api/plan/block-suggestion", (req, res) => {
+// Coach ToDo 35: adaptiv & faktenbasiert — die „Was hilft dir?"-Synthese steuert Schwerpunkt/Verteilung (gestuft),
+// Health-Flags kappen hart, alles erklärt. Deshalb async (Verdikt nutzt den Sidecar).
+app.get("/api/plan/block-suggestion", async (req, res) => {
   const today = todayIso();
   // Startwoche: ?week= oder die Woche, die heute enthält (erste mit end_date>=heute).
   const startWk = req.query.week != null
@@ -813,10 +837,38 @@ app.get("/api/plan/block-suggestion", (req, res) => {
   const readiness = readinessScore({ hrvToday: todayLog?.hrv ?? null, hrvBaseline, recovery: todayLog?.recovery ?? null, soreness: todayLog?.soreness ?? null, sleepH: todayLog?.sleep_h ?? null });
 
   const inf = buildMethodInference();
-  const methodPreference = inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null;
   const goalTimeS = raceRow?.goal_time_s && raceRow.goal_time_s > 0 ? Number(raceRow.goal_time_s) : null; // v1.7.0 Wunsch-Zielzeit
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs });
-  res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS, distanceConcept: distanceConcept(goalDistanceM) });
+
+  // Coach ToDo 35: Verdikt (dieselbe Engine wie „Was hilft dir?") → Planer-Prefs. Evidenz steuert automatisch, wenn
+  // belastbar (gestuft), sonst Default; manueller Schwerpunkt bleibt Override; Health-Flags kappen hart.
+  const verdict = await buildTrainingVerdict(pid());
+  const emphasisMode = getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto";
+  const coaching: CoachingPrefs = deriveCoachingPrefs(verdict, {
+    healthFlags: mlGetReadiness(pid()).flags,
+    readinessLevel: readiness?.level ?? null,
+    availabilityEmphasis: availability?.emphasis ?? null,
+    emphasisMode,
+  });
+  // Regime: Verdikt-Achse bevorzugt (konsistent mit den Karten), sonst Marker-Block-Inferenz als Fallback.
+  const methodPreference = coaching.regime
+    ? { regime: coaching.regime.regime as Regime, confidence: coaching.regime.confidence }
+    : (inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null);
+
+  const taperWeeks = req.query.taper != null ? Math.max(1, Math.min(3, Number(req.query.taper) || 2)) : undefined; // Baustein 2.4: Peak-Ausrichtung
+  // Baustein A1: verletzungssicheres km-Ceiling aus der eigenen Lauf-Historie (ACWR, letzte 28 Tage).
+  const runKm28 = db.prepare("SELECT date, distance_m FROM activities WHERE profile_id=? AND sport='Run' AND date>=? AND date<=?").all(pid(), addDaysIso(today, -28), today) as { date: string; distance_m: number | null }[];
+  const kmCeil = kmCeiling(runKm28, today);
+  // Baustein B1: per-Einheiten-Typ Volumen-Loop aus den letzten Rückmeldungen (RPE + felt_vs_expected, Confounder raus).
+  const fbRows = db.prepare("SELECT session_family, rpe, felt_vs_expected, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND date>=? ORDER BY date DESC LIMIT 80").all(pid(), addDaysIso(today, -70)) as { session_family: string | null; rpe: number | null; felt_vs_expected: number | null; confounder_flag: string | null }[];
+  const vol = typeVolumeFactors(fbRows);
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors });
+  for (const n of vol.notes) plan.reasons.push({ code: "rpe_loop", text: n });
+  // Baustein 2.3: individuelle Fitness-Prognose (IR-Faltung) additiv je Woche, wenn ein Dose-Response-Run vorliegt.
+  const doseEff = mlGetEffects(pid());
+  const irCount = (doseEff.meta as { activeCount?: number } | null)?.activeCount ?? 0;
+  const irFit = doseEff.mediator.length && irCount ? blockIrFitness(plan.weeks, doseEff.mediator, irCount) : [];
+  if (irFit.length === plan.weeks.length) plan.weeks.forEach((w, i) => { w.irFitness = irFit[i]; });
+  res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS, distanceConcept: distanceConcept(goalDistanceM), coaching, freshness: mlFreshness(pid(), "dose_response").state });
 });
 
 // v1.7.0: Soll/Ist-Abgleich zum Ziel-Rennen — Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit.
@@ -1066,7 +1118,7 @@ function buildMarkerSnapshot(endDate: string, windowDays: number) {
   }));
   return markerSnapshot({
     endDate, windowDays, activities,
-    zones: { hr_zones: zs.hr_zones, threshold_pace: zs.threshold_pace, lthr: zs.lthr, lt1_hr: zs.lt1_hr },
+    zones: { hr_zones: zs.hr_zones, threshold_pace: zs.threshold_pace, lthr: zs.lthr, lt1_hr: zs.lt1_hr, lt1_pace: zs.lt1_pace },
     lactateTests,
   });
 }
@@ -1112,8 +1164,13 @@ let inferenceVersion = 0;
 const inferenceCache = new Map<number, { version: number; result: ReturnType<typeof methodInference> }>();
 function invalidateInference(): void { inferenceVersion++; }
 
-/** Berechnet die passive Methoden-Inferenz — ein Daten-Load, In-Memory-Fenster, leichte Rolling-CS. */
-function computeMethodInference() {
+/**
+ * Baut den WeekRegimeInput (letzte ~60 Wochen) — ein Daten-Load, In-Memory-Fenster, leichte Rolling-CS.
+ * Geteilt von methodInference (Regime) und der Methoden-Schwerpunkt-Auswertung (Komponente B).
+ * `withDeclaredEmphasis` löst je Woche den gewählten Block-Schwerpunkt aus method_emphasis_history_v2 auf
+ * (Schrittfunktion: jüngste effective_date ≤ Wochenstart).
+ */
+function buildWeekRegimeInput(opts?: { withDeclaredEmphasis?: boolean }): WeekRegimeInput[] {
   const today = todayIso();
   const runs = loadProfileRuns();
   const weeksRows = db.prepare(
@@ -1121,10 +1178,20 @@ function computeMethodInference() {
   ).all(pid(), today) as any[];
   const recent = weeksRows.slice(-60); // letzte ~60 Wochen
   const from = minIso(earliestDataDate() ?? today, today);
-  const pmc = computePmc(dailyTssMap(from, today), from, today, today);
+  const dtm = dailyTssMap(from, today); // tägliche Gesamt-TSS (für Wochen-Last / F3-Exposition)
+  const pmc = computePmc(dtm, from, today, today);
   const ctlByDate = new Map<string, number>();
   for (const p of pmc) ctlByDate.set(p.date, p.ctl);
   const raceDatesArr = (db.prepare("SELECT date FROM races WHERE profile_id=?").all(pid()) as { date: string }[]).map((r) => r.date);
+  // Deklarierter Schwerpunkt als sortierte Schrittfunktion (nur wenn angefordert).
+  const emphHist = opts?.withDeclaredEmphasis
+    ? (db.prepare("SELECT effective_date, emphasis FROM method_emphasis_history_v2 WHERE profile_id=? ORDER BY effective_date").all(pid()) as { effective_date: string; emphasis: string }[])
+    : [];
+  const declaredAt = (date: string): string | null => {
+    let cur: string | null = null;
+    for (const h of emphHist) { if (h.effective_date <= date) cur = h.emphasis; else break; }
+    return cur;
+  };
 
   const input: WeekRegimeInput[] = [];
   for (const w of recent) {
@@ -1147,9 +1214,16 @@ function computeMethodInference() {
       week_no: w.week_no, start_date: w.start_date, phase: w.phase ?? null,
       dist, pi, ctl: ctlByDate.get(w.start_date) ?? null,
       sessions, doubleThresholdDays, excluded, csPace, vdot: vd,
+      declaredEmphasis: opts?.withDeclaredEmphasis ? declaredAt(w.start_date) : null,
+      weekTss: [...dtm].reduce((s, [d, v]) => (d >= w.start_date && d <= w.end_date ? s + v : s), 0),
     });
   }
-  return methodInference(input, { lagWeeks: 3, ctlBand: 8 });
+  return input;
+}
+
+/** Berechnet die passive Methoden-Inferenz (Regime) aus dem geteilten WeekRegimeInput. */
+function computeMethodInference() {
+  return methodInference(buildWeekRegimeInput(), { lagWeeks: 3, ctlBand: 8 });
 }
 
 /** Gecachte Methoden-Inferenz (pro Profil; invalidiert bei jedem Schreibzugriff). */
@@ -2707,6 +2781,137 @@ app.get("/api/ml/status", (req, res) => {
 });
 app.get("/api/ml/latent-fitness", (_req, res) => res.json(mlGetLatentFitness(pid())));
 app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
+// Synthese „Was hilft dir?" (Zeile 39, Deliverable A): bündelt Dosis (L3) + Regime + Schwerpunkt + geprüfte Trials.
+/**
+ * „Was hilft dir?"-Synthese server-seitig (geteilt von der Verdikt-Route UND dem adaptiven Coach) — dieselbe
+ * Engine wie die Karten (exposure_dose, Block-Bootstrap → autokorrelations-robust) für konsistente Zahlen.
+ */
+async function buildTrainingVerdict(p: number): Promise<TrainingVerdict> {
+  const dose = mlGetEffects(p);
+  const latCells = async (axis: "regime" | "emphasis") => {
+    const d = buildExposureDesign(p, axis);
+    if (!d) return [];
+    type LatCell = { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null };
+    const r = await sidecarRunWithFallback<{ method?: string; models: Record<string, LatCell[]> } | null>(
+      { kind: "exposure_dose", payload: { labels: d.labels, X: d.X, total: d.total, y: d.y, y_sd: d.ysd, boot: 300 } },
+      () => ridgeFallback(d.labels, d.X, d.total, d.y, d.ysd), { timeoutMs: 120_000 },
+    );
+    return (r.result?.models?.composition ?? []).map((c) => ({ label: c.label, beta: c.beta, ciLow: c.ci_low, ciHigh: c.ci_high, pPositive: c.p_positive }));
+  };
+  const trials = db.prepare(
+    "SELECT emphasis_label, arm_a_label, label, verdict, trial_kind, theta FROM method_experiments WHERE profile_id=? AND state='evaluated' AND verdict IS NOT NULL",
+  ).all(p) as { emphasis_label: string | null; arm_a_label: string | null; label: string | null; verdict: string | null; trial_kind: string | null; theta: number | null }[];
+  const inputs: VerdictInputs = {
+    dose: { mediator: dose.mediator, composition: dose.composition },
+    regime: { cells: await latCells("regime") },
+    emphasis: { cells: await latCells("emphasis") },
+    trials: trials.map<TrialResultLite>((t) => ({ arm: t.emphasis_label ?? t.arm_a_label ?? t.label ?? "", label: t.label, verdict: t.verdict, kind: t.trial_kind, theta: t.theta })),
+  };
+  return synthesizeTrainingVerdict(inputs);
+}
+app.get("/api/ml/training-verdict", async (_req, res) => {
+  res.json(await buildTrainingVerdict(pid()));
+});
+// „Neu berechnen" für Passive Inferenz (Regime) + Methoden-Schwerpunkt — hierarchisch (Partial Pooling), optional
+// über die komplexe Python-Engine (Sidecar `blocks_bayes`, PyMC), sonst analytischer EB-Fallback (identisches Modell).
+app.post("/api/ml/method-bayes", async (req, res) => {
+  const p = pid();
+  const only = req.query.axis === "regime" || req.query.axis === "emphasis" ? String(req.query.axis) : null;
+  const weeks = buildWeekRegimeInput({ withDeclaredEmphasis: true });
+  const trialRows = db.prepare("SELECT emphasis_label, arm_a_label, label, verdict, trial_kind, theta FROM method_experiments WHERE profile_id=? AND state='evaluated' AND verdict IS NOT NULL").all(p) as { emphasis_label: string | null; arm_a_label: string | null; label: string | null; verdict: string | null; trial_kind: string | null; theta: number | null }[];
+  const trials: TrialResultLite[] = trialRows.map((t) => ({ arm: t.emphasis_label ?? t.arm_a_label ?? t.label ?? "", label: t.label, verdict: t.verdict, kind: t.trial_kind, theta: t.theta }));
+  type SidecarGroups = { method: string; groups: { group: string; mean: number; hdi_low: number; hdi_high: number; p_better: number; n_blocks: number }[] };
+  async function axis(kind: "regime" | "emphasis", labelMap: Record<string, string>) {
+    const blocks = blockDeltas(weeks, kind).map((b) => ({ group: b.group, cs: b.cs }));
+    const byG = new Map<string, number[]>();
+    for (const b of blocks) if (b.cs != null) (byG.get(b.group) ?? byG.set(b.group, []).get(b.group)!).push(b.cs);
+    const grouped = [...byG.entries()].map(([group, deltas]) => ({ group, deltas }));
+    const r = await sidecarRunWithFallback<SidecarGroups>(
+      { kind: "blocks_bayes", payload: { groups: grouped } },
+      () => ({ method: "eb", groups: empiricalBayesGroups(blocks).map((g) => ({ group: g.group, mean: g.mean, hdi_low: g.ciLow, hdi_high: g.ciHigh, p_better: g.pBetter, n_blocks: g.nBlocks })) }),
+      { timeoutMs: 120_000 },
+    );
+    const posts: EbPost[] = r.result.groups.map((g) => ({ group: g.group, mean: g.mean, ciLow: g.hdi_low, ciHigh: g.hdi_high, pBetter: g.p_better, nBlocks: g.n_blocks }));
+    return { engine: r.result.method, findings: ebFindings(posts, (k) => labelMap[k] ?? k, trials) };
+  }
+  const out: Record<string, unknown> = {};
+  if (!only || only === "regime") out.regime = await axis("regime", REGIME_LABEL);
+  if (!only || only === "emphasis") out.emphasis = await axis("emphasis", EMPHASIS_LABEL);
+  res.json(out);
+});
+// F3: Regime/Schwerpunkt-Dosis-Wirkung auf die LATENTE FITNESS (komplexe Python-Engine `exposure_dose`,
+// TS-Fallback als Punktschätzer). Δ latente Fitness je +1 SD Expositions-CTL, Mediator + Komposition.
+function solveLinearSystem(A: number[][], b: number[]): number[] {
+  const n = b.length; const M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let piv = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c] || 1e-9; for (let j = c; j <= n; j++) M[c][j] /= d;
+    for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c]; for (let j = c; j <= n; j++) M[r][j] -= f * M[c][j]; }
+  }
+  return M.map((r) => r[n]);
+}
+function ridgeFallback(labels: string[], X: number[][], total: number[], y: number[], ysd: number[]): { method: string; models: Record<string, { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null }[]> } {
+  const T = X.length, L = labels.length;
+  const w = ysd.map((s) => 1 / Math.max(s, 1e-6) ** 2); const wm = w.reduce((a, b) => a + b, 0) / T; const wn = w.map((x) => x / wm);
+  const ymean = y.reduce((a, v, i) => a + v * wn[i], 0) / wn.reduce((a, b) => a + b, 0); const yc = y.map((v) => v - ymean);
+  const col = (M: number[][], j: number) => M.map((r) => r[j]);
+  const resid = (M: number[][]) => { // jede Spalte gegen [1, total_z] residualisieren (Komposition, „gleicher Umfang")
+    const tm = total.reduce((a, b) => a + b, 0) / T; const ts = Math.sqrt(total.reduce((a, b) => a + (b - tm) ** 2, 0) / T) || 1; const tz = total.map((v) => (v - tm) / ts);
+    const tzSS = tz.reduce((a, v) => a + v * v, 0) || 1; const tzMean = tz.reduce((a, v) => a + v, 0) / T;
+    const out = M.map((row) => [...row]);
+    for (let j = 0; j < L; j++) {
+      const x = col(M, j);
+      const b1 = x.reduce((a, v, i) => a + v * tz[i], 0) / tzSS;
+      const a0 = x.reduce((a, v) => a + v, 0) / T - b1 * tzMean;
+      for (let t = 0; t < T; t++) out[t][j] = M[t][j] - (a0 + b1 * tz[t]);
+    }
+    return out;
+  };
+  const r3 = (x: number) => Math.round(x * 1000) / 1000;
+  const erf = (x: number) => { const s = x < 0 ? -1 : 1; x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x)); };
+  const normCdf = (z: number) => 0.5 * (1 + erf(z / Math.SQRT2));
+  const fit = (Xm: number[][]) => {
+    const mu = Array.from({ length: L }, (_, j) => col(Xm, j).reduce((a, b) => a + b, 0) / T);
+    const sd = Array.from({ length: L }, (_, j) => Math.sqrt(col(Xm, j).reduce((a, v) => a + (v - mu[j]) ** 2, 0) / T) || 1);
+    const Z = Xm.map((row) => row.map((v, j) => (v - mu[j]) / sd[j]));
+    const A = Array.from({ length: L }, (_, i) => Array.from({ length: L }, (_, j) => (i === j ? 1 : 0) + Z.reduce((s, _r, t) => s + wn[t] * Z[t][i] * Z[t][j], 0)));
+    const bb = Array.from({ length: L }, (_, i) => Z.reduce((s, _r, t) => s + wn[t] * Z[t][i] * yc[t], 0));
+    const beta = solveLinearSystem(A, bb);
+    // Ridge = Bayes-MAP → Posterior-Kovarianz σ²·A⁻¹; A⁻¹-Spalten via Löser auf Einheitsvektoren.
+    const Ainv = Array.from({ length: L }, (_, j) => solveLinearSystem(A.map((r) => [...r]), Array.from({ length: L }, (_, i) => (i === j ? 1 : 0))));
+    const resid2 = Z.reduce((s, row, t) => s + wn[t] * (yc[t] - row.reduce((a, z, k) => a + z * beta[k], 0)) ** 2, 0);
+    const s2 = resid2 / Math.max(1, T - L);
+    return labels.map((l, j) => {
+      const se = Math.sqrt(Math.max(s2 * Ainv[j][j], 1e-12));
+      return { label: l, beta: r3(beta[j]), ci_low: r3(beta[j] - 1.96 * se), ci_high: r3(beta[j] + 1.96 * se), p_positive: Math.round(normCdf(beta[j] / se) * 100) / 100 };
+    });
+  };
+  return { method: "ts", models: { mediator: fit(X), composition: fit(resid(X)) } };
+}
+type ExposureDesign = { labels: string[]; X: number[][]; total: number[]; y: number[]; ysd: number[]; nWeeks: number };
+/** F3: baut das Expositions→latente-Fitness-Design (Regime/Schwerpunkt) — geteilt von /regime-latent und dem Verdikt. */
+function buildExposureDesign(p: number, axis: "regime" | "emphasis"): ExposureDesign | null {
+  const weeks = buildWeekRegimeInput().filter((w) => !w.excluded && (w.weekTss ?? 0) > 0);
+  const labeled = weeks.map((w) => ({ date: w.start_date, label: axis === "regime" ? classifyWeekRegime(w) : classifyWeekEmphasis(w), load: w.weekTss ?? 0 }));
+  const labelSet = [...new Set(labeled.map((l) => l.label))];
+  if (labeled.length < labelSet.length + 4 || labelSet.length < 2) return null;
+  const exp = weeklyLabelExposure(labeled, labelSet);
+  const latent = mlGetLatentFitness(p).map((pt) => ({ t: Date.parse(pt.date), v: pt.value, sd: pt.sd }));
+  const nearest = (d: string) => { const t = Date.parse(d); let best: { v: number; sd: number } | null = null, bd = Infinity; for (const l of latent) { const dd = Math.abs(l.t - t); if (dd < bd) { bd = dd; best = l; } } return bd <= 7 * 86_400_000 ? best : null; };
+  const rows = exp.map((e) => ({ e, lat: nearest(e.date) })).filter((r) => r.lat) as { e: typeof exp[number]; lat: { v: number; sd: number } }[];
+  if (rows.length < labelSet.length + 4) return null;
+  return { labels: labelSet, X: rows.map((r) => labelSet.map((l) => r.e.exposure[l] ?? 0)), total: rows.map((r) => r.e.total), y: rows.map((r) => r.lat.v), ysd: rows.map((r) => r.lat.sd), nWeeks: rows.length };
+}
+app.get("/api/ml/regime-latent", async (req, res) => {
+  const p = pid();
+  const axis = req.query.axis === "emphasis" ? "emphasis" : "regime";
+  const d = buildExposureDesign(p, axis);
+  if (!d) return res.json({ engine: "insufficient", models: null });
+  const payload = { labels: d.labels, X: d.X, total: d.total, y: d.y, y_sd: d.ysd, boot: 400 };
+  const r = await sidecarRunWithFallback<{ method: string; models: unknown } | null>({ kind: "exposure_dose", payload }, () => ridgeFallback(d.labels, d.X, d.total, d.y, d.ysd), { timeoutMs: 120_000 });
+  res.json({ engine: r.result?.method ?? "ts", models: (r.result as { models?: unknown })?.models ?? null, nWeeks: d.nWeeks });
+});
 app.get("/api/ml/readiness", (_req, res) => res.json(mlGetReadiness(pid())));
 app.post("/api/ml/audit", (_req, res) => res.json(mlAdversarialAudit(pid())));
 
@@ -2773,6 +2978,7 @@ app.post("/api/ml/prospective/accept", (req, res) => {
   res.json(id);
 });
 app.post("/api/ml/prospective/decline", (_req, res) => res.json(mlDeclineTrial(pid())));
+app.post("/api/ml/prospective/reactivate", (_req, res) => res.json(mlReactivateTrial(pid())));
 app.post("/api/ml/prospective/:id/evaluate", (req, res) => res.json(mlEvaluateTrial(Number(req.params.id))));
 app.post("/api/ml/prospective/:id/abort", (req, res) => {
   const reason = (req.body as { reason?: string })?.reason === "health" ? "health" : "user";
@@ -2787,7 +2993,7 @@ const ARM_STIMULUS: Record<string, { emphasis: string; regime: Regime; label: st
   T: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" }, Schwelle: { emphasis: "schwelle", regime: "threshold", label: "Schwelle" },
   R: { emphasis: "fartlek", regime: "polarized", label: "Repetition" }, Repetition: { emphasis: "fartlek", regime: "polarized", label: "Repetition" },
   aerob: { emphasis: "ausgewogen", regime: "pyramidal", label: "Aerob" }, Aerob: { emphasis: "ausgewogen", regime: "pyramidal", label: "Aerob" },
-  M: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" }, Marathon: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" }, MarathonPace: { emphasis: "schwelle", regime: "threshold", label: "Marathon-Pace" },
+  M: { emphasis: "lt1", regime: "pyramidal", label: "LT1 · Marathon-Pace" }, Marathon: { emphasis: "lt1", regime: "pyramidal", label: "LT1 · Marathon-Pace" }, MarathonPace: { emphasis: "lt1", regime: "pyramidal", label: "LT1 · Marathon-Pace" },
   polarized: { emphasis: "vo2", regime: "polarized", label: "Polarisiert" }, pyramidal: { emphasis: "ausgewogen", regime: "pyramidal", label: "Pyramidal" },
   threshold: { emphasis: "schwelle", regime: "threshold", label: "Threshold" }, norwegian: { emphasis: "norwegian", regime: "norwegian", label: "Norwegian" },
 };
@@ -2888,6 +3094,45 @@ function cycleContra(p: number): ContraceptionStatus {
 function loadPeriods(p: number): Period[] {
   return db.prepare("SELECT start_date, end_date FROM cycle_period_log_v2 WHERE profile_id=? ORDER BY start_date").all(p) as unknown as Period[];
 }
+/** Teil 4: Symptome je Datum (für den Kovariaten-/Outcome-Join in der Phase×Reiz-Auswertung). */
+function loadSymptomMap(p: number): Map<string, { cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null }> {
+  const rows = db.prepare("SELECT date, cramps, energy, sleep, mood, flow FROM cycle_symptoms_v2 WHERE profile_id=?").all(p) as { date: string; cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null }[];
+  return new Map(rows.map((r) => [r.date, { cramps: r.cramps, energy: r.energy, sleep: r.sleep, mood: r.mood, flow: r.flow }]));
+}
+/** Getaggtes Session-Feedback mit Symptom-Join + Zyklus-Nummer (Teil 4/5) — Basis für Auswertung & Empfehlung. */
+function loadCycleFeedback(p: number, periods: Period[]): FeedbackRow[] {
+  const starts = periods.map((x) => x.start_date).sort();
+  const symByDate = loadSymptomMap(p);
+  const rows = db.prepare("SELECT date, session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL").all(p) as unknown as (FeedbackRow & { date: string })[];
+  return rows.map((r) => ({ ...r, ...(symByDate.get(r.date) ?? {}), cycle_index: cycleIndexOf(r.date, starts) }));
+}
+/** Teil 5: freigeschaltete Phase×Reiz-Zellen (Opt-in) aus phase_stimulus_map (JSON `{ "phase:stim": true }`). */
+function parseActivatedCells(json: string | null | undefined): Set<string> {
+  const out = new Set<string>();
+  try { const m = json ? (JSON.parse(json) as Record<string, unknown>) : {}; for (const [k, v] of Object.entries(m)) if (v) out.add(k); } catch { /* ignore */ }
+  return out;
+}
+/**
+ * Teil 5: datengetriebene, NUR-ANZEIGE Phasen-Empfehlung. Evidenz live neu berechnet (Phase-vs-Rest, Hedges' g,
+ * Replikation über Zyklen), Prior→Posterior kalibriert (feedback_sensitivity), Symptom-Override on top.
+ * „aktiv" nur für vom Nutzer freigeschaltete belastbare Zellen (cycle_adaptive_enabled + phase_stimulus_map).
+ * Greift NICHT in pickWeekWorkouts/blockPlan ein.
+ */
+function buildCycleRecommendation(p: number, today: string): StimulusRecommendation {
+  const periods = loadPeriods(p);
+  const contra = cycleContra(p);
+  const gate = gateCycleAdaptive(periods, contra, today);
+  const phase = computeCyclePhase(periods, contra, today);
+  const feedback = loadCycleFeedback(p, periods);
+  const evidence = evaluatePhaseStimulus(feedback).evidence;
+  const settings = db.prepare("SELECT symptom_override_enabled, feedback_sensitivity, cycle_adaptive_enabled, phase_stimulus_map FROM cycle_training_settings WHERE profile_id=?").get(p) as { symptom_override_enabled?: number; feedback_sensitivity?: number; cycle_adaptive_enabled?: number; phase_stimulus_map?: string | null } | undefined;
+  const calibrated = calibrateStimulusWeights(evidence, { sensitivity: settings?.feedback_sensitivity ?? 0.5 });
+  const totalCycles = new Set(feedback.filter((r) => !r.confounder_flag).map((r) => r.cycle_index).filter((c) => c != null)).size;
+  const activated = parseActivatedCells(settings?.phase_stimulus_map);
+  const rec = phaseStimulusRecommendation(phase.phase, gate, { calibrated, totalCycles, adaptiveEnabled: !!(settings?.cycle_adaptive_enabled), activated });
+  const sym = db.prepare("SELECT cramps, energy, sleep, mood, flow FROM cycle_symptoms_v2 WHERE profile_id=? AND date=? ORDER BY id DESC LIMIT 1").get(p, today) as TodaySymptoms | undefined;
+  return applySymptomOverride(rec, sym ?? null, !!(settings?.symptom_override_enabled ?? 1));
+}
 /** Consent-Hard-Gate: ohne Opt-in → 403 { needsConsent:true }. */
 function gateConsent(res: import("express").Response, p: number): boolean {
   if (cycleConsented(p)) return true;
@@ -2929,10 +3174,11 @@ app.get("/api/cycle-training/status", (_req, res) => {
   const contra = cycleContra(p);
   const gate = gateCycleAdaptive(periods, contra, today);
   const phase = computeCyclePhase(periods, contra, today);
-  const recommendation = phaseStimulusRecommendation(phase.phase, gate);
   const settings = db.prepare("SELECT * FROM cycle_training_settings WHERE profile_id=?").get(p) ?? { profile_id: p, cycle_adaptive_enabled: 0, method_emphasis: "balanced", observation_mode_only: 0 };
+  const recommendation = buildCycleRecommendation(p, today);
   const periodsUi = db.prepare("SELECT id, start_date, end_date FROM cycle_period_log_v2 WHERE profile_id=? ORDER BY start_date DESC").all(p);
-  res.json({ needsConsent: false, contraception: contra, gate, phase, recommendation, settings, periods: periodsUi });
+  const evalEngine = getProfileSetting<string | null>("cycle_eval_engine", null, p);
+  res.json({ needsConsent: false, contraception: contra, gate, phase, recommendation, settings, periods: periodsUi, evalEngine });
 });
 
 app.get("/api/cycle-training/gate", (_req, res) => {
@@ -2944,10 +3190,7 @@ app.get("/api/cycle-training/gate", (_req, res) => {
 app.get("/api/cycle-training/recommendation", (_req, res) => {
   const p = pid();
   if (!gateConsent(res, p)) return;
-  const today = todayIso();
-  const gate = gateCycleAdaptive(loadPeriods(p), cycleContra(p), today);
-  const phase = computeCyclePhase(loadPeriods(p), cycleContra(p), today);
-  res.json(phaseStimulusRecommendation(phase.phase, gate)); // GERÜST: immer off/insufficient
+  res.json(buildCycleRecommendation(p, todayIso()));
 });
 
 app.get("/api/cycle-training/settings", (_req, res) => {
@@ -2975,6 +3218,35 @@ app.put("/api/cycle-training/settings", (req, res) => {
     b.observation_mode_only ? 1 : 0, new Date().toISOString(),
   );
   res.json({ ok: true });
+});
+
+// Teil 5: eine belastbare Phase×Reiz-Zelle als aktive (beratende) Empfehlung freischalten/abschalten (Opt-in je Effekt).
+// Schutz: Freischalten nur bei belastbarer Zelle (Konf≥mittel · CI ohne 0 · |g|≥0.2 · ≥2 Zyklen) — kein Aktivieren von Rauschen.
+app.post("/api/cycle-training/activate", (req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const b = (req.body ?? {}) as { phase?: string; stimulus?: string; on?: boolean };
+  if (!b.phase || !b.stimulus) return res.status(400).json({ error: "phase und stimulus erforderlich" });
+  const row = db.prepare("SELECT phase_stimulus_map, feedback_sensitivity FROM cycle_training_settings WHERE profile_id=?").get(p) as { phase_stimulus_map?: string | null; feedback_sensitivity?: number } | undefined;
+  const map: Record<string, boolean> = {};
+  for (const k of parseActivatedCells(row?.phase_stimulus_map)) map[k] = true;
+  const key = cycleCellKey(b.phase, b.stimulus);
+  if (b.on) {
+    const periods = loadPeriods(p);
+    const evidence = evaluatePhaseStimulus(loadCycleFeedback(p, periods)).evidence;
+    const cell = calibrateStimulusWeights(evidence, { sensitivity: row?.feedback_sensitivity ?? 0.5 }).find((c) => c.phase === b.phase && c.stimulus === b.stimulus);
+    if (!cell || !cycleCellReliable(cell)) {
+      return res.status(400).json({ error: "Diese Zelle ist (noch) nicht belastbar — Aktivierung erst bei Konfidenz≥mittel, CI ohne 0, |g|≥0.2, ≥2 Zyklen." });
+    }
+    map[key] = true;
+  } else {
+    delete map[key];
+  }
+  db.prepare(
+    `INSERT INTO cycle_training_settings(profile_id, phase_stimulus_map, updated_at) VALUES(?,?,?)
+     ON CONFLICT(profile_id) DO UPDATE SET phase_stimulus_map=excluded.phase_stimulus_map, updated_at=excluded.updated_at`,
+  ).run(p, JSON.stringify(map), new Date().toISOString());
+  res.json({ ok: true, activated: !!b.on });
 });
 
 // Perioden-Log (Beobachtung): Start-Datum erfassen/löschen (consent-gated).
@@ -3044,24 +3316,95 @@ app.post("/api/cycle-training/symptoms", (req, res) => {
 });
 
 // Auswertung (BUILDPLAN §3.2): Phase × Reiz aus getaggtem Session-Feedback → cycle_stimulus_evidence_v2. „auswerten zuerst".
-app.post("/api/cycle-training/evaluate", (_req, res) => {
+app.post("/api/cycle-training/evaluate", async (_req, res) => {
   const p = pid();
   if (!gateConsent(res, p)) return;
-  const feedback = db.prepare("SELECT session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL").all(p) as unknown as FeedbackRow[];
-  const evidence = evaluatePhaseStimulus(feedback);
+  const rows = db.prepare("SELECT id, date, session_family, cycle_phase, felt_vs_expected, rpe FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL")
+    .all(p) as { id: number; date: string; session_family: string | null; cycle_phase: string | null; felt_vs_expected: number | null; rpe: number | null }[];
+  const symByDate = loadSymptomMap(p); // Teil 4: Symptome per Datum joinen
+  const cycleStarts = loadPeriods(p).map((x) => x.start_date).sort(); // Teil 5: Zyklus-Nummer je Session
+
+  // Confounder-Ableitung (BUILDPLAN §3.2): krank/Reise/Taper/Race/CTL-Sprung aus vorhandenen Quellen. Deterministisch.
+  const raceDates = (db.prepare("SELECT date FROM races WHERE profile_id=?").all(p) as { date: string }[]).map((r) => r.date);
+  const dlByDate = new Map((db.prepare("SELECT date, sick, travel FROM daily_log_v2 WHERE profile_id=?").all(p) as { date: string; sick: number | null; travel: number | null }[]).map((r) => [r.date, r]));
+  const weekRows = db.prepare("SELECT phase, start_date, end_date FROM season_weeks_v2 WHERE profile_id=?").all(p) as { phase: string | null; start_date: string; end_date: string }[];
+  const ctlByDate = new Map<string, number>();
+  if (rows.length) {
+    const today = todayIso();
+    const from = minIso(earliestDataDate() ?? today, today);
+    for (const pt of computePmc(dailyTssMap(from, today), from, today, today)) ctlByDate.set(pt.date, pt.ctl);
+  }
+  const addDaysLocal = (iso: string, n: number) => new Date(Date.parse(iso) + n * 86_400_000).toISOString().slice(0, 10);
+  const daysApart = (a: string, b: string) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86_400_000));
+  const deriveConfounder = (date: string): string | null => {
+    const dl = dlByDate.get(date);
+    if (dl?.sick) return "sick";
+    if (raceDates.some((d) => daysApart(d, date) <= 3)) return "race";
+    const ph = String(weekRows.find((w) => date >= w.start_date && date <= w.end_date)?.phase || "").toLowerCase();
+    if (ph.includes("taper") || ph.includes("entlast") || ph.includes("deload") || ph.includes("race") || ph.includes("krank")) return "taper";
+    if (dl?.travel) return "travel";
+    const a = ctlByDate.get(addDaysLocal(date, -7)); const b = ctlByDate.get(addDaysLocal(date, 7));
+    if (a != null && b != null && Math.abs(b - a) > 8) return "ctl_jump";
+    return null;
+  };
+
+  // 1) Confounder-Flags + Feedback in-memory (Schreibzugriff erst in der Transaktion — Await davor).
+  const flags = rows.map((r) => deriveConfounder(r.date));
+  const feedback: FeedbackRow[] = rows.map((r, i) => ({ session_family: r.session_family, cycle_phase: r.cycle_phase, felt_vs_expected: r.felt_vs_expected, rpe: r.rpe, confounder_flag: flags[i], ...(symByDate.get(r.date) ?? {}), cycle_index: cycleIndexOf(r.date, cycleStarts) }));
+  const result = evaluatePhaseStimulus(feedback);
+
+  // 2) Komplexe Engine: Zell-Effektgrößen hierarchisch zum Null schrumpfen (Sidecar phase_bayes), sonst TS.
+  const cells = result.evidence.filter((e) => e.effect_size != null && e.ci_low != null && e.ci_high != null)
+    .map((e) => ({ key: `${e.phase}|${e.stimulus}`, g: e.effect_size as number, se: Math.max(((e.ci_high as number) - (e.ci_low as number)) / (2 * 1.96), 0.05) }));
+  let engine = "ts";
+  if (cells.length) {
+    const rb = await sidecarRunWithFallback<{ method: string; cells: { key: string; effect: number; hdi_low: number; hdi_high: number; p_positive: number }[] } | null>(
+      { kind: "phase_bayes", payload: { effects: cells } }, () => null, { timeoutMs: 120_000 },
+    );
+    if (rb.result?.cells?.length) {
+      engine = rb.result.method;
+      const byKey = new Map(rb.result.cells.map((c) => [c.key, c]));
+      for (const e of result.evidence) {
+        const c = byKey.get(`${e.phase}|${e.stimulus}`);
+        if (c) { e.effect_size = c.effect; e.ci_low = c.hdi_low; e.ci_high = c.hdi_high; e.ci_excludes_zero = c.hdi_low > 0 || c.hdi_high < 0; }
+      }
+    }
+  }
+
+  // 3) Transaktion: Confounder-Updates + (überlagerte) Evidenz schreiben.
   db.exec("BEGIN");
   try {
+    const upd = db.prepare("UPDATE session_feedback_v2 SET confounder_flag=? WHERE id=?");
+    rows.forEach((r, i) => upd.run(flags[i], r.id));
     db.prepare("DELETE FROM cycle_stimulus_evidence_v2 WHERE profile_id=?").run(p);
     const ins = db.prepare("INSERT INTO cycle_stimulus_evidence_v2(profile_id, phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight, last_updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
-    for (const e of evidence) ins.run(p, e.phase, e.stimulus, e.n_sessions, e.mean_quality, e.effect_size, e.ci_low, e.ci_high, e.confidence, e.prior_weight, e.posterior_weight, new Date().toISOString());
+    for (const e of result.evidence) ins.run(p, e.phase, e.stimulus, e.n_sessions, e.mean_quality, e.effect_size, e.ci_low, e.ci_high, e.confidence, e.prior_weight, e.posterior_weight, new Date().toISOString());
+    setProfileSetting("cycle_eval_engine", engine, p);
     db.exec("COMMIT");
+    res.json({ ok: true, engine, evidence: result.evidence, symptomByPhase: result.symptomByPhase, symptomAdjusted: result.symptomAdjusted, symptomSlope: result.symptomSlope, nFeedback: feedback.length, nConfounded: feedback.filter((f) => f.confounder_flag).length });
   } catch (e) { db.exec("ROLLBACK"); throw e; }
-  res.json({ ok: true, evidence, nFeedback: feedback.length });
 });
 app.get("/api/cycle-training/evidence", (_req, res) => {
   const p = pid();
   if (!gateConsent(res, p)) return;
   res.json(db.prepare("SELECT phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight FROM cycle_stimulus_evidence_v2 WHERE profile_id=? ORDER BY phase, stimulus").all(p));
+});
+
+// Teil 4: Symptom×Phase (Outcome-Achse b) + Kovariaten-Status — live berechnet, nicht persistiert.
+app.get("/api/cycle-training/symptom-phase", (_req, res) => {
+  const p = pid();
+  if (!gateConsent(res, p)) return;
+  const symByDate = loadSymptomMap(p);
+  const rows = db.prepare("SELECT date, session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL").all(p) as unknown as (FeedbackRow & { date: string })[];
+  const feedback: FeedbackRow[] = rows.map((r) => ({ ...r, ...(symByDate.get(r.date) ?? {}) }));
+  const result = evaluatePhaseStimulus(feedback);
+  res.json({ symptomByPhase: result.symptomByPhase, symptomAdjusted: result.symptomAdjusted, symptomSlope: result.symptomSlope });
+});
+
+// Komponente B: Methoden-Schwerpunkt-Verdikt (funktioniert OHNE Zyklus, für alle Profile — kein Consent-Gate).
+app.get("/api/cycle-training/emphasis-evaluation", (_req, res) => {
+  const chosen = getSetting<Availability | null>(`availability_${pid()}`, null)?.emphasis ?? "ausgewogen";
+  res.json(evaluateMethodEmphasis(buildWeekRegimeInput({ withDeclaredEmphasis: true }), { chosen }));
 });
 
 // Zyklus-Phasen-Spans für das Chart-Overlay (P6, reines Sehen). Ohne Consent/Daten → [] (Band rendert nicht; kein 403).

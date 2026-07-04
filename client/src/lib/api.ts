@@ -24,12 +24,26 @@ export interface MlFreshness { state: "fresh" | "stale" | "none" | "running"; ru
 export interface MlRun { id: number; kind: string; status: string; progress: number; error: string | null; input_hash: string | null; model_version: string | null; engine: string | null; finished_at: string | null; created_at: string; }
 export interface MlStatus { freshness: MlFreshness; latest: MlRun | null; }
 export interface MlLatentPoint { date: string; value: number; sd: number; }
-export interface MlEffect { channel: string; target: string; gain_mean: number | null; ci_low: number | null; ci_high: number | null; n_blocks: number | null; collinearity_flag: number; mcid_pass: number; confidence: string; p_boot: number | null; q_fdr: number | null; e_value: number | null; e_value_ci: number | null; fdr_survive: number; }
+export interface MlEffect { channel: string; target: string; gain_mean: number | null; ci_low: number | null; ci_high: number | null; n_blocks: number | null; collinearity_flag: number; mcid_pass: number; confidence: string; p_boot: number | null; q_fdr: number | null; e_value: number | null; e_value_ci: number | null; fdr_survive: number; posterior_mean?: number | null; hdi_low?: number | null; hdi_high?: number | null; p_positive?: number | null; bayes_engine?: string | null; tau_weeks?: number | null; half_life_weeks?: number | null; }
 export interface MlVerdict { kind: "ranked" | "null" | "insufficient"; text: string; ranking?: string[]; }
 export interface MlLadderStep { count: number; channels: string[]; identifiable: boolean; reason: string; maxVif: number; sparseChannels: string[]; }
 export interface MlHypothesis { kind: string; text: string; strength: number; }
-export interface MlEffectsMeta { activeCount: number; ladder: MlLadderStep[]; channels: string[]; auto?: boolean; start?: number; changepoints?: string[]; exploratory?: { hypotheses: MlHypothesis[]; note: string }; verdict: { mediator: MlVerdict; composition: MlVerdict }; }
+export interface MlWhatIfPoint { w: number; mean: number; lo: number; hi: number }
+export interface MlWhatIf { block_weeks: number; horizon_weeks: number; peak_week: number; peak_delta: number; peak_low: number; peak_high: number; trajectory: MlWhatIfPoint[] }
+export interface MlBayesChannel { channel: string; mean: number; sd: number; hdi_low: number; hdi_high: number; p_positive: number; tau_weeks?: number | null; half_life_weeks?: number | null; whatif?: MlWhatIf | null }
+export interface MlBayesResult { method: string; n_weeks: number; channels: MlBayesChannel[] }
+export interface MlEffectsMeta { activeCount: number; ladder: MlLadderStep[]; channels: string[]; auto?: boolean; start?: number; changepoints?: string[]; exploratory?: { hypotheses: MlHypothesis[]; note: string }; verdict: { mediator: MlVerdict; composition: MlVerdict }; bayes?: MlBayesResult | null; bayesEngine?: string | null; }
 export interface MlEffects { runId: number | null; finishedAt: string | null; meta: MlEffectsMeta | null; mediator: MlEffect[]; composition: MlEffect[]; }
+// Synthese „Was hilft dir?" (Zeile 39)
+export interface VerdictFinding { key: string; label: string; effect: number | null; unit: string; betterWhenNegative: boolean; ciLow: number | null; ciHigh: number | null; confidence: string; practical: boolean; direction: "hilft" | "neutral" | "kostet"; causalProven: boolean; halfLifeWeeks?: number | null; pBetter?: number | null; nBlocks?: number | null; }
+export interface VerdictAxis { axis: "dose" | "regime" | "emphasis"; title: string; question: string; best: VerdictFinding | null; ranking: VerdictFinding[]; insight: string; confidence: string; layer: "observed" | "causal"; engine?: string | null; }
+export interface VerdictTrialSuggestion { axis: string; key: string; label: string; reason: string; }
+export interface TrainingVerdict { headline: string; axes: VerdictAxis[]; trialSuggestions: VerdictTrialSuggestion[]; overallConfidence: string; note: string; }
+export interface MethodBayesAxis { engine: string; findings: VerdictFinding[]; }
+export interface MethodBayesResult { regime?: MethodBayesAxis; emphasis?: MethodBayesAxis; }
+// F3: Regime/Schwerpunkt-Dosis-Wirkung auf die latente Fitness (höher β = baut mehr Fitness)
+export interface RegimeLatentCell { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null; }
+export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; }
 export type MlKindName = "latent_fitness" | "dose_response" | "readiness";
 export interface MlReadinessPoint { date: string; value: number; sd: number; }
 export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
@@ -81,17 +95,33 @@ export interface MlTrialPlanResult { ok: boolean; written: number; skipped: numb
 export type CycleMethod = "none" | "combined_pill" | "progestin_pill" | "hormonal_iud" | "copper_iud" | "implant" | "injection" | "ring" | "patch" | "unknown";
 export interface CycleGate { passed: boolean; mode: string; regularity: string; nCycles: number; medianLength: number | null; reasons: string[]; healthFlags: { kind: string; message: string }[]; observationMode: boolean; }
 export interface CyclePhaseInfo { phase: string | null; cycleDay: number | null; mode: string; confidence: string; }
-export interface CycleRecommendation { preferredFamilies: string[]; cautions: string[]; rationale: string; confidence: string; isHypothesis: boolean; active: boolean; }
+export interface CycleFamilyTendency { family: string; tendency: number; effect: number | null; nSessions: number; nCycles: number; confidence: string; ciExcludesZero: boolean; source: "prior" | "measured"; reliable: boolean; activated: boolean; }
+export interface CycleRecommendation {
+  preferredFamilies: string[]; cautions: string[]; rationale: string; confidence: string; isHypothesis: boolean; active: boolean;
+  symptomOverride?: { active: boolean; reasons: string[] };
+  verdict?: "suppressed" | "observation" | "hypothesis" | "activatable" | "active" | "no_consistent_effect";
+  perFamily?: CycleFamilyTendency[]; nCyclesObserved?: number;
+}
+export interface EmphasisGroupStat { group: string; nWeeks: number; nBlocks: number; csChange: number | null; vdotChange: number | null; confidence: "hoch" | "mittel" | "niedrig"; fromDate: string | null; toDate: string | null; }
+export interface EmphasisEvaluation {
+  chosen: string;
+  observed: EmphasisGroupStat[]; observedBest: string | null;
+  declared: EmphasisGroupStat[] | null; declaredBest: string | null;
+  chosenStanding: { rank: number; of: number; stat: EmphasisGroupStat } | null;
+  verdict: string; confidence: "hoch" | "mittel" | "niedrig"; note: string;
+}
 export interface CyclePeriodRow { id: number; start_date: string; end_date: string | null; }
 export interface CycleSettings { profile_id?: number; cycle_adaptive_enabled: number; method_emphasis: string; method_emphasis_weight?: number; feedback_sensitivity?: number; symptom_override_enabled?: number; observation_mode_only: number; }
 export interface CycleStatus {
   needsConsent: boolean;
   contraception?: { method: CycleMethod };
   gate?: CycleGate; phase?: CyclePhaseInfo; recommendation?: CycleRecommendation;
-  settings?: CycleSettings; periods?: CyclePeriodRow[];
+  settings?: CycleSettings; periods?: CyclePeriodRow[]; evalEngine?: string | null;
 }
 export interface CycleSymptom { id?: number; date: string; cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null; notes?: string | null; }
 export interface CycleEvidence { phase: string; stimulus: string; n_sessions: number; mean_quality: number | null; effect_size: number | null; ci_low: number | null; ci_high: number | null; confidence: string; prior_weight: number; posterior_weight: number; }
+export interface PhaseSymptomStat { phase: string; n: number; meanBurden: number | null; cramps: number | null; energy: number | null; sleep: number | null; }
+export interface SymptomPhaseResult { symptomByPhase: PhaseSymptomStat[]; symptomAdjusted: boolean; symptomSlope: number | null; }
 export interface CyclePhaseSpan { from: string; to: string; phase: string; }
 export interface GoalGap {
   race: { id: number; name: string; date: string; distance_m: number } | null;
@@ -386,21 +416,33 @@ export interface BlockDay {
   zone_alloc: ZoneAlloc; efforts: Effort[] | null; paceTarget: number | null;
   prescription?: Prescription | null; // v1.7.0 Live-Resolution
   adaptNote?: string | null;          // T7: „angepasst an …"
+  emphasisNote?: string | null;       // „Warum diese Einheit" (tpl.purpose) + Schwerpunkt-Label am evidenz-getriebenen Tag
 }
 export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
   headline: string; periodizationModel: "block" | "traditional";
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
+  irFitness?: number | null; // Baustein 2.3: individuelle IR-Fitness-Prognose je Woche (falls Dose-Run vorliegt)
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
 }
 // Item 3 (#7): distanzspezifisches Trainingskonzept (Stoffwechsel + Schlüssel-Einheiten).
 export interface DistanceConcept { distanceM: number; label: string; metabolic: string; keySessions: string[]; longRunNote: string; }
+export interface CoachEmphasisPref { emphasis: string; label: string; confidence: string; tier: "geprüft" | "beobachtet"; rationale: string }
+export interface CoachRegimePref { regime: string; label: string; confidence: string; tier: "geprüft" | "beobachtet"; rationale: string }
+export interface CoachingPrefs {
+  emphasis: CoachEmphasisPref | null; emphasisEffective: string | null; emphasisSource: "evidence" | "manual" | "default";
+  regime: CoachRegimePref | null;
+  healthCap: { loadFactor: number; dropTopIntensity: boolean; reason: string | null };
+  headline: string; overallConfidence: string; layer: "observed" | "causal"; notes: string[];
+}
 export interface BlockPlan {
   weeks: BlockWeek[]; raceDate: string | null;
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
   goalDistanceM?: number | null;
   distanceConcept?: DistanceConcept | null;
+  coaching?: CoachingPrefs;          // Coach ToDo 35: adaptives, faktenbasiertes Verdikt, das den Plan steuert
+  freshness?: string;                // Frische des dose_response-Laufs (fresh|stale|none|running)
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -431,6 +473,7 @@ export interface Markers {
   date: string; windowDays: number; n: number;
   csPace: number | null; csConfidence: "hoch" | "mittel" | "niedrig" | null;
   vdot: number | null;
+  lt1Pace: number | null;
   thresholdPace: number | null; thresholdHr: number | null;
   decoupling: number | null;
   submaxEf: number | null;
@@ -583,7 +626,7 @@ export const api = {
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),
   today: (date?: string) => j<TodayResult>(`/api/today${date ? `?date=${date}` : ""}`),
   weekSuggestion: (weekNo?: number) => j<WeekSuggestionResult>(`/api/plan/week-suggestion${weekNo != null ? `?week=${weekNo}` : ""}`),
-  blockSuggestion: (weekNo?: number) => j<BlockPlan>(`/api/plan/block-suggestion${weekNo != null ? `?week=${weekNo}` : ""}`),
+  blockSuggestion: (weekNo?: number, taper?: number) => j<BlockPlan>(`/api/plan/block-suggestion${weekNo != null ? `?week=${weekNo}` : ""}${taper != null ? `${weekNo != null ? "&" : "?"}taper=${taper}` : ""}`),
   intervalsTrend: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
@@ -686,6 +729,9 @@ export const api = {
   mlStatus: (kind?: MlKindName) => j<MlStatus>(`/api/ml/status${kind ? `?kind=${kind}` : ""}`),
   mlLatentFitness: () => j<MlLatentPoint[]>("/api/ml/latent-fitness"),
   mlEffects: () => j<MlEffects>("/api/ml/effects"),
+  mlTrainingVerdict: () => j<TrainingVerdict>("/api/ml/training-verdict"),
+  mlMethodBayes: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`, { method: "POST" }),
+  mlRegimeLatent: (axis: "regime" | "emphasis") => j<RegimeLatentResult>(`/api/ml/regime-latent?axis=${axis}`),
   mlReadiness: () => j<MlReadiness>("/api/ml/readiness"),
   mlAdversarialAudit: () => j<MlAdversarialAudit>("/api/ml/audit", { method: "POST" }),
   mlGetFeedback: (activityId: number) => j<MlFeedback | null>(`/api/ml/feedback?activityId=${activityId}`),
@@ -695,6 +741,7 @@ export const api = {
   mlProposeTrial: () => j<MlProspectiveProposal>("/api/ml/prospective/propose", { method: "POST" }),
   mlAcceptTrial: (b: MlAcceptTrialBody) => j<{ id: number }>("/api/ml/prospective/accept", { method: "POST", body: JSON.stringify(b) }),
   mlDeclineTrial: () => j<{ ok: boolean }>("/api/ml/prospective/decline", { method: "POST" }),
+  mlReactivateTrial: () => j<{ ok: boolean }>("/api/ml/prospective/reactivate", { method: "POST" }),
   mlEvaluateTrial: (id: number) => j<MlProspectiveTrial | null>(`/api/ml/prospective/${id}/evaluate`, { method: "POST" }),
   mlAbortTrial: (id: number, reason: "user" | "health" = "user") => j<{ ok: boolean; removedSessions?: number }>(`/api/ml/prospective/${id}/abort`, { method: "POST", body: JSON.stringify({ reason }) }),
   mlTrialPlanPreview: (id: number) => j<MlTrialBlockGen>(`/api/ml/prospective/${id}/plan-preview`),
@@ -703,11 +750,14 @@ export const api = {
   cycleConsent: (consent: boolean, contraception?: { method: CycleMethod }) => j<{ ok: boolean; consented: boolean }>("/api/cycle-training/consent", { method: "POST", body: JSON.stringify({ consent, contraception }) }),
   cycleDeleteData: () => j<{ ok: boolean }>("/api/cycle-training/data", { method: "DELETE" }),
   cycleSaveSettings: (s: Partial<CycleSettings>) => j<{ ok: boolean }>("/api/cycle-training/settings", { method: "PUT", body: JSON.stringify(s) }),
+  cycleActivate: (phase: string, stimulus: string, on: boolean) => j<{ ok: boolean; activated: boolean }>("/api/cycle-training/activate", { method: "POST", body: JSON.stringify({ phase, stimulus, on }) }),
   cycleAddPeriod: (start_date: string) => j<{ id: number }>("/api/cycle-training/period", { method: "POST", body: JSON.stringify({ start_date }) }),
   cycleDeletePeriod: (id: number) => j<{ ok: boolean }>(`/api/cycle-training/period/${id}`, { method: "DELETE" }),
   cycleSymptoms: (from?: string, to?: string) => j<CycleSymptom[]>(`/api/cycle-training/symptoms${from && to ? `?from=${from}&to=${to}` : ""}`),
   cycleSaveSymptom: (s: CycleSymptom) => j<{ id: number }>("/api/cycle-training/symptoms", { method: "POST", body: JSON.stringify(s) }),
-  cycleEvaluate: () => j<{ ok: boolean; evidence: CycleEvidence[]; nFeedback: number }>("/api/cycle-training/evaluate", { method: "POST" }),
+  cycleEvaluate: () => j<{ ok: boolean; engine: string; evidence: CycleEvidence[]; symptomByPhase: PhaseSymptomStat[]; symptomAdjusted: boolean; symptomSlope: number | null; nFeedback: number; nConfounded: number }>("/api/cycle-training/evaluate", { method: "POST" }),
   cycleEvidence: () => j<CycleEvidence[]>("/api/cycle-training/evidence"),
+  cycleSymptomPhase: () => j<SymptomPhaseResult>("/api/cycle-training/symptom-phase"),
+  cycleEmphasisEvaluation: () => j<EmphasisEvaluation>("/api/cycle-training/emphasis-evaluation"),
   cyclePhaseBands: (from: string, to: string) => j<CyclePhaseSpan[]>(`/api/cycle-training/phase-bands?from=${from}&to=${to}`),
 };

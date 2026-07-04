@@ -4,6 +4,116 @@ Alle nennenswerten Änderungen an RunLog. Format angelehnt an [Keep a Changelog]
 Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen sind immer **additiv**
 (keine Bestandsdaten gehen verloren).
 
+## [2.4.0] – 2026-07-04 — Coach-Cockpit, Wettkampf-Prognose & adaptive Steuerung
+
+### Hinzugefügt
+- **Visueller Wettkampf-Block + Wettkampf-Prognose bis zum Renntag (Baustein 2.1–2.4):** Der Coach-Block ist jetzt
+  ein Timeline-Dashboard statt Textliste, mit Form-Prognose und automatischer Peak-Ausrichtung.
+  - **Timeline-Dashboard (2.1):** Wochen bis Renntag als gestapelter Load-Balken (umschaltbar **Zonen ↔ Einheiten-Art**),
+    Phasen-Band, Renntag-Marker, je Woche **KM + Kern-Einheit**. **Klick auf eine Woche im Diagramm klappt ihren
+    Tagesplan auf** (Akkordeon + Scroll + Spalten-Highlight); Tagesplan clean neu gestaltet (farbige Typ-Kante · Pill ·
+    Beschreibung · min·TSS · Begründungszeile). „Übernehmen"/„Phasen übernehmen" erhalten.
+  - **Form-Readiness-Kurve (2.2):** über der Timeline Readiness = Fitness × Frische (CTL × TSB-Frische, Gauss-Band um
+    TSB +12) mit **Peak-Marker** + Ampel „Peak trifft/verfehlt den Renntag" (+ Block/Taper-Empfehlung), gekoppelt an die
+    Ziel-Prognose („am Renntag bereit für X:XX vs. Ziel Y:YY", aus `tuneupProgress`).
+  - **Individuelle IR-Fitness-Prognose (2.3):** liegt ein Dose-Response-Run vor, nutzt die Readiness die individuelle
+    Fitness-Prognose (Faltung der geplanten Kanal-Lasten mit den gefitteten Impulse-Response-Kernels β·exp(−Δ/τ)) statt
+    der groben CTL — **automatisch, ohne neuen Sidecar-Lauf**; sonst PMC-Form-Fallback + Hinweis „Dose-Response rechnen".
+  - **„Peak auf Renntag ausrichten" + intelligenter Taper (2.4):** Button **🎯 Peak ausrichten** probiert valide
+    **Taper-Längen (1–3 Wochen)** durch und legt den Form-Peak möglichst auf den Renntag (nur Vorschau; manuelle Phasen
+    bleiben). Der Taper reduziert zudem das Qualitäts-**VOLUMEN** (weniger Reps — Race Week ~−50 %, Deload ~−30 %) bei
+    **gleicher Pace** („Tempo in kleineren Dosen"), Steigerungen bleiben voll.
+  (`server/analysis.ts` `derivePhaseSequence(taperWeeks)`/`blockPlan`, `server/mlJobs.ts` `blockIrFitness`,
+  `server/index.ts` block-suggestion (`?taper=`), `server/workouts.ts` `RenderCtx.taperFactor`,
+  `client/src/charts/BlockTimeline.tsx`, `client/src/lib/blockReadiness.ts`, `client/src/pages/Coach.tsx`,
+  `BlockWeek.irFitness` in `analysis.ts`+`api.ts`.)
+- **Adaptiver Last-/Intensitäts-Regler (athleten-angepasst, gebündelt-auto + transparent):** Drei geschlossene
+  Regelkreise steuern den Coach-Block jetzt individuell:
+  **(C1) Load-Regler** — das Wochen-TSS-Ziel folgt einem phasengerechten **ATL:CTL-Band** (Intensity-Trend „Load
+  Impact / Base Fitness"): Belastung/Specific am oberen „Optimized"-Rand (~120–135 %), Base darunter, Entlastung/Taper
+  drunter, **nie „Excessive"** (Kappung < 150 %).
+  **(A1) km-Ceiling** — verletzungssicheres Wochen-km-Limit aus der eigenen Historie (**ACWR** akut 7 d : chronisch
+  28 d, ≤ 1.3), progressiv wachsend; deckelt auch manuelle km + flaggt.
+  **(B1) RPE-Loop** — je Einheiten-Typ (LT2/VO2/Race) fließen RPE + `felt_vs_expected` (Confounder raus) in das
+  **Volumen** der nächsten gleichen Qualität (weniger Reps wenn zuletzt zu hart, mehr wenn zu leicht — **Pace bleibt**).
+  Jede Anpassung mit Begründung im Coach; Health-Cap vetot über allem. (`server/analysis.ts` `tssRecommendation`/
+  `typeVolumeFactors`/`blockPlan`, `server/load.ts` `kmCeiling`, `server/workouts.ts` `RenderCtx.volumeFactor`,
+  `server/index.ts` block-suggestion, `client/src/pages/Coach.tsx`.)
+- **LT1 ↔ LT2 getrennt: neuer Schwerpunkt „LT1 (aerobe Schwelle)" + LT1-Marker.** Der Coach unterscheidet jetzt die
+  aerobe Schwelle (LT1, Z3 — hohes lockeres Volumen, Fettstoffwechsel/Clearance) von der Laktatschwelle (LT2, Z4 —
+  renn-spezifisches Tempo) und steuert beide getrennt: neuer Block-Schwerpunkt „lt1" (Coach/Availability + Methodik-
+  Analyse), der LT1-Volumen phasengerecht setzt (Base/Build; in Specific bewusst nicht erzwungen). Die Evidenz spricht
+  den Schwellenbereich als LT1/LT2 (Dose-Kanäle „M → LT1 · Marathon", „T → LT2 · Schwelle"; Kanal→Schwerpunkt-Map
+  M/Marathon-Pace → lt1 statt schwelle); `classifyWeekEmphasis` trennt LT1 (LT1/Steady/Marathon-Pace) von LT2. Neuer
+  **LT1-Pace-Marker** in der Methodik-Batterie (`zones.lt1_pace`, Z2/Z3-Grenze), LT2 als „LT2 · Threshold-Pace"
+  präzisiert. (`server/analysis.ts` (`Markers`+`MarkerZones`), `server/workouts.ts`, `server/coachSynthesis.ts`,
+  `server/ml/trainingVerdict.ts`, `server/index.ts` /api/markers, `client/src/components/{AvailabilityCard,
+  MethodEmphasisCard}.tsx`, `client/src/charts/ForestPlot.tsx`, `client/src/pages/Methodik.tsx`.)
+- **Adaptives, faktenbasiertes Coaching-Gerüst (ToDo 35):** Der Coach zieht jetzt die „Was hilft dir?"-Synthese in die
+  konkrete Planung. Der Block-Vorschlag (`/api/plan/block-suggestion`) leitet aus dem geschichteten Verdikt einen
+  **Schwerpunkt** (→ `pickWeekWorkouts`) und eine **Verteilung** (→ Intensitäts-Nudge) ab — **automatisch, wenn belastbar**
+  (sonst sportwissenschaftlicher Standard), **gestuft** (kausal-geprüfte N-of-1-Trials stark · beobachtet sanft ·
+  Hypothese nur Anzeige). **Health-Flags (RED-S/Übertraining) kappen die Wochenlast + höchste Intensität HART**
+  (übersteuert die Evidenz), Readiness moduliert, Zyklus bleibt beratend. Neuer „Adaptives Coaching-Verdikt"-Banner
+  im Coach erklärt das „warum" (ehrlich beobachtet vs. kausal geprüft) + Auto/manuell-Schwerpunkt-Umschalter
+  (`coach_emphasis_mode`) + Frische-Hinweis. Neues pures Modul `server/coachSynthesis.ts`; geteilter
+  `buildTrainingVerdict`-Helper (identische Zahlen wie die Karten). (`server/index.ts`, `server/analysis.ts`,
+  `server/workouts.ts`-Emphasis-Pfad, `client/pages/Coach.tsx`.)
+- **Zyklus-N-of-1-Aktivierung (Teil 5, beratend, Opt-in je Effekt):** Die bereits gebaute, beobachtende Phase×Reiz-
+  Auswertung darf jetzt auf „aktiv" flippen — aber nur für Zellen, die der Nutzer bewusst freischaltet. Neuer Master-
+  Schalter „Aktivierung erlauben" (`cycle_adaptive_enabled`) + Per-Effekt-Opt-in (persistiert in `phase_stimulus_map`),
+  neue Route `POST /api/cycle-training/activate` (schaltet nur belastbare Zellen frei: Konf≥mittel · CI ohne 0 · |g|≥0.2 ·
+  ≥2 Zyklen). Neuer Zustand `activatable` (belastbar, aber noch nicht freigeschaltet). Rein beratend — kein Eingriff in
+  den Planer; Health-Gate (Amenorrhoe/RED-S) und Symptom-Override schlagen jede Aktivierung. (`cycleTraining.ts`,
+  `index.ts`, `CycleScaffoldCard.tsx`, `api.ts`.)
+- **Composition-Bayes (Volumen-bereinigt):** Die „Volumen-bereinigt"-Sicht der Dosis-Wirkungs-Karte nutzt jetzt die
+  Bayes-Engine (vorher TS-Ridge) — mit Sum-to-zero-Constraint (Σβ=0), da die gegen den Gesamt-Umfang residualisierten
+  Kanäle rank-defizient sind. Jeder Effekt = Abweichung vom mittleren Mix bei gleichem Umfang; Effekte summieren sich zu 0.
+- **Engine-Reset/Abbrechen:** Der „Neu berechnen"-Button lässt sich während des Rechnens erneut klicken = laufenden/
+  hängenden Lauf abbrechen und die Engine zurücksetzen (`POST /api/ml/cancel` markiert den Lauf sofort als abgebrochen).
+
+### Geändert
+- **Coach & Methodik: klare Rollentrennung „Cockpit + Werkbank" — keine doppelten Regler mehr.** Der
+  **Block-Schwerpunkt** (`availability.emphasis`) ist jetzt **nur noch im Coach** (Cockpit) einstellbar; die
+  `MethodEmphasisCard` in der Methodik (Werkbank) ist **read-only** geworden (zeigt gewählten + evidenz-besten
+  Schwerpunkt) und verlinkt „→ im Coach einstellen" — beseitigt die bisher dreifache, verwirrende Setz-Möglichkeit.
+  Neue **bidirektionale Deep-Links**: Coach-Verdikt → „→ Belege in Methodik" (öffnet direkt den „Was wirkt?"-Tab
+  via `?tab=`), Werkbank → „→ im Coach einstellen". Untertitel beider Seiten geschärft (Coach = „Cockpit — was jetzt
+  zu tun ist", Methodik = „Werkbank — das Warum dahinter"). Reine UI-/Framing-Änderung, keine Modell-/Datenänderung.
+  (`client/src/components/MethodEmphasisCard.tsx`, `client/src/pages/Methodik.tsx`, `client/src/pages/Coach.tsx`.)
+- **Schwerpunkt wirkt jetzt in JEDER Blockwoche — auch in Base.** Der evidenz-abgeleitete Schwerpunkt (aus dem
+  Coaching-Verdikt) drehte bisher nur in Build/Specific eine Qualität; in Base wurde er ignoriert. Jetzt greift er auch
+  in Base/phasenlos — physiologisch korrekt über base-legale Präkursoren (Schwelle→LT1-Volumen, VO2→Fartlek/Bergsprints,
+  Berg→Hügel, Norwegian→LT1-Reps, Fartlek→Fartlek). Deload/Taper/Race-Week/Recovery bleiben unangetastet. Zusätzlich zeigt
+  der Wettkampf-Block je Qualitäts-/Long-Tag eine knappe „Warum diese Einheit"-Begründung (physiologischer Zweck), am
+  schwerpunkt-getriebenen Tag mit Schwerpunkt-Label. (`server/workouts.ts`, `server/analysis.ts`, `client/src/lib/api.ts`,
+  `client/src/pages/Coach.tsx`.)
+- **„Race Specific"-Token getrennt vom Wettkampf:** Race-Specific-Workouts (`Renntempo`) zeigen jetzt ihr eigenes
+  Token **„Race Specific"** (statt fälschlich „Wettkampf"); „Wettkampf" bleibt echten Rennen vorbehalten. Ursache war
+  der Alias `Renntempo→Race` bei fehlendem Nutzer-Token; gefixt via eigenem Label + Default-Set-Fallback im
+  Token-Resolver, plus eigener Bar-Familie „Race Specific" in der Block-Timeline. (`client/src/lib/options.ts`,
+  `client/src/charts/BlockTimeline.tsx`.)
+- **Forest-Plot zeigt den Bayes-Posterior:** Balken + Intervall zeigen jetzt Posterior-Mittel/94%-HDI, wenn eine
+  Bayes-Engine lief (deckt sich mit Engine-Label und Detail-Panel) — sonst weiter TS-Punktschätzung + Block-Bootstrap-CI.
+- **Auto-Kanalwahl mit VIF-Reserve:** Auto splittet nur in feinere Kanäle, wenn deutlich trennbar (autoVifThreshold 6),
+  nicht mehr haarscharf an der 8er-Grenze; die Leiter kennzeichnet die 6–8-Zone als „grenzwertig".
+- **„Was hilft dir?"-Overview:** unterscheidet ehrlich „berechnet, aber kein eindeutiges Ergebnis" (Effekt statistisch
+  klar, aber unter der Praxisschwelle MCID) von „sammelt Daten"; MCID-Gate prüft gegen dieselbe Schätzung, die angezeigt
+  wird (Bayes-HDI bzw. TS), und aktualisiert sich nach einem Recompute automatisch.
+
+### Behoben
+- **Falscher/veralteter Dosis-Lauf angezeigt:** Anzeige und Frische nehmen jetzt den zum aktuellen Input-Hash passenden
+  Lauf (nicht blind den mit der höchsten ID) — nach einem Kanal-Wechsel zeigte die Karte sonst den falschen, wiederver-
+  wendeten Lauf und blieb fälschlich „veraltet".
+- **Hängende „rechnet…"-Anzeige:** tote Läufe heilen sich beim Status-Poll selbst (Reap > 20 min); der Bayes-Lauf rechnet
+  bis zur vollen Genauigkeit durch (Timeout 15 min statt ~2 min → kein vorzeitiger Rückfall auf die gröbere TS-Ridge).
+- **Graue Einheiten-Pills im Coach-Block:** generierte Einheiten mit einem Session-Typ, den die eigene Auswahlliste nur
+  unter einem Synonym führt (z.B. „Threshold" vs. konfiguriert „LT2"), nutzen jetzt das passende fixierte Farb-/Label-Token
+  (Synonym-Fallback in `typeColor`/`typeLabel`: Threshold↔LT2, Repetitions↔Rep, Renntempo↔Race; exakte Treffer gewinnen).
+
+### Dev
+- **Changelog-Pflicht in CLAUDE.md (§5c):** nach jeder Änderung sofort diesen `[Unreleased]`-Block pflegen.
+
 ## [2.3.0] – 2026-07-02 — Analytik-Feinschliff, flexible Planung & ehrliche Kausal-Vorschläge
 
 Baut auf dem Research-Lab-Fundament von v2.2.1 auf: die Langzeit-Analytik wird klarer, die Wochenplanung

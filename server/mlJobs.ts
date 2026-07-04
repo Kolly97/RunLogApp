@@ -6,6 +6,9 @@ import { db, getProfileSetting, setProfileSetting } from "./db.ts";
 import {
   buildTargetIndicators,
   weeklyChannelCtl,
+  dailyChannelLoads,
+  typeOverrideChannel,
+  CHANNEL_SETS,
   inputHash,
   type ActivityLite,
   type RaceLite,
@@ -14,6 +17,7 @@ import {
 } from "./ml/featureBackbone.ts";
 import { fitLatentFitness, type LatentPoint } from "./ml/latentFitness.ts";
 import { estimateDoseResponse, type DesignRow, type DoseModelResult } from "./ml/doseResponse.ts";
+import { runWithFallback } from "./ml/sidecar.ts";
 import { detectChangepoints } from "./ml/causalObs.ts";
 import { exploratoryScan } from "./ml/exploratory.ts";
 import { computeReadiness } from "./ml/readinessFilter.ts";
@@ -29,7 +33,8 @@ import {
 } from "./ml/prospective.ts";
 
 export type MlKind = "latent_fitness" | "dose_response" | "readiness";
-const MODEL_VERSION = "0.3.2"; // L4 + L6 + P4 (Readiness/Health/BMI) — Bump invalidiert ältere Läufe
+const MODEL_VERSION = "0.6.0"; // Composition-Bayes: eigener IR-Lauf auf volumen-bereinigten Lasten mit Σβ=0 (target='composition')
+// — Bump nötig, da alte Läufe keine Composition-Posteriors haben. (VIF-Reserve autoVifThreshold=6 kam ohne eigenen Bump.)
 const SEED = 42;
 const HALF_LIFE_MS = 450 * 86_400_000; // Recency-Halbwertszeit (Frage 12)
 
@@ -59,8 +64,23 @@ export function getRun(runId: number): RunRow | null {
 export function latestRun(profileId: number, kind: MlKind): RunRow | null {
   return (db.prepare("SELECT * FROM ml_runs WHERE profile_id=? AND kind=? ORDER BY id DESC LIMIT 1").get(profileId, kind) as unknown as RunRow) ?? null;
 }
+/**
+ * Der zum AKTUELLEN Input-Hash (Daten + Kanal-Einstellungen) + Code-Version passende, zuletzt abgeschlossene Lauf.
+ * Wichtig gegen den „falschen Lauf"-Bug: `startRun` verwendet einen alten, hash-gleichen Lauf wieder (Idempotenz),
+ * ohne einen neuen (höher-ID'ten) anzulegen. Anzeige/Frische dürfen deshalb NICHT blind `latestRun` (max. ID) nehmen,
+ * sonst zeigt die Karte nach einem Kanal-Wechsel den falschen Lauf und bleibt fälschlich „veraltet".
+ */
+export function matchingDoneRun(profileId: number, kind: MlKind): RunRow | null {
+  const hash = runHash(kind, profileId);
+  return (db
+    .prepare("SELECT * FROM ml_runs WHERE profile_id=? AND kind=? AND status='done' AND input_hash=? AND model_version=? ORDER BY id DESC LIMIT 1")
+    .get(profileId, kind, hash, MODEL_VERSION) as unknown as RunRow) ?? null;
+}
 export function cancelRun(runId: number): void {
   cancelled.add(runId);
+  // Sofort in der DB als abgebrochen markieren → die „rechnet…"-Pille wird umgehend frei (nicht erst, wenn der
+  // Job das Flag beim nächsten setProgress prüft; bei einem im Sidecar hängenden Lauf könnte das lange dauern).
+  db.prepare("UPDATE ml_runs SET status='cancelled', finished_at=? WHERE id=? AND status='running'").run(nowIso(), runId);
 }
 function setProgress(runId: number, p: number): void {
   if (cancelled.has(runId)) throw new Error("__cancelled__");
@@ -166,7 +186,75 @@ function persistEffects(runId: number, profileId: number, model: DoseModelResult
   }
 }
 
+export interface WhatIfPoint { w: number; mean: number; lo: number; hi: number }
+export interface WhatIf { block_weeks: number; horizon_weeks: number; peak_week: number; peak_delta: number; peak_low: number; peak_high: number; trajectory: WhatIfPoint[] }
+export interface BayesChannel { channel: string; mean: number; sd: number; hdi_low: number; hdi_high: number; p_positive: number; tau_weeks?: number | null; half_life_weeks?: number | null; whatif?: WhatIf | null }
+export interface BayesDoseResult { method: string; n_weeks: number; channels: BayesChannel[] }
+/** Residualisiert jede Kanal-Last-Spalte gegen die Gesamt-Wochenlast (OLS) → „Volumen-bereinigt" (Komposition):
+ *  Schwerpunkt bei gleichem Umfang, analog zum TS-Composition-Pfad. Achtung: die Residuen summieren sich exakt zu 0
+ *  → das Design ist rank-defizient; der Sidecar identifiziert es über den Sum-to-zero-Constraint (Σβ=0). */
+function residualizeAgainstTotal(loads: number[][]): number[][] {
+  const T = loads.length;
+  if (!T) return loads;
+  const C = loads[0].length;
+  const total = loads.map((row) => row.reduce((s, x) => s + x, 0));
+  const mt = total.reduce((s, x) => s + x, 0) / T;
+  const out = loads.map((row) => row.slice());
+  for (let c = 0; c < C; c++) {
+    const col = loads.map((r) => r[c]);
+    const mc = col.reduce((s, x) => s + x, 0) / T;
+    let szz = 0, szv = 0;
+    for (let i = 0; i < T; i++) { const dt = total[i] - mt; szz += dt * dt; szv += dt * (col[i] - mc); }
+    const b = szz > 1e-9 ? szv / szz : 0;
+    const a = mc - b * mt;
+    for (let i = 0; i < T; i++) out[i][c] = col[i] - (a + b * total[i]);
+  }
+  return out;
+}
+/** B2a: rohe Wochen-Lasten je Kanal (aus den täglichen Kanal-Lasten aggregiert) + Wochen-Index — Input für die IR-Faltung.
+ *  model="composition" residualisiert die Lasten gegen die Gesamt-Wochenlast und setzt sum_zero (Σβ=0 im Sidecar). */
+function buildIrDesign(acts: ActivityLite[], design: DesignRow[], count: ChannelCount, model: "mediator" | "composition"): { channels: string[]; loads: number[][]; y: number[]; t_weeks: number[]; sum_zero: boolean } | null {
+  const chs = CHANNEL_SETS[count];
+  if (design.length < chs.length + 3) return null;
+  const dailyArr = [...dailyChannelLoads(acts, count).entries()].map(([d, rec]) => ({ t: Date.parse(d), rec }));
+  const t0 = Date.parse(design[0].date);
+  let loads = design.map((row) => {
+    const end = Date.parse(row.date), start = end - 7 * 86_400_000;
+    const agg: Record<string, number> = {};
+    for (const { t, rec } of dailyArr) if (t > start && t <= end) for (const c of chs) agg[c] = (agg[c] ?? 0) + (rec[c] ?? 0);
+    return chs.map((c) => agg[c] ?? 0);
+  });
+  if (model === "composition") loads = residualizeAgainstTotal(loads);
+  const t_weeks = design.map((row) => Math.round((Date.parse(row.date) - t0) / (7 * 86_400_000)));
+  return { channels: chs, loads, y: design.map((r) => r.outcome), t_weeks, sum_zero: model === "composition" };
+}
+/** Phase B2a: Kanal-Achse als Bayes-IMPULSE-RESPONSE via Sidecar (PyMC gefittetes τ, sonst Conjugate feste τ).
+ *  model="mediator" = absolute Lasten · "composition" = volumen-bereinigt + Σβ=0. */
+async function runBayesDose(acts: ActivityLite[], count: ChannelCount, design: DesignRow[], model: "mediator" | "composition"): Promise<{ engine: "python" | "ts"; result: BayesDoseResult | null }> {
+  // Kosten deckeln: die IR-MCMC hat O(T²)-Faltungsmatrizen je Kanal → auf die letzten 52 Wochen begrenzen.
+  // (Fenster bewusst wie zuvor — die „genauer"-Wirkung kommt aus dem großzügigen Timeout unten: der Bayes-Lauf
+  // rechnet durch, statt bei ~2 min auf die gröbere TS-Ridge zurückzufallen. Das Timeout ist nur ein Not-Riegel.)
+  const ir = buildIrDesign(acts, design.slice(-52), count, model);
+  if (!ir) return { engine: "ts", result: null };
+  try {
+    return await runWithFallback<BayesDoseResult | null>({ kind: "dose_ir", payload: ir }, () => null, { timeoutMs: 900_000 });
+  } catch {
+    return { engine: "ts", result: null };
+  }
+}
+
+// Ein „running"-Lauf gilt erst als tot, wenn er ÜBER dem Sidecar-Hard-Timeout (15 min) liegt — so wird ein
+// legitim langer, aber lebendiger Bayes-Lauf nie mitten in der Rechnung abgeräumt; abgeräumt werden nur echte
+// Leichen (Crash/Server-Neustart während setImmediate), die sonst die „rechnet…"-Pille ewig blau lassen.
+const STALE_RUN_MS = 20 * 60_000;
+export function reapStaleRuns(profileId: number): void {
+  const cutoff = new Date(Date.now() - STALE_RUN_MS).toISOString();
+  db.prepare("UPDATE ml_runs SET status='failed', error='stale (timeout, aufgeräumt)', finished_at=? WHERE profile_id=? AND status='running' AND started_at < ?")
+    .run(nowIso(), profileId, cutoff);
+}
+
 export function startRun(kind: MlKind, profileId: number): { runId: number; reused?: boolean } {
+  reapStaleRuns(profileId);
   const hash = runHash(kind, profileId);
   const done = db
     .prepare("SELECT id FROM ml_runs WHERE profile_id=? AND kind=? AND status='done' AND input_hash=? AND model_version=? ORDER BY id DESC LIMIT 1")
@@ -177,11 +265,11 @@ export function startRun(kind: MlKind, profileId: number): { runId: number; reus
     .prepare("INSERT INTO ml_runs(profile_id, kind, status, engine, model_version, seed, input_hash, progress, started_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
     .run(profileId, kind, "running", "ts", MODEL_VERSION, SEED, hash, 0, nowIso(), nowIso());
   const runId = Number(info.lastInsertRowid);
-  setImmediate(() => runJob(runId, kind, profileId));
+  setImmediate(() => { void runJob(runId, kind, profileId).catch(() => { /* runJob kapselt Fehler selbst */ }); });
   return { runId };
 }
 
-function runJob(runId: number, kind: MlKind, profileId: number): void {
+async function runJob(runId: number, kind: MlKind, profileId: number): Promise<void> {
   try {
     setProgress(runId, 0.1);
     const { acts, inds } = loadIndicators(profileId);
@@ -205,11 +293,25 @@ function runJob(runId: number, kind: MlKind, profileId: number): void {
       const res = estimateDoseResponse(designs, start, { seed: SEED, auto });
       const changepoints = detectChangepoints(latent.map((p) => p.value)).map((k) => latent[k]?.date).filter(Boolean);
       const exploratory = exploratoryScan(designs[res.activeCount as ChannelCount] ?? [], res.mediator.channels); // L6 (nur Hypothesen)
+
+      // Phase B0 (Bayes-Durchstich): beide Achsen an den Sidecar delegieren (PyMC/Conjugate); TS bleibt Fallback.
+      // Der Await liegt BEWUSST vor der Transaktion (keine offene SQLite-Transaktion über den async Spawn).
+      const design = designs[res.activeCount as ChannelCount] ?? [];
+      const bayesMed = await runBayesDose(acts, res.activeCount as ChannelCount, design, "mediator");   // absolute Lasten
+      const bayesComp = await runBayesDose(acts, res.activeCount as ChannelCount, design, "composition"); // volumen-bereinigt + Σβ=0
       setProgress(runId, 0.85);
       db.exec("BEGIN");
       try {
         persistEffects(runId, profileId, res.mediator);
         persistEffects(runId, profileId, res.composition);
+        // B1: Bayes-Posteriors je Achse in die passenden Zeilen (target). Fallback (null) → TS-Wert der Zeile gilt.
+        const upd = db.prepare("UPDATE ml_channel_effects SET posterior_mean=?, hdi_low=?, hdi_high=?, p_positive=?, bayes_engine=?, tau_weeks=?, half_life_weeks=? WHERE run_id=? AND target=? AND channel=?");
+        const applyBayes = (target: "mediator" | "composition", result: BayesDoseResult | null) => {
+          if (!result?.channels?.length) return;
+          for (const c of result.channels) upd.run(c.mean, c.hdi_low, c.hdi_high, c.p_positive, result.method, c.tau_weeks ?? null, c.half_life_weeks ?? null, runId, target, c.channel);
+        };
+        applyBayes("mediator", bayesMed.result);
+        applyBayes("composition", bayesComp.result);
         const meta = {
           activeCount: res.activeCount,
           ladder: res.ladder,
@@ -219,8 +321,11 @@ function runJob(runId: number, kind: MlKind, profileId: number): void {
           changepoints,
           exploratory,
           verdict: { mediator: res.mediator.verdict, composition: res.composition.verdict },
+          bayes: bayesMed.result,        // Mediator-Posteriors je Kanal (inkl. Was-wäre-wenn) — B1 macht Bayes primär
+          bayesEngine: bayesMed.engine,  // "python" | "ts"
+          bayesCompositionEngine: bayesComp.engine,
         };
-        db.prepare("UPDATE ml_runs SET settings_json=? WHERE id=?").run(JSON.stringify(meta), runId);
+        db.prepare("UPDATE ml_runs SET settings_json=?, engine=? WHERE id=?").run(JSON.stringify(meta), bayesMed.engine, runId);
         db.exec("COMMIT");
       } catch (e) {
         db.exec("ROLLBACK");
@@ -272,16 +377,18 @@ export interface Freshness {
   reason?: string;
 }
 export function freshness(profileId: number, kind: MlKind): Freshness {
+  reapStaleRuns(profileId); // Selbstheilung: tote „running"-Läufe schon beim Status-Poll räumen (nicht erst beim nächsten Start)
   const running = db
     .prepare("SELECT id FROM ml_runs WHERE profile_id=? AND kind=? AND status='running' ORDER BY id DESC LIMIT 1")
     .get(profileId, kind) as { id: number } | undefined;
   if (running) return { state: "running", runId: running.id, lastRun: null };
+  // „frisch" = es EXISTIERT ein passender abgeschlossener Lauf (Hash + Code-Version) — auch wenn ein neuerer Lauf
+  // mit anderen Einstellungen eine höhere ID hat. Sonst nur „veraltet" (letzter Lauf, andere Daten/Einstellungen).
+  const match = matchingDoneRun(profileId, kind);
+  if (match) return { state: "fresh", runId: match.id, lastRun: match.finished_at };
   const last = latestRun(profileId, kind);
   if (!last || last.status !== "done") return { state: "none", runId: last?.id ?? null, lastRun: last?.finished_at ?? null };
-  if (runHash(kind, profileId) !== last.input_hash) {
-    return { state: "stale", runId: last.id, lastRun: last.finished_at, reason: "neue Daten seit letzter Berechnung" };
-  }
-  return { state: "fresh", runId: last.id, lastRun: last.finished_at };
+  return { state: "stale", runId: last.id, lastRun: last.finished_at, reason: "neue Daten/Einstellungen seit letzter Berechnung" };
 }
 
 export interface LatentPointRow {
@@ -308,6 +415,14 @@ export interface EffectRow {
   e_value: number | null;
   e_value_ci: number | null;
   fdr_survive: number;
+  // B1: Bayes-Posterior (null = kein Bayes-Lauf → TS-Effekt gilt)
+  posterior_mean: number | null;
+  hdi_low: number | null;
+  hdi_high: number | null;
+  p_positive: number | null;
+  bayes_engine: string | null;
+  tau_weeks: number | null;        // B2a: gefitteter Zerfall (Wochen)
+  half_life_weeks: number | null;  // B2a: Retention/Halbwertszeit (τ·ln2)
 }
 export interface EffectsResult {
   runId: number | null;
@@ -317,10 +432,12 @@ export interface EffectsResult {
   composition: EffectRow[];
 }
 export function getEffects(profileId: number): EffectsResult {
-  const run = latestRun(profileId, "dose_response");
+  // Den zum aktuellen Input-Hash passenden Lauf bevorzugen (sonst zeigt die Karte nach einem Kanal-Wechsel den
+  // falschen, wiederverwendeten Lauf mit höherer ID). Kein Treffer → letzter Lauf (wird dann als „veraltet" markiert).
+  const run = matchingDoneRun(profileId, "dose_response") ?? latestRun(profileId, "dose_response");
   if (!run || run.status !== "done") return { runId: run?.id ?? null, finishedAt: null, meta: null, mediator: [], composition: [] };
   const rows = db
-    .prepare("SELECT channel, target, gain_mean, ci_low, ci_high, n_blocks, collinearity_flag, mcid_pass, confidence, p_boot, q_fdr, e_value, e_value_ci, fdr_survive FROM ml_channel_effects WHERE run_id=?")
+    .prepare("SELECT channel, target, gain_mean, ci_low, ci_high, n_blocks, collinearity_flag, mcid_pass, confidence, p_boot, q_fdr, e_value, e_value_ci, fdr_survive, posterior_mean, hdi_low, hdi_high, p_positive, bayes_engine, tau_weeks, half_life_weeks FROM ml_channel_effects WHERE run_id=?")
     .all(run.id) as unknown as EffectRow[];
   let meta: unknown = null;
   try {
@@ -335,6 +452,54 @@ export function getEffects(profileId: number): EffectsResult {
     mediator: rows.filter((r) => r.target === "mediator"),
     composition: rows.filter((r) => r.target === "composition"),
   };
+}
+
+// Baustein 2.3: Wettkampf-Fitness-Prognose des GEPLANTEN Blocks per Impulse-Response-Faltung — die geplanten
+// Wochen-Kanal-Lasten werden mit den bereits gefitteten Kernels gefaltet (β=posterior_mean/gain_mean, τ=tau_weeks):
+//   irFitness(t) = Σ_c β_c · Σ_{w≤t} load_c(w)·exp(−(t−w)/τ_c).  Reine TS, kein Sidecar. [] wenn kein Signal.
+export function blockIrFitness(
+  weeks: { days: { type: string; planned_tss: number }[] }[],
+  mediator: EffectRow[],
+  count: number,
+): number[] {
+  const cc = (count === 3 || count === 4 || count === 5 ? count : 5) as ChannelCount;
+  const beta: Record<string, number> = {};
+  const tau: Record<string, number> = {};
+  for (const e of mediator) {
+    beta[e.channel] = e.posterior_mean ?? e.gain_mean ?? 0;
+    tau[e.channel] = e.tau_weeks && e.tau_weeks > 0 ? e.tau_weeks : 6; // Default τ0 = 6 Wo (B2a-Fixskala)
+  }
+  const channels = Object.keys(beta);
+  if (!channels.length) return [];
+  // geplanter Tag-Typ → Kanal; Fallback für Long/Renntempo/Race, die bei 5-Kanal kein Typ-Override haben.
+  const dayCh = (type: string): string | null => {
+    const ov = typeOverrideChannel(type, cc);
+    if (ov) return ov;
+    const t = type.toLowerCase();
+    if (/long/.test(t)) return cc === 5 ? "E" : cc === 3 ? "aerob" : "Long";
+    if (/renntempo|race/.test(t)) return cc === 5 ? "T" : cc === 3 ? "threshold" : "Schwelle";
+    return null; // Kraft/Ruhe → kein Ausdauer-Reiz
+  };
+  const loads = weeks.map((w) => {
+    const rec: Record<string, number> = {};
+    for (const d of w.days) {
+      const ch = dayCh(d.type);
+      if (!ch || !(ch in beta) || !d.planned_tss) continue;
+      rec[ch] = (rec[ch] ?? 0) + d.planned_tss;
+    }
+    return rec;
+  });
+  const out: number[] = [];
+  for (let t = 0; t < weeks.length; t++) {
+    let f = 0;
+    for (const ch of channels) {
+      let acc = 0;
+      for (let w = 0; w <= t; w++) { const l = loads[w][ch]; if (l) acc += l * Math.exp(-(t - w) / tau[ch]); }
+      f += beta[ch] * acc;
+    }
+    out.push(f);
+  }
+  return out.some((v) => v !== 0) ? out : [];
 }
 
 export type AuditStatus = "pass" | "warn" | "fail" | "info";
@@ -773,6 +938,11 @@ export function abortProspectiveTrial(profileId: number, trialId: number, reason
 export function declineProspectiveTrial(profileId: number, weeks = 4): { ok: boolean } {
   const until = new Date(Date.now() + weeks * 7 * 86_400_000).toISOString().slice(0, 10);
   setProfileSetting(COOLDOWN_KEY, until, profileId);
+  return { ok: true };
+}
+/** Hebt einen (evtl. versehentlichen) Ablehnungs-Cooldown wieder auf → Vorschläge erscheinen sofort wieder. */
+export function clearProspectiveCooldown(profileId: number): { ok: boolean } {
+  setProfileSetting(COOLDOWN_KEY, null, profileId);
   return { ok: true };
 }
 

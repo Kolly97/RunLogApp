@@ -66,7 +66,11 @@ export default function ProspectiveTrialCard() {
       await load();
     } finally { setBusy(false); }
   };
-  const decline = async () => { setBusy(true); try { await api.mlDeclineTrial(); await load(); } finally { setBusy(false); } };
+  const decline = async () => {
+    if (!window.confirm("Diesen Vorschlag ablehnen? Dann kommt für ~4 Wochen kein neuer Vorschlag. (Du kannst ihn danach mit „Vorschläge wieder aktivieren“ zurückholen.)")) return;
+    setBusy(true); try { await api.mlDeclineTrial(); await load(); } finally { setBusy(false); }
+  };
+  const reactivate = async () => { setBusy(true); try { await api.mlReactivateTrial(); await load(); } finally { setBusy(false); } };
   const abort = async (id: number) => { if (!window.confirm("Trial abbrechen? Die bisherigen Blöcke bleiben archiviert.")) return; setBusy(true); try { await api.mlAbortTrial(id); await load(); } finally { setBusy(false); } };
 
   return (
@@ -94,7 +98,13 @@ export default function ProspectiveTrialCard() {
             />
           )}
           {evaluated && proposal && <div style={{ marginTop: 14 }}><div className="tiny muted" style={{ fontWeight: 600, marginBottom: 6 }}>Letztes Ergebnis</div><ResultView t={evaluated} compact /></div>}
-          {!active && !proposal && !evaluated && <p className="muted" style={{ marginTop: 10 }}>Kein aktives Experiment. Ein neuer Vorschlag erscheint nach dem Cooldown oder sobald genug Dosis-Wirkungs-Daten vorliegen.</p>}
+          {!active && !proposal && !evaluated && (
+            <div style={{ marginTop: 10 }}>
+              <p className="muted" style={{ margin: 0 }}>Kein aktives Experiment. Ein neuer Vorschlag erscheint nach dem Cooldown oder sobald genug Dosis-Wirkungs-Daten vorliegen.</p>
+              <button className="btn btn-ghost tiny" style={{ marginTop: 6 }} disabled={busy} onClick={reactivate}>Vorschläge wieder aktivieren</button>
+              <span className="tiny muted" style={{ marginLeft: 8 }}>(hebt einen versehentlichen „Ablehnen“-Cooldown auf)</span>
+            </div>
+          )}
         </>
       )}
     </div>

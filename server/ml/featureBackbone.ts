@@ -225,6 +225,23 @@ export function dailyChannelLoads(acts: ActivityLite[], channels: ChannelCount):
   return out;
 }
 
+export interface LabelExposureRow { date: string; exposure: Record<string, number>; total: number }
+/**
+ * F3: EWMA-Exposition je Wochen-Label (Regime/Schwerpunkt) für die Dosis-Wirkung auf die LATENTE FITNESS.
+ * Jede Woche fließt ihre Gesamt-Last in das Label DIESER Woche; nicht-aktive Labels zerfallen. τ in Wochen
+ * (≈ EWMA-42 Tage = 6 Wochen). Summe der Expositionen = Gesamt-Last-EWMA → kompositionell (volumen-bereinigbar).
+ */
+export function weeklyLabelExposure(weeks: { date: string; label: string; load: number }[], labels: string[], tauWeeks = 6): LabelExposureRow[] {
+  const sorted = [...weeks].sort((a, b) => a.date.localeCompare(b.date));
+  const exp: Record<string, number> = Object.fromEntries(labels.map((l) => [l, 0]));
+  const rows: LabelExposureRow[] = [];
+  for (const w of sorted) {
+    for (const l of labels) exp[l] = exp[l] + ((w.label === l ? w.load : 0) - exp[l]) / tauWeeks;
+    rows.push({ date: w.date, exposure: { ...exp }, total: labels.reduce((s, l) => s + exp[l], 0) });
+  }
+  return rows;
+}
+
 export interface ChannelCtlRow {
   date: string;
   ctl: Record<string, number>;

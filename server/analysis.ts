@@ -290,14 +290,20 @@ export function weekLoadFlag(rating: { level: IntLevel; weekTss: number; avg4: n
  */
 export type TssRec = { min: number; max: number; target: number; kind: string };
 export function tssRecommendation(ctl: number, phase: string | null | undefined): TssRec {
-  const base = Math.max(0, ctl) * 7; // Wochen-TSS zum Halten der CTL
+  const base = Math.max(0, ctl) * 7; // Wochen-TSS = ATL:CTL 1.0 (Erhalt der CTL)
   const p = (phase || "").toLowerCase();
-  let lo: number, hi: number, kind: string;
-  if (p.includes("entlast")) { lo = base * 0.55; hi = base * 0.65; kind = "Entlastung"; }
-  else if (p.includes("race week") || p.includes("race-week") || p.includes("raceweek")) { lo = base * 0.45; hi = base * 0.55; kind = "Taper"; }
-  else if (p.includes("krank")) { lo = 0; hi = base * 0.4; kind = "Reduziert"; }
-  else if (p.includes("belast") || p.includes("base") || p.includes("specific") || p.includes("aufbau")) { lo = (Math.max(0, ctl) + 5) * 7; hi = (Math.max(0, ctl) + 7) * 7; kind = "Aufbau"; }
-  else { lo = base * 0.95; hi = base * 1.05; kind = "Erhalt"; }
+  // C1 (Load-Regler): Zielband als ATL:CTL-Ratio, kalibriert auf den Intensity-Trend / COROS „Load Impact / Base
+  // Fitness". Belastung/Specific am OBEREN „Optimized"-Rand (produktive Überlast), Base darunter, Entlastung/Taper
+  // drunter (Erholung). Nie ins „Excessive" (≥150 %): harte Kappung bei 1.45.
+  let rLo: number, rHi: number, kind: string;
+  if (p.includes("entlast") || p.includes("deload")) { rLo = 0.60; rHi = 0.75; kind = "Entlastung"; }          // Resuming (Erholung)
+  else if (p.includes("race week") || p.includes("race-week") || p.includes("raceweek")) { rLo = 0.45; rHi = 0.58; kind = "Taper"; }
+  else if (p.includes("krank")) { rLo = 0; rHi = 0.40; kind = "Reduziert"; }
+  else if (p.includes("belast") || p.includes("specific") || p.includes("spec") || p.includes("aufbau")) { rLo = 1.15; rHi = 1.32; kind = "Aufbau"; } // oberer Optimized-Rand
+  else if (p.includes("base")) { rLo = 1.02; rHi = 1.15; kind = "Base"; }                                       // Maintaining / low-Optimized
+  else { rLo = 0.95; rHi = 1.08; kind = "Erhalt"; }
+  const lo = base * rLo;
+  const hi = Math.min(base * rHi, base * 1.45); // < Excessive (150 %)
   const min = Math.round(lo / 5) * 5;
   const max = Math.round(hi / 5) * 5;
   return { min, max, target: Math.round((min + max) / 2), kind };
@@ -430,7 +436,7 @@ export interface MarkerActivity {
 }
 
 /** Schwellen-/Zonen-Kontext (aus effectiveZoneSet) für die Marker-Batterie. */
-export interface MarkerZones { hr_zones: HrZone[]; threshold_pace: number; lthr: number; lt1_hr: number }
+export interface MarkerZones { hr_zones: HrZone[]; threshold_pace: number; lthr: number; lt1_hr: number; lt1_pace?: number | null }
 
 /** Laktat-Feldtest reduziert auf Datum + Stufenpunkte (für Laktat-an-Pace). */
 export interface MarkerLactateTest { date: string; points: { pace_s?: number | null; speed_kmh?: number | null; lactate: number }[] }
@@ -439,6 +445,7 @@ export interface Markers {
   date: string; windowDays: number; n: number;
   csPace: number | null; csConfidence: "hoch" | "mittel" | "niedrig" | null;
   vdot: number | null;
+  lt1Pace: number | null; // aerobe Schwelle LT1 (Pace s/km) aus dem Zonen-Set — kleiner = schneller (LT1 < LT2)
   thresholdPace: number | null; thresholdHr: number | null;
   decoupling: number | null;
   submaxEf: number | null;
@@ -544,13 +551,14 @@ export function markerSnapshot(args: {
   const pi = dist ? polarizationIndex(dist.z1, dist.z2, dist.z3) : null;
 
   const thresholdPace = zones.threshold_pace > 0 ? zones.threshold_pace : null;
+  const lt1Pace = zones.lt1_pace && zones.lt1_pace > 0 ? zones.lt1_pace : null;
   const lactateAtPace = lactateAtReferencePace(args.lactateTests || [], endDate, thresholdPace);
 
   return {
     date: endDate, windowDays, n: runs.length,
     csPace: cs?.cs_pace_s ?? null, csConfidence,
     vdot: vd > 0 ? round1(vd) : null,
-    thresholdPace, thresholdHr: zones.lthr > 0 ? zones.lthr : null,
+    lt1Pace, thresholdPace, thresholdHr: zones.lthr > 0 ? zones.lthr : null,
     decoupling, submaxEf, effVo2max, lactateAtPace, pi, dist,
   };
 }
@@ -639,6 +647,8 @@ export interface WeekRegimeInput {
   excluded: boolean;           // Krank/Taper/Race → aus Inferenz raus
   csPace: number | null;       // Marker am Wochenende (Rolling)
   vdot: number | null;
+  declaredEmphasis?: string | null; // v2.4.0: gewählter Block-Schwerpunkt dieser Woche (Komponente B, deklariert)
+  weekTss?: number | null;     // F3: Wochen-Gesamtlast (für Regime/Schwerpunkt-Expositions-EWMA auf latenter Fitness)
 }
 
 /**
@@ -689,34 +699,107 @@ const REGIME_LABEL: Record<Regime, string> = {
  * Beobachtungen (Konfidenz folgt nBlocks, nicht überlappenden Paaren). Advisory: Korrelation, nicht Kausalität.
  */
 export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: number; ctlBand?: number }): MethodInferenceResult {
-  const lagWeeks = opts?.lagWeeks ?? 3;
+  const r = inferByClassifier<Regime>(weeks, classifyWeekRegime, (g) => REGIME_LABEL[g], opts);
+  return {
+    regimes: r.groups.map((g) => ({
+      regime: g.group, nWeeks: g.nWeeks, nBlocks: g.nBlocks, csChange: g.csChange, vdotChange: g.vdotChange,
+      confidence: g.confidence, fromDate: g.fromDate, toDate: g.toDate,
+    })),
+    best: r.best, lagWeeks: r.lagWeeks, note: r.note, confidence: r.confidence,
+  };
+}
+
+export interface BlockDelta { group: string; cs: number | null; vd: number | null; weeks: number }
+/**
+ * Rohe Pro-Block-Marker-Deltas (CS/VDOT Start→Ende, CTL-confounder-kontrolliert) je Gruppe — Grundlage für die
+ * hierarchische (Partial-Pooling) Auswertung der Regime-/Schwerpunkt-Achse. Gleiche Block-Bildung wie inferByClassifier.
+ */
+export function blockDeltas(weeks: WeekRegimeInput[], kind: "regime" | "emphasis", opts?: { ctlBand?: number }): BlockDelta[] {
+  const classify: (w: WeekRegimeInput) => string | null = kind === "regime" ? classifyWeekRegime : classifyWeekEmphasis;
   const ctlBand = opts?.ctlBand ?? 8;
   const sorted = [...weeks].sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const blocks: { group: string; idx: number[] }[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const w = sorted[i];
+    if (w.excluded) continue;
+    const group = classify(w);
+    if (group == null) continue;
+    const cur = blocks[blocks.length - 1];
+    const prevIdx = cur ? cur.idx[cur.idx.length - 1] : -2;
+    const prevW = prevIdx >= 0 ? sorted[prevIdx] : null;
+    const contiguous = cur != null && cur.group === group && prevIdx === i - 1 && prevW != null && daysBetweenIso(prevW.start_date, w.start_date) <= 10;
+    if (contiguous) cur!.idx.push(i); else blocks.push({ group, idx: [i] });
+  }
+  const out: BlockDelta[] = [];
+  for (const blk of blocks) {
+    const first = sorted[blk.idx[0]], last = sorted[blk.idx[blk.idx.length - 1]], blkWeeks = blk.idx.length;
+    const allow = ctlBand * Math.max(1, blkWeeks / 3);
+    if (!(first.ctl == null || last.ctl == null || Math.abs(last.ctl - first.ctl) <= allow)) continue;
+    out.push({
+      group: blk.group,
+      cs: first.csPace != null && last.csPace != null ? Math.round((last.csPace - first.csPace) * 10) / 10 : null,
+      vd: first.vdot != null && last.vdot != null ? Math.round((last.vdot - first.vdot) * 10) / 10 : null,
+      weeks: blkWeeks,
+    });
+  }
+  return out;
+}
 
-  // 1) Zusammenhängende Regime-Blöcke bilden. Excluded-Wochen sind im Array, brechen aber jeden Block
+// ---- Generischer Block-Inferenz-Kern (T6): geteilt von methodInference (Regime) und evaluateMethodEmphasis ----
+
+export interface GroupStat<T extends string = string> {
+  group: T; nWeeks: number; nBlocks: number; csChange: number | null; vdotChange: number | null;
+  confidence: "hoch" | "mittel" | "niedrig"; fromDate: string | null; toDate: string | null;
+}
+export interface GroupInferenceResult<T extends string = string> {
+  groups: GroupStat<T>[]; best: T | null; lagWeeks: number; note: string; confidence: "hoch" | "mittel" | "niedrig";
+}
+
+/**
+ * Block-basierte Vorwärts-Inferenz über beliebige Wochen-Gruppierung `classify`: Wochen werden in
+ * ZUSAMMENHÄNGENDE Blöcke gruppiert (gleiche Gruppe, lückenlos ≤10 Tage; Krank/Taper/Race ODER
+ * classify→null brechen einen Block). Je Block wird die Marker-Reaktion Block-Start→Block-Ende gemessen
+ * (CS/VDOT sind bereits 42-Tage-rollend), mit längen-skalierter CTL-Confounder-Kontrolle
+ * (|ΔCTL| ≤ ctlBand·Blockwochen/3). `nWeeks` = echte Blockwochen, `nBlocks` = unabhängige Beobachtungen
+ * (Konfidenz folgt nBlocks). Advisory: Korrelation, nicht Kausalität.
+ */
+function inferByClassifier<T extends string>(
+  weeks: WeekRegimeInput[],
+  classify: (w: WeekRegimeInput) => T | null,
+  labelOf: (t: T) => string,
+  opts?: { lagWeeks?: number; ctlBand?: number; noun?: string; topic?: string },
+): GroupInferenceResult<T> {
+  const lagWeeks = opts?.lagWeeks ?? 3;
+  const ctlBand = opts?.ctlBand ?? 8;
+  const noun = opts?.noun ?? "Regime";
+  const topic = opts?.topic ?? "Methoden-Aussage";
+  const sorted = [...weeks].sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  // 1) Zusammenhängende Gruppen-Blöcke bilden. Excluded ODER classify→null brechen jeden Block
   //    (kein index-Anschluss). Kalenderlücke >10 Tage (fehlende/leere Woche) bricht ebenfalls.
-  interface Block { regime: Regime; idx: number[]; }
+  interface Block { group: T; idx: number[]; }
   const blocks: Block[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const w = sorted[i];
     if (w.excluded) continue;
-    const regime = classifyWeekRegime(w);
+    const group = classify(w);
+    if (group == null) continue;
     const cur = blocks[blocks.length - 1];
     const prevIdx = cur ? cur.idx[cur.idx.length - 1] : -2;
     const prevW = prevIdx >= 0 ? sorted[prevIdx] : null;
-    const contiguous = cur != null && cur.regime === regime && prevIdx === i - 1
+    const contiguous = cur != null && cur.group === group && prevIdx === i - 1
       && prevW != null && daysBetweenIso(prevW.start_date, w.start_date) <= 10;
     if (contiguous) cur!.idx.push(i);
-    else blocks.push({ regime, idx: [i] });
+    else blocks.push({ group, idx: [i] });
   }
 
   // 2) Je Block die Marker-Reaktion (Start→Ende) mit längen-skalierter CTL-Confounder-Kontrolle.
-  const buckets = new Map<Regime, { cs: number[]; vd: number[]; nBlocks: number; weeks: number; from: string[]; to: string[] }>();
+  const buckets = new Map<T, { cs: number[]; vd: number[]; nBlocks: number; weeks: number; from: string[]; to: string[] }>();
   for (const blk of blocks) {
     const first = sorted[blk.idx[0]];
     const last = sorted[blk.idx[blk.idx.length - 1]];
     const blkWeeks = blk.idx.length;
-    const b = buckets.get(blk.regime) ?? { cs: [], vd: [], nBlocks: 0, weeks: 0, from: [], to: [] };
+    const b = buckets.get(blk.group) ?? { cs: [], vd: [], nBlocks: 0, weeks: 0, from: [], to: [] };
     b.nBlocks += 1;
     b.weeks += blkWeeks;
     b.from.push(first.start_date);
@@ -728,18 +811,18 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
       if (first.csPace != null && last.csPace != null) b.cs.push(last.csPace - first.csPace);
       if (first.vdot != null && last.vdot != null) b.vd.push(last.vdot - first.vdot);
     }
-    buckets.set(blk.regime, b);
+    buckets.set(blk.group, b);
   }
 
-  const regimes: RegimeStat[] = [];
-  for (const [regime, b] of buckets) {
+  const groups: GroupStat<T>[] = [];
+  for (const [group, b] of buckets) {
     if (b.weeks === 0) continue;
     // Konfidenz folgt unabhängigen Blöcken (Replikation), nicht der reinen Wochenzahl.
-    const confidence: RegimeStat["confidence"] = b.nBlocks >= 2 && b.weeks >= 6 ? "hoch" : b.weeks >= 4 ? "mittel" : "niedrig";
+    const confidence: GroupStat["confidence"] = b.nBlocks >= 2 && b.weeks >= 6 ? "hoch" : b.weeks >= 4 ? "mittel" : "niedrig";
     const froms = [...b.from].sort();
     const tos = [...b.to].sort();
-    regimes.push({
-      regime, nWeeks: b.weeks, nBlocks: b.nBlocks,
+    groups.push({
+      group, nWeeks: b.weeks, nBlocks: b.nBlocks,
       csChange: b.cs.length ? meanRound(b.cs, 1) : null,
       vdotChange: b.vd.length ? meanRound(b.vd, 1) : null,
       confidence,
@@ -747,27 +830,92 @@ export function methodInference(weeks: WeekRegimeInput[], opts?: { lagWeeks?: nu
       toDate: tos[tos.length - 1] ?? null,
     });
   }
-  // Ranken nach CS-Reaktion (negativ = schneller = besser); nur Regimes mit CS-Signal werten.
-  const ranked = regimes.filter((r) => r.csChange != null).sort((a, b) => (a.csChange! - b.csChange!));
-  regimes.sort((a, b) => (a.csChange ?? 999) - (b.csChange ?? 999));
-  // „Best" nur, wenn ≥4 Regime-Wochen (Q6) und tatsächlich eine Verbesserung (negativ).
+  // Ranken nach CS-Reaktion (negativ = schneller = besser); nur Gruppen mit CS-Signal werten.
+  const ranked = groups.filter((r) => r.csChange != null).sort((a, b) => (a.csChange! - b.csChange!));
+  groups.sort((a, b) => (a.csChange ?? 999) - (b.csChange ?? 999));
+  // „Best" nur, wenn ≥4 Gruppen-Wochen (Q6) und tatsächlich eine Verbesserung (negativ).
   const top = ranked[0];
-  const best = top && top.nWeeks >= 4 && (top.csChange ?? 0) < -1.5 ? top.regime : null;
-  const overallConf: MethodInferenceResult["confidence"] = best && top.nBlocks >= 2 && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
-  const blkTxt = (r: RegimeStat) => `n=${r.nWeeks} Wochen${r.nBlocks > 1 ? ` in ${r.nBlocks} Blöcken` : ""}`;
+  const best = top && top.nWeeks >= 4 && (top.csChange ?? 0) < -1.5 ? top.group : null;
+  const overallConf: GroupInferenceResult["confidence"] = best && top.nBlocks >= 2 && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
+  const blkTxt = (r: GroupStat<T>) => `n=${r.nWeeks} Wochen${r.nBlocks > 1 ? ` in ${r.nBlocks} Blöcken` : ""}`;
   let note: string;
   if (!ranked.length) {
-    note = "Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine Methoden-Aussage.";
+    note = `Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine ${topic}.`;
   } else if (best) {
     const runner = ranked[1];
     const csTxt = (v: number) => `${v <= 0 ? "" : "+"}${v} s/km CS`;
-    note = `Bei dir korrelierte ${REGIME_LABEL[best]} mit ${csTxt(top.csChange!)} (${blkTxt(top)}, Block-Auswertung)` +
-      (runner ? `; ${REGIME_LABEL[runner.regime]} ${csTxt(runner.csChange!)} (${blkTxt(runner)})` : "") +
+    note = `Bei dir korrelierte ${labelOf(best)} mit ${csTxt(top.csChange!)} (${blkTxt(top)}, Block-Auswertung)` +
+      (runner ? `; ${labelOf(runner.group)} ${csTxt(runner.csChange!)} (${blkTxt(runner)})` : "") +
       ". Korrelation, nicht Kausalität — kleine n beachten.";
   } else {
-    note = `Trend, aber (noch) nicht belastbar: bestes Regime ${REGIME_LABEL[top.regime]} (${top.csChange} s/km CS, ${blkTxt(top)}). Mehr Wochen/Daten nötig.`;
+    note = `Trend, aber (noch) nicht belastbar: bestes ${noun} ${labelOf(top.group)} (${top.csChange} s/km CS, ${blkTxt(top)}). Mehr Wochen/Daten nötig.`;
   }
-  return { regimes, best, lagWeeks, note, confidence: overallConf };
+  return { groups, best, lagWeeks, note, confidence: overallConf };
+}
+
+// ---- Komponente B (BUILDPLAN §1/§6.3): Methoden-Schwerpunkt auswertbar machen ----------------------------------
+
+export type EmphasisKey = "lt1" | "vo2" | "schwelle" | "berg" | "norwegian" | "fartlek" | "ausgewogen";
+export const EMPHASIS_LABEL: Record<EmphasisKey, string> = {
+  lt1: "LT1 (aerobe Schwelle)", vo2: "VO2max", schwelle: "Schwelle (LT2)", berg: "Berg", norwegian: "Norwegian", fartlek: "Fartlek", ausgewogen: "ausgewogen",
+};
+// Familien-Erkennung aus dem (freien) Aktivitäts-Typ. Reihenfolge = Priorität; „intervall" bewusst NICHT bei
+// vo2 (würde Schwellen-Intervalle verschlucken). Norwegian primär über Doppel-Schwellen-Tag (struktureller Marker).
+// lt1 VOR schwelle: aerobe Schwelle (LT1/Steady/Marathon-Pace) ≠ Laktatschwelle (LT2).
+const EMPHASIS_RE: { key: Exclude<EmphasisKey, "ausgewogen">; re: RegExp }[] = [
+  { key: "norwegian", re: /norw/i },
+  { key: "fartlek", re: /fartlek/i },
+  { key: "berg", re: /hill|berg|steig/i },
+  { key: "vo2", re: /vo2|vo₂/i },
+  { key: "lt1", re: /lt1|steady|marathon|\bmp\b|aerobe? schwelle/i },
+  { key: "schwelle", re: /threshold|lt2|schwelle|tempo|sub/i },
+];
+/** Dominante Qualitäts-Familie einer Woche im einheitlichen Schwerpunkt-Vokabular (aus sessions[].type). */
+export function classifyWeekEmphasis(w: WeekRegimeInput): EmphasisKey {
+  if (w.doubleThresholdDays >= 1) return "norwegian";
+  const counts: Partial<Record<EmphasisKey, number>> = {};
+  for (const s of w.sessions) {
+    for (const { key, re } of EMPHASIS_RE) { if (re.test(s.type)) { counts[key] = (counts[key] ?? 0) + 1; break; } }
+  }
+  let bestKey: EmphasisKey = "ausgewogen"; let bestN = 0;
+  for (const { key } of EMPHASIS_RE) { const n = counts[key] ?? 0; if (n > bestN) { bestN = n; bestKey = key; } }
+  return bestN > 0 ? bestKey : "ausgewogen";
+}
+
+export interface EmphasisEvaluation {
+  chosen: string;                              // aktuell gewählter Block-Schwerpunkt (availability.emphasis)
+  observed: GroupStat<EmphasisKey>[];          // Ranking nach BEOBACHTETEM Training (retrospektiv, sofort)
+  observedBest: EmphasisKey | null;
+  declared: GroupStat<EmphasisKey>[] | null;   // Ranking nach DEKLARIERTEM Schwerpunkt (null = zu wenig Historie)
+  declaredBest: EmphasisKey | null;
+  chosenStanding: { rank: number; of: number; stat: GroupStat<EmphasisKey> } | null; // Rang des gewählten im beobachteten Ranking
+  verdict: string;
+  confidence: "hoch" | "mittel" | "niedrig";
+  note: string;
+}
+/**
+ * Komponente B: wertet den Methoden-Schwerpunkt aus (funktioniert OHNE Zyklus, für alle Profile).
+ * `observed` = beobachtetes Training (classifyWeekEmphasis); `declared` = gewählter Schwerpunkt pro Woche,
+ * sobald Historie da ist. Beide über denselben Block-Inferenz-Kern → CS/VDOT-Response je Schwerpunkt.
+ * Rein beratend, Korrelation nicht Kausalität. `byPhase` (Kreuzprodukt Phase×Methode) folgt später (Teil 4).
+ */
+export function evaluateMethodEmphasis(weeks: WeekRegimeInput[], opts: { chosen: string; byPhase?: boolean }): EmphasisEvaluation {
+  const cfg = { noun: "Schwerpunkt", topic: "Schwerpunkt-Aussage" };
+  const obs = inferByClassifier<EmphasisKey>(weeks, classifyWeekEmphasis, (g) => EMPHASIS_LABEL[g], cfg);
+  const hasDeclared = weeks.some((w) => w.declaredEmphasis != null);
+  const dec = hasDeclared
+    ? inferByClassifier<EmphasisKey>(weeks, (w) => (w.declaredEmphasis as EmphasisKey | null) ?? null, (g) => EMPHASIS_LABEL[g], cfg)
+    : null;
+  // Standing des aktuell gewählten Schwerpunkts im beobachteten Ranking (nur CS-bewertbare Gruppen).
+  const rankable = obs.groups.filter((g) => g.csChange != null);
+  const idx = rankable.findIndex((g) => g.group === opts.chosen);
+  const chosenStanding = idx >= 0 ? { rank: idx + 1, of: rankable.length, stat: rankable[idx] } : null;
+  return {
+    chosen: opts.chosen,
+    observed: obs.groups, observedBest: obs.best,
+    declared: dec?.groups ?? null, declaredBest: dec?.best ?? null,
+    chosenStanding, verdict: obs.note, confidence: obs.confidence, note: obs.note,
+  };
 }
 
 /** Kanonische Zeit-Verteilung je Regime (für den advisory N-of-1-Nudge in weekStructureRecommendation). */
@@ -1018,10 +1166,22 @@ export function weekStructureRecommendation(args: {
   readinessLevel: ReadinessLevel | null;
   methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory Nudge
   goalDistanceM?: number | null; // Item 3 (Frage B): Zieldistanz verschiebt das Verteilungs-Soll leicht
+  healthCap?: { loadFactor: number; dropTopIntensity: boolean } | null; // Coach ToDo 35: hartes Gesundheits-Veto (RED-S/Übertraining)
 }): WeekStructureRec {
   const reasons: { code: string; text: string }[] = [];
   const p = (args.phase || "").toLowerCase();
-  const tssRange = tssRecommendation(args.ctl, args.phase);
+  let tssRange = tssRecommendation(args.ctl, args.phase);
+  // Health-first: ein high/warn-Gesundheits-Flag kappt die Wochenlast HART (skaliert das TSS-Ziel). Der konkrete
+  // Intensitäts-Verzicht (VO2 raus) passiert in blockPlan an den echten Einheiten.
+  if (args.healthCap && args.healthCap.loadFactor < 1) {
+    const f = args.healthCap.loadFactor;
+    tssRange = { ...tssRange, min: Math.round(tssRange.min * f), target: Math.round(tssRange.target * f), max: Math.round(tssRange.max * f) };
+    reasons.push({ code: "health_cap", text: `Gesundheits-Cap: Wochenlast ×${f} (Health-first, übersteuert die Evidenz).` });
+    if (args.healthCap.dropTopIntensity) reasons.push({ code: "health_intensity", text: "Gesundheits-Cap: höchste Intensität (VO2/Intervalle) diese Woche ausgesetzt." });
+  }
+  // C1 (Load-Regler): transparentes Load-Impact-Ziel (ATL:CTL) — konsistent mit dem Intensity-Trend-Graph.
+  const loadPct = args.ctl > 0 ? Math.round((tssRange.target / (args.ctl * 7)) * 100) : null;
+  if (loadPct != null) reasons.push({ code: "load_target", text: `Load-Impact-Ziel ~${loadPct}% ATL:CTL (${tssRange.kind}${loadPct >= 100 ? " · produktiv, Basis steigt" : " · Erholung/Erhalt"})` });
   let distTarget = phaseDistributionTarget(args.phase, null, args.goalDistanceM ?? null);
   let confidence: WeekStructureRec["confidence"] = "mittel";
   let periodizationModel: WeekStructureRec["periodizationModel"] = "traditional";
@@ -1142,12 +1302,14 @@ export interface BlockDay {
   zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
   prescription?: { templateId: string; progress: number; targetTss: number } | null; // v1.7.0: Intention für Live-Resolution
   adaptNote?: string | null; // T7: „angepasst an: Phase · TSB · Fitness · VDOT"
+  emphasisNote?: string | null; // „Warum diese Einheit" (tpl.purpose) + Schwerpunkt-Label am evidenz-getriebenen Tag
 }
 export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
   headline: string; periodizationModel: "block" | "traditional";
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
+  irFitness?: number | null; // Baustein 2.3: IR-Faltungs-Fitness je Woche (additiv im Endpoint gesetzt, wenn ein Dose-Run vorliegt)
   reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
 }
 export interface BlockPlan {
@@ -1170,6 +1332,7 @@ function addDaysIsoLocal(iso: string, n: number): string {
 export function derivePhaseSequence(
   weeks: { week_no: number; start_date: string; phase: string | null }[],
   raceDate: string | null,
+  taperWeeks = 2, // Baustein 2.4: Anzahl Race-Specific-Wochen vor der Race Week = Taper-Länge (sportwiss. valide 1–3)
 ): (string | null)[] {
   const n = weeks.length;
   const out: (string | null)[] = weeks.map((w) => (w.phase && w.phase.trim() ? w.phase : null));
@@ -1184,7 +1347,7 @@ export function derivePhaseSequence(
   }
   if (raceIdx >= 0) {
     set(raceIdx, "Race Week");
-    const specificStart = Math.max(0, raceIdx - 2);
+    const specificStart = Math.max(0, raceIdx - Math.max(1, Math.min(3, Math.round(taperWeeks))));
     for (let i = specificStart; i < raceIdx; i++) set(i, "Race Specific");
     const spanEnd = specificStart - 1; // Aufbau-Span [0 .. spanEnd]
     if (spanEnd >= 0) {
@@ -1304,6 +1467,49 @@ export function raceTssEstimate(distanceM: number | null, timeS: number | null):
   return d >= 38000 ? 270 : d >= 18000 ? 150 : d >= 8000 ? 90 : d >= 4000 ? 55 : 40;
 }
 
+// ---- Baustein B1: per-Einheiten-Typ Volumen-Loop aus RPE + felt_vs_expected ----------------------------------
+export interface SessionFbRow { session_family: string | null; rpe: number | null; felt_vs_expected: number | null; confounder_flag: string | null }
+/** Grobe Qualitäts-Familie eines Typs/`session_family` fürs Matching (vo2/race/lt2/lt1/hill). */
+function normFamily(s: string | null | undefined): string {
+  const t = (s ?? "").toLowerCase();
+  if (/vo2|intervall/.test(t)) return "vo2";
+  if (/renntempo|race|renn/.test(t)) return "race";
+  if (/lt2|threshold|schwelle|tempo/.test(t)) return "lt2";
+  if (/lt1|steady|marathon|sub/.test(t)) return "lt1";
+  if (/hill|berg/.test(t)) return "hill";
+  if (/long/.test(t)) return "long";
+  if (/easy|ga1|recovery/.test(t)) return "easy";
+  return t || "other";
+}
+/**
+ * Aus den letzten Rückmeldungen je Qualitäts-Familie einen Volumen-Faktor ableiten: `felt_vs_expected` (positiv =
+ * leichter/stärker → mehr; negativ = härter → weniger) + RPE (hoch = härter → weniger). Confounder (krank/Reise) raus.
+ * Bounded 0.8..1.15; erst ab ≥2 Einheiten. Rein — DB-Abfrage macht der Aufrufer.
+ */
+export function typeVolumeFactors(rows: SessionFbRow[], maxPerFamily = 4): { factors: Record<string, number>; notes: string[] } {
+  const byFam = new Map<string, SessionFbRow[]>();
+  for (const r of rows) {
+    if (r.confounder_flag) continue;
+    const f = normFamily(r.session_family);
+    if (f === "easy" || f === "long" || f === "other") continue; // nur echte Qualität steuern
+    const arr = byFam.get(f) ?? []; if (arr.length < maxPerFamily) { arr.push(r); byFam.set(f, arr); }
+  }
+  const factors: Record<string, number> = {}; const notes: string[] = [];
+  const LABEL: Record<string, string> = { vo2: "VO2max", race: "Race Specific", lt2: "LT2 (Schwelle)", lt1: "LT1", hill: "Berg" };
+  for (const [fam, arr] of byFam) {
+    if (arr.length < 2) continue;
+    const felts = arr.map((r) => r.felt_vs_expected).filter((v): v is number => v != null);
+    const rpes = arr.map((r) => r.rpe).filter((v): v is number => v != null);
+    const feltAvg = felts.length ? felts.reduce((a, b) => a + b, 0) / felts.length : 0;
+    const rpeAvg = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null;
+    let factor = 1 + feltAvg * 0.06 + (rpeAvg != null ? -(rpeAvg - 6) * 0.03 : 0);
+    factor = Math.max(0.8, Math.min(1.15, Math.round(factor * 100) / 100));
+    factors[fam] = factor;
+    if (Math.abs(factor - 1) >= 0.05) notes.push(`${LABEL[fam] ?? fam} zuletzt ${factor < 1 ? "härter als erwartet → Volumen −" : "leichter → Volumen +"} (×${factor}, Pace bleibt)`);
+  }
+  return { factors, notes };
+}
+
 export function blockPlan(args: {
   weeks: BlockWeekInput[];
   historicalDailyTss: Map<string, number>;
@@ -1314,16 +1520,21 @@ export function blockPlan(args: {
   availability: Availability | null;
   readinessLevel: ReadinessLevel | null;
   methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory
+  emphasisPreference?: string | null; // Coach ToDo 35: evidenz-/manuell-aufgelöster Schwerpunkt → pickWeekWorkouts
+  healthCap?: { loadFactor: number; dropTopIntensity: boolean } | null; // Coach ToDo 35: hartes Gesundheits-Veto (nur nächste Woche)
   goalDistanceM?: number | null; // v1.6.2: Zieldistanz → distanzgerechte Race-Specific-Auswahl
   curVdot?: number | null;       // v1.7.0: aktuelles VDOT (Start der Projektion)
   goalTimeS?: number | null;     // v1.7.0: Wunsch-Zielzeit → Ziel-VDOT (treibt die Pace-Progression)
   tuneups?: { date: string; distanceM: number | null; goalTimeS: number | null }[]; // v1.10.0: Test-/Aufbauwettkämpfe
+  taperWeeks?: number; // Baustein 2.4: Taper-Länge (Race-Specific-Wochen vor der Race Week); Default 2
+  kmCeilingBase?: number | null; // Baustein A1: verletzungssicheres km-Ceiling (nächste Woche); wächst ~7%/Blockwoche
+  volumeByFamily?: Record<string, number>; // Baustein B1: Volumen-Faktor je Qualitäts-Familie (RPE/Completion-Loop)
 }): BlockPlan {
   const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
   const outWeeks: BlockWeek[] = [];
   let lowConf = false;
   // P1: Phasen ableiten (nur leere füllen) — manuelle Phasen gewinnen.
-  const phases = derivePhaseSequence(args.weeks.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase })), args.raceDate);
+  const phases = derivePhaseSequence(args.weeks.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase })), args.raceDate, args.taperWeeks);
 
   // v1.7.0: Fitness-Projektion heute → Wunsch-Zielzeit; je Woche progressierte Pace-Anker.
   const wkOffset = (d: string) => Math.max(0, Math.round((Date.parse(d + "T00:00:00Z") - Date.parse(args.today + "T00:00:00Z")) / (7 * 86400000)));
@@ -1334,6 +1545,10 @@ export function blockPlan(args: {
 
   args.weeks.forEach((w, wi) => {
     const phase = phases[wi] ?? w.phase;
+    // Baustein 2.4: Taper/Deload → Qualitäts-VOLUMEN runter (Reps), Pace/Intensität bleibt (Race Week 0.5, Deload 0.7).
+    const taperFactor = /race ?week|race-week/i.test(phase ?? "") ? 0.5 : /entlast|deload/i.test(phase ?? "") ? 0.7 : 1;
+    // Baustein B1: Volumen-Faktor je Pick aus dem RPE/Completion-Loop (Familie des Templates).
+    const volFor = (t?: WorkoutTemplate | null): number => (t ? (args.volumeByFamily?.[normFamily(t.family)] ?? 1) : 1);
     // Projizierte Zonen dieser Woche (Paces wachsen Richtung Ziel); ohne Projektion = Basis-Zonen.
     const projVdot = proj ? proj.perWeek[Math.min(wkOffset(w.start_date), proj.perWeek.length - 1)] : null;
     const weekZones = projVdot ? zonesForWeek(args.zones, projVdot, args.goalDistanceM ?? null) : args.zones;
@@ -1353,6 +1568,7 @@ export function blockPlan(args: {
       readinessLevel: wi === 0 ? args.readinessLevel : null,
       methodPreference: args.methodPreference ?? null,
       goalDistanceM: args.goalDistanceM ?? null,
+      healthCap: wi === 0 ? (args.healthCap ?? null) : null, // Gesundheits-Cap nur auf die unmittelbar nächste Woche (Zukunft = Erholung erhofft)
     });
     const target = rec.tssRange.target;
 
@@ -1360,12 +1576,17 @@ export function blockPlan(args: {
     const { weekInPhase, phaseLen } = phaseProgress(phases, wi);
     const progress = phaseLen > 1 ? weekInPhase / (phaseLen - 1) : 0.5;
     const fitness = fitnessLevel(ctl, weekZones.cs_pace ?? null, args.curVdot); // T7: VDOT verfeinert das Level
-    const picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
-      args.availability ? { emphasis: args.availability.emphasis, favoriteWorkouts: args.availability.favoriteWorkouts, avoidWorkouts: args.availability.avoidWorkouts } : undefined);
+    // Coach ToDo 35: der aufgelöste Schwerpunkt (Evidenz gewinnt bei Belastbarkeit, sonst manuell) ersetzt die
+    // Availability-Emphasis. pickWeekWorkouts dreht daraufhin EINE Qualität Richtung Schwerpunkt (nur Build/Specific).
+    const effEmphasis = args.emphasisPreference ?? args.availability?.emphasis ?? null;
+    let picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
+      { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts });
+    // Gesundheits-Cap (nur nächste Woche): höchste Intensität raus — VO2-Qualitäten entfernen (Easy/Long füllen die Last).
+    if (wi === 0 && args.healthCap?.dropTopIntensity) picks = picks.filter((pk) => !(pk.role === "quality" && pk.tpl.family === "VO2"));
 
     // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
     let qTss = 0;
-    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
+    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(p.tpl), goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
     const remaining = Math.max(0, target - qTss);
     const longs = picks.filter((p) => p.role === "long");
     const easies = picks.filter((p) => p.role === "easy");
@@ -1373,7 +1594,7 @@ export function blockPlan(args: {
     const easyShare = easies.length ? (remaining * 0.55) / easies.length : 0;
     const units: PlannedUnit[] = picks.map((p) => {
       const tgt = p.role === "long" ? Math.round(longShare) : p.role === "easy" ? Math.round(easyShare) : 0;
-      return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress, targetTss: tgt }, pair: p.pair };
+      return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress, targetTss: tgt, emph: p.emph }, pair: p.pair };
     });
 
     // Auf Wochentage verteilen + je Einheit rendern.
@@ -1386,8 +1607,8 @@ export function blockPlan(args: {
       const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
       const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
       // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
-      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null });
-      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, goalDistanceM: args.goalDistanceM ?? null });
+      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
+      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
       return concretizeSession(su.type, tss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
     };
     const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
@@ -1404,7 +1625,14 @@ export function blockPlan(args: {
 
     // Frage A: Easy/Long-Dauer so skalieren, dass Wochen-km ≈ target_km (harte Einheiten unangetastet); gedeckelt
     // (×0.7..1.4) → PMC-Projektion bleibt selbstkonsistent, kein Runaway. Nur wenn target_km gepflegt ist.
-    const targetKm = w.target_km ?? null;
+    // Baustein A1: km-Ceiling (ACWR) — progressiv (~+7%/Blockwoche, chronisches Niveau darf mitwachsen). Health-first-Deckel.
+    let targetKm = w.target_km ?? null;
+    const kmCeil = args.kmCeilingBase != null && args.kmCeilingBase > 0 ? Math.round(args.kmCeilingBase * Math.pow(1.07, wi)) : null;
+    if (kmCeil != null) {
+      const renderedKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
+      const wouldBe = targetKm != null ? targetKm : renderedKm;
+      if (wouldBe > kmCeil) { targetKm = kmCeil; rec.reasons.push({ code: "km_ceiling", text: `km-Ceiling ${kmCeil} km (verletzungssicher, ACWR ≤ 1.3) — Wochen-Volumen gedeckelt` }); }
+    }
     if (targetKm && targetKm > 0) {
       const elKm = rendered.filter((r) => r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
       const otherKm = rendered.filter((r) => !r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
@@ -1421,18 +1649,27 @@ export function blockPlan(args: {
     }
 
     // Tage materialisieren + Form vorwärts akkumulieren.
+    // Evidenz→Einheit-Treue: „Warum diese Einheit" je Qualitäts-/Long-Tag (tpl.purpose); der schwerpunkt-getriebene
+    // Slot (ref.emph) trägt zusätzlich das Schwerpunkt-Label aus dem Coaching-Verdikt. Easy/Strides/Core = keine Note.
+    const EMPH_LABEL_DE: Record<string, string> = { lt1: "LT1", schwelle: "Schwelle (LT2)", vo2: "VO2max", berg: "Berg", norwegian: "Norwegian", fartlek: "Fartlek" };
     for (const r of rendered) {
       const { su, c } = r;
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number; emph?: boolean } | undefined;
       // v1.7.0: Intention (Template + Progression + tatsächliche Ziel-TSS nach Angleich) für Live-Resolution speichern.
       const prescription = ref?.tpl
         ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, targetTss: r.baseTss }
+        : null;
+      const eTpl = su.downgrade ? undefined : ref?.tpl;
+      const emphasisNote = eTpl && eTpl.family !== "Easy" && eTpl.id !== "strides" && eTpl.id !== "core_strength"
+        ? (ref?.emph && effEmphasis && effEmphasis !== "ausgewogen"
+            ? `Schwerpunkt ${EMPH_LABEL_DE[effEmphasis] ?? effEmphasis}: ${eTpl.purpose}`
+            : eTpl.purpose)
         : null;
       days.push({
         date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond,
         planned_min: c.planned_min, planned_tss: c.planned_tss, description: c.description,
         zone_alloc: c.zone_alloc, efforts: c.efforts, paceTarget: c.paceTarget, prescription,
-        adaptNote: c.adaptNote ?? null,
+        adaptNote: c.adaptNote ?? null, emphasisNote,
       });
       projected.set(su.date, (projected.get(su.date) ?? 0) + c.planned_tss);
       tssActual += c.planned_tss;

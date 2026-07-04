@@ -14,7 +14,7 @@ function toMinutes(v: string): number {
 }
 
 const EMPHASIS = [
-  { v: "ausgewogen", l: "Ausgewogen" }, { v: "schwelle", l: "Schwelle (LT2)" }, { v: "vo2", l: "VO2max" },
+  { v: "ausgewogen", l: "Ausgewogen" }, { v: "lt1", l: "LT1 (aerobe Schwelle)" }, { v: "schwelle", l: "Schwelle (LT2)" }, { v: "vo2", l: "VO2max" },
   { v: "berg", l: "Berg" }, { v: "norwegian", l: "Norwegian (sub-T)" }, { v: "fartlek", l: "Fartlek" },
 ];
 

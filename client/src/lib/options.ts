@@ -41,7 +41,7 @@ export const DEFAULT_SESSION_TYPES: Option[] = [
   { kind: "sessionType", value: "VO2", label: "VO2max", color: "#f97316", intensity: "hard" },
   { kind: "sessionType", value: "Repetitions", label: "Repetitions", color: "#ef4444", intensity: "hard" },
   { kind: "sessionType", value: "Hill", label: "Berg", color: "#a855f7", intensity: "hard" },
-  { kind: "sessionType", value: "Renntempo", label: "Renntempo", color: "#c2410c", intensity: "hard" },
+  { kind: "sessionType", value: "Renntempo", label: "Race Specific", color: "#c2410c", intensity: "hard" },
   { kind: "sessionType", value: "Race", label: "Wettkampf", color: "#ef4444", intensity: "hard" },
   { kind: "sessionType", value: "Strength", label: "Stabi / Athletik", color: "#14b8a6" },
   { kind: "sessionType", value: "Physio", label: "KG / Physio", color: "#64748b" },
@@ -140,15 +140,32 @@ export function optionsOf(kind: OptionKind | string): Option[] {
 export function sportLabel(v: string): string {
   return CACHE.sport.find((o) => o.value === v)?.label ?? v;
 }
+// Synonyme aus dem Default-Set: hat der Nutzer nur EINE Variante als Auswahl-Token konfiguriert (z.B. „LT2" statt
+// „Threshold"), soll die andere trotzdem auf sein Token abbilden — sonst rendern generierte Einheiten grau. Nur als
+// Fallback: ein exakter Treffer gewinnt immer.
+const SESSION_TYPE_ALIAS: Record<string, string> = {
+  Threshold: "LT2", LT2: "Threshold",
+  Repetitions: "Rep", Rep: "Repetitions",
+  // Renntempo ↔ Race NICHT aliassen: „Renntempo" = Race-Specific-Workout, „Race" = echter Wettkampf (getrennte Token).
+};
+function findSessionType(v: string): Option | undefined {
+  const hit = CACHE.sessionType.find((o) => o.value === v);
+  if (hit) return hit;
+  const alias = SESSION_TYPE_ALIAS[v];
+  const aliasHit = alias ? CACHE.sessionType.find((o) => o.value === alias) : undefined;
+  if (aliasHit) return aliasHit;
+  // Fallback aufs Default-Set: Typen wie „Renntempo"/„Race" sind ggf. nicht im Nutzer-Token-Set, sollen aber korrekt rendern.
+  return DEFAULT_SESSION_TYPES.find((o) => o.value === v);
+}
 export function typeLabel(v: string): string {
-  return CACHE.sessionType.find((o) => o.value === v)?.label ?? v;
+  return findSessionType(v)?.label ?? v;
 }
 export function typeColor(v: string): string {
-  return CACHE.sessionType.find((o) => o.value === v)?.color ?? "#9ca3af";
+  return findSessionType(v)?.color ?? "#9ca3af";
 }
 /** Intensitätsklasse eines Einheitstyps (easy|moderate|hard) für den TSS-Donut; Fallback moderate. */
 export function typeIntensity(v: string): "easy" | "moderate" | "hard" {
-  const i = CACHE.sessionType.find((o) => o.value === v)?.intensity;
+  const i = findSessionType(v)?.intensity;
   return i === "easy" || i === "moderate" || i === "hard" ? i : "moderate";
 }
 export function phaseLabel(v: string): string {

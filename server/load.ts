@@ -428,6 +428,31 @@ export function ctlRamp(pmc: PmcPoint[], days = 7): number {
   return round1(((last.ctl - ref.ctl) / days) * 7);
 }
 
+/**
+ * Baustein A1: verletzungssicheres Wochen-km-Ceiling aus der eigenen Historie (Acute:Chronic Workload Ratio).
+ * chronic = Ø Wochen-km über 28 Tage; Ceiling (nächste Woche) = chronic × maxAcwr (Default 1.3 = Gabbetts
+ * „sweet spot"-Obergrenze). Null-Historie → kein Ceiling (null), damit Neulinge/leere Profile nicht gedeckelt werden.
+ */
+export function kmCeiling(
+  runs: { date: string; distance_m?: number | null }[],
+  today: string,
+  maxAcwr = 1.3,
+): { chronicKm: number; acuteKm: number; acwr: number | null; ceilingKm: number | null } {
+  const DAY = 86_400_000;
+  const t = Date.parse(today + "T00:00:00Z");
+  let acute = 0, last28 = 0;
+  for (const r of runs) {
+    const km = (r.distance_m ?? 0) / 1000;
+    if (km <= 0) continue;
+    const age = (t - Date.parse(r.date + "T00:00:00Z")) / DAY;
+    if (age >= 0 && age < 28) { last28 += km; if (age < 7) acute += km; }
+  }
+  const chronicKm = last28 / 4;
+  const acwr = chronicKm > 0 ? Math.round((acute / chronicKm) * 100) / 100 : null;
+  const ceilingKm = chronicKm > 0 ? Math.round(chronicKm * maxAcwr) : null;
+  return { chronicKm: Math.round(chronicKm), acuteKm: Math.round(acute), acwr, ceilingKm };
+}
+
 // ---- helpers -----------------------------------------------------------
 
 export function round1(n: number): number {

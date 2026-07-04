@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, type MethodExperiment, type Markers, type MethodEvaluationResult, type MethodInferenceResult, type MarkerDelta as MarkerDeltaT } from "../lib/api.ts";
 import { paceStr, fmtDate } from "../lib/util.ts";
 import MarkerDeltaChart from "../charts/MarkerDelta.tsx";
@@ -8,9 +9,12 @@ import OnboardingTour from "../components/OnboardingTour.tsx";
 import Sparkline from "../components/Sparkline.tsx";
 import LatentFitnessCard from "../components/LatentFitnessCard.tsx";
 import DoseResponseCard from "../components/DoseResponseCard.tsx";
+import TrainingVerdictCard from "../components/TrainingVerdictCard.tsx";
+import { useRegimeLatent, RegimeLatentButton, RegimeLatentResults } from "../components/RegimeLatentPanel.tsx";
 import ReadinessHealthCard from "../components/ReadinessHealthCard.tsx";
 import ProspectiveTrialCard from "../components/ProspectiveTrialCard.tsx";
 import CycleScaffoldCard from "../components/CycleScaffoldCard.tsx";
+import MethodEmphasisCard from "../components/MethodEmphasisCard.tsx";
 import { useSparkPref } from "../lib/sparkPref.ts";
 
 // T15: Marker-Verläufe (Sparklines) aus bestehenden Trend-Endpoints. `dir` = Verbesserungsrichtung.
@@ -34,7 +38,8 @@ const METHODS = [
 const MARKER_HELP: Record<string, string> = {
   csPace: "Critical Speed — aktueller Schätzwert über das 14-Tage-Fenster, als Pace (s/km, kleiner = schneller). Nicht zu verwechseln mit „Δ CS\" in der Regime-Tabelle (Veränderung je Block).",
   vdot: "VDOT (≈ VO2max) aus deinen Bestzeiten, 14-Tage-Fenster. Höher = besser.",
-  thresholdPace: "Schwellen-Pace (LT2) über das 14-Tage-Fenster. Kleiner = schneller.",
+  lt1Pace: "Aerobe Schwelle LT1 — Pace an der ersten Laktatschwelle (Z2/Z3-Grenze, aus deinem Zonen-Set). Kleiner = schneller. LT1 = lockeres aerobes Schwellentempo, deutlich unter LT2.",
+  thresholdPace: "Laktatschwelle LT2 — Schwellen-Pace über das 14-Tage-Fenster. Kleiner = schneller. LT2 = renn-spezifisches Schwellentempo (über LT1).",
   thresholdHr: "Schwellen-Herzfrequenz (LT2) über das 14-Tage-Fenster.",
   decoupling: "Aerobe Entkopplung (Pace:HF-Drift) über das 14-Tage-Fenster. Kleiner = besser.",
   submaxEf: "Submaximaler Efficiency-Faktor (Tempo je Herzschlag), 14-Tage-Fenster. Höher = besser.",
@@ -57,7 +62,7 @@ const METHODIK_TABS: { key: MethodikTab; label: string }[] = [
 
 function fmtVal(key: string, v: number | null): string {
   if (v == null) return "—";
-  if (key === "csPace" || key === "thresholdPace") return paceStr(v) + "/km";
+  if (key === "csPace" || key === "thresholdPace" || key === "lt1Pace") return paceStr(v) + "/km";
   if (key === "thresholdHr") return `${Math.round(v)} bpm`;
   if (key === "decoupling") return `${v} %`;
   if (key === "lactateAtPace") return `${v} mmol`;
@@ -80,7 +85,13 @@ export default function Methodik() {
   const [evalR, setEvalR] = useState<MethodEvaluationResult | null>(null);
   const [form, setForm] = useState({ start_date: "", end_date: "", method: "polarized", label: "", notes: "" });
   const [sparks, setSparks] = useState<Record<string, SparkSeries>>({});
-  const [tab, setTab] = useState<MethodikTab>("status");
+  const regimeLatent = useRegimeLatent("regime");
+  // Deep-Link-Ziel aus dem Coach (Cockpit): ?tab=effects öffnet direkt „Was wirkt?".
+  const [params] = useSearchParams();
+  const paramTab = params.get("tab");
+  const initialTab: MethodikTab = paramTab === "effects" || paramTab === "experiments" || paramTab === "cycle" ? paramTab : "status";
+  const [tab, setTab] = useState<MethodikTab>(initialTab);
+  const [verdictTick, setVerdictTick] = useState(0); // bumpt nach Dosis-Recompute → Gesamtbild neu laden
   const [cycleEnabled, setCycleEnabled] = useState(false);
   const showSparks = useSparkPref();
   const tabs = METHODIK_TABS.filter((x) => x.key !== "cycle" || cycleEnabled);
@@ -128,7 +139,8 @@ export default function Methodik() {
   const markerRows: { key: keyof Markers; label: string }[] = [
     { key: "csPace", label: "Critical Speed" },
     { key: "vdot", label: "VDOT" },
-    { key: "thresholdPace", label: "Threshold-Pace" },
+    { key: "lt1Pace", label: "LT1 (aerobe Schwelle)" },
+    { key: "thresholdPace", label: "LT2 · Threshold-Pace" },
     { key: "thresholdHr", label: "Threshold-HF" },
     { key: "decoupling", label: "Aerobe Entkopplung" },
     { key: "submaxEf", label: "Submax-EF" },
@@ -139,11 +151,12 @@ export default function Methodik() {
 
   return (
     <div>
-      <h2>Methodik <span className="tiny muted">— N-of-1 Methoden-Findung</span></h2>
+      <h2>Methodik <span className="tiny muted">— Werkbank: das Warum hinter der Steuerung</span></h2>
       <p className="tiny muted" style={{ marginTop: -4, maxWidth: 720 }}>
-        Findet mit deinen eigenen Daten heraus, welche Trainingsmethode dir den größten Benefit bringt.
-        Primär-Marker ist die <strong>Critical Speed</strong>; alle Marker werden gezeigt. Wichtig:
+        Hier <strong>verstehst</strong> du, welche Trainingsmethode dir den größten Benefit bringt — die Analyse hinter
+        den Entscheidungen. Primär-Marker ist die <strong>Critical Speed</strong>; alle Marker werden gezeigt. Wichtig:
         <strong> Korrelation, nicht Kausalität</strong> — kleine Stichproben sind als 'explorativ' markiert.
+        <em> Einstellen &amp; anwenden</em> tust du im <strong>Coach</strong> (Cockpit).
       </p>
 
       <OnboardingTour storageKey="tour-methodik" steps={METHODIK_TOUR} />
@@ -201,13 +214,22 @@ export default function Methodik() {
 
       {tab === "effects" && (
       <>
-      {/* Was wirkt bei dir? (ML-Engine, P2 — L3 Dosis-Wirkung) */}
-      <DoseResponseCard />
+      {/* Synthese „Was hilft dir?" (Zeile 39) — Gesamturteil über alle Modelle, oben. Deep-Dives darunter. */}
+      <TrainingVerdictCard onGotoTrials={() => setTab("experiments")} refreshKey={verdictTick} />
+
+      {/* Was wirkt bei dir? (ML-Engine, P2 — L3 Dosis-Wirkung) — Deep-Dive Achse A */}
+      <DoseResponseCard onRecomputed={() => setVerdictTick((t) => t + 1)} />
 
       {/* Passive Inferenz */}
       <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Passive Inferenz <span className="tiny muted">— Regime ↔ Marker-Reaktion</span></h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Passive Inferenz <span className="tiny muted">— Regime ↔ Marker-Reaktion</span></h3>
+          {/* F3: primär auf latenter Fitness (Δ Fitness je +1 SD, höher=besser) — Button oben rechts wie „Was wirkt bei dir?" */}
+          <RegimeLatentButton busy={regimeLatent.busy} onClick={regimeLatent.run} data={regimeLatent.data} stamp={regimeLatent.stamp} />
+        </div>
+        {regimeLatent.data?.models && <RegimeLatentResults data={regimeLatent.data} labelMap={REGIME_LABEL} />}
         {!inference ? <p className="muted">Lädt…</p> : (
+          <ExpertDetails summary={regimeLatent.data?.models ? "Sekundär: CS/VDOT-Marker-Verlauf (andere Metrik)" : "CS/VDOT-Marker-Reaktion (Regime)"} defaultOpen={!regimeLatent.data?.models}>
           <>
             <p style={{ marginTop: 0 }}>
               {inference.best
@@ -263,8 +285,13 @@ export default function Methodik() {
               </ExpertDetails>
             )}
           </>
+          </ExpertDetails>
         )}
       </div>
+
+      {/* Komponente B — Methoden-Schwerpunkt: zyklus-unabhängig. Hier sichtbar, WENN Zyklus nicht aktiv ist
+          (bei aktivem Zyklus lebt die Karte eingebettet im Zyklus-Tab). Ergänzt die Regime-Inferenz oben. */}
+      {!cycleEnabled && <MethodEmphasisCard />}
       </>
       )}
 

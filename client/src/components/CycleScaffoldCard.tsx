@@ -2,9 +2,11 @@
 // (trivialer Gruppeneffekt, hohe individuelle Variabilität → N-of-1). Verschlüsselung folgt; Daten sind local-only.
 // Beschreibend/nicht-diagnostisch. Solange kein stabiler natürlicher Zyklus + Daten: Beobachtungsmodus, keine Vorschläge.
 import { useEffect, useState } from "react";
-import { api, type CycleStatus, type CycleMethod, type CycleEvidence } from "../lib/api.ts";
+import { api, type CycleStatus, type CycleMethod, type CycleEvidence, type SymptomPhaseResult, type PhaseSymptomStat, type CycleRecommendation } from "../lib/api.ts";
 import { fmtDate } from "../lib/util.ts";
 import ExpertDetails from "./ExpertDetails.tsx";
+import MethodEmphasisCard from "./MethodEmphasisCard.tsx";
+import { useComputeStamp, stampLabel } from "../lib/computeStamp.ts";
 
 export const METHOD_LABEL: Record<CycleMethod, string> = {
   none: "Keine / natürlicher Zyklus", combined_pill: "Kombinierte Pille", progestin_pill: "Gestagen-Pille (POP)",
@@ -15,6 +17,7 @@ const PHASE_LABEL: Record<string, string> = { menstrual: "Menstruation", follicu
 const PHASE_ORDER = ["menstrual", "follicular", "ovulation", "early_luteal", "late_luteal"];
 const FAMILY_LABEL: Record<string, string> = { vo2: "VO2max", threshold: "Schwelle", long: "Lange Einheit", easy: "Locker", norwegian: "Norwegian", speed: "Speed", hill: "Berg" };
 const famLabel = (s: string) => FAMILY_LABEL[s] ?? s;
+const ENGINE_LABEL: Record<string, string> = { "pymc-hier": "PyMC (hierarchisch)", eb: "analytisch (EB)", ts: "TS (Basis)" };
 const SYMPTOMS: { key: "cramps" | "energy" | "sleep" | "mood" | "flow"; label: string }[] = [
   { key: "cramps", label: "Krämpfe" }, { key: "energy", label: "Energie" }, { key: "sleep", label: "Schlaf" }, { key: "mood", label: "Stimmung" }, { key: "flow", label: "Blutung" },
 ];
@@ -122,6 +125,8 @@ export default function CycleScaffoldCard() {
   const [showEvidence, setShowEvidence] = useState(false);
   const [newPeriod, setNewPeriod] = useState("");
   const [evidence, setEvidence] = useState<CycleEvidence[] | null>(null);
+  const [symPhase, setSymPhase] = useState<SymptomPhaseResult | null>(null);
+  const [evalEngine, setEvalEngine] = useState<string | null>(null);
   const [evalBusy, setEvalBusy] = useState(false);
   const emptySym = { date: "", cramps: "", energy: "", sleep: "", mood: "", flow: "" };
   const [sym, setSym] = useState<Record<string, string>>(emptySym);
@@ -132,6 +137,8 @@ export default function CycleScaffoldCard() {
       setSt(s);
       if (s.contraception?.method) setMethod(s.contraception.method);
       setEvidence(s.needsConsent ? null : await api.cycleEvidence().catch(() => []));
+      setSymPhase(s.needsConsent ? null : await api.cycleSymptomPhase().catch(() => null));
+      setEvalEngine(s.evalEngine ?? null);
     } catch { setSt(null); }
   };
   useEffect(() => { load(); }, []);
@@ -151,7 +158,16 @@ export default function CycleScaffoldCard() {
     setBusy(true);
     try { await api.cycleSaveSymptom({ date: sym.date, cramps: nOrNull(sym.cramps), energy: nOrNull(sym.energy), sleep: nOrNull(sym.sleep), mood: nOrNull(sym.mood), flow: nOrNull(sym.flow) }); setSym(emptySym); } finally { setBusy(false); }
   };
-  const reEvaluate = async () => { setEvalBusy(true); try { const r = await api.cycleEvaluate(); setEvidence(r.evidence); } catch { /* gated */ } finally { setEvalBusy(false); } };
+  // Teil 5: Master-Schalter „Aktivierung erlauben" + Opt-in je Phase×Reiz-Zelle (beratend, kein Planer-Eingriff).
+  const setAdaptive = async (on: boolean) => { setBusy(true); try { await api.cycleSaveSettings({ ...st?.settings, cycle_adaptive_enabled: on ? 1 : 0 }); await load(); } finally { setBusy(false); } };
+  const activateCell = async (phase: string, stimulus: string, on: boolean) => {
+    setBusy(true);
+    try { await api.cycleActivate(phase, stimulus, on); await load(); }
+    catch (e) { window.alert(String((e as Error)?.message || e)); }
+    finally { setBusy(false); }
+  };
+  const { stamp: evalStamp, runTimed: evalRunTimed } = useComputeStamp("cycle-phase-reiz");
+  const reEvaluate = async () => { setEvalBusy(true); try { const r = await evalRunTimed(() => api.cycleEvaluate()); setEvidence(r.evidence); setSymPhase({ symptomByPhase: r.symptomByPhase, symptomAdjusted: r.symptomAdjusted, symptomSlope: r.symptomSlope }); setEvalEngine(r.engine); } catch { /* gated */ } finally { setEvalBusy(false); } };
 
   const Evidence = (
     <ExpertDetails summary={showEvidence ? "Evidenzlage (ehrlich)" : "Warum N-of-1? — die ehrliche Evidenzlage"} defaultOpen={showEvidence}>
@@ -168,6 +184,9 @@ export default function CycleScaffoldCard() {
         <h3 style={{ margin: 0 }}>Zyklus-Steuerung <span className="tiny muted">— N-of-1, Gerüst (Default aus)</span></h3>
         <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)", border: "1px solid var(--muted)", borderRadius: 999, padding: "0 7px" }}>{st?.needsConsent === false ? "aktiviert" : "aus"}</span>
       </div>
+
+      {/* Komponente B — zyklus-unabhängig; im Zyklus-Tab eingebettet (bei aktivem Zyklus), sonst im „Was wirkt?"-Tab. */}
+      <MethodEmphasisCard embedded />
 
       {!st ? <p className="muted">Lädt…</p> : st.needsConsent ? (
         // ---- Zustand: kein Consent → Erklärung + Opt-in ----
@@ -223,19 +242,15 @@ export default function CycleScaffoldCard() {
             </div>
           )}
 
-          {/* Empfehlung — GERÜST: immer off/insufficient */}
-          {st.recommendation && (
-            <div style={{ marginTop: 10 }}>
-              <div className="tiny" style={{ fontWeight: 600 }}>Reiz-Empfehlung
-                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "var(--muted)", border: "1px solid var(--muted)", borderRadius: 999, padding: "0 6px" }}>off · sammelt Daten</span>
-              </div>
-              <p className="tiny muted" style={{ marginTop: 3 }}>{st.recommendation.rationale}</p>
-              {st.recommendation.preferredFamilies.length > 0 && (
-                <p className="tiny muted" style={{ marginTop: -2 }}>Schwache Hypothese für diese Phase: {st.recommendation.preferredFamilies.map((f) => FAMILY_LABEL[f] ?? f).join(", ")} <span style={{ fontStyle: "italic" }}>— nicht aktiv, nur zur Einordnung.</span></p>
-              )}
-              {st.recommendation.cautions.map((c, i) => <p key={i} className="tiny" style={{ margin: "2px 0", color: "var(--warn)" }}>⚠ {c}</p>)}
-            </div>
+          {/* Teil 5: Master-Schalter „Aktivierung erlauben" — nur bei stabilem natürlichen Zyklus sinnvoll. */}
+          {st.gate?.passed && (
+            <label className="tiny" style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 10 }}>
+              <input type="checkbox" checked={!!st.settings?.cycle_adaptive_enabled} disabled={busy} onChange={(e) => setAdaptive(e.target.checked)} style={{ width: "auto", flex: "0 0 auto", appearance: "auto", padding: 0, margin: "2px 0 0", border: "none", background: "transparent", borderRadius: 0 }} />
+              <span><strong>Aktivierung erlauben</strong> <span className="muted">— belastbar gemessene Phasen-Effekte dürfen als beratende Empfehlung erscheinen (du schaltest sie je Effekt frei; kein Planer-Eingriff).</span></span>
+            </label>
           )}
+          {/* Empfehlung — Teil 5: datengetrieben (Phase-vs-Rest, Hedges' g, Replikation), NUR Anzeige/beratend */}
+          {st.recommendation && <RecommendationBlock r={st.recommendation} phase={st.phase?.phase} adaptiveEnabled={!!st.settings?.cycle_adaptive_enabled} onActivate={activateCell} busy={busy} />}
 
           {/* Perioden-Log (Beobachtung) */}
           <div style={{ marginTop: 12 }}>
@@ -278,17 +293,31 @@ export default function CycleScaffoldCard() {
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div className="tiny" style={{ fontWeight: 600 }}>Phase × Reiz — was wirkt bei dir?
-                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "var(--muted)", border: "1px solid var(--muted)", borderRadius: 999, padding: "0 6px" }}>off · sammelt Daten</span>
+                {evalEngine
+                  ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "var(--ok)", border: "1px solid var(--ok)", borderRadius: 999, padding: "0 6px" }}>Engine: {ENGINE_LABEL[evalEngine] ?? evalEngine}</span>
+                  : <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "var(--muted)", border: "1px solid var(--muted)", borderRadius: 999, padding: "0 6px" }}>off · sammelt Daten</span>}
               </div>
-              <button className="btn btn-ghost tiny" disabled={evalBusy} onClick={reEvaluate}>{evalBusy ? "wertet aus…" : "neu auswerten"}</button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <button className="btn btn-ghost tiny" disabled={evalBusy} onClick={reEvaluate}>{evalBusy ? "wertet aus…" : "neu auswerten"}</button>
+                {evalStamp && <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>{stampLabel(evalStamp)}</span>}
+              </div>
             </div>
             {!evidence || evidence.length === 0 ? (
               <p className="tiny muted" style={{ marginTop: 4 }}>Noch keine getaggten Einheiten — die Heatmap füllt sich, sobald du Schlüsseleinheiten (mit Zyklus-Tag) im Tracking bewertest. Belastbare Effektgrößen ab ~3 Sessions je Zelle.</p>
             ) : (
               <HeatmapGrid evidence={evidence} />
             )}
+            {evidence && evidence.length > 0 && symPhase?.symptomAdjusted && (
+              <p className="tiny muted" style={{ marginTop: 4 }}>Symptom-korrigiert: das Outcome ist um die tages-typische Symptomlast (within-phase) bereinigt (β={symPhase.symptomSlope}). Das phasen-durchschnittliche Symptomniveau bleibt erhalten — nur Tages-Rauschen wird herausgerechnet.</p>
+            )}
+            {evidence && evidence.length > 0 && evalEngine && evalEngine !== "ts" && (
+              <p className="tiny muted" style={{ marginTop: 4 }}>Berechnet mit <strong>{ENGINE_LABEL[evalEngine] ?? evalEngine}</strong>: die Zell-Effekte sind hierarchisch zum Null <strong>geschrumpft</strong> (verrauschte/kleine Zellen konservativer), mit ehrlichem 95%-Intervall.</p>
+            )}
             <p className="tiny muted" style={{ marginTop: 6, fontStyle: "italic" }}>Zeigt sich kein konsistenter Effekt (alle CIs überlappen 0), ist phasen-neutrales Training bei dir optimal — ein gültiges Ergebnis, kein Versagen.</p>
           </div>
+
+          {/* Teil 4 (Outcome-Achse b): Symptomschwere je Phase — beschreibend, getrennt von der Reiz-Wirkung. */}
+          <SymptomPhaseStrip data={symPhase?.symptomByPhase ?? null} />
 
           <ExpertDetails summary="Datenschutz & Steuerung">
             <div className="tiny" style={{ lineHeight: 1.5 }}>
@@ -303,6 +332,98 @@ export default function CycleScaffoldCard() {
           <p className="tiny muted" style={{ marginTop: 8, fontStyle: "italic" }}>{DISCLAIMER}</p>
         </>
       )}
+    </div>
+  );
+}
+
+// Teil 5: datengetriebene Reiz-Empfehlung (nur Anzeige) — verdict-Badge + Klartext + Transparenz-Tabelle.
+const VERDICT_BADGE: Record<string, { t: string; c: string }> = {
+  active: { t: "datengestützt · aktiv", c: "var(--ok)" },
+  activatable: { t: "belastbar · freischaltbar", c: "var(--accent, #0ea5e9)" },
+  hypothesis: { t: "Hypothese · sammelt Daten", c: "var(--muted)" },
+  observation: { t: "Beobachtung", c: "var(--muted)" },
+  no_consistent_effect: { t: "kein Phasen-Effekt", c: "var(--muted)" },
+  suppressed: { t: "nicht anwendbar", c: "var(--muted)" },
+};
+function RecommendationBlock({ r, phase, adaptiveEnabled, onActivate, busy }: { r: CycleRecommendation; phase?: string | null; adaptiveEnabled?: boolean; onActivate?: (phase: string, stimulus: string, on: boolean) => void; busy?: boolean }) {
+  const badge = r.symptomOverride?.active ? { t: "Symptom-Override aktiv", c: "var(--danger)" } : (VERDICT_BADGE[r.verdict ?? "observation"] ?? { t: "off", c: "var(--muted)" });
+  const pf = r.perFamily ? [...r.perFamily].sort((a, b) => b.tendency - a.tendency) : [];
+  const canActivate = !!(phase && onActivate && pf.some((f) => f.reliable));
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="tiny" style={{ fontWeight: 600 }}>Reiz-Empfehlung
+        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: badge.c, border: `1px solid ${badge.c}`, borderRadius: 999, padding: "0 6px" }}>{badge.t}{r.verdict === "active" && r.nCyclesObserved ? ` · ${r.nCyclesObserved} Zyklen` : ""}</span>
+      </div>
+      <p className="tiny muted" style={{ marginTop: 3 }}>{r.rationale}</p>
+      {r.active && r.preferredFamilies.length > 0 && (
+        <p className="tiny" style={{ marginTop: -2, color: "var(--ok)" }}>Für dich in dieser Phase günstig: <strong>{r.preferredFamilies.map((f) => FAMILY_LABEL[f] ?? f).join(", ")}</strong> <span className="muted" style={{ fontStyle: "italic" }}>— beratend, Periodisierung/Erholung übersteuern.</span></p>
+      )}
+      {!r.active && r.isHypothesis && r.preferredFamilies.length > 0 && (
+        <p className="tiny muted" style={{ marginTop: -2 }}>Schwache Hypothese für diese Phase: {r.preferredFamilies.map((f) => FAMILY_LABEL[f] ?? f).join(", ")} <span style={{ fontStyle: "italic" }}>— noch nicht belastbar, nur zur Einordnung.</span></p>
+      )}
+      {r.verdict === "activatable" && (
+        <p className="tiny" style={{ marginTop: -2, color: "var(--accent, #0ea5e9)" }}>Belastbar gemessen — {adaptiveEnabled ? "unten je Reiz „aktivieren“ klicken, um ihn als beratende Empfehlung zu übernehmen." : "oben „Aktivierung erlauben“ einschalten, dann je Reiz freischalten."}</p>
+      )}
+      {r.cautions.map((c, i) => <p key={i} className="tiny" style={{ margin: "2px 0", color: "var(--warn)" }}>⚠ {c}</p>)}
+      {pf.length > 0 && (
+        <ExpertDetails summary="Wie belastbar? — je Reiz (Neigung, Effekt g, Zyklen, Konfidenz)">
+          <table className="table" style={{ width: "100%", fontSize: 11 }}>
+            <thead><tr>
+              <th>Reiz</th>
+              <th title="Prior→Posterior-gemischte Neigung (kalibriert)">Neigung</th>
+              <th title="Hedges' g: diese Phase gegen die übrigen Phasen. ✓ = 95%-CI schließt 0 aus (belastbar).">Effekt g</th>
+              <th title="Zyklen mit Daten (Replikation)">Zyklen</th>
+              <th>Konfidenz</th>
+              {canActivate && <th title="Belastbare Zellen als beratende Empfehlung freischalten (Opt-in)">Aktiv</th>}
+            </tr></thead>
+            <tbody>
+              {pf.map((f) => (
+                <tr key={f.family}>
+                  <td><strong>{FAMILY_LABEL[f.family] ?? f.family}</strong></td>
+                  <td>{f.tendency > 0 ? "+" : ""}{f.tendency}</td>
+                  <td style={{ color: f.ciExcludesZero && f.effect != null ? (f.effect > 0 ? "var(--ok)" : "var(--danger)") : undefined }}>{f.effect != null ? `${f.effect > 0 ? "+" : ""}${f.effect}${f.ciExcludesZero ? " ✓" : ""}` : "—"}</td>
+                  <td>{f.nCycles}</td>
+                  <td className="muted">{f.confidence}</td>
+                  {canActivate && (
+                    <td>
+                      {f.reliable
+                        ? <button className="btn btn-ghost tiny" disabled={busy || !adaptiveEnabled} title={adaptiveEnabled ? (f.activated ? "Freischaltung zurücknehmen" : "Als beratende Empfehlung übernehmen") : "Erst „Aktivierung erlauben“ einschalten"} onClick={() => onActivate!(phase!, f.family, !f.activated)}>{f.activated ? "✓ aktiv" : "aktivieren"}</button>
+                        : <span className="muted">—</span>}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="tiny muted" style={{ marginTop: 4 }}>Belastbar (freischaltbar) wird eine Zelle erst bei Konfidenz ≥ mittel, CI ohne 0 (✓), |g| ≥ 0.2 und ≥ 2 Zyklen. „Aktiv" ist bewusst dein Opt-in je Effekt — beratend, Korrelation, nicht Kausalität.</p>
+        </ExpertDetails>
+      )}
+    </div>
+  );
+}
+
+// Teil 4 (Outcome-Achse b): Symptomschwere je Phase — beschreibend, unabhängig von der Reiz-Wirkung.
+function burdenColor(b: number | null): string {
+  if (b == null) return "var(--muted)";
+  const x = Math.max(-1, Math.min(1, b));
+  const a = 0.14 + Math.abs(x) * 0.4;
+  return x >= 0 ? `rgba(239,68,68,${a.toFixed(2)})` : `rgba(34,197,94,${a.toFixed(2)})`;
+}
+function SymptomPhaseStrip({ data }: { data: PhaseSymptomStat[] | null }) {
+  if (!data || data.length === 0) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="tiny" style={{ fontWeight: 600, marginBottom: 4 }}>Symptome je Phase <span className="muted" style={{ fontWeight: 400 }}>— Outcome-Achse: wo sind deine Symptome am stärksten? (beschreibend)</span></div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {data.map((s) => (
+          <div key={s.phase} title={`Ø Krämpfe ${s.cramps ?? "–"} · Energie ${s.energy ?? "–"} · Schlaf ${s.sleep ?? "–"} (n=${s.n})`}
+            style={{ border: "1px solid var(--border-faint)", borderLeft: `4px solid ${burdenColor(s.meanBurden)}`, borderRadius: 6, padding: "4px 8px", minWidth: 108 }}>
+            <div className="tiny" style={{ fontWeight: 600 }}>{PHASE_LABEL[s.phase] ?? s.phase}</div>
+            <div className="tiny muted">Last {s.meanBurden != null ? (s.meanBurden > 0 ? "+" : "") + s.meanBurden : "–"} · n={s.n}</div>
+          </div>
+        ))}
+      </div>
+      <p className="tiny muted" style={{ marginTop: 4 }}>Last höher = schlechterer Tag (Krämpfe↑, Energie/Schlaf/Stimmung↓). Getrennt von der Reiz-Wirkung oben.</p>
     </div>
   );
 }

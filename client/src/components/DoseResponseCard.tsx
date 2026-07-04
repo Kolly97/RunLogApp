@@ -2,17 +2,36 @@
 // Fitness, Modell-Umschalter Mediator/Komposition (Sensitivität, Frage 11), Verdikt + ehrliches Framing.
 // BEOBACHTEND → as-if causal / Hypothese (das geprüfte Verdikt liefern erst die prospektiven Blöcke, P5).
 import { useEffect, useRef, useState } from "react";
-import { api, type MlSettings, type MlStatus, type MlEffects, type MlAdversarialAudit, type MlAuditStatus } from "../lib/api.ts";
+import { api, type MlSettings, type MlStatus, type MlEffects, type MlAdversarialAudit, type MlAuditStatus, type MlWhatIfPoint } from "../lib/api.ts";
 import { fmtDateY } from "../lib/util.ts";
 import ExpertDetails from "./ExpertDetails.tsx";
 import ForestPlot from "../charts/ForestPlot.tsx";
+import { useComputeStamp, stampLabel } from "../lib/computeStamp.ts";
 
 const FRESH_LABEL: Record<string, string> = { fresh: "aktuell", stale: "veraltet", none: "noch nicht berechnet", running: "rechnet…" };
 const FRESH_COLOR: Record<string, string> = { fresh: "var(--ok)", stale: "var(--warn)", none: "var(--muted)", running: "#0ea5e9" };
 const AUDIT_LABEL: Record<MlAuditStatus, string> = { pass: "ok", warn: "warnung", fail: "kritisch", info: "info" };
 const AUDIT_COLOR: Record<MlAuditStatus, string> = { pass: "var(--ok)", warn: "var(--warn)", fail: "var(--danger)", info: "var(--muted)" };
 
-export default function DoseResponseCard() {
+/** B2b: Mini-Trajektorie (Was-wäre-wenn) — Mittel-Linie + 94%-HDI-Band, Nulllinie gestrichelt. */
+function TrajSpark({ points }: { points: MlWhatIfPoint[] }) {
+  const W = 120, H = 26;
+  const min = Math.min(0, ...points.map((p) => p.lo));
+  const max = Math.max(0.01, ...points.map((p) => p.hi));
+  const x = (i: number) => (i / (points.length - 1)) * W;
+  const y = (v: number) => H - ((v - min) / (max - min)) * H;
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.mean).toFixed(1)}`).join(" ");
+  const band = [...points.map((p, i) => `${x(i).toFixed(1)},${y(p.hi).toFixed(1)}`), ...points.slice().reverse().map((p, i) => `${x(points.length - 1 - i).toFixed(1)},${y(p.lo).toFixed(1)}`)].join(" ");
+  return (
+    <svg width={W} height={H}>
+      <polygon points={band} fill="var(--accent, #0ea5e9)" opacity={0.13} />
+      <line x1={0} x2={W} y1={y(0)} y2={y(0)} stroke="var(--muted)" strokeWidth={0.5} strokeDasharray="2 2" />
+      <path d={line} fill="none" stroke="var(--accent, #0ea5e9)" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+export default function DoseResponseCard({ onRecomputed }: { onRecomputed?: () => void } = {}) {
   const [status, setStatus] = useState<MlStatus | null>(null);
   const [eff, setEff] = useState<MlEffects | null>(null);
   const [settings, setSettings] = useState<MlSettings | null>(null);
@@ -21,6 +40,9 @@ export default function DoseResponseCard() {
   const [busy, setBusy] = useState(false);
   const [auditBusy, setAuditBusy] = useState(false);
   const pollRef = useRef<number | null>(null);
+  const runIdRef = useRef<number | null>(null); // aktiver Lauf — für Abbrechen/Reset
+  const t0Ref = useRef<number>(0);
+  const { stamp: doseStamp, mark: markDose } = useComputeStamp("dose-response");
 
   const load = () => {
     api.mlStatus("dose_response").then(setStatus).catch(() => setStatus(null));
@@ -35,11 +57,20 @@ export default function DoseResponseCard() {
   const startPoll = (runId: number) => {
     pollRef.current = window.setInterval(async () => {
       const pr = await api.mlProgress(runId).catch(() => null);
+      // Genauigkeit vor Tempo: solange der Lauf lebt, weiterpollen (der Bayes-Lauf darf lange rechnen).
+      // Not-Riegel bei 21 min — knapp über dem Server-Reap (20 min), der tote Läufe ohnehin selbst aufräumt.
+      if (t0Ref.current && Date.now() - t0Ref.current > 1_260_000 && (!pr || pr.status === "running")) {
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null; runIdRef.current = null; setBusy(false); load(); return;
+      }
       if (!pr || ["done", "failed", "cancelled"].includes(pr.status)) {
         if (pollRef.current) window.clearInterval(pollRef.current);
         pollRef.current = null;
+        runIdRef.current = null;
         setBusy(false);
+        if (pr?.status === "done" && t0Ref.current) markDose(Date.now() - t0Ref.current);
         load();
+        onRecomputed?.(); // Gesamtbild-Karte neu laden (nutzt denselben getEffects-Lauf)
       }
     }, 700);
   };
@@ -47,12 +78,24 @@ export default function DoseResponseCard() {
   const recompute = async () => {
     setBusy(true);
     setAudit(null);
+    t0Ref.current = Date.now();
     try {
       const { runId } = await api.mlRecompute("dose_response");
+      runIdRef.current = runId;
       startPoll(runId);
     } catch {
       setBusy(false);
     }
+  };
+
+  // Reset/Abbrechen: hängenden (oder laufenden) Lauf abbrechen, Poll stoppen, zurück in den Ruhezustand.
+  const reset = async () => {
+    if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+    const id = runIdRef.current;
+    runIdRef.current = null;
+    setBusy(false);
+    if (id != null) { try { await api.mlCancel(id); } catch { /* egal */ } }
+    load();
   };
 
   const applyCount = async (count: number | "auto") => {
@@ -68,6 +111,7 @@ export default function DoseResponseCard() {
       setSettings(updated);
       setAudit(null);
       const { runId } = await api.mlRecompute("dose_response");
+      runIdRef.current = runId;
       startPoll(runId);
     } catch {
       setBusy(false);
@@ -99,13 +143,16 @@ export default function DoseResponseCard() {
         <h3 style={{ margin: 0 }}>
           Was wirkt bei dir? <span className="tiny muted">— Reiz-Kanäle → latente Fitness</span>
         </h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {fr && (
-            <span title={fr.reason ?? ""} style={{ fontSize: 10.5, fontWeight: 600, color: FRESH_COLOR[fr.state], border: `1px solid ${FRESH_COLOR[fr.state]}`, borderRadius: 999, padding: "0 8px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
-              ● {FRESH_LABEL[fr.state]}
-            </span>
-          )}
-          <button className="btn btn-ghost" disabled={running} onClick={recompute}>{running ? "rechnet…" : "neu berechnen"}</button>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {fr && (
+              <span title={fr.reason ?? ""} style={{ fontSize: 10.5, fontWeight: 600, color: FRESH_COLOR[fr.state], border: `1px solid ${FRESH_COLOR[fr.state]}`, borderRadius: 999, padding: "0 8px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
+                ● {FRESH_LABEL[fr.state]}
+              </span>
+            )}
+            <button className="btn btn-ghost" onClick={running ? reset : recompute} title={running ? "Läuft — klick zum Abbrechen/Zurücksetzen der Engine" : "Neu berechnen"}>{running ? "rechnet… — ✕ abbrechen" : "Neu berechnen"}</button>
+          </div>
+          {doseStamp && <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>{stampLabel(doseStamp)}</span>}
         </div>
       </div>
       <p className="tiny muted" style={{ marginTop: 6, maxWidth: 760 }}>
@@ -131,6 +178,13 @@ export default function DoseResponseCard() {
           {model === "mediator" ? "Effekt inkl. Umfang" : "Schwerpunkt bei gleichem Umfang"}
         </span>
       </div>
+
+      {/* B1: Engine-Hinweis — IMMER anzeigen, mit welcher Engine gerechnet wurde. */}
+      {rows.length > 0 && (
+        rows.some((e) => e.bayes_engine)
+          ? <div className="tiny" style={{ marginBottom: 8, color: "var(--ok)" }}>Engine: Bayes ({rows.find((e) => e.bayes_engine)?.bayes_engine}) — Effekt = Posterior-Mittel, Intervall = 94%-HDI.{model === "composition" ? " Volumen-bereinigt: gegen den Gesamt-Umfang residualisiert, Effekte Σ=0 (relativ zum mittleren Mix)." : ""}</div>
+          : <div className="tiny muted" style={{ marginBottom: 8 }}>Engine: TS (Ridge + Block-Bootstrap) — für Bayes-Posteriors (HDI/Retention/Was-wäre-wenn) „Neu berechnen" mit aktivem Sidecar.</div>
+      )}
 
       {/* Kanal-Anzahl: Auto oder manuell 3/4/5 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 8 }}>
@@ -164,10 +218,37 @@ export default function DoseResponseCard() {
       </div>
 
       {!rows.length ? (
-        <p className="muted">{fr?.state === "none" ? "Noch nicht berechnet — klick „neu berechnen“." : "Noch zu wenig Daten."}</p>
+        <p className="muted">{fr?.state === "none" ? "Noch nicht berechnet — klick „Neu berechnen“." : "Noch zu wenig Daten."}</p>
       ) : (
         <>
           <ForestPlot effects={rows} />
+          {rows.some((e) => e.posterior_mean != null) && (
+            <ExpertDetails summary="Bayes-Posterior je Kanal (HDI · P>0)">
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {rows.filter((e) => e.posterior_mean != null).map((e) => (
+                  <div key={e.channel} className="tiny" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontWeight: 600 }}>{e.channel}</span>
+                    <span className="muted">{e.posterior_mean! > 0 ? "+" : ""}{e.posterior_mean!.toFixed(2)} · HDI [{e.hdi_low?.toFixed(2)}, {e.hdi_high?.toFixed(2)}] · P&gt;0 {(e.p_positive ?? 0).toFixed(2)}{e.half_life_weeks != null ? ` · Retention ~${e.half_life_weeks.toFixed(1)} Wo` : ""}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="tiny muted" style={{ marginTop: 4 }}>Δ latente Fitness je +1 SD Kanal-Last. P&gt;0 = Posterior-Wahrscheinlichkeit eines positiven Effekts. Retention = Halbwertszeit des Reizes (τ·ln2, gefittet) — wie lange der Effekt hält. Rein beobachtend, nicht kausal.</p>
+            </ExpertDetails>
+          )}
+          {model === "mediator" && eff?.meta?.bayes?.channels?.some((c) => c.whatif) && (
+            <ExpertDetails summary="Was-wäre-wenn: 4-Wochen-Block je Kanal (prognostizierter Fitness-Verlauf)">
+              <p className="tiny muted" style={{ marginTop: 0 }}>+1 SD Kanal-Last über 4 Wochen → erwartete Δ latente Fitness über 12 Wochen (Bayes-Prognose aus dem Impulse-Response-Modell, Band = 94%-HDI). Peak-Woche = wann der Reiz „landet", danach Zerfall im gefitteten Tempo. Beobachtend, nicht kausal.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                {[...eff.meta.bayes.channels].filter((c) => c.whatif).sort((a, b) => b.whatif!.peak_delta - a.whatif!.peak_delta).map((c) => (
+                  <div key={c.channel} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="tiny" style={{ fontWeight: 600, width: 84 }}>{c.channel}</span>
+                    <TrajSpark points={c.whatif!.trajectory} />
+                    <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>Peak {c.whatif!.peak_delta > 0 ? "+" : ""}{c.whatif!.peak_delta.toFixed(2)} (Wo {c.whatif!.peak_week}){c.half_life_weeks != null ? ` · Ret ~${c.half_life_weeks.toFixed(1)}Wo` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            </ExpertDetails>
+          )}
           {verdict && (
             <p style={{ marginTop: 10, marginBottom: 0, fontSize: 13.5, color: verdict.kind === "null" ? "var(--warn)" : "var(--ink)" }}>
               <strong>Verdikt:</strong> {verdict.text}

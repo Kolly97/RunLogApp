@@ -61,7 +61,8 @@ export interface DoseOpts {
   bootReps?: number;
   blockWeeks?: number;
   minWeeks?: number;
-  vifThreshold?: number;
+  vifThreshold?: number; // harter Kollinearitäts-Cap (Koeffizient-Flag, Default 8)
+  autoVifThreshold?: number; // VIF-Reserve für die Auto-Wahl: feiner nur, wenn deutlich trennbar (Default 6)
   auto?: boolean; // Leiter 5→4→3 (Default) vs. feste Stufe (Pin)
   minWeeksPerChannel?: number; // Sparsity-Schwelle für Identifizierbarkeit (Frage 7)
 }
@@ -307,7 +308,7 @@ function fitModels(design: DesignRow[], channels: string[], opts: Required<DoseO
 
 /** Identifizierbarkeit eines Rungs: VIF ≤ Schwelle UND jeder Kanal in ≥ minWeeks Wochen nennenswert aktiv. */
 function identifiability(
-  design: DesignRow[], channels: string[], vifThreshold: number, minWeeksPerChannel: number,
+  design: DesignRow[], channels: string[], vifCap: number, minWeeksPerChannel: number,
 ): { maxVif: number; sparse: string[]; ok: boolean } {
   if (design.length < 4) return { maxVif: Infinity, sparse: channels, ok: false };
   const w = design.map((r) => r.weight);
@@ -321,7 +322,8 @@ function identifiability(
     const activeWeeks = mx > 0 ? vals.filter((v) => v > 0.1 * mx).length : 0;
     if (activeWeeks < minWeeksPerChannel) sparse.push(c);
   }
-  return { maxVif, sparse, ok: maxVif <= vifThreshold && sparse.length === 0 };
+  // ok = trennbar mit VIF-Reserve (vifCap = autoVifThreshold): Auto splittet nur, wenn die Stufe DEUTLICH trennbar ist.
+  return { maxVif, sparse, ok: maxVif <= vifCap && sparse.length === 0 };
 }
 
 /**
@@ -341,6 +343,7 @@ export function estimateDoseResponse(
     blockWeeks: opts.blockWeeks ?? 10,
     minWeeks: opts.minWeeks ?? 24,
     vifThreshold: opts.vifThreshold ?? 8,
+    autoVifThreshold: opts.autoVifThreshold ?? 6,
     auto: opts.auto ?? true,
     minWeeksPerChannel: opts.minWeeksPerChannel ?? 8,
   };
@@ -351,14 +354,17 @@ export function estimateDoseResponse(
   let chosen: ChannelCount | null = null;
   for (const c of ladderCounts) {
     const design = designByCount[c] ?? [];
-    const id = identifiability(design, CHANNEL_SETS[c], o.vifThreshold, o.minWeeksPerChannel);
+    const id = identifiability(design, CHANNEL_SETS[c], o.autoVifThreshold, o.minWeeksPerChannel);
+    const vifStr = Number.isFinite(id.maxVif) ? id.maxVif.toFixed(1) : "∞";
     const reason = !design.length
       ? "keine Daten"
       : id.ok
         ? "ok"
         : id.maxVif > o.vifThreshold
-          ? `kollinear (VIF ${Number.isFinite(id.maxVif) ? id.maxVif.toFixed(1) : "∞"})`
-          : `spärlich: ${id.sparse.join(", ")}`;
+          ? `kollinear (VIF ${vifStr})`
+          : id.maxVif > o.autoVifThreshold
+            ? `grenzwertig (VIF ${vifStr}) — für Auto zu knapp`
+            : `spärlich: ${id.sparse.join(", ")}`;
     trail.push({ count: c, channels: CHANNEL_SETS[c], identifiable: id.ok, reason, maxVif: Number.isFinite(id.maxVif) ? Math.round(id.maxVif * 10) / 10 : 999, sparseChannels: id.sparse });
     if (id.ok && chosen === null) {
       chosen = c;

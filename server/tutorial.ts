@@ -6,6 +6,7 @@ import {
   buildFeedbackContext,
   evaluateCycleStability,
   evaluatePhaseStimulus,
+  cycleIndexOf,
   type ContraceptionStatus,
   type Period,
 } from "./cycleTraining.ts";
@@ -204,6 +205,43 @@ function disturbanceFor(date: string, anchors: { illnessStart: string; travelSta
   return null;
 }
 
+// Kleiner DETERMINISTISCHER Jitter aus dem Datum (ohne den RNG-Strom zu verbrauchen) → Within-Phase-Streuung.
+const symJit = (date: string, salt: number) => ((date.charCodeAt(5) + date.charCodeAt(8) + date.charCodeAt(9) + salt) % 3) - 1; // -1..+1
+/**
+ * Physiologisch korrektes Zyklus-Symptommuster für Mara (natürlicher Zyklus, Kupferspirale = nicht-hormonell,
+ * aber stärkere Menses/Krämpfe). 1..5. Follikel/Ovulation = Leistungshoch; späte Luteal = PMS-Gradient.
+ */
+function maraSymptom(phase: string | null, cd: number, date: string): { cramps: number | null; energy: number; sleep: number; mood: number; flow: number | null; note: string } {
+  const c = (v: number) => clamp(Math.round(v), 1, 5);
+  switch (phase) {
+    case "menstrual": // cd 1..5: Krämpfe/Flow früh stark, Energie/Mood niedrig, steigend
+      return {
+        cramps: c(6 - cd + symJit(date, 1)), energy: c(1.6 + cd * 0.4 + symJit(date, 2)),
+        sleep: c(2.7 + cd * 0.2 + symJit(date, 3)), mood: c(2.3 + cd * 0.3 + symJit(date, 4)), flow: c(6 - cd),
+        note: cd <= 2 ? "Menstruation – Krämpfe & Flow stark (Kupferspirale), Energie niedrig." : "Menstruation klingt ab, Energie kehrt zurück.",
+      };
+    case "follicular": // steigendes Östrogen → Feel-good-Phase
+      return { cramps: c(1 + Math.max(0, symJit(date, 5))), energy: c(4 + symJit(date, 6)), sleep: c(4 + symJit(date, 7)), mood: c(4 + symJit(date, 8)), flow: null,
+        note: "Follikelphase – steigendes Östrogen, hohe Energie & gute Erholung." };
+    case "ovulation": // Östrogen-Peak, Leistungshoch, evtl. Mittelschmerz
+      return { cramps: c(1.4 + Math.max(0, symJit(date, 9))), energy: c(5 + Math.min(0, symJit(date, 10))), sleep: c(4 + symJit(date, 11)), mood: c(5 + Math.min(0, symJit(date, 12))), flow: null,
+        note: "Ovulation – Leistungshoch (Östrogen-Peak), evtl. leichter Mittelschmerz." };
+    case "early_luteal": // Progesteron steigt, noch gute Belastbarkeit
+      return { cramps: c(1 + Math.max(0, symJit(date, 13))), energy: c(3.6 + symJit(date, 14)), sleep: c(3.4 + symJit(date, 15)), mood: c(3.6 + symJit(date, 16)), flow: null,
+        note: "Frühe Lutealphase – Progesteron steigt, noch gute Belastbarkeit." };
+    case "late_luteal": { // PMS-Gradient: je näher an Menstruation, desto stärker
+      const k = clamp((cd - 21) / 7, 0, 1);
+      return {
+        cramps: c(1 + k * 2 + symJit(date, 17)), energy: c(3.4 - k * 1.4 + symJit(date, 18)),
+        sleep: c(3.4 - k * 1.2 + symJit(date, 19)), mood: c(3.4 - k * 1.5 + symJit(date, 20)), flow: null,
+        note: k > 0.6 ? "Späte Lutealphase/PMS – Energie & Stimmung tief, prämenstruelle Krämpfe." : "Späte Lutealphase – Progesteron hoch, erste PMS-Zeichen.",
+      };
+    }
+    default:
+      return { cramps: c(1), energy: c(3), sleep: c(3), mood: c(3), flow: null, note: "Zwischenphase." };
+  }
+}
+
 function generateCycleData(profileId: number, week0: string, today: string, nowIso: string): Period[] {
   const lastStart = addDays(today, -17); // heute = Zyklustag 18
   const starts: string[] = [];
@@ -219,17 +257,16 @@ function generateCycleData(profileId: number, week0: string, today: string, nowI
   for (const p of periods) {
     insPeriod.run(profileId, p.start_date, p.end_date, "Tutorial: stabiler natürlicher Zyklus (Kupferspirale).", nowIso);
   }
+  // Tägliches, physiologisch korrektes Symptom-Tracking über die letzten ~5 Zyklen (Mara begann vor ~150 Tagen
+  // zu tracken). Kleine, deterministische Lücken (~1/12) wirken realistisch. Ältere Historie bleibt untracked.
+  const symStart = addDays(today, -150);
   for (let d = 0; addDays(week0, d) <= today; d++) {
     const date = addDays(week0, d);
+    if (date < symStart) continue;
+    if ((date.charCodeAt(8) + date.charCodeAt(9)) % 12 === 0) continue; // ~1 von 12 Tagen ausgelassen
     const ctx = buildFeedbackContext(periods, { method: "copper_iud" }, date);
-    const cd = ctx.cycle_day ?? 0;
-    if (cd >= 1 && cd <= 5) {
-      insSymptom.run(profileId, date, cd <= 2 ? 4 : 2, cd <= 2 ? 2 : 3, 3, 3, cd <= 2 ? 5 : 3, cd <= 2 ? "Flow/Krämpfe stärker." : "Menstruation klingt ab.", nowIso);
-    } else if (cd >= 25 && cd <= 29) {
-      insSymptom.run(profileId, date, 1, 3, 3, 2 + (cd % 2), 1, "Späte Lutealphase: etwas weniger Energie/Mood.", nowIso);
-    } else if (cd === 14 || cd === 15) {
-      insSymptom.run(profileId, date, null, 4, 4, 4, null, "Unauffällig, eher hohe Energie.", nowIso);
-    }
+    const s = maraSymptom(ctx.cycle_phase, ctx.cycle_day ?? 0, date);
+    insSymptom.run(profileId, date, s.cramps, s.energy, s.sleep, s.mood, s.flow, s.note, nowIso);
   }
   const stab = evaluateCycleStability(periods, today);
   db.prepare("INSERT OR REPLACE INTO cycle_stability_v2(profile_id, n_cycles, median_length, length_sd, regularity, gate_passed, last_evaluated) VALUES(?,?,?,?,?,?,?)")
@@ -253,15 +290,34 @@ function feedbackPattern(family: string, phase: string | null, disturbance: Dist
   return v;
 }
 
+type SymRow = { cramps: number | null; energy: number | null; sleep: number | null; mood: number | null; flow: number | null };
+function loadTutorialSymptoms(profileId: number): Map<string, SymRow> {
+  const rows = db.prepare("SELECT date, cramps, energy, sleep, mood, flow FROM cycle_symptoms_v2 WHERE profile_id=?").all(profileId) as (SymRow & { date: string })[];
+  return new Map(rows.map((r) => [r.date, { cramps: r.cramps, energy: r.energy, sleep: r.sleep, mood: r.mood, flow: r.flow }]));
+}
+// Symptom-Last ~[-1..+1] (höher = schlechterer Tag) — Spiegel von cycleTraining.symptomBurden, für die Demo-Kopplung.
+const tutorialBurden = (s?: SymRow): number => {
+  if (!s) return 0;
+  const t: number[] = [];
+  if (s.cramps != null) t.push((s.cramps - 3) / 2);
+  if (s.energy != null) t.push((3 - s.energy) / 2);
+  if (s.sleep != null) t.push((3 - s.sleep) / 2);
+  if (s.mood != null) t.push((3 - s.mood) / 2);
+  return t.length ? t.reduce((a, b) => a + b, 0) / t.length : 0;
+};
+
 function generateFeedbackData(profileId: number, activities: ActivitySeed[], periods: Period[], contraception: ContraceptionStatus, nowIso: string): void {
   const ins = db.prepare("INSERT INTO session_feedback_v2(profile_id, activity_id, date, session_family, rpe, felt_vs_expected, life_stress, notes, cycle_phase, cycle_day, confounder_flag, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+  const symMap = loadTutorialSymptoms(profileId); // Symptome sind bereits geseedet (generateCycleData läuft vorher)
   for (const a of activities) {
     const s = SESS[a.key];
     const isKey = ["long", "threshold", "marathon", "vo2", "reps"].includes(a.key);
     if (!isKey && !chance(0.64)) continue;
     if (isKey && !chance(0.93)) continue;
     const ctx = buildFeedbackContext(periods, contraception, a.date);
-    const raw = feedbackPattern(s.family, ctx.cycle_phase, a.disturbance) + jit(0, 0.42);
+    // Leichte Kopplung: an Tagen mit stärkeren Symptomen lief die Einheit etwas schlechter (Within-Phase-Signal,
+    // das die Kovariaten-Korrektur in Teil 4 sichtbar herausrechnet).
+    const raw = feedbackPattern(s.family, ctx.cycle_phase, a.disturbance) + jit(0, 0.42) - 0.5 * tutorialBurden(symMap.get(a.date));
     const felt = clamp(Math.round(raw), -2, 2);
     const rpeBase = s.family === "easy" ? 3.3 : s.family === "long" ? 5.2 : s.family === "threshold" ? 7.0 : 7.8;
     const rpe = clamp(Math.round(rpeBase - raw * 0.55 + jit(0, 0.7)), 1, 10);
@@ -272,13 +328,17 @@ function generateFeedbackData(profileId: number, activities: ActivitySeed[], per
           : null;
     ins.run(profileId, a.id, a.date, s.family, rpe, felt, stress, notes, ctx.cycle_phase, ctx.cycle_day, a.disturbance, nowIso);
   }
-  seedCycleEvidence(profileId, nowIso);
+  seedCycleEvidence(profileId, periods, nowIso);
 }
 
-function seedCycleEvidence(profileId: number, nowIso: string): void {
-  const feedback = db.prepare("SELECT session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL")
-    .all(profileId) as unknown as Parameters<typeof evaluatePhaseStimulus>[0];
-  const evidence = evaluatePhaseStimulus(feedback);
+function seedCycleEvidence(profileId: number, periods: Period[], nowIso: string): void {
+  // Symptome per Datum joinen + Zyklus-Nummer (Teil 5) → geseedete Evidenz ist symptom-korrigiert UND replikations-bewusst.
+  const symMap = loadTutorialSymptoms(profileId);
+  const starts = periods.map((x) => x.start_date).sort();
+  const rows = db.prepare("SELECT date, session_family, cycle_phase, felt_vs_expected, rpe, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND cycle_phase IS NOT NULL")
+    .all(profileId) as unknown as (Parameters<typeof evaluatePhaseStimulus>[0][number] & { date: string })[];
+  const feedback = rows.map((r) => ({ ...r, ...(symMap.get(r.date) ?? {}), cycle_index: cycleIndexOf(r.date, starts) }));
+  const { evidence } = evaluatePhaseStimulus(feedback);
   const ins = db.prepare("INSERT INTO cycle_stimulus_evidence_v2(profile_id, phase, stimulus, n_sessions, mean_quality, effect_size, ci_low, ci_high, confidence, prior_weight, posterior_weight, last_updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
   db.prepare("DELETE FROM cycle_stimulus_evidence_v2 WHERE profile_id=?").run(profileId);
   for (const e of evidence) {
