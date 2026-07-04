@@ -6,6 +6,24 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [2.6.0] – 2026-07-04 — Zyklus-Plansteuerung, MCID-Verankerung & plattformübergreifender Python-Rechenkern
+
+### Hinzugefügt
+- **Python-ML-Sidecar cross-platform gepackt (mac/win/linux):** Das gepackte Electron-Paket bringt jetzt eine
+  eigenständige, relocatable CPython (python-build-standalone 3.12.11) samt **numpy + PyMC** mit, sodass der schwere
+  Bayes-Dosis-Wirkungs-Pfad (`dose_bayes`) auch in der ausgelieferten App echte Berechnungen macht — nicht nur der
+  Pure-TS-Fallback. **Compiler-frei:** pytensor wird auf sauberen Endnutzer-Rechnern über `PYTENSOR_FLAGS=cxx=` auf den
+  Python-Pfad gezwungen (kein System-gcc/clang/MSVC nötig), Compile-Cache in ein sicher beschreibbares Temp-Verzeichnis.
+  **Cross-OS-Guard:** `scripts/build-sidecar.mjs` bricht jetzt ab, wenn Ziel-OS ≠ Host-OS (`--target`), damit nie eine
+  fremde Python in ein Paket verschifft wird — jedes OS wird auf seinem OS gebaut. lightgbm/shap werden bewusst **nicht**
+  gebündelt (kein gepackter Sidecar-Pfad nutzt sie; spart ~100+ MB je OS). (`scripts/build-sidecar.mjs`,
+  `server/ml/sidecar.ts`, `server/ml-sidecar/requirements.txt`, `package.json`.)
+- **Behoben (Sidecar-Runtime wurde nie gebaut):** Der gepinnte CPython-Download zeigte auf `3.12.4+20250612`, das im
+  Release **nicht existiert** (404) → der Runtime-Download scheiterte still und die App fiel immer auf TS zurück.
+  Korrigiert auf die im Tag real vorhandene `3.12.11`.
+
+## v2.5.0
+
 ### Hinzugefügt
 - **Zyklus steuert jetzt den Plan (4. Steuer-Input, gestuft + health-first):** Die menstruationszyklus-adaptive
   Steuerung ist nicht mehr nur Anzeige — mit dem Master-Schalter **„Zyklus steuert meinen Plan"** fließt sie neben

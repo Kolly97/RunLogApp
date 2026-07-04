@@ -1,9 +1,14 @@
-# RunLog ML-Sidecar — Python-Abhängigkeiten für die ECHTEN Modelle (L2/L3/L6).
-# health/echo/ols = stdlib-only (kein Paket nötig). dose_bayes = numpy-Conjugate-Fallback (nur numpy)
-# ODER PyMC-MCMC (wenn installiert). Verifiziert auf CPython 3.14 (arm64-Wheels vorhanden).
-# Diese Liste wird beim Packaging in die gebündelte CPython installiert (scripts/build-sidecar.mjs).
+# RunLog ML-Sidecar — Python-Abhängigkeiten, die beim Packaging in die gebündelte CPython
+# installiert werden (scripts/build-sidecar.mjs, je OS auf dessen OS). Ziel: der schwere
+# dose_bayes-Pfad (echte Bayes-Dosis-Wirkung) läuft im gepackten Electron-Paket auf mac/win/linux.
+#
+# Compiler-frei: pytensor wird zur Laufzeit über PYTENSOR_FLAGS=cxx= auf den Python-Fallback gezwungen
+# (server/ml/sidecar.ts), damit PyMC auch OHNE System-C-Compiler auf sauberen Endnutzer-Rechnern sampelt.
+# Für die kleinen N-of-1-Datenmengen ist der Geschwindigkeitsverlust vernachlässigbar.
 numpy>=1.26          # PFLICHT: trägt den Conjugate-Bayes-Fallback (dose_bayes) + alle numerischen Modelle
-pymc>=5.16           # B0/B1: Bayes-Dosis-Wirkung (MCMC). Fehlt sie → automatischer numpy-Conjugate-Fallback
-lightgbm>=4.3        # L6 exploratives Mining
-shap>=0.45           # nur intern (hinter ExpertDetails), nicht athleten-facing, nicht kausal
-# Optionaler Alternativ-Stack zu PyMC (leichter, JAX): numpyro>=0.15 · jax[cpu]>=0.4
+pymc>=5.16           # Bündelt die echte MCMC-Dosis-Wirkung. Zieht pytensor + scipy transitiv mit.
+                     # Fehlt sie zur Laufzeit → engine.py fällt automatisch auf den numpy-Conjugate-Fallback.
+#
+# NICHT gebündelt (kein gepackter Sidecar-Pfad nutzt sie aktuell; sparen ~100+ MB je OS):
+# lightgbm>=4.3      # L6 exploratives Mining — erst bündeln, wenn dieser Pfad an den Sidecar verdrahtet ist
+# shap>=0.45         # nur intern hinter ExpertDetails, nicht athleten-facing, nicht kausal

@@ -92,7 +92,7 @@ leere DB an) oder `training.empty.db` als `data/training.db` mitkopieren. `node_
 nicht mit — sie entstehen via `npm install` / `npm run build`.
 
 ## Änderungshistorie
-Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v2.3.0**.
+Siehe [CHANGELOG.md](CHANGELOG.md) — aktuell **v2.6.0**.
 
 ## Desktop-App (Electron)
 Fertige Installer liegen in den [GitHub Releases](../../releases) — als App mit Desktop-Icon, ganz ohne Terminal:

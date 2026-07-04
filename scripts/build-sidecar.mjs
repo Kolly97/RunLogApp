@@ -21,7 +21,7 @@ const RUNTIME = join(STAGE, "runtime");
 
 // python-build-standalone Release pinnen (astral-sh). Bei Update beide Werte anheben.
 const PBS_TAG = "20250612";
-const PY_VER = "3.12.4";
+const PY_VER = "3.12.11"; // in Tag 20250612 verfügbar (3.12.4 existiert dort NICHT → 404). Beide Werte zusammen anheben.
 const TRIPLES = {
   "darwin-arm64": "aarch64-apple-darwin",
   "darwin-x64": "x86_64-apple-darwin",
@@ -38,6 +38,8 @@ const url = triple
 const args = process.argv.slice(2);
 const check = args.includes("--check");
 const skipRuntime = args.includes("--skip-runtime");
+const targetArg = args.find((a) => a.startsWith("--target="));
+const target = targetArg ? targetArg.slice("--target=".length) : null; // erwartetes Ziel-OS: darwin|win32|linux
 
 console.log(`[sidecar] OS=${key}  triple=${triple || "NICHT UNTERSTÜTZT"}`);
 console.log(`[sidecar] runtime url: ${url || "(keine)"}`);
@@ -46,6 +48,18 @@ console.log(`[sidecar] stage dir:   ${STAGE}`);
 if (check) {
   console.log("[sidecar] --check: nichts geschrieben/geladen.");
   process.exit(0);
+}
+
+// Cross-OS-Builds werden NICHT unterstützt: relocatable CPython + native Wheels (numpy/pymc/scipy) sind pro-OS.
+// electron-builder + dieses Script müssen je Ziel-OS AUF dessen OS laufen (siehe npm run electron:build:*).
+// Ohne Guard würde z.B. beim Bauen des Windows-Pakets auf dem Mac eine macOS-Python ins .exe verschifft.
+if (target && target !== process.platform) {
+  console.error(
+    `[sidecar] ABBRUCH: Ziel-OS '${target}' ≠ Host-OS '${process.platform}'.\n` +
+      `           Baue das ${target}-Paket auf einem ${target}-Rechner (oder in CI je OS).\n` +
+      `           Sonst landet eine ${process.platform}-Python (+ Wheels) in einem ${target}-Paket → nicht lauffähig.`,
+  );
+  process.exit(1);
 }
 
 // 1) IMMER: engine.py + requirements stagen (damit extraResources 'from' existiert)

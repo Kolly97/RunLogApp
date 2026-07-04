@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,7 @@ export interface SidecarPaths {
   python: string;
   engine: string;
   exists: boolean;
+  packaged?: boolean; // gepackte Electron-Runtime → braucht compiler-freies Härten (pytensor)
 }
 
 /** Pfadauflösung: ENV-Override (Tests/Dev) → gepackt (process.resourcesPath/sidecar) → Dev (Quelle). */
@@ -48,7 +50,7 @@ export function sidecarPaths(): SidecarPaths {
     const dir = join(res, "sidecar");
     const python = join(dir, "runtime", isWin ? "python.exe" : join("bin", "python3"));
     const engine = join(dir, "engine.py");
-    if (existsSync(engine)) return { python, engine, exists: existsSync(python) };
+    if (existsSync(engine)) return { python, engine, exists: existsSync(python), packaged: true };
   }
 
   // 3) Dev: Quelle relativ zu diesem Modul; lokales .venv bevorzugt, sonst System-python3
@@ -72,7 +74,15 @@ export function runSidecar<T = unknown>(job: SidecarJob, opts: RunOpts = {}): Pr
     if (!p.exists) return reject(new Error("sidecar engine.py nicht gefunden"));
     if (signal?.aborted) return reject(new Error("abgebrochen"));
 
-    const child = spawn(p.python, [p.engine], { stdio: ["pipe", "pipe", "pipe"] });
+    // Gepackte Runtime läuft auf sauberen Endnutzer-Rechnern OHNE System-C-Compiler (gcc/clang/MSVC).
+    // pytensor (via PyMC) auf den compiler-freien Pfad zwingen (cxx= → Python-Fallback statt C-Kompilat) und
+    // einen sicher beschreibbaren Compile-Cache setzen. Externe ENV gewinnt (Dev/Power-User können übersteuern).
+    const env = { ...process.env };
+    if (p.packaged) {
+      env.PYTENSOR_FLAGS = process.env.PYTENSOR_FLAGS || "cxx=";
+      env.PYTENSOR_COMPILEDIR = process.env.PYTENSOR_COMPILEDIR || join(tmpdir(), "runlog-pytensor");
+    }
+    const child = spawn(p.python, [p.engine], { stdio: ["pipe", "pipe", "pipe"], env });
     let out = "";
     let err = "";
     let settled = false;
