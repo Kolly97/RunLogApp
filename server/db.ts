@@ -516,6 +516,21 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_ml_channel_effects ON ml_channel_effects(run_id, profile_id);
   `);
+  // v2.8.0 (Item 3, Research-Mode): globale SHAP-Feature-Wichtigkeit je Lauf (mittleres |SHAP| über alle Wochen) —
+  // spiegelt ml_channel_effects (per-Lauf-Zeilen, Forest-Plot-fähig). Die lokalen (Wochen-genauen) SHAP-Werte +
+  // Fit-Güte-Diagnostik liegen im JSON von ml_runs.settings_json (wie bei dose_response/banister), nicht hier —
+  // eine zweite Tabelle nur für einen Matrix-Blob wäre Overkill.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ml_research_shap (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id            INTEGER NOT NULL,
+      profile_id        INTEGER NOT NULL DEFAULT 1,
+      feature           TEXT NOT NULL,
+      importance_global REAL,
+      created_at        TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ml_research_shap ON ml_research_shap(run_id, profile_id);
+  `);
   // Geglättete latente Fitness-Trajektorie (L2) + Online-Readiness (Kalman-Filter): Cache je Datum.
   db.exec(`
     CREATE TABLE IF NOT EXISTS ml_latent_fitness (

@@ -583,9 +583,88 @@ def job_banister_ff(payload):
     }
 
 
+def job_research_shap(payload):
+    """Research-Mode (Item 3, v2.8.0): nichtlineares Baum-Ensemble (LightGBM) + SHAP-Erklärungen auf den
+    Wochen-Features (Kanal-CTL + Session-Feedback: RPE/gefühlt-vs-erwartet/Readiness/Interaktion). REIN
+    explorativ/Hypothesen-generierend (wie exploratory.ts) — NIE Verdikt, deshalb außerhalb von
+    verdictFingerprint(). Zeitlich geblockte Cross-Validation (kein Shuffle — Wochen sind autokorreliert) liefert
+    eine ehrliche Fit-Güte (cv_r2) als Plausibilitäts-Gate; SHAP auf dem final auf ALLEN Wochen gefitteten Modell
+    (dieselbe Konvention wie job_dose_ir: CV nur zur Güte-Einschätzung, nicht fürs finale Modell).
+    """
+    import numpy as np
+    import lightgbm as lgb
+    import shap
+
+    feature_names = list(payload.get("feature_names", []))
+    X_raw = payload.get("X", [])
+    y = np.asarray(payload.get("y", []), dtype=float)
+    w = np.asarray(payload.get("weight", []), dtype=float)
+    dates = payload.get("dates", [])
+    n, p = len(X_raw), len(feature_names)
+    if n < 20 or p == 0 or y.shape[0] != n:
+        raise ValueError("research_shap: zu wenig/inkonsistente Daten")
+    X = np.array([[(np.nan if v is None else float(v)) for v in row] for row in X_raw], dtype=float)
+    if w.shape[0] != n:
+        w = np.ones(n)
+
+    def fit_model():
+        return lgb.LGBMRegressor(n_estimators=200, max_depth=4, learning_rate=0.05, min_child_samples=5,
+                                  random_state=42, verbosity=-1)
+
+    # 5-fach zeitlich geblockte CV (chronologische Blöcke statt Shuffle) — ehrliche Fit-Güte trotz autokorrelierter
+    # Wochen. Kleine Datensätze können Blöcke mit < 10 Trainingswochen ergeben → dann wird dieser Block übersprungen
+    # (kein Predict aus zu wenig Trainingsdaten), cv_r2 nutzt nur die belastbaren Blöcke.
+    k = 5
+    idx = np.arange(n)
+    folds = np.array_split(idx, k)
+    cv_preds = np.full(n, np.nan)
+    for i in range(k):
+        test_idx = folds[i]
+        train_idx = np.setdiff1d(idx, test_idx)
+        if train_idx.shape[0] < 10 or test_idx.shape[0] == 0:
+            continue
+        m = fit_model()
+        m.fit(X[train_idx], y[train_idx], sample_weight=w[train_idx])
+        cv_preds[test_idx] = m.predict(X[test_idx])
+    valid = ~np.isnan(cv_preds)
+    if valid.sum() >= 5:
+        ss_res = float(np.sum((y[valid] - cv_preds[valid]) ** 2))
+        ss_tot = float(np.sum((y[valid] - y[valid].mean()) ** 2))
+        cv_r2 = (1.0 - ss_res / ss_tot) if ss_tot > 0 else None
+    else:
+        cv_r2 = None
+
+    model = fit_model()
+    model.fit(X, y, sample_weight=w)
+    explainer = shap.TreeExplainer(model)
+    shap_values = np.asarray(explainer.shap_values(X))
+    ev = explainer.expected_value
+    base_value = float(ev if np.isscalar(ev) else np.asarray(ev).reshape(-1)[0])
+
+    global_importance = sorted(
+        ({"feature": feature_names[j], "mean_abs_shap": float(np.mean(np.abs(shap_values[:, j])))} for j in range(p)),
+        key=lambda r: -r["mean_abs_shap"],
+    )
+    preds = model.predict(X)
+    local = [
+        {"date": dates[i] if i < len(dates) else None, "prediction": float(preds[i]),
+         "shap": {feature_names[j]: float(shap_values[i, j]) for j in range(p)}}
+        for i in range(n)
+    ]
+    # Großzügige, aber nicht triviale Schwelle: cv_r2 muss den Mittelwert-Baseline-Fehler klar schlagen (>0),
+    # sonst gilt das Modell als nicht belastbar interpretierbar — die UI zeigt dann die Fit-Güte-Warnung.
+    plausible = cv_r2 is not None and cv_r2 >= 0.05
+
+    return {
+        "n_weeks": n, "cv_r2": cv_r2, "plausible": plausible, "base_value": base_value,
+        "global_importance": global_importance, "local": local,
+    }
+
+
 HANDLERS = {"health": job_health, "echo": job_echo, "ols": job_ols, "dose_bayes": job_dose_bayes,
             "dose_ir": job_dose_ir, "blocks_bayes": job_blocks_bayes, "phase_bayes": job_phase_bayes,
-            "exposure_dose": job_exposure_dose, "banister_ff": job_banister_ff}
+            "exposure_dose": job_exposure_dose, "banister_ff": job_banister_ff,
+            "research_shap": job_research_shap}
 
 
 def main():

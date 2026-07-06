@@ -2,13 +2,22 @@
 # installiert werden (scripts/build-sidecar.mjs, je OS auf dessen OS). Ziel: der schwere
 # dose_bayes-Pfad (echte Bayes-Dosis-Wirkung) läuft im gepackten Electron-Paket auf mac/win/linux.
 #
-# Compiler-frei: pytensor wird zur Laufzeit über PYTENSOR_FLAGS=cxx= auf den Python-Fallback gezwungen
+# Compiler-frei zur LAUFZEIT: pytensor wird über PYTENSOR_FLAGS=cxx= auf den Python-Fallback gezwungen
 # (server/ml/sidecar.ts), damit PyMC auch OHNE System-C-Compiler auf sauberen Endnutzer-Rechnern sampelt.
 # Für die kleinen N-of-1-Datenmengen ist der Geschwindigkeitsverlust vernachlässigbar.
-numpy>=1.26          # PFLICHT: trägt den Conjugate-Bayes-Fallback (dose_bayes) + alle numerischen Modelle
+numpy>=1.26,<2.5     # PFLICHT: trägt den Conjugate-Bayes-Fallback (dose_bayes) + alle numerischen Modelle.
+                     # Obergrenze <2.5 wegen numba (transitive Abhängigkeit von shap, siehe unten) — numba
+                     # verträgt aktuell kein numpy≥2.5. Bei numba-Update mit anheben.
 pymc>=5.16           # Bündelt die echte MCMC-Dosis-Wirkung. Zieht pytensor + scipy transitiv mit.
                      # Fehlt sie zur Laufzeit → engine.py fällt automatisch auf den numpy-Conjugate-Fallback.
 #
-# NICHT gebündelt (kein gepackter Sidecar-Pfad nutzt sie aktuell; sparen ~100+ MB je OS):
-# lightgbm>=4.3      # L6 exploratives Mining — erst bündeln, wenn dieser Pfad an den Sidecar verdrahtet ist
-# shap>=0.45         # nur intern hinter ExpertDetails, nicht athleten-facing, nicht kausal
+# v2.8.0 (Item 3, Research-Mode): lightgbm + shap — NICHT über `pip install -r requirements.txt` installiert
+# (siehe scripts/build-sidecar.mjs, eigene Install-Schritte), weil lightgbms PREBUILT-Wheel auf macOS zur
+# LAUFZEIT Homebrew's libomp.dylib braucht — auf einem sauberen Endnutzer-Rechner (kein Homebrew) schlägt
+# schon der Import fehl. Fix: lightgbm wird mit `--no-binary lightgbm --config-settings=cmake.define.USE_OPENMP=OFF`
+# AUS DEM QUELLCODE gebaut (einzelner Thread, kein OpenMP-Runtime-Dependency mehr) — verifiziert lauffähig
+# (SHAP-Rekonstruktion exakt korrekt). Baut nur einen C++-Compiler auf der BAU-Maschine voraus (macOS: Xcode
+# Command Line Tools/clang++, meist schon vorhanden; Windows: MSVC Build Tools; Linux: gcc/g++) — cmake/ninja
+# selbst holt sich pip automatisch als isolierte Build-Abhängigkeit (kein System-cmake nötig, verifiziert).
+# lightgbm>=4.6      # L6/Research-Mode: nichtlineares Baum-Ensemble — siehe build-sidecar.mjs für den Install-Befehl
+# shap>=0.52         # Feature-Wichtigkeit (global + lokal je Woche) für das LightGBM-Modell — normales Wheel, unauffällig

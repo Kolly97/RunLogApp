@@ -1309,7 +1309,7 @@ export interface BlockDay {
   date: string; weekdayIdx: number; type: string; isSecond: boolean;
   planned_min: number; planned_tss: number; description: string;
   zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
-  prescription?: { templateId: string; progress: number; targetTss: number } | null; // v1.7.0: Intention für Live-Resolution
+  prescription?: { templateId: string; progress: number; ctlProgress?: number; targetTss: number } | null; // v1.7.0/v2.8.0: Intention für Live-Resolution
   adaptNote?: string | null; // T7: „angepasst an: Phase · TSB · Fitness · VDOT"
   emphasisNote?: string | null; // „Warum diese Einheit" (tpl.purpose) + Schwerpunkt-Label am evidenz-getriebenen Tag
 }
@@ -1483,7 +1483,7 @@ export interface ResolveCtx {
  * bleibt Snapshot). Liefert null, wenn Template fehlt oder keine Fitness bekannt ist.
  */
 export function resolvePlannedSession(
-  presc: { templateId: string; progress: number; targetTss: number },
+  presc: { templateId: string; progress: number; ctlProgress?: number; targetTss: number },
   sessionDate: string,
   ctx: ResolveCtx,
 ): { planned_min: number; planned_km?: number | null; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null; adaptNote?: string | null } | null {
@@ -1496,7 +1496,9 @@ export function resolvePlannedSession(
   const zones = zonesForWeek(ctx.baseZones, projVdot, ctx.goalDistanceM);
   const fitness = fitnessLevel(ctx.curCtl, zones.cs_pace ?? null, ctx.curVdot); // T7: VDOT verfeinert
   const tsb = weeksUntil <= 1 ? (ctx.curTsb ?? null) : null; // TSB nur für die nahe Einheit (Projektion sonst unsicher)
-  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot, goalDistanceM: ctx.goalDistanceM ?? null });
+  // v2.8.0: persistiertes ctlProgress (aus dem Block-Bau) wieder mitgeben — resolvePlannedSession kennt selbst
+  // keine Season-Baseline, kann ctlProgress also nicht neu herleiten, nur den gespeicherten Wert weiterreichen.
+  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, ctlProgress: presc.ctlProgress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot, goalDistanceM: ctx.goalDistanceM ?? null });
   return { planned_min: c.planned_min, planned_km: c.planned_km ?? null, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget, adaptNote: c.adaptNote ?? null };
 }
 
@@ -1595,6 +1597,14 @@ const PRODUCTIVE_ACWR_BUILD = 1.42; // Ziel-acute:chronic in Belastungswochen (k
 //                                     Base < Build erhält die Progression über den Mesozyklus; die Mesozyklus-weite
 //                                     Progression kommt zusätzlich aus der steigenden CTL (gleicher ACWR ⇒ mehr TSS).
 
+// Item 1 (v2.8.0) — Reps/Sets/Dauer-Progression: `ctlProgress` (0..1) = wie weit der aktuelle CTL-Anstieg über die
+// Block-Baseline das Reps/Sets-Band ausschöpft. CEILING_MULT moderat (Kolja-Entscheidung: +35% CTL = volles Band).
+const CTLPROGRESS_CEILING_MULT = 1.35;
+// Sprung-Limiter (Kolja: „mittlerer Deckel, max 1-2 Bandstufen/Woche") — begrenzt den week-over-week-Sprung von
+// ctlProgress selbst (nicht erst am Output), damit ALLE Templates gleichermaßen geschützt sind. Kalibriert per
+// Runner: 0.15 entspricht bei repräsentativen Bändern (z.B. norw_400s [10,12]→[20,25]) ~1-2 Reps/Woche.
+const MAX_CTLPROGRESS_STEP_PER_WEEK = 0.15;
+
 // Distanz-abhängiger Taper-Floor (v2.7.0): ein Marathon braucht trainingswissenschaftlich MEHR Taper als ein 5k —
 // gerade nach vielen Trainingswochen. Der persönliche (Banister-)Taper darf den Floor VERLÄNGERN, aber nicht
 // unterschreiten (auch wenn die Eigen-Analyse „nur 3 Tage" sagt — bei wenig/keiner Renn-Erfahrung ist der
@@ -1647,6 +1657,12 @@ export function blockPlan(args: {
   const outWeeks: BlockWeek[] = [];
   let lowConf = false;
   let productiveWeeks = 0; // T8: Zähler produktiver Aufbauwochen (Base/Belastung) für die progressive Last-Rampe
+  // v2.8.0 (Item 1): kontinuierlicher CTL-Fortschritts-Score fürs Reps/Sets/Dauer-Ceiling — ersetzt das phasen-
+  // lokale (bei jedem 4.-Wochen-Deload sägezahnende) `progress` in workouts.ts. `baselineCtl` wird bei wi===0
+  // (heutige Fitness) einmalig gesnapshotet; `prevCtlProgress` trägt den Sprung-Limiter (Kolja: max ~1-2
+  // Reps/Sets-Einheiten Sprung pro Woche, kalibriert über MAX_CTLPROGRESS_STEP_PER_WEEK).
+  let baselineCtl = 0;
+  let prevCtlProgress: number | null = null;
   // P1: Phasen ableiten (nur leere füllen) — manuelle Phasen gewinnen. Ausnahme: „Peak ausrichten" liefert explizit
   // taperWeeks/taperDays → dann wird das Taper-Fenster neu gelegt (T4-Fix), sonst „wirkt es nur einmal".
   const forceTaper = args.taperWeeks != null || args.taperDays != null;
@@ -1719,6 +1735,15 @@ export function blockPlan(args: {
     const tsb = last?.tsb ?? null;
     const ramp = ctlRamp(pmc, 7);
 
+    // Item 1 (v2.8.0): kontinuierlicher Reps/Sets/Dauer-Fortschritts-Score aus dem CTL-Anstieg über die Block-
+    // Baseline (heutige Fitness bei wi===0) — ersetzt das phasen-lokale, sägezahnende `progress` in workouts.ts.
+    if (wi === 0) baselineCtl = ctl;
+    let ctlProgress = baselineCtl > 0 ? Math.max(0, Math.min(1, (ctl - baselineCtl) / (baselineCtl * (CTLPROGRESS_CEILING_MULT - 1)))) : 0;
+    if (prevCtlProgress != null) {
+      ctlProgress = Math.max(prevCtlProgress - MAX_CTLPROGRESS_STEP_PER_WEEK, Math.min(prevCtlProgress + MAX_CTLPROGRESS_STEP_PER_WEEK, ctlProgress));
+    }
+    prevCtlProgress = ctlProgress;
+
     // T8: progressive Überlast — nur produktive Aufbauwochen (Base/Belastung, kein Deload) rampen das Band-Ziel-CTL
     // modest über die aktuelle CTL. Specific/Deload/Taper/Recovery halten bzw. reduzieren (Schärfung/Erholung).
     const pL = (phase || "").toLowerCase();
@@ -1770,7 +1795,7 @@ export function blockPlan(args: {
     // Zyklus-Typ-Tilt der Woche gewinnt über den Block-Schwerpunkt (Reihenfolge: Health-Cap > Periodisierung > Zyklus > Block).
     const effEmphasis = cyc?.emphasis ?? args.emphasisPreference ?? args.availability?.emphasis ?? null;
     let picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
-      { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts });
+      { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts, ctlProgress });
     // Gesundheits-Cap (nur nächste Woche): höchste Intensität raus — VO2-Qualitäten entfernen (Easy/Long füllen die Last).
     if (wi === 0 && args.healthCap?.dropTopIntensity) picks = picks.filter((pk) => !(pk.role === "quality" && pk.tpl.family === "VO2"));
 
@@ -1791,7 +1816,7 @@ export function blockPlan(args: {
 
     // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
     let qTss = 0;
-    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(p.tpl), goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
+    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, ctlProgress, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(p.tpl), goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
     const remaining = Math.max(0, target - qTss);
     const longs = picks.filter((p) => p.role === "long");
     const easies = picks.filter((p) => p.role === "easy");
@@ -1799,7 +1824,7 @@ export function blockPlan(args: {
     const easyShare = easies.length ? (remaining * 0.55) / easies.length : 0;
     const units: PlannedUnit[] = picks.map((p) => {
       const tgt = p.role === "long" ? Math.round(longShare) : p.role === "easy" ? Math.round(easyShare) : 0;
-      return { type: p.tpl.sessionType, targetTss: tgt, role: p.role, ref: { tpl: p.tpl, progress, targetTss: tgt, emph: p.emph }, pair: p.pair };
+      return { type: p.tpl.sessionType, targetTss: tgt, role: p.role, ref: { tpl: p.tpl, progress, ctlProgress, targetTss: tgt, emph: p.emph }, pair: p.pair };
     });
 
     // Auf Wochentage verteilen + je Einheit rendern.
@@ -1826,11 +1851,11 @@ export function blockPlan(args: {
 
     // Render-Closure (eine Quelle für Erst-Render + km-Angleichung): Einheit → konkrete Session bei gegebener Ziel-TSS.
     const renderUnit = (su: typeof scheduled[number], tss: number): ConcreteSession => {
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number } | undefined;
       const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
       // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
-      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
-      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
+      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
+      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
       return concretizeSession(su.type, tss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
     };
     const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
@@ -1876,10 +1901,12 @@ export function blockPlan(args: {
     const EMPH_LABEL_DE: Record<string, string> = { lt1: "LT1", schwelle: "Schwelle (LT2)", vo2: "VO2max", berg: "Berg", norwegian: "Norwegian", fartlek: "Fartlek" };
     for (const r of rendered) {
       const { su, c } = r;
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number; emph?: boolean } | undefined;
-      // v1.7.0: Intention (Template + Progression + tatsächliche Ziel-TSS nach Angleich) für Live-Resolution speichern.
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number; emph?: boolean } | undefined;
+      // v1.7.0/v2.8.0: Intention (Template + Progression + ctlProgress + tatsächliche Ziel-TSS nach Angleich) für
+      // Live-Resolution speichern — ctlProgress muss hier persistiert werden, da resolvePlannedSession() später
+      // keine Season-Baseline kennt (nur die aktuelle CTL), also nicht selbst neu herleiten kann.
       const prescription = ref?.tpl
-        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, targetTss: r.baseTss }
+        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: r.baseTss }
         : null;
       const eTpl = su.downgrade ? undefined : ref?.tpl;
       const emphasisNote = eTpl && eTpl.family !== "Easy" && eTpl.id !== "strides" && eTpl.id !== "core_strength"

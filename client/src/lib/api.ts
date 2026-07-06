@@ -24,6 +24,22 @@ export interface MlFreshness { state: "fresh" | "stale" | "none" | "running"; ru
 export interface MlRun { id: number; kind: string; status: string; progress: number; error: string | null; input_hash: string | null; model_version: string | null; engine: string | null; finished_at: string | null; created_at: string; }
 export interface MlStatus { freshness: MlFreshness; latest: MlRun | null; }
 export interface MlLatentPoint { date: string; value: number; sd: number; }
+export interface MlIndicator { date: string; value: number; kind: "eff_vo2max" | "race_vdot" | "lab_vo2max"; weight: number; }
+// v2.8.0 (Item 2): retrospektive Fitness-Sprung-Fenster (Fortschritt/Rückschritt, symmetrisch) + Kontext.
+export interface GainWindowContext {
+  sleepH: number | null; hrv: number | null; restingHr: number | null; recovery: number | null;
+  energy: number | null; mood: number | null; stress: number | null; motivation: number | null;
+  alcohol: number | null; caffeine: number | null; hydration: number | null; fueling: number | null;
+  nDays: number; nActivities: number;
+}
+export interface GainWindowZoneMix { z1: number; z2: number; z3: number; z1Min: number; z2Min: number; z3Min: number }
+export interface GainWindow {
+  breakDate: string; direction: "gain" | "setback"; effectSize: number; deltaLatent: number;
+  beforeMean: number; afterMean: number; beforeStart: string; afterEnd: string;
+  contextStart: string; contextEnd: string;
+  confound: string | null; healthFlags: MlHealthFlag[]; phases: string[];
+  zoneMix: GainWindowZoneMix | null; polarizationIndex: number | null; context: GainWindowContext;
+}
 export interface MlEffect { channel: string; target: string; gain_mean: number | null; ci_low: number | null; ci_high: number | null; n_blocks: number | null; collinearity_flag: number; mcid_pass: number; confidence: string; p_boot: number | null; q_fdr: number | null; e_value: number | null; e_value_ci: number | null; fdr_survive: number; posterior_mean?: number | null; hdi_low?: number | null; hdi_high?: number | null; p_positive?: number | null; bayes_engine?: string | null; tau_weeks?: number | null; half_life_weeks?: number | null; }
 export interface MlVerdict { kind: "ranked" | "null" | "insufficient"; text: string; ranking?: string[]; }
 export interface MlLadderStep { count: number; channels: string[]; identifiable: boolean; reason: string; maxVif: number; sparseChannels: string[]; }
@@ -32,7 +48,8 @@ export interface MlWhatIfPoint { w: number; mean: number; lo: number; hi: number
 export interface MlWhatIf { block_weeks: number; horizon_weeks: number; peak_week: number; peak_delta: number; peak_low: number; peak_high: number; trajectory: MlWhatIfPoint[] }
 export interface MlBayesChannel { channel: string; mean: number; sd: number; hdi_low: number; hdi_high: number; p_positive: number; tau_weeks?: number | null; half_life_weeks?: number | null; whatif?: MlWhatIf | null }
 export interface MlBayesResult { method: string; n_weeks: number; channels: MlBayesChannel[] }
-export interface MlEffectsMeta { activeCount: number; ladder: MlLadderStep[]; channels: string[]; auto?: boolean; start?: number; changepoints?: string[]; exploratory?: { hypotheses: MlHypothesis[]; note: string }; verdict: { mediator: MlVerdict; composition: MlVerdict }; bayes?: MlBayesResult | null; bayesEngine?: string | null; }
+export interface MlFitDiagnostics { maxVif: number; nWeeks: number; lambda: number; bootReps: number; }
+export interface MlEffectsMeta { activeCount: number; ladder: MlLadderStep[]; channels: string[]; auto?: boolean; start?: number; changepoints?: string[]; exploratory?: { hypotheses: MlHypothesis[]; note: string }; verdict: { mediator: MlVerdict; composition: MlVerdict }; bayes?: MlBayesResult | null; bayesEngine?: string | null; diagnostics?: { mediator: MlFitDiagnostics; composition: MlFitDiagnostics }; }
 export interface MlEffects { runId: number | null; finishedAt: string | null; meta: MlEffectsMeta | null; mediator: MlEffect[]; composition: MlEffect[]; }
 // Synthese „Was hilft dir?" (Zeile 39)
 export interface VerdictFinding { key: string; label: string; effect: number | null; unit: string; betterWhenNegative: boolean; ciLow: number | null; ciHigh: number | null; confidence: string; practical: boolean; direction: "hilft" | "neutral" | "kostet"; causalProven: boolean; halfLifeWeeks?: number | null; pBetter?: number | null; nBlocks?: number | null; }
@@ -45,14 +62,33 @@ export interface MethodBayesAxis { engine: string; findings: VerdictFinding[]; }
 export interface MethodBayesResult { regime?: MethodBayesAxis; emphasis?: MethodBayesAxis; }
 // F3: Regime/Schwerpunkt-Dosis-Wirkung auf die latente Fitness (höher β = baut mehr Fitness)
 export interface RegimeLatentCell { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null; }
-export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; }
-export type MlKindName = "latent_fitness" | "dose_response" | "readiness" | "banister";
+export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; labels?: string[]; X?: number[][]; total?: number[]; y?: number[]; dates?: string[]; }
+export type MlKindName = "latent_fitness" | "dose_response" | "readiness" | "banister" | "research_shap";
 export interface MlReadinessPoint { date: string; value: number; sd: number; }
 export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
 export interface MlReadiness { runId: number | null; finishedAt: string | null; meta: { insufficient?: boolean; nDays?: number; drivers?: string[]; disclaimer?: string; bmi?: number | null } | null; points: MlReadinessPoint[]; flags: MlHealthFlag[]; }
 export interface MlBanisterTrajPoint { d: number; mean: number; lo: number; hi: number; }
 export interface MlBanisterResult { method: string; fit_tau: boolean; coverage_ok: boolean; n_obs: number; k1: number; k2: number; k1_low: number; k1_high: number; k2_low: number; k2_high: number; tau1: number; tau2: number; ratio: number; taper_days: number; peak_day: number; peak_gain: number; peak_low: number; peak_high: number; peak_gain_disp: number; scale_perf: number; trajectory: MlBanisterTrajPoint[]; reasons: string[]; }
 export interface MlBanister { run: MlRun | null; result: MlBanisterResult | null; engine: string | null; insufficient: boolean; }
+// v2.8.0 (Item 3): Research-Mode (LightGBM+SHAP) — reine Elaboration/Hypothesen, nie Verdikt.
+export interface ResearchShapSufficiency { ok: boolean; weeks: number; feedbackCount: number; minWeeks: number; minFeedback: number; }
+export interface ResearchLocalPoint { date: string | null; prediction: number; shap: Record<string, number>; }
+export interface ResearchGlobalImportance { feature: string; importance: number; }
+export interface MlResearchShap {
+  enabled: boolean;
+  run?: MlRun | null;
+  available?: boolean;
+  engine?: string | null;
+  insufficient?: boolean;
+  sufficiency?: ResearchShapSufficiency;
+  nWeeks?: number;
+  cvR2?: number | null;
+  plausible?: boolean;
+  baseValue?: number | null;
+  featureNames?: string[];
+  globalImportance?: ResearchGlobalImportance[];
+  local?: ResearchLocalPoint[];
+}
 export type MlAuditStatus = "pass" | "warn" | "fail" | "info";
 export interface MlAuditCheck { key: string; label: string; status: MlAuditStatus; message: string; detail?: string; evidence?: Record<string, unknown>; }
 export interface MlAdversarialAudit {
@@ -418,7 +454,7 @@ export interface PacingResult {
 }
 
 // v1.4.0 (A5) — Block-/Mesoplaner: konkrete Tage + Wochen-Zusammenfassungen.
-export interface Prescription { templateId: string; progress: number; targetTss: number }
+export interface Prescription { templateId: string; progress: number; ctlProgress?: number; targetTss: number }
 export interface BlockDay {
   date: string; weekdayIdx: number; type: string; isSecond: boolean;
   planned_min: number; planned_tss: number; description: string;
@@ -742,8 +778,11 @@ export const api = {
   mlProgress: (runId: number) => j<{ id: number; status: string; progress: number; error: string | null }>(`/api/ml/progress?runId=${runId}`),
   mlStatus: (kind?: MlKindName) => j<MlStatus>(`/api/ml/status${kind ? `?kind=${kind}` : ""}`),
   mlLatentFitness: () => j<MlLatentPoint[]>("/api/ml/latent-fitness"),
+  mlLatentFitnessSources: () => j<MlIndicator[]>("/api/ml/latent-fitness/sources"),
+  mlFitnessGainWindows: () => j<{ windows: GainWindow[] }>("/api/ml/fitness-gain-windows"),
   mlEffects: () => j<MlEffects>("/api/ml/effects"),
   mlBanister: () => j<MlBanister>("/api/ml/banister"),
+  mlResearchShap: () => j<MlResearchShap>("/api/ml/research-shap"),
   mlTrainingVerdict: () => j<TrainingVerdict>("/api/ml/training-verdict"),
   mlMethodBayes: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`, { method: "POST" }),
   mlRegimeLatent: (axis: "regime" | "emphasis") => j<RegimeLatentResult>(`/api/ml/regime-latent?axis=${axis}`),

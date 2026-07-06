@@ -24,6 +24,8 @@ import Intro from "./components/Intro.tsx";
 import PbWatcher from "./components/PbWatcher.tsx";
 import AchievementWatcher from "./components/AchievementWatcher.tsx";
 import KonamiLab from "./components/KonamiLab.tsx";
+import NerdKeybind from "./components/NerdKeybind.tsx";
+import NerdPage from "./pages/NerdPage.tsx";
 import { applyTheme, getThemePref, setThemePref, type ThemePref } from "./lib/theme.ts";
 import { motionEnabled, getMotionPref, setMotionPref } from "./lib/motion.ts";
 import { useSparkPref, setSparkPref } from "./lib/sparkPref.ts";
@@ -133,6 +135,8 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/options" element={<OptionsConfig />} />
+            {/* v2.8.0 (Item 4): versteckte Nerd-Seite — bewusst NICHT in NAV_GROUPS gelistet, nur per Tastenkombi erreichbar. */}
+            <Route path="/nerd" element={<NerdPage />} />
           </Routes>
         </div>
         <footer className="footer no-print">
@@ -147,6 +151,7 @@ export default function App() {
       <PbWatcher />
       <AchievementWatcher />
       <KonamiLab />
+      <NerdKeybind />
       <Intro />
     </div>
     </PageActionsProvider>

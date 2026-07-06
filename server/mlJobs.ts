@@ -14,6 +14,7 @@ import {
   type RaceLite,
   type LabLite,
   type ChannelCount,
+  type Indicator,
 } from "./ml/featureBackbone.ts";
 import { fitLatentFitness, type LatentPoint } from "./ml/latentFitness.ts";
 import { buildBanisterPayload, runBanisterTs, type BanisterResult } from "./ml/banister.ts";
@@ -35,7 +36,7 @@ import {
   type Block,
 } from "./ml/prospective.ts";
 
-export type MlKind = "latent_fitness" | "dose_response" | "readiness" | "banister";
+export type MlKind = "latent_fitness" | "dose_response" | "readiness" | "banister" | "research_shap";
 const MODEL_VERSION = "0.7.1"; // Banister F−F: Taper-Sim auf Tagesraster (renntag-genau); invalidiert Wochen-Läufe
 // — Bump nötig, da alte Läufe keine Composition-Posteriors haben. (VIF-Reserve autoVifThreshold=6 kam ohne eigenen Bump.)
 const SEED = 42;
@@ -114,6 +115,16 @@ function channelAutoFor(profileId: number): boolean {
 
 /** Eingabe-Hash je Lauf-Art (Idempotenz/Frische). Readiness hängt an den Wellness-Daten, nicht an Indikatoren. */
 function runHash(kind: MlKind, profileId: number): string {
+  if (kind === "research_shap") {
+    // v2.8.0 (Item 3): Fingerprint aus denselben Indikatoren (Aktivitäten/Rennen/Labor) PLUS session_feedback_v2
+    // (RPE/felt_vs_expected — die neue Feature-Quelle) — ändert sich eine der beiden, invalidiert das den Cache.
+    const { inds } = loadIndicators(profileId);
+    const fb = db.prepare("SELECT activity_id, rpe, felt_vs_expected FROM session_feedback_v2 WHERE profile_id=? ORDER BY activity_id").all(profileId) as { activity_id: number | null; rpe: number | null; felt_vs_expected: number | null }[];
+    const s = fb.map((f) => `${f.activity_id}:${f.rpe ?? ""}:${f.felt_vs_expected ?? ""}`).join(";");
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return inputHash(inds) + ":fb" + (h >>> 0).toString(16);
+  }
   if (kind !== "readiness") {
     const { inds } = loadIndicators(profileId);
     return inputHash(inds) + (kind === "dose_response" ? `:c${channelCountFor(profileId)}:a${channelAutoFor(profileId) ? 1 : 0}` : "");
@@ -177,6 +188,93 @@ function buildDoseDesign(acts: ActivityLite[], latent: LatentPoint[], count: Cha
     out.push({ date: r.date, outcome: o, ctl: r.ctl, total: r.total, weight: Math.pow(0.5, (lastT - Date.parse(r.date)) / HALF_LIFE_MS) });
   }
   return out;
+}
+
+// v2.8.0 (Item 3, Research-Mode): dieselbe Wochen-Kanal-CTL wie buildDoseDesign (3-Kanal-Basis: aerob/threshold/
+// vo2 — Koljas „Kernfrage" long/aerob vs. Schwelle vs. VO2max) + neue Session-Feedback-Features (RPE, gefühlt-vs-
+// erwartet, Readiness, Interaktion VO2-Wochenlast×Readiness) für das nichtlineare LightGBM+SHAP-Modell. Outcome
+// bleibt UNVERÄNDERT die latente Fitness am Wochenpunkt (wie im linearen Dosis-Modell) — reine Feature-Erweiterung,
+// keine neue Zielgröße.
+export interface ResearchRow {
+  date: string;
+  outcome: number;
+  aerob: number;
+  threshold: number;
+  vo2: number;
+  total: number;
+  rpeMean: number | null;
+  feltMean: number | null;
+  readinessMean: number | null;
+  vo2XReadiness: number | null;
+  weight: number;
+}
+export const RESEARCH_FEATURE_NAMES = ["aerob", "threshold", "vo2", "total", "rpe_mean", "felt_mean", "readiness_mean", "vo2_x_readiness"] as const;
+function buildResearchShapDesign(
+  acts: ActivityLite[],
+  latent: LatentPoint[],
+  daily: (HealthDaily & { recovery?: number | null })[],
+  feedback: { date: string; rpe: number | null; felt_vs_expected: number | null }[],
+): ResearchRow[] {
+  const base = buildDoseDesign(acts, latent, 3);
+  if (!base.length) return [];
+  const readT = computeReadiness(daily).points.map((p) => ({ t: Date.parse(p.date), v: p.value }));
+  const dailyArr = [...dailyChannelLoads(acts, 3).entries()].map(([d, rec]) => ({ t: Date.parse(d), rec }));
+  const fbT = feedback.map((f) => ({ t: Date.parse(f.date), rpe: f.rpe, felt: f.felt_vs_expected }));
+  const mean = (xs: number[]): number | null => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
+  const out: ResearchRow[] = [];
+  for (const r of base) {
+    const end = Date.parse(r.date);
+    const start = end - 7 * 86_400_000;
+    const rpeMean = mean(fbT.filter((f) => f.t > start && f.t <= end && f.rpe != null).map((f) => f.rpe as number));
+    const feltMean = mean(fbT.filter((f) => f.t > start && f.t <= end && f.felt != null).map((f) => f.felt as number));
+    const readinessMean = mean(readT.filter((p) => p.t > start && p.t <= end).map((p) => p.v));
+    let vo2Weekly = 0;
+    for (const { t, rec } of dailyArr) if (t > start && t <= end) vo2Weekly += rec.vo2 ?? 0;
+    out.push({
+      date: r.date,
+      outcome: r.outcome,
+      aerob: r.ctl.aerob ?? 0,
+      threshold: r.ctl.threshold ?? 0,
+      vo2: r.ctl.vo2 ?? 0,
+      total: r.total,
+      rpeMean,
+      feltMean,
+      readinessMean,
+      vo2XReadiness: readinessMean != null ? vo2Weekly * readinessMean : null,
+      weight: r.weight,
+    });
+  }
+  return out;
+}
+
+// Mindest-Datenmenge (Kolja-Entscheidung, Item 3 Punkt 4): unter der Schwelle zeigt die UI einen ehrlichen Hinweis
+// statt eines deaktivierten Buttons — 26 Wochen ≈ ein halbes Trainingsjahr (genug Wochen-Punkte fürs Baum-Modell),
+// 15 Feedback-Einträge, damit RPE/gefühlt-vs-erwartet nicht nur aus 1-2 Zufallswerten bestehen.
+const RESEARCH_MIN_WEEKS = 26;
+const RESEARCH_MIN_FEEDBACK = 15;
+export interface ResearchShapSufficiency { ok: boolean; weeks: number; feedbackCount: number; minWeeks: number; minFeedback: number }
+export function researchShapSufficiency(profileId: number): ResearchShapSufficiency {
+  const { acts, inds } = loadIndicators(profileId);
+  const fit = fitLatentFitness(inds);
+  const weeks = fit ? buildDoseDesign(acts, fit.points, 3).length : 0;
+  const fb = db
+    .prepare("SELECT COUNT(*) n FROM session_feedback_v2 WHERE profile_id=? AND (rpe IS NOT NULL OR felt_vs_expected IS NOT NULL)")
+    .get(profileId) as { n: number };
+  return { ok: weeks >= RESEARCH_MIN_WEEKS && fb.n >= RESEARCH_MIN_FEEDBACK, weeks, feedbackCount: fb.n, minWeeks: RESEARCH_MIN_WEEKS, minFeedback: RESEARCH_MIN_FEEDBACK };
+}
+
+export interface ResearchLocalPoint { date: string | null; prediction: number; shap: Record<string, number> }
+export interface ResearchShapPyResult {
+  n_weeks: number;
+  cv_r2: number | null;
+  plausible: boolean;
+  base_value: number;
+  global_importance: { feature: string; mean_abs_shap: number }[];
+  local: ResearchLocalPoint[];
+}
+function persistResearchShap(runId: number, profileId: number, globalImportance: { feature: string; mean_abs_shap: number }[]): void {
+  const ins = db.prepare("INSERT INTO ml_research_shap(run_id, profile_id, feature, importance_global, created_at) VALUES(?,?,?,?,?)");
+  for (const g of globalImportance) ins.run(runId, profileId, g.feature, g.mean_abs_shap, nowIso());
 }
 
 function persistEffects(runId: number, profileId: number, model: DoseModelResult): void {
@@ -250,10 +348,18 @@ async function runBayesDose(acts: ActivityLite[], count: ChannelCount, design: D
 // legitim langer, aber lebendiger Bayes-Lauf nie mitten in der Rechnung abgeräumt; abgeräumt werden nur echte
 // Leichen (Crash/Server-Neustart während setImmediate), die sonst die „rechnet…"-Pille ewig blau lassen.
 const STALE_RUN_MS = 20 * 60_000;
+// v2.8.0 (Item 3): research_shap darf Stunden laufen (Kolja: „lange rechnen lassen" statt an einem Timeout
+// zerschneiden) — braucht deshalb einen EIGENEN, viel größeren Stale-Schwellenwert. Ein globales Anheben von
+// STALE_RUN_MS hätte auch die schnellen Kinds (latent_fitness/dose_response/readiness/banister) betroffen und
+// echte Prozess-Leichen dort viel zu spät aufgeräumt — deshalb pro Kind, nicht global.
+const STALE_RUN_MS_RESEARCH = 6 * 60 * 60_000; // 6 Stunden
 export function reapStaleRuns(profileId: number): void {
-  const cutoff = new Date(Date.now() - STALE_RUN_MS).toISOString();
-  db.prepare("UPDATE ml_runs SET status='failed', error='stale (timeout, aufgeräumt)', finished_at=? WHERE profile_id=? AND status='running' AND started_at < ?")
-    .run(nowIso(), profileId, cutoff);
+  const cutoffNormal = new Date(Date.now() - STALE_RUN_MS).toISOString();
+  const cutoffResearch = new Date(Date.now() - STALE_RUN_MS_RESEARCH).toISOString();
+  db.prepare("UPDATE ml_runs SET status='failed', error='stale (timeout, aufgeräumt)', finished_at=? WHERE profile_id=? AND status='running' AND kind!='research_shap' AND started_at < ?")
+    .run(nowIso(), profileId, cutoffNormal);
+  db.prepare("UPDATE ml_runs SET status='failed', error='stale (timeout, aufgeräumt)', finished_at=? WHERE profile_id=? AND status='running' AND kind='research_shap' AND started_at < ?")
+    .run(nowIso(), profileId, cutoffResearch);
 }
 
 export function startRun(kind: MlKind, profileId: number): { runId: number; reused?: boolean } {
@@ -327,6 +433,9 @@ async function runJob(runId: number, kind: MlKind, profileId: number): Promise<v
           bayes: bayesMed.result,        // Mediator-Posteriors je Kanal (inkl. Was-wäre-wenn) — B1 macht Bayes primär
           bayesEngine: bayesMed.engine,  // "python" | "ts"
           bayesCompositionEngine: bayesComp.engine,
+          // v2.8.0 (Item 4, Nerd-Seite Panel L3): VIF/λ/Bootstrap-Reps waren schon Teil des Fit-Ergebnisses,
+          // bisher aber nicht in die persistierte Meta übernommen — reine Sichtbarkeit, keine neue Berechnung.
+          diagnostics: { mediator: res.mediator.diagnostics, composition: res.composition.diagnostics },
         };
         db.prepare("UPDATE ml_runs SET settings_json=?, engine=? WHERE id=?").run(JSON.stringify(meta), bayesMed.engine, runId);
         db.exec("COMMIT");
@@ -381,6 +490,57 @@ async function runJob(runId: number, kind: MlKind, profileId: number): Promise<v
         engine,
         runId,
       );
+    } else if (kind === "research_shap") {
+      // v2.8.0 (Item 3): Python-only (LightGBM+SHAP) — KEIN TS-Fallback (Kolja: „Alles-oder-nichts"). Läuft
+      // mehrere Stunden (Timeout weit über dem STALE_RUN_MS_RESEARCH-Backstop), Fortschritt bleibt grob.
+      setProgress(runId, 0.05);
+      const suff = researchShapSufficiency(profileId);
+      if (!suff.ok) {
+        db.prepare("UPDATE ml_runs SET settings_json=? WHERE id=?").run(JSON.stringify({ insufficient: true, ...suff }), runId);
+      } else {
+        const daily = loadDailyWellness(profileId);
+        const feedback = db
+          .prepare("SELECT date, rpe, felt_vs_expected FROM session_feedback_v2 WHERE profile_id=? ORDER BY date")
+          .all(profileId) as { date: string; rpe: number | null; felt_vs_expected: number | null }[];
+        const rows = buildResearchShapDesign(acts, fit ? fit.points : [], daily, feedback);
+        setProgress(runId, 0.15);
+        const payload = {
+          feature_names: RESEARCH_FEATURE_NAMES,
+          dates: rows.map((r) => r.date),
+          X: rows.map((r) => [r.aerob, r.threshold, r.vo2, r.total, r.rpeMean, r.feltMean, r.readinessMean, r.vo2XReadiness]),
+          y: rows.map((r) => r.outcome),
+          weight: rows.map((r) => r.weight),
+        };
+        const { engine, result } = await runWithFallback<ResearchShapPyResult | null>(
+          { kind: "research_shap", payload },
+          () => null,
+          { timeoutMs: 4 * 60 * 60_000 }, // 4h — unter dem 6h-Stale-Backstop (STALE_RUN_MS_RESEARCH)
+        );
+        setProgress(runId, 0.9);
+        db.exec("BEGIN");
+        try {
+          if (result) persistResearchShap(runId, profileId, result.global_importance);
+          db.prepare("UPDATE ml_runs SET settings_json=?, engine=? WHERE id=?").run(
+            JSON.stringify({
+              insufficient: false,
+              available: !!result,
+              engine,
+              nWeeks: result?.n_weeks ?? rows.length,
+              cvR2: result?.cv_r2 ?? null,
+              plausible: result?.plausible ?? false,
+              baseValue: result?.base_value ?? null,
+              featureNames: RESEARCH_FEATURE_NAMES,
+              local: result?.local ?? [],
+            }),
+            engine,
+            runId,
+          );
+          db.exec("COMMIT");
+        } catch (e) {
+          db.exec("ROLLBACK");
+          throw e;
+        }
+      }
     }
 
     db.prepare("UPDATE ml_runs SET status='done', progress=1, finished_at=? WHERE id=?").run(nowIso(), runId);
@@ -414,6 +574,57 @@ export function getBanister(profileId: number): BanisterView {
   }
 }
 
+export interface ResearchShapView {
+  run: RunRow | null;
+  available: boolean;
+  engine: string | null;
+  insufficient: boolean;
+  sufficiency: ResearchShapSufficiency;
+  nWeeks: number;
+  cvR2: number | null;
+  plausible: boolean;
+  baseValue: number | null;
+  featureNames: readonly string[];
+  globalImportance: { feature: string; importance: number }[];
+  local: ResearchLocalPoint[];
+}
+/**
+ * v2.8.0 (Item 3): liest das zum aktuellen Fingerprint passende Research-SHAP-Ergebnis. `sufficiency` wird IMMER
+ * frisch berechnet (nicht aus dem Lauf gelesen) — so zeigt die UI den ehrlichen „noch zu wenig Daten"-Hinweis
+ * auch, BEVOR je ein Lauf gestartet wurde (Kolja: kein stummer deaktivierter Button).
+ */
+export function getResearchShap(profileId: number): ResearchShapView {
+  const sufficiency = researchShapSufficiency(profileId);
+  const run = matchingDoneRun(profileId, "research_shap");
+  const empty = { run, available: false, engine: run?.engine ?? null, insufficient: !sufficiency.ok, sufficiency, nWeeks: 0, cvR2: null, plausible: false, baseValue: null, featureNames: RESEARCH_FEATURE_NAMES, globalImportance: [], local: [] };
+  if (!run?.settings_json) return empty;
+  try {
+    const s = JSON.parse(run.settings_json) as {
+      insufficient?: boolean; available?: boolean; engine?: string; nWeeks?: number; cvR2?: number | null;
+      plausible?: boolean; baseValue?: number | null; featureNames?: string[]; local?: ResearchLocalPoint[];
+    };
+    const globalRows = db
+      .prepare("SELECT feature, importance_global FROM ml_research_shap WHERE run_id=? ORDER BY importance_global DESC")
+      .all(run.id) as { feature: string; importance_global: number }[];
+    return {
+      run,
+      available: !!s.available,
+      engine: s.engine ?? run.engine,
+      insufficient: !!s.insufficient || !sufficiency.ok,
+      sufficiency,
+      nWeeks: s.nWeeks ?? 0,
+      cvR2: s.cvR2 ?? null,
+      plausible: !!s.plausible,
+      baseValue: s.baseValue ?? null,
+      featureNames: (s.featureNames as readonly string[] | undefined) ?? RESEARCH_FEATURE_NAMES,
+      globalImportance: globalRows.map((r) => ({ feature: r.feature, importance: r.importance_global })),
+      local: s.local ?? [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export interface Freshness {
   state: "fresh" | "stale" | "none" | "running";
   runId: number | null;
@@ -442,6 +653,15 @@ export interface LatentPointRow {
 }
 export function getLatentFitness(profileId: number): LatentPointRow[] {
   return db.prepare("SELECT date, value, sd FROM ml_latent_fitness WHERE profile_id=? ORDER BY date").all(profileId) as unknown as LatentPointRow[];
+}
+
+/**
+ * v2.8.0 (Item 4, Nerd-Seite Panel L2): die rohen Komposit-Indikatoren (Labor-VO2max/Race-VDOT/eff. VO2max) VOR
+ * der Kalman-Fusion — dieselbe Berechnung wie `loadIndicators()` beim echten L2-Lauf, hier nur zur Anzeige
+ * (kein Fit, keine Persistenz). Zeigt, welche Rohpunkte die geglättete Kurve tatsächlich speisen.
+ */
+export function getLatentFitnessSources(profileId: number): Indicator[] {
+  return loadIndicators(profileId).inds;
 }
 
 /**

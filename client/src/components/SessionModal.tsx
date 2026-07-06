@@ -183,4 +183,4 @@ const overlay: CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(20,28,44,0.45)", display: "flex",
   alignItems: "flex-start", justifyContent: "center", padding: "8vh 16px", zIndex: 50,
 };
-const modal: CSSProperties = { width: 660, maxWidth: "100%", marginBottom: 0 };
+const modal: CSSProperties = { width: 660, maxWidth: "100%", marginBottom: 0, maxHeight: "84vh", overflowY: "auto" };

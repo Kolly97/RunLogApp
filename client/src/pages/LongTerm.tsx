@@ -28,6 +28,7 @@ import SleepWindow from "../charts/SleepWindow.tsx";
 import ChartDecor from "../charts/ChartDecor.tsx";
 import SeasonProgress, { buildSeasonRows, type SeasonRow } from "../charts/SeasonProgress.tsx";
 import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
+import FitnessGainWindowsCard from "../components/FitnessGainWindowsCard.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -828,6 +829,11 @@ export default function LongTerm() {
         </div>
         )}</EgItem>
       )}
+
+      {/* v2.8.0 (Item 2): retrospektive Fitness-Sprung-Erkennung — wann Fortschritt/Rückschritt + Kontext davor. */}
+      <EgItem id="fitness-gain-windows" title={t("lt.block.gainwindows.title", "Fitness-Sprünge")} defaultSpan={12} defaultHeight={320}>{() => (
+        <FitnessGainWindowsCard />
+      )}</EgItem>
       </EditableGrid>
     </div>
   );

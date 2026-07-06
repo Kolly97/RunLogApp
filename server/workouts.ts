@@ -54,7 +54,7 @@ export interface WorkoutTemplate {
   restSec?: number; restType?: "jog" | "stand";
   repsByFitness?: { low: [number, number]; mid: [number, number]; high: [number, number] };
   segments?: WorkoutSegment[];             // v1.8.0: mehrsegmentig (Ladder/Cut-down/Mixed/Float)
-  setsByFitness?: { low: number; mid: number; high: number }; // wie oft die Segment-Liste wiederholt wird
+  setsByFitness?: { low: [number, number]; mid: [number, number]; high: [number, number] }; // v2.8.0: Band (wie repsByFitness) — wie oft die Segment-Liste wiederholt wird
   structure?: SegNode[];                   // v1.12.0: frei verschachtelte Struktur (eigene Einheiten); vorhanden ⇒ neuer Render-Pfad
   synergy: string;
   lit: string;
@@ -81,9 +81,9 @@ export const WORKOUT_LIBRARY: WorkoutTemplate[] = [
   { id: "norw_short_reps", family: "LT2", sessionType: "Threshold", name: "Sub-Threshold 6'-Reps", purpose: "kontrolliertes Schwellen-Volumen", phases: ["belast"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 3, repSec: 360, restSec: 60, restType: "jog", repsByFitness: RB([4, 4], [5, 5], [5, 6]), synergy: "AM-Hälfte einer Doppel-Schwelle", lit: "Bakken" },
   { id: "norw_pm_400s", family: "LT2", sessionType: "Threshold", name: "Sub-Threshold 400er (PM)", purpose: "PM-Hälfte einer Doppel-Schwelle — reduziertes 400er-Volumen", phases: ["belast"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 3, repDist_m: 400, restSec: 40, restType: "jog", repsByFitness: RB([8, 8], [9, 10], [10, 12]), synergy: "PM-Hälfte einer Doppel-Schwelle (nach 6'-Reps am Morgen)", lit: "Bakken/Casado 2023" },
   // v1.8.0 Coach-Variation: gemischte Distanzen statt monotoner gleicher Reps.
-  { id: "lt2_ladder", family: "LT2", sessionType: "Threshold", name: "Schwellen-Ladder", purpose: "Schwellen-Spektrum über fallende Distanzen — Tempogefühl + Volumen", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 75, restType: "jog", segments: [{ dist_m: 2000 }, { dist_m: 1000 }, { dist_m: 600 }, { dist_m: 400 }], setsByFitness: { low: 1, mid: 1, high: 2 }, synergy: "Build/Specific-Variante zu Cruise; abwechslungsreich", lit: "Daniels/Coach-Praxis" },
-  { id: "lt2_cutdown", family: "LT2", sessionType: "Threshold", name: "Cut-down 1000er", purpose: "progressiv schneller — Pacing-Gefühl + Schluss-Härte", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 75, restType: "jog", segments: [{ dist_m: 1000, paceOffset: 4 }, { dist_m: 1000, paceOffset: 0 }, { dist_m: 1000, paceOffset: -4 }, { dist_m: 1000, paceOffset: -8 }, { dist_m: 1000, paceOffset: -12 }], setsByFitness: { low: 1, mid: 1, high: 1 }, synergy: "Specific-Schärfung; startet sub-T, endet ~Renntempo", lit: "Coach-Praxis (cut-down)" },
-  { id: "lt2_mixed", family: "LT2", sessionType: "Threshold", name: "Mixed 1000+400", purpose: "Schwelle + Schnelligkeit kombiniert — Renn-Härte", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 60, restType: "jog", segments: [{ dist_m: 1000, label: "Schwelle" }, { dist_m: 400, paceOffset: -10, restSec: 90, label: "flott" }], setsByFitness: { low: 3, mid: 4, high: 5 }, synergy: "Build/Specific; bricht die Monotonie der 1000er", lit: "Coach-Praxis" },
+  { id: "lt2_ladder", family: "LT2", sessionType: "Threshold", name: "Schwellen-Ladder", purpose: "Schwellen-Spektrum über fallende Distanzen — Tempogefühl + Volumen", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 75, restType: "jog", segments: [{ dist_m: 2000 }, { dist_m: 1000 }, { dist_m: 600 }, { dist_m: 400 }], setsByFitness: RB([1, 1], [1, 1], [1, 2]), synergy: "Build/Specific-Variante zu Cruise; abwechslungsreich", lit: "Daniels/Coach-Praxis" },
+  { id: "lt2_cutdown", family: "LT2", sessionType: "Threshold", name: "Cut-down 1000er", purpose: "progressiv schneller — Pacing-Gefühl + Schluss-Härte", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 75, restType: "jog", segments: [{ dist_m: 1000, paceOffset: 4 }, { dist_m: 1000, paceOffset: 0 }, { dist_m: 1000, paceOffset: -4 }, { dist_m: 1000, paceOffset: -8 }, { dist_m: 1000, paceOffset: -12 }], setsByFitness: RB([1, 1], [1, 1], [1, 1]), synergy: "Specific-Schärfung; startet sub-T, endet ~Renntempo", lit: "Coach-Praxis (cut-down)" },
+  { id: "lt2_mixed", family: "LT2", sessionType: "Threshold", name: "Mixed 1000+400", purpose: "Schwelle + Schnelligkeit kombiniert — Renn-Härte", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 4, restSec: 60, restType: "jog", segments: [{ dist_m: 1000, label: "Schwelle" }, { dist_m: 400, paceOffset: -10, restSec: 90, label: "flott" }], setsByFitness: RB([3, 3], [3, 4], [4, 5]), synergy: "Build/Specific; bricht die Monotonie der 1000er", lit: "Coach-Praxis" },
   { id: "lt2_broken_tempo", family: "LT2", sessionType: "Threshold", name: "Gebrochener Tempolauf", purpose: "Schwellen-Dauer in Blöcken — mehr Volumen bei kontrolliertem Laktat", phases: ["belast", "specific"], effort: 4, kind: "intervals", workZone: 4, anchor: "lt2", paceWindow: 3, repSec: 480, restSec: 90, restType: "jog", repsByFitness: RB([2, 3], [3, 3], [3, 4]), synergy: "ruhigere Alternative zu Cruise/1000ern", lit: "Daniels (T-Blöcke)" },
   { id: "norw_double", family: "LT2", sessionType: "Threshold", name: "Doppel-Schwelle (AM+PM)", purpose: "maximales sub-T-Volumen über zwei Einheiten/Tag", phases: ["belast"], effort: 4, kind: "double", workZone: 4, anchor: "lt2", paceWindow: 3, restSec: 50, restType: "jog", repsByFitness: RB([4, 8], [5, 10], [6, 12]), synergy: "nur bei Doubles & guter Fitness; nicht in derselben Woche wie VO2-Block", lit: "Ingebrigtsen/Bakken" },
 
@@ -110,8 +110,12 @@ export const WORKOUT_LIBRARY: WorkoutTemplate[] = [
   { id: "race_pace", family: "Race", sessionType: "Renntempo", name: "Renntempo-Intervalle", purpose: "Wettkampf-Spezifik (kurze Distanz, 5–10k)", phases: ["specific", "race"], effort: 5, kind: "intervals", workZone: 4, anchor: "race", paceWindow: 4, repDist_m: 1000, restSec: 90, restType: "jog", repsByFitness: RB([3, 4], [4, 5], [5, 6]), synergy: "Specific-Phase; ersetzt eine Schwelle", lit: "Casado 2022" },
   { id: "race_pace_long", family: "Race", sessionType: "Renntempo", name: "Renntempo-Blöcke (lang)", purpose: "Renntempo-Spezifik für HM/Marathon", phases: ["specific", "race"], effort: 4, kind: "intervals", workZone: 4, anchor: "race", paceWindow: 4, repDist_m: 2000, restSec: 90, restType: "jog", repsByFitness: RB([3, 3], [3, 4], [4, 5]), synergy: "HM/Marathon-Block; ersetzt VO2-Schärfung durch Renntempo-Volumen", lit: "Canova/Casado" },
   // v1.8.0 Coach-Variation: Renntempo-Float (Renntempo abwechselnd mit Schwellen-Float, kaum Pause).
-  { id: "race_mix", family: "Race", sessionType: "Renntempo", name: "Renntempo-Float", purpose: "Renntempo mit Schwellen-Float — spezifische Härte ohne Vollstopp", phases: ["specific", "race"], effort: 4, kind: "intervals", workZone: 4, anchor: "race", paceWindow: 4, restSec: 20, restType: "jog", segments: [{ dist_m: 1000, label: "Renntempo" }, { dist_m: 1000, paceOffset: 12, label: "Float" }], setsByFitness: { low: 2, mid: 3, high: 4 }, synergy: "HM/Marathon-Specific; Renntempo-Ausdauer", lit: "Canova (float)" },
+  { id: "race_mix", family: "Race", sessionType: "Renntempo", name: "Renntempo-Float", purpose: "Renntempo mit Schwellen-Float — spezifische Härte ohne Vollstopp", phases: ["specific", "race"], effort: 4, kind: "intervals", workZone: 4, anchor: "race", paceWindow: 4, restSec: 20, restType: "jog", segments: [{ dist_m: 1000, label: "Renntempo" }, { dist_m: 1000, paceOffset: 12, label: "Float" }], setsByFitness: RB([2, 2], [2, 3], [3, 4]), synergy: "HM/Marathon-Specific; Renntempo-Ausdauer", lit: "Canova (float)" },
   { id: "long_mp_segments", family: "Long", sessionType: "Long", name: "Longrun mit MP-Blöcken", purpose: "Marathon-Tempo unter Ermüdung, Glykogen-Ökonomie", phases: ["belast", "specific"], effort: 4, kind: "steady", workZone: 2, anchor: "race", paceWindow: 0, minMin: 90, maxMin: 150, synergy: "Marathon-Long-Slot; 2–3×15–20' @ Marathon-Pace im Longrun", lit: "Canova" },
+  // v2.8.0 (Item 1b): LT1-Pendant zu long_mp_segments — aerobe Schwelle statt Marathon-Pace, phases:[base,belast]
+  // (distanzübergreifend, nicht nur Marathon) → löst bei hoher Fitness (ctlProgress) die separate LT1-Steady-
+  // Einheit ab (Pfitzinger „medium-long run"/Canova-Prinzip: Qualität wandert mit steigender CTL in den Longrun).
+  { id: "long_lt1_segments", family: "Long", sessionType: "Long", name: "Longrun mit LT1-Blöcken", purpose: "aerobe Schwelle unter Ermüdung, Laufökonomie bei Ermüdung", phases: ["base", "belast"], effort: 3, kind: "steady", workZone: 2, anchor: "lt1", paceWindow: 0, minMin: 90, maxMin: 150, synergy: "LT1-Pendant zu long_mp_segments; ersetzt bei hoher Fitness die separate Steady-Einheit", lit: "Pfitzinger/Canova" },
 
   // ---- Stabi/Core (v1.7.0) ----
   { id: "core_strength", family: "Core", sessionType: "Strength", name: "Stabi/Core", purpose: "Rumpf/Hüfte/Plyometrie — Verletzungsprävention + Laufökonomie", phases: ["base", "belast", "specific", "entlast", "race"], effort: 2, kind: "core", workZone: 1, anchor: null, paceWindow: 0, minMin: 15, maxMin: 30, synergy: "an Easy-Tage angehängt; belastet harte Tage nicht", lit: "Standard (Stärke/Plyo)" },
@@ -159,7 +163,34 @@ const rot = <T,>(arr: T[], i: number): T => arr[((i % arr.length) + arr.length) 
  * die Progression (Dosis) kommt über `progress` im Renderer. Doubles erzeugen einen Doppel-Schwellen-Tag.
  * `corePerWeek` hängt v1.7.0-Stabi/Core-Einheiten an (role „core", an Easy-Tage geplant).
  */
-export interface BlockPrefs { emphasis?: string | null; favoriteWorkouts?: string[]; avoidWorkouts?: string[] }
+export interface BlockPrefs {
+  emphasis?: string | null; favoriteWorkouts?: string[]; avoidWorkouts?: string[];
+  ctlProgress?: number; // v2.8.0 (Item 1b): steuert die LT1-Struktur-Progression (kontinuierlich→Reps→im Longrun)
+}
+
+// v2.8.0 (Item 1b): LT1-Struktur-Progression (Daniels „Cruise Intervals" / Pfitzinger „medium-long run" / Canova).
+// Greift NACH der Phasen-/Emphasis-Auswahl — eine Stelle für beide Integrationspunkte (Base-Default-Rotation UND
+// Schwerpunkt-Swap-Pool), egal woher die LT1-Einheit kommt.
+const LT1_SPLIT_THRESHOLD = 0.33; // ab hier: kontinuierlich (lt1_continuous) → Reps (lt1_long_reps, Cruise-Prinzip)
+const LT1_EMBED_THRESHOLD = 0.70; // ab hier: Reps → eingebettet in den Longrun (long_lt1_segments)
+function applyLt1Progression(picks: WorkoutPick[], ctlProgress: number): WorkoutPick[] {
+  const idx = picks.findIndex((p) => p.role === "quality" && (p.tpl.id === "lt1_continuous" || p.tpl.id === "lt1_long_reps"));
+  if (idx < 0) return picks;
+  if (ctlProgress >= LT1_EMBED_THRESHOLD && hasWk("long_lt1_segments")) {
+    const longIdx = picks.findIndex((p) => p.role === "long");
+    if (longIdx < 0) return picks; // kein Longrun-Slot diese Woche → nicht erzwingen
+    const next = [...picks];
+    next[longIdx] = { tpl: wk("long_lt1_segments"), role: "long" };
+    next[idx] = { tpl: wk("easy_ga1"), role: "easy" }; // Qualität ist jetzt im Longrun; Steady-Slot wird locker
+    return next;
+  }
+  if (ctlProgress >= LT1_SPLIT_THRESHOLD && picks[idx].tpl.id === "lt1_continuous") {
+    const next = [...picks];
+    next[idx] = { ...next[idx], tpl: wk("lt1_long_reps") };
+    return next;
+  }
+  return picks;
+}
 
 export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: number, fitness: FitnessLevel, allowDoubles: boolean, goalDistanceM: number | null = null, corePerWeek = 0, prefs?: BlockPrefs): WorkoutPick[] {
   const core = Array.from({ length: Math.max(0, Math.min(3, corePerWeek)) }, (): WorkoutPick => ({ tpl: wk("core_strength"), role: "core" }));
@@ -225,7 +256,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     return next;
   };
 
-  return [...emphasize(pickPhase()), ...core];
+  return applyLt1Progression([...emphasize(pickPhase()), ...core], prefs?.ctlProgress ?? 0);
 
   function pickPhase(): WorkoutPick[] {
   const p = (phase || "").toLowerCase();
@@ -399,23 +430,37 @@ function durLabel(sec: number): string {
 function restLabel(sec: number, type: "jog" | "stand"): string {
   return `${durLabel(sec)} ${type === "jog" ? "Trab" : "Stehen"}`;
 }
-function repsForFitness(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number): number {
-  const band = tpl.repsByFitness![fitness];
-  return Math.round(band[0] + (band[1] - band[0]) * Math.max(0, Math.min(1, progress)));
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+/**
+ * v2.8.0: EINE geteilte Band-Auflösung — vereinigt die vormals 4 duplizierten Pfade (repsForFitness/repsBand/
+ * renderStructure.resolveCount/Segments-Branch). Progress (+ optionaler TSB-Shift, ±0,3 Band-Anteil) setzt den
+ * Zielwert im [lo,hi]-Band; optionaler Volumen-Faktor (Taper/RPE-Loop) skaliert danach Ziel UND Bandgrenzen —
+ * vorher nur in der flachen Intervall-Branche angewandt, Struktur-Baum/Segmente ignorierten Taper/RPE-Loop
+ * komplett (echter Nebenbug, hiermit behoben).
+ */
+function resolveBand(lo: number, hi: number, progressFrac: number, tsb?: number | null, volF?: number): { lo: number; hi: number; target: number } {
+  let frac = clamp01(progressFrac);
+  if (tsb != null) frac = clamp01(frac + Math.max(-0.3, Math.min(0.3, tsb / 50)));
+  let target = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo) * frac)));
+  let bandLo = lo, bandHi = hi;
+  if (volF != null && Math.abs(volF - 1) > 0.01) {
+    target = Math.max(2, Math.round(target * volF));
+    bandHi = Math.max(target, Math.round(hi * volF));
+    bandLo = Math.max(2, Math.min(lo, target));
+  }
+  return { lo: bandLo, hi: bandHi, target };
 }
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-/**
- * T7: Reps-Band des Fitness-Levels + dynamischer Zielwert (heute) innerhalb des Bandes.
- * Progress (Phasen-Position) setzt die Basis; TSB verschiebt additiv & gedeckelt (müde→unten, frisch→oben),
- * Begrenzung auf ±0,3 Band-Anteil → bei schmalen Bändern ≤±1 Rep, bei breiten ≤±2.
- */
-function repsBand(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number, tsb?: number | null): { lo: number; hi: number; target: number } {
+function repsForFitness(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number): number {
   const [lo, hi] = tpl.repsByFitness![fitness];
-  let frac = clamp01(progress);
-  if (tsb != null) frac = clamp01(frac + Math.max(-0.3, Math.min(0.3, tsb / 50)));
-  const target = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo) * frac)));
-  return { lo, hi, target };
+  return resolveBand(lo, hi, progress).target;
+}
+
+/** T7: Reps-Band des Fitness-Levels + dynamischer Zielwert (heute) innerhalb des Bandes; optionaler Volumen-Faktor. */
+function repsBand(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number, tsb?: number | null, volF?: number): { lo: number; hi: number; target: number } {
+  const [lo, hi] = tpl.repsByFitness![fitness];
+  return resolveBand(lo, hi, progress, tsb, volF);
 }
 
 export interface RenderCtx {
@@ -425,6 +470,9 @@ export interface RenderCtx {
   taperFactor?: number;  // Baustein 2.4: <1 reduziert das Qualitäts-VOLUMEN (Reps) im Taper/Deload — Pace/Intensität bleibt
   volumeFactor?: number; // Baustein B1: RPE/Completion-Loop je Einheiten-Typ — <1 (zuletzt zu hart) / >1 (zu leicht), bidirektional
   goalDistanceM?: number | null;             // Item 3: Zieldistanz → Long-Run-Dauer-Deckel
+  ctlProgress?: number;  // v2.8.0 (Item 1): kontinuierlicher CTL-Fortschritts-Score (0..1) für Reps/Sets/Dauer —
+  //                        ersetzt das phasen-lokale (sägezahnende) `progress` für Progression; `progress ?? ctlProgress`
+  //                        via `ctx.ctlProgress ?? ctx.progress` an den Call-Sites, Fallback für Kontexte ohne Season-Baseline.
 }
 
 // Item 3 (Frage 5): Long-Run-Maxdauer (min) nach Zieldistanz — 5k braucht keinen Marathon-Long-Run.
@@ -508,14 +556,17 @@ function renderStructure(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession 
   const wuCd = tpl.family === "VO2" || tpl.family === "Race" ? 25 : 22;
   const wu = r0(wuCd / 2);
 
-  // Anzahl im Band auflösen (Progress + TSB), Default lo=hi=reps.
+  // Anzahl im Band auflösen (Progress + TSB + Taper/RPE-Volumen), Default lo=hi=reps. v2.8.0: teilt resolveBand mit
+  // der flachen Intervall-Branche — vorher ignorierte der Struktur-Baum Taper/RPE-Loop komplett (Nebenbug behoben).
+  const progressFrac = ctx.ctlProgress ?? progress;
+  const tf = ctx.taperFactor != null && ctx.taperFactor > 0 ? ctx.taperFactor : 1;
+  const vf = ctx.volumeFactor != null && ctx.volumeFactor > 0 ? ctx.volumeFactor : 1;
+  const structVolF = tf * vf;
   const resolveCount = (n: SegNode): { lo: number; hi: number; t: number } => {
     const lo = Math.max(1, n.reps_lo ?? n.reps ?? 1);
     const hi = Math.max(lo, n.reps_hi ?? n.reps ?? lo);
-    let frac = clamp01(progress);
-    if (ctx.tsb != null) frac = clamp01(frac + Math.max(-0.3, Math.min(0.3, ctx.tsb / 50)));
-    const t = Math.max(lo, Math.min(hi, Math.round(lo + (hi - lo) * frac)));
-    return { lo, hi, t };
+    const r = resolveBand(lo, hi, progressFrac, ctx.tsb, tpl.effort > 2 ? structVolF : undefined);
+    return { lo: r.lo, hi: r.hi, t: r.target };
   };
 
   // Knoten → { Effort, Arbeitsminuten, Pausenminuten } für den aufgelösten Tageswert.
@@ -595,7 +646,8 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
     const tpm = tssPerMin(z, zones);
     const lo = tpl.minMin ?? 30, hi = tpl.maxMin ?? 60;
     // targetTss (Easy/Long-Ausgleich) → Dauer; sonst progressive Default-Dauer (für steady-Qualität wie LT1/Tempo).
-    let min = ctx.targetTss && tpm > 0 ? ctx.targetTss / tpm : lo + (hi - lo) * (0.4 + 0.4 * Math.max(0, Math.min(1, progress)));
+    // v2.8.0: nutzt ctlProgress (kontinuierlich) statt des phasen-lokalen, sägezahnenden `progress`, wenn vorhanden.
+    let min = ctx.targetTss && tpm > 0 ? ctx.targetTss / tpm : lo + (hi - lo) * (0.4 + 0.4 * clamp01(ctx.ctlProgress ?? progress));
     min = Math.max(lo, Math.min(hi, min));
     min = Math.min(min, maxMin);
     min = Math.max(10, r0(min));
@@ -606,6 +658,7 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
     const racePace = anchorCenter("race", zones);
     const extra = tpl.id === "long_fastfinish" ? ` · letzte 15–20' @ Renntempo${racePace ? ` (~${paceStr(racePace)}/km)` : ""}`
       : tpl.id === "long_mp_segments" ? ` · 2–3×15–20' @ Marathon-Pace${racePace ? ` (~${paceStr(racePace)}/km)` : ""}`
+      : tpl.id === "long_lt1_segments" ? ` · 2–3×15–20' @ LT1-Pace${center ? ` (~${paceStr(center)}/km)` : ""}`
       : "";
     return {
       type: tpl.sessionType, planned_min: min, zone_alloc: { byKm: byMinToByKm({ [z]: min }, zones) },
@@ -617,8 +670,9 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
 
   if (tpl.kind === "double") {
     // Doppel-Schwelle: AM 5×6' + PM N×400m sub-T (eine Plan-Einheit, ein Tag).
-    const amReps = Math.max(4, repsForFitness({ ...tpl, repsByFitness: { low: [4, 4], mid: [5, 5], high: [5, 6] } } as WorkoutTemplate, fitness, progress));
-    const pmReps = repsForFitness(tpl, fitness, progress);
+    const doubleProgressFrac = ctx.ctlProgress ?? progress;
+    const amReps = Math.max(4, repsForFitness({ ...tpl, repsByFitness: { low: [4, 4], mid: [5, 5], high: [5, 6] } } as WorkoutTemplate, fitness, doubleProgressFrac));
+    const pmReps = repsForFitness(tpl, fitness, doubleProgressFrac);
     const center = anchorCenter("lt2", zones)!;
     const z = tpl.workZone, tpmW = tssPerMin(z, zones), tpmE = tssPerMin(1, zones);
     const amWorkMin = amReps * 6, pmWorkMin = pmReps * (((400 / 1000) * center) / 60);
@@ -664,7 +718,13 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
       const z1Min = wuCd + restMin;
       return { efforts, parts, workMin, z1Min, planned_min: r0(z1Min + workMin) };
     };
-    let sets = tpl.setsByFitness?.[fitness] ?? 1;
+    // v2.8.0: setsByFitness ist jetzt ein [lo,hi]-Band (wie repsByFitness) — läuft über dieselbe resolveBand-
+    // Auflösung (Progress/ctlProgress + TSB + Taper/RPE-Volumen), vorher ein fixer Wert ohne jede Eskalation.
+    const setsBand = tpl.setsByFitness?.[fitness] ?? [1, 1];
+    const segProgressFrac = ctx.ctlProgress ?? progress;
+    const segTf = ctx.taperFactor != null && ctx.taperFactor > 0 ? ctx.taperFactor : 1;
+    const segVf = ctx.volumeFactor != null && ctx.volumeFactor > 0 ? ctx.volumeFactor : 1;
+    let sets = resolveBand(setsBand[0], setsBand[1], segProgressFrac, ctx.tsb, tpl.effort > 2 ? segTf * segVf : undefined).target;
     let b = build(sets);
     while (sets > 1 && b.planned_min > maxMin) { sets--; b = build(sets); }
     const hr = metricsStr(z, zones);
@@ -681,19 +741,14 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
   const z = tpl.workZone;
   const tpmW = tssPerMin(z, zones), tpmE = tssPerMin(1, zones);
   const center = anchorCenter(tpl.anchor, zones);
-  // T7: Band (von-bis) + dynamischer Zielwert (Progress + TSB) statt Einzelwert.
-  const band = repsBand(tpl, fitness, progress, ctx.tsb);
-  // Baustein 2.4 (Taper) + B1 (RPE-Loop): Qualitäts-VOLUMEN skalieren (Reps), Pace/Intensität bleibt. `taperFactor` < 1
-  // reduziert im Taper/Deload; `volumeFactor` justiert je Einheiten-Typ nach RPE/Completion (zu hart → <1, zu leicht → >1).
-  // Beide multiplikativ; nur echte Qualität (effort > 2), Steigerungen bleiben voll.
+  // T7/v2.8.0: Band (von-bis) + dynamischer Zielwert (ctlProgress/Progress + TSB) statt Einzelwert. Baustein 2.4
+  // (Taper) + B1 (RPE-Loop): Qualitäts-VOLUMEN skalieren (Reps), Pace/Intensität bleibt — `taperFactor` < 1
+  // reduziert im Taper/Deload; `volumeFactor` justiert je Einheiten-Typ nach RPE/Completion. Beide multiplikativ;
+  // nur echte Qualität (effort > 2), Steigerungen bleiben voll. Jetzt in resolveBand gefaltet (eine Quelle).
   const tf = ctx.taperFactor != null && ctx.taperFactor > 0 ? ctx.taperFactor : 1;
   const vf = ctx.volumeFactor != null && ctx.volumeFactor > 0 ? ctx.volumeFactor : 1;
   const volF = tf * vf;
-  if (Math.abs(volF - 1) > 0.01 && tpl.effort > 2) {
-    band.target = Math.max(2, Math.round(band.target * volF));
-    band.hi = Math.max(band.target, Math.round(band.hi * volF));
-    band.lo = Math.max(2, Math.min(band.lo, band.target));
-  }
+  const band = repsBand(tpl, fitness, ctx.ctlProgress ?? progress, ctx.tsb, tpl.effort > 2 ? volF : undefined);
   const repPaceForTime = center ?? paceOf(z, zones);
   const repMin = tpl.repDist_m ? (tpl.repDist_m / 1000) * repPaceForTime / 60 : (tpl.repSec ?? 60) / 60;
   const restSec = tpl.restSec ?? 60;

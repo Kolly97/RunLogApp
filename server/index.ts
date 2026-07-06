@@ -89,11 +89,12 @@ import {
   stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
   stravaBackfillStatus, stravaBackfillStart, stravaBackfillStep, stravaBackfillCancel,
 } from "./strava.ts";
-import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, getBanister as mlGetBanister, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getLatentFitnessSources as mlGetLatentFitnessSources, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, getBanister as mlGetBanister, getResearchShap as mlGetResearchShap, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
 import { synthesizeTrainingVerdict, empiricalBayesGroups, ebFindings, REGIME_LABEL, EMPHASIS_LABEL, type VerdictInputs, type TrialResultLite, type EbPost, type TrainingVerdict } from "./ml/trainingVerdict.ts";
 import { deriveCoachingPrefs, coachHealthCap, type CoachingPrefs } from "./coachSynthesis.ts";
 import { runWithFallback as sidecarRunWithFallback } from "./ml/sidecar.ts";
 import { weeklyLabelExposure } from "./ml/featureBackbone.ts";
+import { detectGainWindows } from "./ml/fitnessGainWindows.ts";
 import { getProspectiveState as mlProspectiveState, proposeProspectiveTrial as mlProposeTrial, proposeProspectiveTrials as mlProposeTrials, createProspectiveTrial as mlCreateTrial, evaluateProspectiveTrial as mlEvaluateTrial, abortProspectiveTrial as mlAbortTrial, declineProspectiveTrial as mlDeclineTrial, clearProspectiveCooldown as mlReactivateTrial, getProspectiveTrialById as mlGetTrial } from "./mlJobs.ts";
 import { gateCycleAdaptive, computeCyclePhase, phaseStimulusRecommendation, calibrateStimulusWeights, cycleIndexOf, applySymptomOverride, buildFeedbackContext, evaluatePhaseStimulus, reconstructPhases, projectedPhaseForDate, cyclePlanningBias, PHASE_LABEL as CYCLE_PHASE_LABEL, isReliable as cycleCellReliable, cellKey as cycleCellKey, type Period, type ContraceptionStatus, type FeedbackRow, type DatedPhaseRow, type TodaySymptoms, type StimulusRecommendation, type CyclePhase } from "./cycleTraining.ts";
 
@@ -2790,9 +2791,14 @@ app.put("/api/ml/settings", (req, res) => {
   );
   res.json({ ok: true });
 });
+function researchModeEnabled(profileId: number): boolean {
+  const row = db.prepare("SELECT research_mode_enabled FROM ml_settings WHERE profile_id=?").get(profileId) as { research_mode_enabled?: number } | undefined;
+  return !!row?.research_mode_enabled;
+}
 app.post("/api/ml/recompute", (req, res) => {
   const k = String(req.query.kind);
-  const kind = k === "dose_response" || k === "readiness" || k === "banister" ? k : "latent_fitness";
+  const kind = k === "dose_response" || k === "readiness" || k === "banister" || k === "research_shap" ? k : "latent_fitness";
+  if (kind === "research_shap" && !researchModeEnabled(pid())) return res.status(403).json({ error: "research_mode_enabled ist aus" });
   res.json(mlStartRun(kind, pid()));
 });
 app.post("/api/ml/cancel", (req, res) => {
@@ -2807,12 +2813,19 @@ app.get("/api/ml/progress", (req, res) => {
 app.get("/api/ml/status", (req, res) => {
   const p = pid();
   const k = String(req.query.kind);
-  const kind = k === "dose_response" || k === "readiness" || k === "banister" ? k : "latent_fitness";
+  const kind = k === "dose_response" || k === "readiness" || k === "banister" || k === "research_shap" ? k : "latent_fitness";
   res.json({ freshness: mlFreshness(p, kind), latest: mlLatestRun(p, kind) });
 });
 app.get("/api/ml/latent-fitness", (_req, res) => res.json(mlGetLatentFitness(pid())));
 app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
 app.get("/api/ml/banister", (_req, res) => res.json(mlGetBanister(pid())));
+// v2.8.0 (Item 3): Research-Mode (LightGBM+SHAP) — gated hinter research_mode_enabled; Datenmenge-Hinweis IMMER
+// mitgeliefert (auch wenn deaktiviert/noch kein Lauf), damit die UI nie einen stummen deaktivierten Button zeigt.
+app.get("/api/ml/research-shap", (_req, res) => {
+  const p = pid();
+  if (!researchModeEnabled(p)) return res.json({ enabled: false });
+  res.json({ enabled: true, ...mlGetResearchShap(p) });
+});
 // Synthese „Was hilft dir?" (Zeile 39, Deliverable A): bündelt Dosis (L3) + Regime + Schwerpunkt + geprüfte Trials.
 /**
  * „Was hilft dir?"-Synthese server-seitig (geteilt von der Verdikt-Route UND dem adaptiven Coach) — dieselbe
@@ -2950,7 +2963,7 @@ function ridgeFallback(labels: string[], X: number[][], total: number[], y: numb
   };
   return { method: "ts", models: { mediator: fit(X), composition: fit(resid(X)) } };
 }
-type ExposureDesign = { labels: string[]; X: number[][]; total: number[]; y: number[]; ysd: number[]; nWeeks: number };
+type ExposureDesign = { labels: string[]; X: number[][]; total: number[]; y: number[]; ysd: number[]; nWeeks: number; dates: string[] };
 /** F3: baut das Expositions→latente-Fitness-Design (Regime/Schwerpunkt) — geteilt von /regime-latent und dem Verdikt. */
 function buildExposureDesign(p: number, axis: "regime" | "emphasis"): ExposureDesign | null {
   const weeks = buildWeekRegimeInput().filter((w) => !w.excluded && (w.weekTss ?? 0) > 0);
@@ -2962,7 +2975,7 @@ function buildExposureDesign(p: number, axis: "regime" | "emphasis"): ExposureDe
   const nearest = (d: string) => { const t = Date.parse(d); let best: { v: number; sd: number } | null = null, bd = Infinity; for (const l of latent) { const dd = Math.abs(l.t - t); if (dd < bd) { bd = dd; best = l; } } return bd <= 7 * 86_400_000 ? best : null; };
   const rows = exp.map((e) => ({ e, lat: nearest(e.date) })).filter((r) => r.lat) as { e: typeof exp[number]; lat: { v: number; sd: number } }[];
   if (rows.length < labelSet.length + 4) return null;
-  return { labels: labelSet, X: rows.map((r) => labelSet.map((l) => r.e.exposure[l] ?? 0)), total: rows.map((r) => r.e.total), y: rows.map((r) => r.lat.v), ysd: rows.map((r) => r.lat.sd), nWeeks: rows.length };
+  return { labels: labelSet, X: rows.map((r) => labelSet.map((l) => r.e.exposure[l] ?? 0)), total: rows.map((r) => r.e.total), y: rows.map((r) => r.lat.v), ysd: rows.map((r) => r.lat.sd), nWeeks: rows.length, dates: rows.map((r) => r.e.date) };
 }
 app.get("/api/ml/regime-latent", async (req, res) => {
   const p = pid();
@@ -2971,7 +2984,57 @@ app.get("/api/ml/regime-latent", async (req, res) => {
   if (!d) return res.json({ engine: "insufficient", models: null });
   const payload = { labels: d.labels, X: d.X, total: d.total, y: d.y, y_sd: d.ysd, boot: 400 };
   const r = await sidecarRunWithFallback<{ method: string; models: unknown } | null>({ kind: "exposure_dose", payload }, () => ridgeFallback(d.labels, d.X, d.total, d.y, d.ysd), { timeoutMs: 120_000 });
-  res.json({ engine: r.result?.method ?? "ts", models: (r.result as { models?: unknown })?.models ?? null, nWeeks: d.nWeeks });
+  // v2.8.0 (Item 4, Nerd-Seite Panel F3): rohe EWMA-Design-Matrix war schon lokal berechnet (ging in den Sidecar-
+  // Payload), wurde aber nie zurückgegeben — reine Sichtbarkeit, keine neue Berechnung.
+  res.json({ engine: r.result?.method ?? "ts", models: (r.result as { models?: unknown })?.models ?? null, nWeeks: d.nWeeks, labels: d.labels, X: d.X, total: d.total, y: d.y, dates: d.dates });
+});
+// v2.8.0 (Item 4, Nerd-Seite Panel L2): rohe Komposit-Indikatoren vor der Kalman-Fusion — read-only, kein Fit.
+app.get("/api/ml/latent-fitness/sources", (_req, res) => res.json(mlGetLatentFitnessSources(pid())));
+
+// v2.8.0 (Item 2): retrospektive Fitness-Sprung-Erkennung — wann gab es einen signifikanten Fortschritt/
+// Rückschritt in der latenten Fitness (L2), und was war im Kontext-Fenster DAVOR los (Schlaf/HRV/Phase/Zonen-Mix,
+// rein deskriptiv — Kolja: kein Ranking, keine Kausal-Aussage, n=1 pro Fenster). Konfundierungs-Schutz: Taper-/
+// Entlastungsphasen und Health-Flags im Kontext-Fenster werden gekennzeichnet, damit ein taper-bedingter TSB-
+// Anstieg nicht als „das hast du richtig gemacht" fehlgedeutet wird.
+app.get("/api/ml/fitness-gain-windows", (_req, res) => {
+  const p = pid();
+  const points = mlGetLatentFitness(p);
+  const windows = detectGainWindows(points, 0.5);
+  const runs = loadProfileRuns();
+  const flags = mlGetReadiness(p).flags;
+  const enriched = windows.map((w) => {
+    const phaseRows = db.prepare("SELECT phase FROM season_weeks_v2 WHERE profile_id=? AND start_date<=? AND end_date>=? ORDER BY start_date")
+      .all(p, w.contextEnd, w.contextStart) as { phase: string | null }[];
+    const phases = [...new Set(phaseRows.map((r) => r.phase).filter(Boolean))] as string[];
+    const taperOverlap = phases.some((ph) => /taper|race ?week|raceweek|entlast|deload/i.test(ph));
+    const healthFlags = flags.filter((f) => f.date >= w.contextStart && f.date <= w.contextEnd);
+    // Zonen-Mix + Polarisierungs-Index übers Kontext-Fenster (dieselbe Rezeptur wie buildWeekRegimeInput).
+    const acts = runs.filter((a) => a.date >= w.contextStart && a.date <= w.contextEnd);
+    const zs = effectiveZoneSet(w.contextEnd);
+    const agg: Record<number, number> = {};
+    for (const a of acts) { const zm = activityZoneMin(a, zs.pace_zones); for (const [z, m] of Object.entries(zm)) agg[Number(z)] = (agg[Number(z)] || 0) + m; }
+    const dist = Object.keys(agg).length ? physioTimeZones(agg, zs.hr_zones, zs.lt1_hr, zs.lthr) : null;
+    const pi = dist ? polarizationIndex(dist.z1, dist.z2, dist.z3) : null;
+    // daily_log_v2-Durchschnitte übers Kontext-Fenster (rein deskriptiv, kein Ranking).
+    const logRows = db.prepare("SELECT sleep_h, hrv, resting_hr, recovery, energy, mood, stress, motivation, alcohol, caffeine, hydration, fueling FROM daily_log_v2 WHERE profile_id=? AND date>=? AND date<=?")
+      .all(p, w.contextStart, w.contextEnd) as Record<string, number | null>[];
+    const avg = (k: string): number | null => {
+      const vs = logRows.map((r) => r[k]).filter((v): v is number => v != null);
+      return vs.length ? Math.round((vs.reduce((a, b) => a + b, 0) / vs.length) * 10) / 10 : null;
+    };
+    return {
+      ...w,
+      confound: taperOverlap ? "Taper-/Entlastungsphase im Kontext-Fenster — Anstieg evtl. Erholungseffekt, nicht neuer Trainingsreiz." : null,
+      healthFlags, phases, zoneMix: dist, polarizationIndex: pi,
+      context: {
+        sleepH: avg("sleep_h"), hrv: avg("hrv"), restingHr: avg("resting_hr"), recovery: avg("recovery"),
+        energy: avg("energy"), mood: avg("mood"), stress: avg("stress"), motivation: avg("motivation"),
+        alcohol: avg("alcohol"), caffeine: avg("caffeine"), hydration: avg("hydration"), fueling: avg("fueling"),
+        nDays: logRows.length, nActivities: acts.length,
+      },
+    };
+  });
+  res.json({ windows: enriched });
 });
 app.get("/api/ml/readiness", (_req, res) => res.json(mlGetReadiness(pid())));
 app.post("/api/ml/audit", (_req, res) => res.json(mlAdversarialAudit(pid())));

@@ -6,6 +6,92 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [2.8.0] Retrospektive Fitness-Sprung-Erkennung, Nerd-Seite mit ML plots, Kontinuierliche Reps/Sets-Progression, und Reasearch mode
+### Hinzugefügt
+- **Retrospektive Fitness-Sprung-Erkennung (v2.8.0 Item 2):** Neue Karte „Fitness-Sprünge" auf der Langzeit-Seite
+  erkennt Zeitpunkte, an denen sich die latente Fitness (L2) signifikant verändert hat — **symmetrisch**,
+  Fortschritt UND Rückschritt (sachlich gerahmt, kein Vorwurf), über Mean-Shift-Segmentierung
+  (`detectChangepoints`, bereits vorhandener Detektor) + Hedges' g zwischen den beiden angrenzenden Segmenten
+  (Schwelle ≥0.5, „medium"). Zu jedem Fenster: Kontext der **Wochen DAVOR** (nicht danach — Trainingsadaption
+  braucht Zeit, das Fenster nach dem Sprung ist das Ergebnis, nicht die Ursache): Zonen-Mix + Polarisierungs-Index,
+  Season-Phase, Schlaf/HRV/Stimmung/Stress-Durchschnitte (rein deskriptiv, kein Ranking — bei einem einzelnen
+  Fenster wäre eine Kausal-Aussage statistisch nicht haltbar). **Konfundierungs-Schutz:** überlappt das Fenster mit
+  einer Taper-/Entlastungsphase oder einem Health-Flag, wird das gekennzeichnet, damit ein taper-bedingter Anstieg
+  nicht fälschlich als Trainingserfolg gelesen wird. Kein zweiter Detektor (CTL/rohe VDOT) — die latente Fitness
+  bleibt der alleinige, bewusst „saubere" Outcome. (`server/ml/fitnessGainWindows.ts` neu, `hedgesG` aus
+  `cycleTraining.ts` exportiert/wiederverwendet, `GET /api/ml/fitness-gain-windows`,
+  `FitnessGainWindowsCard.tsx` in `LongTerm.tsx`)
+- **Versteckte „Nerd-Seite" mit Rohdaten-Diagrammen + Methodik der ML-Engines (v2.8.0 Item 4):** Neue, bewusst
+  nicht in der Navigation gelistete Route `/nerd`, nur über eine globale Tastenkombi erreichbar (→→←←↑↓↑↓, Vorbild
+  `KonamiLab.tsx`, navigiert statt Overlay). Read-only, keine Recompute-Buttons. 7 Panels zeigen die tatsächlichen
+  Rohdaten-Diagramme HINTER den Kennzahlen (nicht nur Zahlen) plus einen knappen Methodik/Mathematik-Block je
+  Panel: (1) L2 — geglättete latente-Fitness-Kurve MIT den rohen Quellpunkten überlagert (Labor-VO2max/Race-VDOT/
+  eff. VO2max, farblich unterschieden — neuer Endpoint `/api/ml/latent-fitness/sources`, dieselbe Berechnung wie
+  der echte Fit, nur zur Anzeige) + Kalman-Filter-Erklärung (Zustand/R je Quelle); (2) L3 — echter Forest-Plot
+  (Wiederverwendung von `ForestPlot.tsx`) für Mediator- UND Volumen-bereinigte Effekte, VIF-Ladder-Tabelle,
+  Fit-Diagnostik (VIF/λ/Bootstrap — war schon berechnet, jetzt erstmals zurückgegeben); (3) Dosis-Wirkungs-Kernel —
+  echte Zerfallskurven exp(−t/τ) je Kanal PLUS die Was-wäre-wenn-Trajektorie als Band-Chart (nicht nur der
+  Peak-Wert als Zahl); (4) F3 — Mini-Forest-Plot der Regime-β + die komplette rohe wöchentliche Exposure-Zeitreihe
+  als Liniendiagramm mit der latenten Fitness überlagert (neues Datum-Array im Response, vorher nur intern
+  berechnet und verworfen); (5) Phase×Reiz als echte Heatmap (Zellfarbe = Effekt, Deckkraft = Posterior-Gewicht,
+  reiner Reuse von `/api/cycle-training/evidence`); (6) prospektive N-of-1-Trials — Paar-Diagramm (Arm A vs. B je
+  Block, aus `blocks_json` geparst) zeigt die Rohdaten hinter θ, plus den exakten Permutations-p-Wert (volle
+  Null-Verteilung bewusst nicht rekonstruiert — nicht persistiert, ehrlich gelabelt); (7) das bestehende
+  3-Achsen-Verdikt (`TrainingVerdictCard` wiederverwendet). Jedes Panel hat einen eigenen „Methodik"-Block mit der
+  tatsächlichen Formel/dem Verfahren (Kalman-Zustandsraum, Ridge+Block-Bootstrap+VIF, Bayes-Zerfallskern,
+  Exposure-EWMA, Shrinkage-Gewichtung, exakter Vorzeichen-Permutationstest) — gegen den jeweiligen Code verifiziert,
+  nicht geraten. (`NerdPage.tsx`, `NerdKeybind.tsx`, `App.tsx`; additive Erweiterungen in `mlJobs.ts`/`index.ts`:
+  `getLatentFitnessSources`, `diagnostics` in der Dosis-Wirkungs-Meta, `dates` in `/api/ml/regime-latent`)
+- **Kontinuierliche Reps/Sets-Progression über Phasen hinweg (v2.8.0 Item 1):** Reps/Sets-Vorgaben folgten bisher
+  vier getrennten, teils inkonsistenten Pfaden (`repsForFitness`/`repsBand`/Struktur-Baum/Segmente) und einem
+  phasen-lokalen `progress`, das bei jedem 4.-Wochen-Deload auf den Phasen-Anfangswert zurückfiel (sägezahnend) —
+  außerdem ignorierten Struktur-Baum und Mehrsegment-Einheiten (Ladder/Cut-down/Mixed/Float) Taper/RPE-Loop-Volumen
+  komplett (echter Nebenbug). Jetzt läuft alles über eine geteilte `resolveBand()` und einen **kontinuierlichen,
+  CTL-basierten Fortschritts-Score** (`ctlProgress`, gedeckelt bei +35 % CTL über der Block-Baseline, mit
+  natürlichem — nicht geratchetem — Dip nach jedem Deload) statt des phasen-lokalen `progress`. Ein **Sprung-
+  Limiter** (max. Δ0,15/Woche) schützt zusätzlich vor unplausiblen Ein-Wochen-Sprüngen bei Datenkorrekturen —
+  verifiziert bis zu einem künstlichen CTL-Sprung von 34→90 in einer Woche (ctlProgress bleibt ≤0,15/Woche).
+  `setsByFitness` (4 Templates: `lt2_ladder`/`lt2_cutdown`/`lt2_mixed`/`race_mix`) von fixem Wert auf `[lo,hi]`-Band
+  migriert (wie `repsByFitness`, mit demselben `RB()`-Helfer). (`workouts.ts` `resolveBand`, `analysis.ts`
+  `ctlProgress`/`CTLPROGRESS_CEILING_MULT`/`MAX_CTLPROGRESS_STEP_PER_WEEK`, `BlockDay.prescription`)
+- **Progressive Steady/LT1-Struktur + Qualität im Longrun (v2.8.0 Item 1b, sportwissenschaftlich fundiert):** Eine
+  lange LT1-Einheit lief bisher immer als EIN durchgehender Block, unabhängig von der Fitness. Jetzt evolviert die
+  Struktur mit `ctlProgress` — durchgehend (niedrig) → aufgeteilt in Wiederholungen (mittel, „Cruise Intervals",
+  Daniels) → eingebettet in den Longrun (hoch, neues Template `long_lt1_segments`, Pfitzinger/Canova-Prinzip „medium
+  long run"): der separate Steady-Slot wird dann zu einem lockeren Tag, die Last wandert in den Longrun. Greift an
+  BEIDEN Stellen, an denen eine LT1-Einheit entstehen kann (Base-Rotation UND Schwerpunkt-Swap-Pool), über eine
+  gemeinsame `applyLt1Progression()`. (`workouts.ts` `long_lt1_segments`, `applyLt1Progression`, `BlockPrefs.ctlProgress`)
+- **Research-Mode: LightGBM+SHAP-Engine (v2.8.0 Item 3, größter Umbau):** Neue, standardmäßig ausgeblendete
+  Sektion ganz unten unter „Was hilft dir?" (Methodik-Seite) — zeigt sich dort als eigene Zeile mit einem
+  „aktivieren"-Knopf (schaltet `research_mode_enabled` um, kein separater Einstellungs-Zugang nötig). Ein
+  nichtlineares Baum-Modell (LightGBM) auf denselben Wochen-Daten
+  wie das lineare Dosis-Modell (Kanal-CTL aerob/threshold/vo2) **plus** neuen Features aus `session_feedback_v2`
+  (Ø RPE, Ø gefühlt-vs-erwartet, Ø Readiness, Interaktionsterm VO2-Wochenlast×Readiness — bisher in keinem Modell
+  genutzt). Zeigt SHAP-Erklärungen **global** (was erklärt die Woche-zu-Woche-Schwankung am meisten) UND **lokal**
+  (Drill-down je Woche: „warum war diese Woche gut/schlecht"), rein explorativ/Hypothesen-generierend wie
+  `exploratory.ts` — fließt **nicht** in die Trainingssteuerung oder den Verdikt-Fingerprint ein. Zeitlich
+  geblockte Cross-Validation liefert eine ehrliche Fit-Güte (Cross-Val-R²) als **Plausibilitäts-Gate**: bei
+  schlechtem Fit zeigt die UI eine Warnung statt eines vermeintlich verlässlichen Ergebnisses. **Mindest-
+  Datenmenge-Gate** (≥26 Wochen + ≥15 Feedback-Einträge) zeigt bei zu wenig Daten einen ehrlichen Hinweis statt
+  eines stummen deaktivierten Buttons. Darf mehrere Stunden rechnen (kein Timeout-Zerschneiden, eigener
+  6h-Stale-Schwellenwert getrennt von den schnellen Läufen) und wird wie der Verdikt-Cache per Daten-Fingerprint
+  zwischengespeichert — ein Seitenaufruf löst nie ungefragt einen neuen mehrstündigen Lauf aus. **Packaging:**
+  LightGBM+SHAP werden jetzt fest ins Electron-Paket gebündelt; da das vorgefertigte macOS-Wheel von LightGBM zur
+  Laufzeit Homebrews `libomp.dylib` braucht (auf einem sauberen Endnutzer-Mac nicht vorhanden), wird LightGBM beim
+  Packaging aus dem Quellcode ohne OpenMP gebaut (Single-Thread, kein Runtime-Dependency) — verifiziert lauffähig
+  (SHAP-Additivität exakt korrekt). (`server/ml-sidecar/engine.py` `job_research_shap`, `scripts/build-sidecar.mjs`,
+  `mlJobs.ts` `MlKind "research_shap"`/`buildResearchShapDesign`/`researchShapSufficiency`/`getResearchShap`,
+  `db.ts` Tabelle `ml_research_shap`, `GET /api/ml/research-shap`, `TrainingVerdictCard.tsx` neue
+  `ResearchShapPanel`-Sektion)
+
+### Behoben
+- **Dark-Mode-Kontrast in der Options-Navigation:** `.opt-nav button:hover` und `.opt-nav .badge` nutzten
+  hartcodiert `#eef2f7` (hell) statt eines theme-fähigen Tokens — im Dark Mode kaum lesbar. Jetzt `var(--surface2)`
+  (bereits im Rest der App für denselben Zweck verwendet). (`styles.css`)
+- **Wochenplan-Modal: lange Einheiten liefen unten aus dem Viewport:** `SessionModal.tsx` hatte kein
+  `maxHeight`/`overflowY` — bei langen strukturierten Einheiten waren Speichern/Abbrechen unerreichbar. Jetzt
+  `maxHeight: 84vh` + `overflowY: auto`. (`SessionModal.tsx`)
+
 ## [2.7.0] – 2026-07-06 — Reverse-from-Race-Coach-Engine, physiologische Fitness-Prognose & Coach-Feinschliff
 
 ### Hinzugefügt

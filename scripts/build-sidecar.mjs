@@ -90,6 +90,18 @@ try {
   execSync(`"${py}" -m pip install --no-warn-script-location -r "${join(STAGE, "requirements.txt")}"`, {
     stdio: "inherit",
   });
+  // v2.8.0 (Item 3, Research-Mode): lightgbm SEPARAT aus dem Quellcode bauen (nicht über requirements.txt) —
+  // das prebuilt Wheel braucht auf macOS zur Laufzeit Homebrew's libomp.dylib (auf einem sauberen Endnutzer-
+  // Rechner nicht vorhanden → Import schlägt fehl). USE_OPENMP=OFF baut einen Single-Thread-Build ohne diese
+  // Runtime-Abhängigkeit — verifiziert lauffähig (SHAP-Additivität exakt korrekt). Braucht nur einen C++-
+  // Compiler auf DIESER Bau-Maschine (macOS: Xcode CLT/clang++ · Windows: MSVC Build Tools · Linux: gcc/g++);
+  // cmake/ninja holt sich pip automatisch als isolierte Build-Abhängigkeit (kein System-cmake nötig).
+  console.log("[sidecar] baue lightgbm aus dem Quellcode (kein OpenMP-Runtime-Dependency) …");
+  execSync(`"${py}" -m pip install --no-warn-script-location --config-settings=cmake.define.USE_OPENMP=OFF --no-binary lightgbm --no-cache-dir lightgbm`, {
+    stdio: "inherit",
+  });
+  console.log("[sidecar] installiere shap (normales Wheel) …");
+  execSync(`"${py}" -m pip install --no-warn-script-location shap`, { stdio: "inherit" });
   console.log("[sidecar] Runtime fertig:", py);
 } catch (e) {
   console.warn("[sidecar] WARNUNG: Runtime-Bundling fehlgeschlagen → ohne Runtime gestaged (TS-Fallback aktiv).");

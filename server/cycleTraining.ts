@@ -364,7 +364,7 @@ function confFromEvidence(n: number, nCycles: number): Confidence {
  * Standardisierte Effektgröße Gruppe A vs. B als Hedges' g (Cohen's d mit Small-Sample-Korrektur J) inkl. echtem
  * Standardfehler und 95%-CI. Gepoolte SD mit Floor (0.5) gegen überzogene Effekte bei Mini-Varianz. A,B ≥ 2 nötig.
  */
-function hedgesG(a: number[], b: number[]): { g: number; ciLow: number; ciHigh: number } | null {
+export function hedgesG(a: number[], b: number[]): { g: number; ciLow: number; ciHigh: number } | null {
   const nA = a.length, nB = b.length;
   if (nA < 2 || nB < 2) return null;
   const mA = mean(a), mB = mean(b);
