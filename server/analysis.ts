@@ -1048,7 +1048,7 @@ export function dailyRecommendation(args: {
     reasons.push({ code: "base", text: "Standard-Grundlageneinheit (Z2)" });
   }
   if (args.readinessLevel === "yellow") reasons.push({ code: "readiness_yellow", text: "Readiness mittel → Intensität eher zurückhaltend" });
-  if (args.ctlRamp != null && args.ctlRamp > 8) reasons.push({ code: "ramp_high", text: `CTL-Ramp hoch (${args.ctlRamp}/Woche) — nicht überziehen` });
+  if (args.ctlRamp != null && args.ctlRamp > CTL_RAMP_WARN) reasons.push({ code: "ramp_high", text: `CTL-Ramp hoch (${args.ctlRamp}/Woche) — nicht überziehen` });
   if (args.plannedTypes.length) reasons.push({ code: "already_planned", text: `Heute geplant: ${args.plannedTypes.join(", ")}` });
   const doseHint = args.weekTssRec ? `Wochen-Ziel ${args.weekTssRec.target} TSS (${args.weekTssRec.kind})` : "";
   return { headline, sessionType, doseHint, reasons, confidence };
@@ -1108,7 +1108,7 @@ export function adjustTodaySession(
     newType = "LT1"; factor = 0.8; action = "deep_fatigue"; confidence = "mittel";
     headline = "Stark ermüdet → harte Einheit zu Tempo/Steady entschärfen";
     reasons.push({ code: "deep_fatigue", text: `Form ermüdet (TSB ${Math.round(ctx.tsb)}) → Intensität runter` });
-  } else if (ctx.ctlRamp != null && ctx.ctlRamp > 8) {
+  } else if (ctx.ctlRamp != null && ctx.ctlRamp > CTL_RAMP_WARN) {
     factor = 0.9; action = "ramp_high"; confidence = "mittel";
     headline = "CTL-Ramp hoch → Dosis leicht reduzieren";
     reasons.push({ code: "ramp_high", text: `CTL-Ramp ${ctx.ctlRamp}/Woche → nicht überziehen` });
@@ -1171,10 +1171,15 @@ export function weekStructureRecommendation(args: {
   methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory Nudge
   goalDistanceM?: number | null; // Item 3 (Frage B): Zieldistanz verschiebt das Verteilungs-Soll leicht
   healthCap?: { loadFactor: number; dropTopIntensity: boolean } | null; // Coach ToDo 35: hartes Gesundheits-Veto (RED-S/Übertraining)
+  targetCtl?: number | null; // T8 (v2.7.0): progressive Überlast — rampt das TSS-Zielband gegen ein STEIGENDES Ziel-CTL
+  //                            (statt gegen die aktuelle CTL, die im Erhaltungs-Gleichgewicht flach ausläuft). Das
+  //                            Load-Impact-% bleibt gegen die ECHTE CTL (ehrlich). blockPlan deckelt zusätzlich per ACWR.
 }): WeekStructureRec {
   const reasons: { code: string; text: string }[] = [];
   const p = (args.phase || "").toLowerCase();
-  let tssRange = tssRecommendation(args.ctl, args.phase);
+  // T8: Zielband gegen das (ggf. gerampte) Ziel-CTL bilden; ohne targetCtl unverändert die aktuelle CTL.
+  const bandCtl = args.targetCtl != null && args.targetCtl > args.ctl ? args.targetCtl : args.ctl;
+  let tssRange = tssRecommendation(bandCtl, args.phase);
   // Health-first: ein high/warn-Gesundheits-Flag kappt die Wochenlast HART (skaliert das TSS-Ziel). Der konkrete
   // Intensitäts-Verzicht (VO2 raus) passiert in blockPlan an den echten Einheiten.
   if (args.healthCap && args.healthCap.loadFactor < 1) {
@@ -1225,7 +1230,7 @@ export function weekStructureRecommendation(args: {
   if (args.readinessLevel === "red") {
     reasons.push({ code: "readiness_red", text: "Readiness niedrig → Intensität runter, Erholungstage einbauen" });
   }
-  if (args.ctlRamp != null && args.ctlRamp > 8) {
+  if (args.ctlRamp != null && args.ctlRamp > CTL_RAMP_WARN) {
     reasons.push({ code: "ramp_high", text: `CTL-Ramp ${args.ctlRamp}/Woche hoch — ggf. Woche beschränken` });
   }
 
@@ -1314,6 +1319,7 @@ export interface BlockWeek {
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: IR-Faltungs-Fitness je Woche (additiv im Endpoint gesetzt, wenn ein Dose-Run vorliegt)
+  projVdot?: number | null;  // T10 (v2.7.0): prognostizierte VDOT/VO2max-Äquivalent je Woche (Richtung Ziel-VDOT, gedeckelt) — nur Anzeige
   cyclePhase?: string | null; // Zyklus-Steuerung: (ggf. prognostizierte) Menstruationszyklus-Phase dieser Woche (nur Anzeige/Timeline)
   reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
 }
@@ -1349,10 +1355,22 @@ export function derivePhaseSequence(
   weeks: { week_no: number; start_date: string; phase: string | null }[],
   raceDate: string | null,
   taperWeeks = 2, // Baustein 2.4: Anzahl Race-Specific-Wochen vor der Race Week = Taper-Länge (sportwiss. valide 1–3)
+  forceTaperWindow = false, // v2.7.0 (T4 „Peak ausrichten"-Fix): Taper-Fenster (Race Week + Race Specific) auch
+  //                          über bereits gepinnte Phasen NEU legen. Nur so kann eine geänderte Taper-Länge den
+  //                          Peak verschieben, wenn die Wochen schon phasiert sind (sonst „wirkt nur 1×"). Der
+  //                          Aufbau-Span davor bleibt respektvoll (nur leere füllen) — manuelle Phasen dort bleiben.
 ): (string | null)[] {
   const n = weeks.length;
   const out: (string | null)[] = weeks.map((w) => (w.phase && w.phase.trim() ? w.phase : null));
+  // Bei erzwungenem Taper-Fenster: alte Taper-STRUKTUR-Pins (Race Week/Specific) tail-weit löschen, damit eine
+  // KÜRZERE Taper-Länge keine veraltete Race-Specific-Woche vor dem neuen Fenster stehen lässt. Aufbau-Pins
+  // (Base/Belastung/Entlastung) bleiben unberührt — nur die Renn-Anlauf-Struktur wird neu gelegt.
+  if (forceTaperWindow) {
+    for (let i = 0; i < n; i++) if (out[i] && /race ?week|race-week|race specific/i.test(out[i]!)) out[i] = null;
+  }
   const set = (i: number, phase: string) => { if (i >= 0 && i < n && out[i] == null) out[i] = phase; };
+  // Taper-Fenster: bei forceTaperWindow unbedingt setzen (überschreibt auch manuelle Aufbau-Pins im Fenster), sonst wie set.
+  const setTaper = (i: number, phase: string) => { if (i >= 0 && i < n && (forceTaperWindow || out[i] == null)) out[i] = phase; };
   let raceIdx = -1;
   if (raceDate) {
     for (let i = 0; i < n; i++) {
@@ -1362,9 +1380,9 @@ export function derivePhaseSequence(
     if (raceIdx < 0 && raceDate >= (weeks[n - 1]?.start_date ?? "")) raceIdx = n - 1; // Rennen ≥ letzte Woche
   }
   if (raceIdx >= 0) {
-    set(raceIdx, "Race Week");
+    setTaper(raceIdx, "Race Week");
     const specificStart = Math.max(0, raceIdx - Math.max(1, Math.min(3, Math.round(taperWeeks))));
-    for (let i = specificStart; i < raceIdx; i++) set(i, "Race Specific");
+    for (let i = specificStart; i < raceIdx; i++) setTaper(i, "Race Specific");
     const spanEnd = specificStart - 1; // Aufbau-Span [0 .. spanEnd]
     if (spanEnd >= 0) {
       const baseCut = Math.floor((spanEnd + 1) * 0.45); // erste ~45 % Base, Rest Belastung
@@ -1390,20 +1408,39 @@ export function derivePhaseSequence(
 
 export interface VdotProjection { perWeek: number[]; goalVdot: number; curVdot: number; infeasible: boolean }
 
+// VDOT/VO2max-Projektion (v2.7.0 — physiologisch korrigiert). VO2max wächst NICHT linear/unbegrenzt: der Zuwachs
+// folgt abnehmendem Grenzertrag (schnell früh, dann Plateau) und ist über eine Saison realistisch BEGRENZT — je
+// näher am eigenen Leistungs-Plateau, desto knapper. Der frühere lineare 0.4-VDOT/Woche-Ansatz projizierte über
+// lange Blöcke absurde Zuwächse (+25 VDOT) — ersetzt durch eine Sättigungskurve gegen einen realistisch erreichbaren
+// Zuwachs (nicht gegen ein evtl. utopisches Ziel-VDOT).
+const VDOT_ANNUAL_GAIN = 4.5; // realistischer VDOT-Zuwachs pro JAHR bei vollem Kopfraum (Entwickler); mit Fitness sinkend
+/** Kopf­raum bis zum Plateau: weniger realistischer Zuwachs, je höher die aktuelle Fitness (diminishing returns). */
+function vdotHeadroom(curVdot: number): number {
+  return Math.max(0.15, Math.min(1.1, (72 - curVdot) / 16)); // ~1.1 ≤VDOT 54, ~0.81 bei 59, ~0.5 bei 64, ~0.25 bei 68
+}
+/** Realistisch erreichbarer VDOT-Zuwachs über `weeks` (horizont-abhängig, mit Fitness-Kopfraum + Sättigung über Jahre). */
+export function realisticVdotReach(curVdot: number, weeks: number): number {
+  const years = Math.max(0, weeks) / 52;
+  return VDOT_ANNUAL_GAIN * vdotHeadroom(curVdot) * Math.min(Math.sqrt(years), 2); // √Jahre = Sättigung, Deckel 2 Jahre
+}
+
 /**
- * Wöchentliche VDOT-Projektion (v1.7.0): von der heutigen Fitness linear Richtung Ziel-VDOT, **gedeckelt** auf
- * `capPerWeek` VDOT-Punkte/Woche (kein Regress bei langsamem Ziel). Reicht die Zeit nicht → `infeasible`,
- * die Projektion bleibt unter dem Ziel (ehrlich). `perWeek[w]` = projizierte VDOT in Woche w (0 = heute).
+ * Wöchentliche VDOT-Projektion: Sättigungskurve (diminishing returns) von der heutigen Fitness Richtung Ziel,
+ * gedeckelt auf einen **horizont-abhängigen, realistisch erreichbaren** Zuwachs (`realisticVdotReach`) — mehr Zeit
+ * ⇒ mehr möglich, aber je fitter, desto knapper. `perWeek[w]` = projizierte VDOT in Woche w (0 = heute).
+ * `infeasible` = Ziel liegt ÜBER dem realistisch Erreichbaren (ehrlich — die Prognose reicht dann nicht ans Ziel).
  */
-export function projectVdot(curVdot: number, goalVdot: number, weeks: number, capPerWeek = 0.4): VdotProjection {
+export function projectVdot(curVdot: number, goalVdot: number, weeks: number): VdotProjection {
   const need = goalVdot - curVdot;
   const W = Math.max(0, Math.round(weeks));
+  const reach = need <= 0 ? 0 : Math.min(need, realisticVdotReach(curVdot, W)); // realistisch erreichbarer Zuwachs
+  const tau = Math.max(6, Math.min(20, W / 3)); // Sättigungs-Zeitkonstante (Wochen) — skaliert mit dem Block
   const perWeek: number[] = [];
   for (let w = 0; w <= W; w++) {
-    const gain = need <= 0 ? 0 : Math.min(need, capPerWeek * w);
+    const gain = reach > 0 ? reach * (1 - Math.exp(-w / tau)) : 0; // abnehmender Grenzertrag, Plateau gegen reach
     perWeek.push(Math.round((curVdot + gain) * 100) / 100);
   }
-  return { perWeek, goalVdot, curVdot, infeasible: need > capPerWeek * W + 1e-9 };
+  return { perWeek, goalVdot, curVdot, infeasible: need > reach + 1e-9 };
 }
 
 /**
@@ -1454,8 +1491,8 @@ export function resolvePlannedSession(
   if (!tpl || !ctx.curVdot) return null;
   const weeksUntil = Math.max(0, Math.round((Date.parse(sessionDate + "T00:00:00Z") - Date.parse(ctx.today + "T00:00:00Z")) / (7 * 86400000)));
   const goalVdot = ctx.goalTimeS && ctx.goalDistanceM ? vdot(ctx.goalDistanceM, ctx.goalTimeS) : ctx.curVdot;
-  const need = goalVdot - ctx.curVdot;
-  const projVdot = ctx.curVdot + (need > 0 ? Math.min(need, 0.4 * weeksUntil) : 0); // gedeckelt, kein Regress
+  // v2.7.0: konsistent mit projectVdot — Sättigungskurve statt linear (physiologisch, diminishing returns).
+  const projVdot = projectVdot(ctx.curVdot, goalVdot, weeksUntil).perWeek[weeksUntil] ?? ctx.curVdot;
   const zones = zonesForWeek(ctx.baseZones, projVdot, ctx.goalDistanceM);
   const fitness = fitnessLevel(ctx.curCtl, zones.cs_pace ?? null, ctx.curVdot); // T7: VDOT verfeinert
   const tsb = weeksUntil <= 1 ? (ctx.curTsb ?? null) : null; // TSB nur für die nahe Einheit (Projektion sonst unsicher)
@@ -1526,6 +1563,63 @@ export function typeVolumeFactors(rows: SessionFbRow[], maxPerFamily = 4): { fac
   return { factors, notes };
 }
 
+// T8 (v2.7.0) — Progressive Überlast. Ohne diesen Lift referenziert das TSS-Zielband die AKTUELLE CTL und läuft
+// über die Blöcke in ein Erhaltungs-Gleichgewicht (CTL steigt anfangs, plateaut dann — sichtbar flach übers Jahr,
+// img-30). Produktive Aufbauwochen (Base/Belastung) rampen deshalb das Band-Ziel-CTL modest über die aktuelle CTL,
+// sodass die Last kontinuierlich STEIGT. ACWR-gedeckelt: Lift ≤ PROG_LIFT_CAP der aktuellen CTL, und die fertige
+// Wochenlast zusätzlich hart auf ACWR_WEEK_CAP × (CTL×7) geklemmt. Specific (Schärfung) und Deload/Taper rampen NICHT.
+const PROG_RAMP_PER_WEEK = 0.02; // Band-Ziel-CTL-Lift je produktiver Aufbauwoche (kumulativ bis Cap)
+const PROG_LIFT_CAP = 0.10;      // max. Band-CTL-Lift über der aktuellen CTL (Sicherheits-Deckel)
+const ACWR_WEEK_CAP = 1.45;      // harte Wochen-Deckelung acute:chronic — konsistent mit tssRecommendation
+
+// T9a (v2.7.0) — Taper-Guard: kein harter Reiz zu nah am Rennen, sonst kommt die Superkompensation nicht an
+// (behebt „VO2max 2 Tage vorm Rennen"). Eine geplante Qualität mit effort ≥ HARD gilt als „hart"; fällt sie in die
+// letzten RACE_HARD_CUTOFF_DAYS vor dem Renntag, wird sie als locker gerendert (downgrade → easy_ga1). Steigerungen
+// (strides, effort 2) bleiben erlaubt (neuromuskuläre Öffner sind vor dem Rennen erwünscht).
+const RACE_HARD_CUTOFF_DAYS = 4; // letzte harte Einheit ≥ 4 Tage vor dem Rennen (Standard-Taper-Regel)
+const TAPER_HARD_EFFORT = 4;     // effort ≥ 4 = harte Qualität (LT2/VO2/Renntempo/lange Berg-Reps)
+
+// CTL-Ramp-Steuerung (v2.7.0): „physiologisch sinnvoller Fitnessanstieg" — Warnung ab 6 CTL/Woche (aggressiver
+// Bereich), harte Kappung der Wochenlast, sodass die projizierte Ramp 8 CTL/Woche nicht übersteigt (Verletzungs-/
+// Übertrainings-Grenze). Umrechnung Ramp→Wochen-TSS über die CTL-EWMA (7-Tage-Anteil ≈ 0.1545 → 45 TSS je Ramp-Punkt
+// über der Erhaltung von CTL×7).
+const CTL_RAMP_WARN = 6;         // Grund „ramp_high" ab dieser Wochen-Ramp (vorher 8) — „eher so 6"
+const RAMP_HARD_CAP = 8;         // projizierte Wochen-Ramp NIE über 8 CTL/Woche
+const RAMP_TSS_PER_POINT = 45;   // Wochen-TSS je zusätzlichem Ramp-Punkt über CTL×7 (aus der 42-Tage-EWMA)
+// v2.7.0 (Kolja): produktive Aufbauwochen (Nicht-Deload) zielen an den oberen sicheren ACWR-Rand, damit die
+// CTL-Ramp über MEHR VOLUMEN so hoch wie sicher möglich wird (Wunsch „Ramp Richtung 4"). Physik: Ramp 4 bräuchte
+// ACWR ~1.52 (>1.45) bei CTL 50 — daher hier der Rand knapp unter dem Cap; die volle 4 erreicht die Ramp erst mit
+// steigender CTL (bei CTL ~60 = ACWR ~1.43). ACWR_WEEK_CAP + RAMP_HARD_CAP + Deloads + Health-Cap bleiben Sicherung.
+const PRODUCTIVE_ACWR_BASE = 1.30;  // Ziel-acute:chronic in Base-Wochen (Volumen-Grundlage, etwas moderater)
+const PRODUCTIVE_ACWR_BUILD = 1.42; // Ziel-acute:chronic in Belastungswochen (knapp unter dem Cap 1.45)
+//                                     Base < Build erhält die Progression über den Mesozyklus; die Mesozyklus-weite
+//                                     Progression kommt zusätzlich aus der steigenden CTL (gleicher ACWR ⇒ mehr TSS).
+
+// Distanz-abhängiger Taper-Floor (v2.7.0): ein Marathon braucht trainingswissenschaftlich MEHR Taper als ein 5k —
+// gerade nach vielen Trainingswochen. Der persönliche (Banister-)Taper darf den Floor VERLÄNGERN, aber nicht
+// unterschreiten (auch wenn die Eigen-Analyse „nur 3 Tage" sagt — bei wenig/keiner Renn-Erfahrung ist der
+// distanz-typische Taper die sichere Untergrenze). Race-Specific-Wochen VOR der Race Week + Tages-Ramp.
+function taperFloorWeeks(goalDistanceM: number | null): number {
+  const m = goalDistanceM ?? 0;
+  if (m >= 30000) return 2; // Marathon: ≥2 Race-Specific-Wochen (+ Race Week ≈ 3 Wo Taper)
+  return 1;                 // HM/10k/5k: ≥1
+}
+function taperFloorDays(goalDistanceM: number | null): number {
+  const m = goalDistanceM ?? 0;
+  if (m >= 30000) return 14; // Marathon: mind. 2 Wochen Tages-Taper
+  if (m >= 15000) return 10; // HM
+  if (m >= 7000) return 7;   // 10k
+  return 5;                  // 5k/kurz
+}
+
+// T12 (v2.7.0) — Reverse-from-Race-Peak-Steuerung: progressiver Volumen-Taper im Renn-Anlauf. Ohne ihn bleiben die
+// „Race Specific"-Wochen hoch belastet (Ratio 1.15–1.32), die Ermüdung wird nicht abgebaut → die Renn-Woche erreicht
+// nicht den Frische-Sweet-Spot (TSB ~+12), und der Form-Peak fällt auf eine FRÜHERE Deload-Woche (Bug „Peak zu früh").
+// Die Wochenlast (acute:chronic) wird im letzten Taper-Fenster fallend gedeckelt (Fensteranfang → Renntag); die
+// Qualitäts-AUSWAHL (Intensität) bleibt, nur das VOLUMEN sinkt (klassischer Taper: Volumen runter, Intensität halten).
+const TAPER_START_RATIO = 0.92; // Wochenlast am Taper-Fensteranfang (acute:chronic)
+const TAPER_RACE_RATIO = 0.50;  // Wochenlast in der Renn-Woche (tiefster Punkt)
+
 export function blockPlan(args: {
   weeks: BlockWeekInput[];
   historicalDailyTss: Map<string, number>;
@@ -1543,6 +1637,8 @@ export function blockPlan(args: {
   goalTimeS?: number | null;     // v1.7.0: Wunsch-Zielzeit → Ziel-VDOT (treibt die Pace-Progression)
   tuneups?: { date: string; distanceM: number | null; goalTimeS: number | null }[]; // v1.10.0: Test-/Aufbauwettkämpfe
   taperWeeks?: number; // Baustein 2.4: Taper-Länge (Race-Specific-Wochen vor der Race Week); Default 2
+  taperDays?: number;  // Banister: renntag-genaue Taper-Länge (Tage). Rampt die Last tages-präzise in die Grenzwoche
+  //                      vor der Race Week (die Race Week trägt ihren eigenen Wochen-Taper). Null = keine Tages-Rampe.
   kmCeilingBase?: number | null; // Baustein A1: verletzungssicheres km-Ceiling (nächste Woche); wächst ~7%/Blockwoche
   volumeByFamily?: Record<string, number>; // Baustein B1: Volumen-Faktor je Qualitäts-Familie (RPE/Completion-Loop)
   cycleByWeek?: Map<number, CycleWeekBias>; // 4. Steuer-Input: Zyklus-Bias je Woche (week_no), gestuft + bounded
@@ -1550,8 +1646,39 @@ export function blockPlan(args: {
   const projected = new Map<string, number>(); // generierter Plan-TSS je Tag (vorwärts akkumuliert)
   const outWeeks: BlockWeek[] = [];
   let lowConf = false;
-  // P1: Phasen ableiten (nur leere füllen) — manuelle Phasen gewinnen.
-  const phases = derivePhaseSequence(args.weeks.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase })), args.raceDate, args.taperWeeks);
+  let productiveWeeks = 0; // T8: Zähler produktiver Aufbauwochen (Base/Belastung) für die progressive Last-Rampe
+  // P1: Phasen ableiten (nur leere füllen) — manuelle Phasen gewinnen. Ausnahme: „Peak ausrichten" liefert explizit
+  // taperWeeks/taperDays → dann wird das Taper-Fenster neu gelegt (T4-Fix), sonst „wirkt es nur einmal".
+  const forceTaper = args.taperWeeks != null || args.taperDays != null;
+  // v2.7.0 Taper-Floor: distanz-typische Untergrundgrenze — persönlicher Taper darf verlängern, nicht unterschreiten.
+  // Der Tages-Taper wird jetzt IMMER angewandt (nicht nur bei „Peak ausrichten"), sonst tapert der Normal-Pfad einen
+  // Marathon faktisch nur die Race Week (= „kaum tabern"). Ohne Renntag: kein Taper.
+  const effTaperWeeks = args.taperWeeks != null ? Math.max(args.taperWeeks, taperFloorWeeks(args.goalDistanceM ?? null)) : args.taperWeeks;
+  const effTaperDays = args.raceDate
+    ? Math.max(args.taperDays ?? 0, taperFloorDays(args.goalDistanceM ?? null))
+    : (args.taperDays ?? undefined);
+  const phases = derivePhaseSequence(args.weeks.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase })), args.raceDate, effTaperWeeks, forceTaper);
+  // T12: Index der Renn-Woche (für den Taper-Ramp „Wochen bis zur Renn-Woche" — nicht bis zum Renn-DATUM, sonst
+  // bekäme die Renn-Woche selbst nur den halben Taper, weil das Rennen an ihrem Ende liegt).
+  let raceWkIdx = -1;
+  if (args.raceDate) {
+    for (let i = 0; i < args.weeks.length; i++) {
+      const end = addDaysIsoLocal(args.weeks[i].start_date, 6);
+      if (args.raceDate >= args.weeks[i].start_date && args.raceDate <= end) { raceWkIdx = i; break; }
+    }
+    if (raceWkIdx < 0 && args.raceDate >= (args.weeks[args.weeks.length - 1]?.start_date ?? "")) raceWkIdx = args.weeks.length - 1;
+  }
+  // T12: Länge des Renn-Anlaufs (zusammenhängende Race-Specific + Race Week bis zum Renntag) aus der Phasenfolge —
+  // der Volumen-Taper spannt den GANZEN Anlauf, nicht nur die distanz-typische Zahl (sonst tapert die erste
+  // Race-Specific-Woche nicht mit und bleibt hoch belastet).
+  let taperSpanWks = 0;
+  if (raceWkIdx >= 0) {
+    for (let i = raceWkIdx; i >= 0; i--) {
+      if (/race ?week|raceweek|race ?specific/.test((phases[i] ?? "").toLowerCase())) taperSpanWks++;
+      else break;
+    }
+  }
+  taperSpanWks = Math.max(1, taperSpanWks);
 
   // v1.7.0: Fitness-Projektion heute → Wunsch-Zielzeit; je Woche progressierte Pace-Anker.
   const wkOffset = (d: string) => Math.max(0, Math.round((Date.parse(d + "T00:00:00Z") - Date.parse(args.today + "T00:00:00Z")) / (7 * 86400000)));
@@ -1564,9 +1691,19 @@ export function blockPlan(args: {
     const phase = phases[wi] ?? w.phase;
     // 4. Steuer-Input: Zyklus-Bias dieser Woche (bounded); null = kein Eingriff. Reuse taperFactor/target/emphasis-Hebel.
     const cyc = args.cycleByWeek?.get(w.week_no) ?? null;
-    // Baustein 2.4: Taper/Deload → Qualitäts-VOLUMEN runter (Reps), Pace/Intensität bleibt (Race Week 0.5, Deload 0.7).
-    // Zyklus (Typ+sanfte Last): qualityVolFactor dämpft die Qualitäts-Reps in aerob-/soften-Phasen zusätzlich (health-first).
-    const taperFactor = (/race ?week|race-week/i.test(phase ?? "") ? 0.5 : /entlast|deload/i.test(phase ?? "") ? 0.7 : 1) * (cyc?.qualityVolFactor ?? 1);
+    // Baustein 2.4 + T12: Taper/Deload → VOLUMEN runter (Qualitäts-Reps UND Easy/Long), Pace/Intensität bleibt.
+    // Ein EINHEITLICHER taperRatio steuert den ganzen Renn-Anlauf (Race Specific + Race Week) fallend Richtung Renntag:
+    // damit sinkt das Volumen der quality-dichten Race-Specific-Wochen (vorher voll belastet → Ermüdung blieb, Peak
+    // fiel zu früh). Deload = 0.7, normal = 1. Zyklus dämpft zusätzlich (health-first).
+    const pLow = (phase ?? "").toLowerCase();
+    const inRaceTaper = /race ?week|raceweek|race ?specific/.test(pLow);
+    let taperRatio = /entlast|deload/.test(pLow) ? 0.7 : 1;
+    if (args.raceDate && inRaceTaper && raceWkIdx >= 0) {
+      const weeksToRace = Math.max(0, raceWkIdx - wi); // 0 = Renn-Woche, 1 = letzte Race-Specific, …
+      const frac = Math.min(1, weeksToRace / taperSpanWks); // 0 = Renn-Woche, →1 = Anlauf-Beginn (spannt den ganzen Anlauf)
+      taperRatio = TAPER_RACE_RATIO + (TAPER_START_RATIO - TAPER_RACE_RATIO) * frac;
+    }
+    const taperFactor = taperRatio * (cyc?.qualityVolFactor ?? 1);
     // Baustein B1: Volumen-Faktor je Pick aus dem RPE/Completion-Loop (Familie des Templates).
     const volFor = (t?: WorkoutTemplate | null): number => (t ? (args.volumeByFamily?.[normFamily(t.family)] ?? 1) : 1);
     // Projizierte Zonen dieser Woche (Paces wachsen Richtung Ziel); ohne Projektion = Basis-Zonen.
@@ -1582,6 +1719,14 @@ export function blockPlan(args: {
     const tsb = last?.tsb ?? null;
     const ramp = ctlRamp(pmc, 7);
 
+    // T8: progressive Überlast — nur produktive Aufbauwochen (Base/Belastung, kein Deload) rampen das Band-Ziel-CTL
+    // modest über die aktuelle CTL. Specific/Deload/Taper/Recovery halten bzw. reduzieren (Schärfung/Erholung).
+    const pL = (phase || "").toLowerCase();
+    const isProductive = /base|aufbau|belast/.test(pL) && !/entlast|deload|specific|spec|race|krank|recovery|erholung/.test(pL);
+    const progLift = isProductive ? Math.min(PROG_LIFT_CAP, PROG_RAMP_PER_WEEK * productiveWeeks) : 0;
+    const targetCtl = progLift > 0 && ctl > 0 ? ctl * (1 + progLift) : null;
+    if (isProductive) productiveWeeks++;
+
     // Readiness fließt nur in die unmittelbar nächste Woche ein (Zukunft unbekannt).
     const rec = weekStructureRecommendation({
       ctl, tsb, ctlRamp: ramp, phase, weekNo: w.week_no,
@@ -1589,12 +1734,32 @@ export function blockPlan(args: {
       methodPreference: args.methodPreference ?? null,
       goalDistanceM: args.goalDistanceM ?? null,
       healthCap: wi === 0 ? (args.healthCap ?? null) : null, // Gesundheits-Cap nur auf die unmittelbar nächste Woche (Zukunft = Erholung erhofft)
+      targetCtl, // T8: gerampte Band-Basis (nur produktive Wochen); null = aktuelle CTL wie bisher
     });
     // Zyklus-Last (sanft): Ziel-TSS × loadFactor, GEKLEMMT ins Periodisierungs-Band [min,max] → km-Ceiling + Health-Cap
     // kappen unverändert darüber; Menstruation/späte Luteal etwas weniger, günstige Phase minimal mehr.
-    const target = cyc?.loadFactor && cyc.loadFactor !== 1
+    const rawTarget = cyc?.loadFactor && cyc.loadFactor !== 1
       ? Math.max(rec.tssRange.min, Math.min(rec.tssRange.max, Math.round(rec.tssRange.target * cyc.loadFactor)))
       : rec.tssRange.target;
+    // T8: harte ACWR-Deckelung der fertigen Wochenlast relativ zur AKTUELLEN CTL (acute:chronic ≤ Cap) — der Lift
+    // darf die Basis anheben, aber nie eine einzelne Woche über den sicheren acute:chronic-Bereich treiben.
+    const acwrCap = ctl > 0 ? Math.round(ACWR_WEEK_CAP * ctl * 7) : Infinity;
+    // v2.7.0: zusätzliche harte Ramp-Deckelung — die Wochenlast darf die projizierte CTL-Ramp nicht über RAMP_HARD_CAP
+    // (8/Woche) treiben. Greift v.a. bei niedriger CTL / Wiedereinstieg (dort hat ACWR mehr Spielraum als sinnvoll).
+    const rampCap = ctl > 0 ? Math.round(7 * ctl + RAMP_TSS_PER_POINT * RAMP_HARD_CAP) : Infinity;
+    // Kolja: produktive Aufbauwochen an den oberen ACWR-Rand heben (Ramp über Volumen maximieren) — gedeckelt vom
+    // ACWR-Cap; nur Base/Belastung (isProductive), Deload/Taper/Recovery bleiben unberührt. Greift nur nach oben.
+    // Base moderater als Belastung → Progression über den Mesozyklus.
+    const acwrAim = /belast|build|aufbau/.test(pL) ? PRODUCTIVE_ACWR_BUILD : PRODUCTIVE_ACWR_BASE;
+    const productiveFloor = isProductive && ctl > 0 ? Math.round(acwrAim * ctl * 7) : 0;
+    const rawTargetFloored = Math.max(rawTarget, productiveFloor);
+    // T12: der oben berechnete taperRatio deckelt zusätzlich die Wochenlast (acute:chronic) im Renn-Anlauf → Easy/Long
+    // sinken parallel zum Qualitäts-Volumen, TSB steigt in den Frische-Sweet-Spot, Peak fällt auf den Renntag.
+    const taperCap = args.raceDate && inRaceTaper && ctl > 0 ? Math.round(taperRatio * ctl * 7) : Infinity;
+    const target = Math.min(rawTargetFloored, acwrCap, rampCap, taperCap);
+    if (progLift > 0 && target > rec.tssRange.target * 0.999) {
+      rec.reasons.push({ code: "progressive_overload", text: `Progressive Überlast: Aufbau-Ziel +${Math.round(progLift * 100)}% über Erhalt → Fitness steigt kontinuierlich (ACWR-gedeckelt, Deloads bleiben)` });
+    }
 
     // v1.6.1: konkrete Einheiten aus der Workout-Bibliothek — Rotation + Progression + Fitness-Skalierung.
     const { weekInPhase, phaseLen } = phaseProgress(phases, wi);
@@ -1609,6 +1774,21 @@ export function blockPlan(args: {
     // Gesundheits-Cap (nur nächste Woche): höchste Intensität raus — VO2-Qualitäten entfernen (Easy/Long füllen die Last).
     if (wi === 0 && args.healthCap?.dropTopIntensity) picks = picks.filter((pk) => !(pk.role === "quality" && pk.tpl.family === "VO2"));
 
+    // T12: im Renn-Anlauf die ANZAHL harter Qualitäten reduzieren (nicht nur die Reps) — die quality-dichten
+    // Race-Specific-Wochen bleiben sonst zu schwer, die Ermüdung wird nicht abgebaut, der Peak fällt zu früh.
+    // Tiefe je taperRatio: früh im Anlauf 2 harte Reize, mittlerer Taper 1 (kurze Schärfe), Race-Woche 0 (nur
+    // Steigerungen, kein Longrun). Der weggefallene Reiz wird durch Easy ersetzt (Frische geht vor Volumen).
+    if (args.raceDate && inRaceTaper) {
+      const maxHardQ = taperRatio >= 0.82 ? 2 : taperRatio >= 0.62 ? 1 : 0;
+      let keptHard = 0;
+      picks = picks.filter((p) => {
+        const hardQ = p.role === "quality" && p.tpl.id !== "strides";
+        if (!hardQ) return true;
+        return keptHard++ < maxHardQ; // die erste(n) Qualität(en) = der Renn-spezifische Reiz, Rest raus
+      });
+      if (taperRatio < 0.6) picks = picks.filter((p) => p.role !== "long"); // Race-Woche: kein Longrun
+    }
+
     // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
     let qTss = 0;
     for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(p.tpl), goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
@@ -1619,11 +1799,28 @@ export function blockPlan(args: {
     const easyShare = easies.length ? (remaining * 0.55) / easies.length : 0;
     const units: PlannedUnit[] = picks.map((p) => {
       const tgt = p.role === "long" ? Math.round(longShare) : p.role === "easy" ? Math.round(easyShare) : 0;
-      return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress, targetTss: tgt, emph: p.emph }, pair: p.pair };
+      return { type: p.tpl.sessionType, targetTss: tgt, role: p.role, ref: { tpl: p.tpl, progress, targetTss: tgt, emph: p.emph }, pair: p.pair };
     });
 
     // Auf Wochentage verteilen + je Einheit rendern.
     const scheduled = scheduleWeek(units, args.availability, w.dates);
+    // T9a Taper-Guard: harte Qualität (effort ≥ 4) in den letzten RACE_HARD_CUTOFF_DAYS vor dem Rennen → locker
+    // (downgrade). Schützt die Renn-Frische; Steigerungen (effort 2) bleiben. Greift phasenübergreifend (auch wenn
+    // eine späte Race-Specific-Einheit datumsmäßig zu nah ans Rennen rutscht), nicht nur in der Race Week.
+    let taperGuarded = false;
+    if (args.raceDate) {
+      for (const su of scheduled) {
+        if (su.downgrade) continue;
+        const tpl = (su.ref as { tpl?: WorkoutTemplate } | undefined)?.tpl;
+        const hard = tpl ? (tpl.effort ?? 0) >= TAPER_HARD_EFFORT : /threshold|lt2|vo2|hill|race|renntempo/i.test(su.type);
+        if (!hard) continue;
+        const daysToRace = Math.round((Date.parse(args.raceDate + "T00:00:00Z") - Date.parse(su.date + "T00:00:00Z")) / 86_400_000);
+        if (daysToRace >= 0 && daysToRace <= RACE_HARD_CUTOFF_DAYS) { su.downgrade = true; taperGuarded = true; }
+      }
+    }
+    if (taperGuarded) rec.reasons.push({ code: "taper_guard", text: `Taper-Schutz: harte Einheit < ${RACE_HARD_CUTOFF_DAYS} Tage vor dem Rennen → locker umgewandelt (Renn-Frische geht vor, keine späte VO2/Schwelle)` });
+    // T12: transparenter Hinweis auf den fallenden Volumen-Taper (einmal, in der Renn-Woche).
+    if (inRaceTaper && raceWkIdx === wi) rec.reasons.push({ code: "taper_volume", text: "Volumen-Taper: Last im Renn-Anlauf fallend heruntergefahren (Intensität gehalten, Anzahl harter Einheiten reduziert) → Form-Peak auf den Renntag legen" });
     const days: BlockDay[] = [];
     let tssActual = 0, downgraded = false;
 
@@ -1656,7 +1853,7 @@ export function blockPlan(args: {
     if (kmCeil != null) {
       const renderedKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
       const wouldBe = targetKm != null ? targetKm : renderedKm;
-      if (wouldBe > kmCeil) { targetKm = kmCeil; rec.reasons.push({ code: "km_ceiling", text: `km-Ceiling ${kmCeil} km (verletzungssicher, ACWR ≤ 1.3) — Wochen-Volumen gedeckelt` }); }
+      if (wouldBe > kmCeil) { targetKm = kmCeil; rec.reasons.push({ code: "km_ceiling", text: `km-Ceiling ${kmCeil} km (verletzungssicher, ACWR ≤ 1.45) — Wochen-Volumen gedeckelt` }); }
     }
     if (targetKm && targetKm > 0) {
       const elKm = rendered.filter((r) => r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
@@ -1759,6 +1956,43 @@ export function blockPlan(args: {
       projected.set(tu.date, (projected.get(tu.date) ?? 0) - tuPrev + tuTss);
     }
 
+    // Banister-Tages-Taper: die Race Week trägt ihren Wochen-Taper; hier den Taper RENNTAG-GENAU in die Grenzwoche(n)
+    // davor erweitern. Für Tage im Fenster (Renntag − taperDays, Renntag) dieser NICHT-Race-Week die Last rampen
+    // (Fensteranfang ~voll, näher am Rennen leichter). Spiegelt den Tuneup-Mini-Taper; keine Wochen-Kopplung berührt.
+    if (effTaperDays != null && effTaperDays > 0 && args.raceDate && !w.dates.includes(args.raceDate)) {
+      const raceMs = Date.parse(args.raceDate + "T00:00:00Z");
+      const TMIN = 0.4; // stärkste Reduktion direkt vor dem Rennen (in der Grenzwoche selten erreicht)
+      const scaleZones = (z: { byKm?: Record<number, number>; byMin?: Record<number, number> } | null | undefined, f: number) => {
+        if (!z) return z ?? null;
+        const s = (r?: Record<number, number>) => (r ? Object.fromEntries(Object.entries(r).map(([k, v]) => [k, (v || 0) * f])) : r);
+        return { ...(z.byKm ? { byKm: s(z.byKm) as Record<number, number> } : {}), ...(z.byMin ? { byMin: s(z.byMin) as Record<number, number> } : {}) };
+      };
+      let touched = false;
+      for (let di = 0; di < days.length; di++) {
+        const d0 = days[di];
+        const daysToRace = Math.round((raceMs - Date.parse(d0.date + "T00:00:00Z")) / 86_400_000);
+        if (daysToRace <= 0 || daysToRace > effTaperDays) continue;
+        const factor = Math.max(TMIN, Math.min(1, TMIN + (1 - TMIN) * (daysToRace / effTaperDays)));
+        if (factor >= 0.98) continue; // vernachlässigbare Reduktion → Einheit unangetastet
+        const soften = HARD_TYPES.has(d0.type) && factor < 0.7; // harte Einheit tief im Taper → locker
+        const newTss = Math.max(10, Math.round(d0.planned_tss * factor));
+        const newMin = Math.max(10, Math.round(d0.planned_min * factor));
+        tssActual += newTss - d0.planned_tss;
+        projected.set(d0.date, (projected.get(d0.date) ?? 0) + newTss - d0.planned_tss);
+        days[di] = {
+          ...d0, type: soften ? "Easy" : d0.type, planned_tss: newTss, planned_min: newMin,
+          zone_alloc: soften ? { byKm: {} } : (scaleZones(d0.zone_alloc, factor) ?? d0.zone_alloc),
+          efforts: soften ? null : d0.efforts, prescription: soften ? null : d0.prescription,
+          description: soften ? "Locker — Taper (renntag-genau)" : `${d0.description} · Taper`,
+        };
+        touched = true;
+      }
+      if (touched) {
+        const personal = args.taperDays != null && args.taperDays >= (effTaperDays ?? 0);
+        rec.reasons.push({ code: "banister_taper", text: `Tages-Taper: Last renntag-genau ~${effTaperDays} Tage vor dem Rennen heruntergefahren${personal ? " (Banister-personalisiert)" : " (distanz-typisch)"} — nicht auf ganze Wochen gerundet` });
+      }
+    }
+
     if (rec.confidence === "niedrig") lowConf = true;
     if (cyc?.reason) rec.reasons.push({ code: "cycle", text: cyc.reason }); // 4. Steuer-Input transparent im Verdikt
     const pl = (rec.headline || "").toLowerCase();
@@ -1768,7 +2002,8 @@ export function blockPlan(args: {
       headline: rec.headline, periodizationModel: rec.periodizationModel,
       tssTarget: Math.round(target), tssActual: Math.round(tssActual),
       ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null,
-      isDeload, days, cyclePhase: cyc?.phase ?? null, reasons: rec.reasons, confidence: rec.confidence,
+      isDeload, days, cyclePhase: cyc?.phase ?? null, projVdot: projVdot != null ? Math.round(projVdot * 10) / 10 : null,
+      reasons: rec.reasons, confidence: rec.confidence,
     });
   });
 
@@ -1796,7 +2031,7 @@ export function blockPlan(args: {
       const eShare = easies.length ? recTarget / easies.length : recTarget;
       const units2: PlannedUnit[] = picks.map((p) => {
         const tgt = p.role === "easy" ? Math.round(eShare) : 0;
-        return { type: p.tpl.sessionType, targetTss: tgt, ref: { tpl: p.tpl, progress: 0.3, targetTss: tgt } };
+        return { type: p.tpl.sessionType, targetTss: tgt, role: p.role, ref: { tpl: p.tpl, progress: 0.3, targetTss: tgt } };
       });
       const rdays: BlockDay[] = [];
       let rtss = 0;

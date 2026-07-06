@@ -16,6 +16,7 @@ import {
   type ChannelCount,
 } from "./ml/featureBackbone.ts";
 import { fitLatentFitness, type LatentPoint } from "./ml/latentFitness.ts";
+import { buildBanisterPayload, runBanisterTs, type BanisterResult } from "./ml/banister.ts";
 import { estimateDoseResponse, type DesignRow, type DoseModelResult } from "./ml/doseResponse.ts";
 import { computeAnchoredMcid, type AnchoredMcid } from "./ml/mcidAnchor.ts";
 import { MARKER_MCID } from "./analysis.ts";
@@ -34,8 +35,8 @@ import {
   type Block,
 } from "./ml/prospective.ts";
 
-export type MlKind = "latent_fitness" | "dose_response" | "readiness";
-const MODEL_VERSION = "0.6.0"; // Composition-Bayes: eigener IR-Lauf auf volumen-bereinigten Lasten mit Σβ=0 (target='composition')
+export type MlKind = "latent_fitness" | "dose_response" | "readiness" | "banister";
+const MODEL_VERSION = "0.7.1"; // Banister F−F: Taper-Sim auf Tagesraster (renntag-genau); invalidiert Wochen-Läufe
 // — Bump nötig, da alte Läufe keine Composition-Posteriors haben. (VIF-Reserve autoVifThreshold=6 kam ohne eigenen Bump.)
 const SEED = 42;
 const HALF_LIFE_MS = 450 * 86_400_000; // Recency-Halbwertszeit (Frage 12)
@@ -357,6 +358,29 @@ async function runJob(runId: number, kind: MlKind, profileId: number): Promise<v
         db.exec("ROLLBACK");
         throw e;
       }
+    } else if (kind === "banister") {
+      // Banister F−F: Payload bauen, Bayes-Fit + Taper via Sidecar (PyMC), sonst TS-Fallback. Ergebnis in
+      // ml_runs.settings_json (wie dose_response seine Meta), PMC bleibt unangetastet.
+      setProgress(runId, 0.4);
+      const { acts, inds } = loadIndicators(profileId);
+      const payload = buildBanisterPayload(acts, inds, nowIso().slice(0, 10));
+      let result: BanisterResult | null = null;
+      let engine: "python" | "ts" = "ts";
+      if (payload) {
+        const r = await runWithFallback<BanisterResult | null>(
+          { kind: "banister_ff", payload },
+          () => runBanisterTs(payload),
+          { timeoutMs: 900_000 },
+        );
+        result = r.result;
+        engine = r.engine;
+      }
+      setProgress(runId, 0.85);
+      db.prepare("UPDATE ml_runs SET settings_json=?, engine=? WHERE id=?").run(
+        JSON.stringify({ banister: result, engine, insufficient: !payload }),
+        engine,
+        runId,
+      );
     }
 
     db.prepare("UPDATE ml_runs SET status='done', progress=1, finished_at=? WHERE id=?").run(nowIso(), runId);
@@ -369,6 +393,24 @@ async function runJob(runId: number, kind: MlKind, profileId: number): Promise<v
     }
   } finally {
     cancelled.delete(runId);
+  }
+}
+
+export interface BanisterView {
+  run: RunRow | null;
+  result: BanisterResult | null;
+  engine: string | null;
+  insufficient: boolean;
+}
+/** Liest das zum aktuellen Input passende, zuletzt fertige Banister-Ergebnis (aus ml_runs.settings_json). */
+export function getBanister(profileId: number): BanisterView {
+  const run = matchingDoneRun(profileId, "banister");
+  if (!run?.settings_json) return { run, result: null, engine: run?.engine ?? null, insufficient: !run };
+  try {
+    const s = JSON.parse(run.settings_json) as { banister?: BanisterResult | null; engine?: string; insufficient?: boolean };
+    return { run, result: s.banister ?? null, engine: s.engine ?? run.engine, insufficient: !!s.insufficient };
+  } catch {
+    return { run, result: null, engine: run.engine, insufficient: false };
   }
 }
 

@@ -6,6 +6,139 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [2.7.0] – 2026-07-06 — Reverse-from-Race-Coach-Engine, physiologische Fitness-Prognose & Coach-Feinschliff
+
+### Hinzugefügt
+- **„Dein optimales Taper" — athleten-kalibriertes Banister-Fitness−Fatigue-Modell (Coach-Karte + Peak-Ausrichtung):**
+  Neue Karte im Coach sagt dir aus DEINEN Leistungsmarkern (eff_VO2max/Race-VDOT/Labor), **wie viele Tage reduzierte
+  Last bis zum Form-Peak** (renntag-genau — 9 statt 7/14) und **wie viel Gewinn** — mit ehrlichem Unsicherheits-Band,
+  Prognose ≠ Messwert. Zweikomponenten-Modell `perf = p0 + k1·Fitness − k2·Fatigue`: der **Fit läuft auf Wochenraster**
+  (schnell + entrauscht, τ1≈42 d Fitness / τ2≈11 d Fatigue), die **Taper-Simulation in Tagesraster** (τ_Tage = 7·τ_Wochen,
+  konsistente Skala) aus dem Steady-State bei deiner **chronischen** Last (charakteristisch, tagesform-unabhängig).
+  **Identifizierbarkeit** (Fitness/Fatigue kollinear) über `k2 = ρ·k1`, Prior **ρ≈1.5** (Banister-typisch k2>k1 — nur so
+  entsteht ein Taper-Vorteil): PyMC (gebündelt) schätzt ρ und — bei belastbarer Datenlage (≥5 Rennen/Labor, adaptives
+  Gate) — auch τ mit; TS-Fallback fixiert ρ ehrlich. Engine-Badge (pymc/ts) + „unsicher"-Hinweis bei dünner Datenlage.
+  **„🎯 Peak ausrichten" nutzt jetzt diese Taperzeit — renntag-genau:** die Last wird **tages-präzise** heruntergefahren
+  (rampende Last in der Grenzwoche vor der Race Week, ab dem exakten Taper-Start-Datum = Renntag − Tage — **nicht** auf
+  ganze Wochen gerundet); die Race Week behält ihren Wochen-Taper. Spiegelt den bestehenden Tuneup-Mini-Taper, keine
+  Wochen-Kopplung berührt; Tageszahl + Taper-Start-Datum werden genannt. Sonst Heuristik-Fallback. Rein beobachtend;
+  **die PMC bleibt unangetastet**. Neu: pures `server/ml/banister.ts`, Sidecar-kind `banister_ff` (`engine.py`), Lauf-Art
+  `banister` + `GET /api/ml/banister`, `BanisterTaperCard.tsx` + `alignPeak`-Verdrahtung, `blockPlan`-Tages-Taper-Overlay
+  (`analysis.ts` `taperDays`, `index.ts`, `api.ts`); `MODEL_VERSION 0.7.1`.
+
+### Geändert (Trainingslogik)
+- **Aufbau nutzt jetzt mehr Volumen für höhere CTL-Ramp (ACWR-gedeckelt bei 1.45):** Der km-Ceiling (Volumen-
+  Sicherung) deckelte bisher bei **ACWR 1.3** — strenger als der TSS-Cap (1.45). Jetzt darf das Wochen-Volumen bis
+  **ACWR 1.45** wachsen (an den TSS-Cap angeglichen), und produktive Aufbauwochen zielen an den oberen sicheren
+  ACWR-Rand (Base ~1.30, Belastung ~1.42 → Progression über den Mesozyklus). So steigt die Fitness mit MEHR Volumen
+  spürbar schneller (Runner: +21 statt +14 CTL/16 Wo bei mehr Trainingszeit) — Deloads, Health-Cap und die harte
+  CTL-Ramp-Grenze (≤8) bleiben. Physik-Hinweis: eine Wochen-Ramp von 4 braucht bei CTL ~50 ACWR ~1.52 (>1.45);
+  innerhalb ACWR ≤1.45 liegt das Maximum bei ~3.4 und die volle 4 wird mit steigender CTL (~60) erreicht.
+  (`load.ts` `kmCeiling maxAcwr=1.45`, `analysis.ts` `PRODUCTIVE_ACWR_BASE/BUILD`)
+- **CTL-Ramp im Aufbau sanfter geführt (physiologisch sinnvoller Fitnessanstieg):** Die Warnschwelle „CTL-Ramp
+  hoch" liegt jetzt bei **6/Woche** (vorher 8) — der aggressive Bereich wird früher markiert. Zusätzlich deckelt die
+  Engine die Wochenlast jetzt hart so, dass die **projizierte Ramp 8 CTL/Woche nie übersteigt** (Verletzungs-/
+  Übertrainings-Grenze), unabhängig von der ACWR-Deckelung — greift v. a. bei niedriger CTL/Wiedereinstieg.
+  (`analysis.ts`, `CTL_RAMP_WARN`/`RAMP_HARD_CAP`)
+- **Distanz-abhängiger Taper — ein Marathon tapert jetzt richtig (behebt „soll kaum tabern"):** Der Tages-Taper wird
+  jetzt **immer** angewandt (nicht nur bei „Peak ausrichten") und respektiert einen **distanz-typischen Mindest-Taper**:
+  Marathon ~14 Tage, HM ~10, 10k ~7, 5k ~5. Die persönliche (Banister-)Taper-Schätzung darf **verlängern, aber nicht
+  unterschreiten** — auch wenn die Eigen-Analyse „nur 3 Tage" sagt (bei wenig Renn-Erfahrung ist der distanz-typische
+  Taper die sichere Untergrenze). Vorher tapierte der Normal-Pfad einen Marathon faktisch nur die Race Week.
+  (`analysis.ts` `blockPlan` `taperFloorWeeks`/`taperFloorDays`; `Coach.tsx` `alignPeak` fürs Wording).
+- **Progressive Überlast im Coach-Block (Fitness steigt übers Jahr statt flach zu plateauen):** Das TSS-Zielband
+  war bisher rein an die AKTUELLE CTL gekoppelt (`base = CTL×7 × Phasen-Ratio`) und lief über die Blöcke in ein
+  Erhaltungs-Gleichgewicht — für bereits Trainierte sichtbar flach (img-30). Produktive Aufbauwochen (Base/Belastung)
+  rampen jetzt das **Band-Ziel-CTL** modest über die aktuelle CTL (kumulativ +2 %/Aufbauwoche, gedeckelt bei +10 %),
+  sodass die Last kontinuierlich steigt. **ACWR-gedeckelt:** die fertige Wochenlast wird hart auf 1.45× acute:chronic
+  (relativ zur echten CTL) geklemmt, Deloads (3:1) und Taper bleiben; Specific (Schärfung) rampt nicht. Das
+  Load-Impact-% bleibt ehrlich gegen die echte CTL. Neuer Grund je Woche: „Progressive Überlast: Aufbau-Ziel +X %".
+  Verifiziert (Runner, 26 Wo.): CTL-Verlauf Δ+22.6 statt Δ+17.3, weiter steigend statt Plateau. (`analysis.ts`
+  `blockPlan`/`weekStructureRecommendation`, Konstanten `PROG_RAMP_PER_WEEK`/`PROG_LIFT_CAP`/`ACWR_WEEK_CAP`)
+
+### Behoben
+- **Ziel-Prognose & VO₂max-Kurve konsistent + horizont-abhängig (war widersprüchlich):** Die Ziel-Machbarkeit
+  („nötig +X VDOT/Woche · machbar") rechnete noch mit der ALTEN linearen 0.4-VDOT/Woche-Logik, während die
+  Block-VO₂max-Kurve schon die neue physiologische Sättigung nutzte — dadurch behauptete die Prognose z. B. eine
+  2:25-Marathon (VDOT 69) sei „machbar", obwohl der Block nur ~62 VO₂max projizierte. Jetzt speist **dieselbe
+  `projectVdot`-Projektion** beide: Machbarkeit, Renntag-Prognosezeit UND die Kurve. Zusätzlich ist der realistisch
+  erreichbare Zuwachs **horizont-abhängig** (mehr Vorbereitungszeit ⇒ mehr möglich, mit √Jahre-Sättigung und
+  Fitness-Kopfraum) statt eines fixen Deckels — realistischer für lange Aufbauten. Ergebnis: 2:25 zeigt jetzt
+  ehrlich „sehr ambitioniert" + realistische Endzeit (~2:37, VO₂max ~63) mit Hinweis „Ziel bräuchte VO₂max ~69";
+  erreichbare Ziele bleiben „machbar". (`analysis.ts` `projectVdot`/`realisticVdotReach`, `index.ts` `/goal-gap`,
+  `WeekPlan.tsx` GoalGapCard)
+- **Taper-Band jetzt sichtbar lila (war fälschlich grau „Deload"):** In der Block-Timeline prüften `phaseColor`/
+  `shortPhase` den generischen Deload-Fall VOR der Race Week — die Renn-Woche ist technisch auch „deload" und wurde
+  daher grau statt lila „Taper" gezeichnet (und mit den Recovery-Wochen zu einem grauen Block verschmolzen). Jetzt
+  gewinnen Taper (lila) und Recovery ihre eigene Farbe/Label vor dem Deload-Fang. (`BlockTimeline.tsx`)
+- **Voller Renn-Anlauf tapert (nicht nur die Renn-Woche):** Der Volumen-Taper spannt jetzt den GANZEN zusammen-
+  hängenden Anlauf (alle Race-Specific-Wochen + Race Week) aus der Phasenfolge — vorher blieb die erste
+  Race-Specific-Woche hoch belastet, weil die Taper-Länge an der distanz-typischen Zahl statt am tatsächlichen
+  Specific-Block hing. (`analysis.ts` `taperSpanWks`)
+- **Form-Peak fällt jetzt auf den Renntag (Taper-Adäquanz, behebt „Peak zu früh"):** Die „Race Specific"-Wochen vor
+  dem Rennen liefen bisher als voll belasteter Block (2+ harte Einheiten, Ratio 1.15–1.32) — die Ermüdung wurde nicht
+  abgebaut, die Renn-Woche erreichte nur TSB ~+2…+5 (statt des Frische-Sweet-Spots ~+12), und der Form-Peak fiel auf
+  eine FRÜHERE Deload-Woche. Jetzt läuft der ganze Renn-Anlauf (Race-Specific-Wochen + Race Week) als **progressiver
+  Volumen-Taper**: ein einheitlicher, fallender `taperRatio` senkt **Qualitäts-Volumen UND Easy/Long-Last** Richtung
+  Renntag und **reduziert die Anzahl harter Einheiten** (früh 2 → Mitte 1 kurze Schärfe → Renn-Woche 0, kein Longrun);
+  Intensität/Pace bleibt. Ergebnis (Runner): Renn-TSB landet bei ~+11…+15, der Peak trifft bei realistischen
+  Blocklängen (10–18 Wo) den Renntag. Sehr lange Einzelblöcke (24 Wo+) können weiterhin einen früheren Form-Peak
+  zeigen — das ist trainingswissenschaftlich ehrlich (Fitness plateaut; ein Tune-up-Rennen/kürzerer Schlussblock ist
+  dann sinnvoll), und der Hinweis „Peak zu früh" bleibt sichtbar. (`analysis.ts` `blockPlan`, `TAPER_START_RATIO`/
+  `TAPER_RACE_RATIO`, race-week-index-basierter Taper-Ramp)
+- **VO₂max-/VDOT-Prognose physiologisch korrigiert (war unrealistisch):** Die Fitness-Projektion stieg bisher
+  **linear** mit 0.4 VDOT/Woche Richtung Ziel — über lange Blöcke ergab das absurde Zuwächse (+25 VDOT) und einen
+  unphysiologischen Geraden-Anstieg. Jetzt folgt sie einer **Sättigungskurve mit abnehmendem Grenzertrag** (schnell
+  früh, dann Plateau) und ist auf einen **realistisch erreichbaren Saison-Zuwachs gedeckelt**, der mit steigender
+  Fitness knapper wird (diminishing returns nahe dem Leistungs-Plateau): z. B. ~+4 VDOT über einen langen Block bei
+  mittlerer Fitness, weniger bei schon hoher. Utopische Ziele werden gedeckelt + ehrlich als nicht erreichbar
+  markiert, statt sie fälschlich zu projizieren. Betrifft die VO₂max-Kurve (T10) UND die projizierten Trainings-Paces.
+  (`analysis.ts` `projectVdot` + `resolvePlannedSession`, `realisticVdotReach`/`vdotHeadroom`)
+- **Taper-Guard: kein harter Reiz mehr kurz vor dem Rennen (behebt „VO2max 2 Tage vorm Wettkampf"):** Der
+  Coach-Block enthielt in der Race Week fix eine effort-5-Qualität (VO2/Renntempo), die je nach Harttag-Profil
+  gefährlich nah an den Renntag rutschen konnte. Jetzt wird jede geplante harte Einheit (effort ≥ 4 = LT2/VO2/
+  Renntempo/lange Berg-Reps) in den letzten 4 Tagen vor dem Renntag automatisch auf einen lockeren Lauf
+  heruntergestuft (Steigerungen bleiben als neuromuskuläre Öffner erlaubt); transparent via Grund „Taper-Schutz".
+  Greift datumsbasiert phasenübergreifend, nicht nur in der Race Week. (`analysis.ts` `blockPlan`)
+- **Marathon-Aufbau ≠ Halbmarathon-Aufbau (behebt „1:1 dasselbe wie vor dem Halbmarathon"):** In der Aufbauphase
+  unterschieden sich Marathon- und HM-Block bisher nur im Longrun. Jetzt betont der **Marathon-Build** Schwellen-/
+  Kraftausdauer-Volumen **ohne VO2/Speed** (der Marathon lebt von aerober Schwelle + MP-Ausdauer), während der
+  **HM-Build** zusätzlich gelegentliche VO2-/Renntempo-Schärfe bekommt — plus die bestehenden Longrun-Unterschiede
+  (MP-Blöcke für Marathon, schnelles Ende für HM). (`workouts.ts` `pickWeekWorkouts`)
+- **Quality-Tage werden jetzt eingehalten (Coach-Block):** Der Tages-Scheduler klassifizierte harte Einheiten
+  bisher über den Typ-String, in dem „Steady/LT1" und „Renntempo" **nicht** als hart galten — sie landeten
+  fälschlich als Easy-Füller auf dem ersten freien Tag (meist Montag) statt auf den eingestellten Qualitätstagen
+  (z. B. Di/Do). Jetzt wird die **authoritative Rolle** aus `pickWeekWorkouts` (quality|long|easy|core) durch
+  `PlannedUnit` bis in `scheduleWeek` durchgereicht; Sub-Threshold-Steady und Renntempo zählen korrekt als Qualität
+  und werden auf Harttage mit ≥48 h Abstand gelegt (Typ-Heuristik bleibt Fallback für rohe Aufrufe).
+  (`planbuilder.ts`, `analysis.ts`)
+- **„🎯 Peak ausrichten" wirkt jetzt wiederholt (nicht nur einmal):** Sobald die Saison-Wochen phasiert waren
+  (eigener Saisonplan oder „Phasen übernehmen"), konnte eine geänderte Taper-Länge den Form-Peak nicht mehr
+  verschieben — `derivePhaseSequence` behielt gepinnte Phasen bei und ignorierte den neuen Taper. Jetzt legt die
+  Peak-Ausrichtung das **Taper-Fenster** (Race Week + Race-Specific-Wochen) explizit neu über bestehende Pins,
+  räumt veraltete Taper-Wochen bei kürzerem Taper weg, und lässt die Aufbau-Phasen davor unangetastet.
+  (`analysis.ts` `derivePhaseSequence`/`blockPlan`, `forceTaperWindow`)
+
+### Hinzugefügt
+- **Erwartete VO₂max je Woche in der Block-Timeline (T10):** Die Wettkampf-Block-Timeline zeigt jetzt zusätzlich
+  zur Form-Readiness-Kurve eine **prognostizierte VO₂max/VDOT-Kurve** je Woche (gestrichelt, eigene Achse, Tooltip +
+  Legende). Werte kommen aus der bestehenden Fitness-Projektion (Richtung Ziel-VDOT, gedeckelt) und sind klar als
+  „prognostiziert" gelabelt (beobachtet ≠ prognostiziert) — man sieht auf einen Blick, wie die erwartete Fitness bis
+  zum Renntag steigt. (`analysis.ts` `BlockWeek.projVdot`, `api.ts`, `BlockTimeline.tsx`)
+
+### Geändert
+- **Coach-Wochenzeile: Trainingsphase jetzt farbig** (statt reinem Text) — nutzt dieselbe Farbpalette wie die
+  Block-Timeline direkt darüber, damit die Wochenliste sich an der Timeline orientiert statt eine eigene Konvention
+  zu zeigen. `phaseColor()` aus `BlockTimeline.tsx` exportiert, in `Coach.tsx` wiederverwendet.
+- **Schwerpunkt-Selector direkt im Coach sichtbar:** Der Segmented-Control „Schwerpunkt im Block" (bisher nur in
+  der Verfügbarkeits-Karte weiter unten) erscheint jetzt zusätzlich direkt unter dem Coaching-Verdikt, sobald
+  Schwerpunkt-Modus „manuell" gewählt ist — keine Navigation/Scrollen mehr nötig. Aus `AvailabilityCard.tsx` in
+  eine eigenständige `EmphasisSelector.tsx` extrahiert (eine Wahrheitsquelle, an zwei Stellen genutzt).
+- **Lauf-Power-Karte herstellerneutral gelabelt:** „relativ zu deinen Coros-Watt" → „relativ zu Geräte-Watt" (die
+  Analyse ist nicht Coros-spezifisch, sondern gilt für alle über Strava gelieferten Laufwatt). Hinweistext ergänzt,
+  dass Critical Power/Power-Kurve bei jedem Strava-Sync automatisch neu berechnet werden — kein manueller Button
+  nötig (verifiziert: `/api/power-curve` rechnet live aus den gespeicherten Power-Streams, keine Cache-Schicht).
+
 ## [2.6.0] – 2026-07-04 — Zyklus-Plansteuerung, MCID-Verankerung & plattformübergreifender Python-Rechenkern
 
 ### Hinzugefügt

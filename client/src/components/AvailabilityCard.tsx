@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, type Availability, type WorkoutInfo } from "../lib/api.ts";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
+import EmphasisSelector from "./EmphasisSelector.tsx";
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const EMPTY: Availability = { minutesByWeekday: [0, 0, 0, 0, 0, 0, 0], longRunDay: null, hardDays: [], allowDoubles: false, doubleDays: [] };
@@ -12,11 +13,6 @@ function toMinutes(v: string): number {
   const n = Number(v);
   return v.trim() && isFinite(n) && n >= 0 ? Math.round(n) : 0;
 }
-
-const EMPHASIS = [
-  { v: "ausgewogen", l: "Ausgewogen" }, { v: "lt1", l: "LT1 (aerobe Schwelle)" }, { v: "schwelle", l: "Schwelle (LT2)" }, { v: "vo2", l: "VO2max" },
-  { v: "berg", l: "Berg" }, { v: "norwegian", l: "Norwegian (sub-T)" }, { v: "fartlek", l: "Fartlek" },
-];
 
 export default function AvailabilityCard() {
   const [av, setAv] = useState<Availability>(EMPTY);
@@ -152,16 +148,8 @@ export default function AvailabilityCard() {
 
       </div>
 
-      {/* Block-Schwerpunkt (v1.9.0): prominent als Segmented-Control statt kleinem Dropdown. */}
-      <div style={{ marginBottom: 10 }}>
-        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 4 }}><T k="availability.emphasis">Schwerpunkt im Block</T></div>
-        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-          {EMPHASIS.map((o) => (
-            <button key={o.v} className={`sm ${(av.emphasis ?? "ausgewogen") === o.v ? "" : "ghost"}`}
-              style={{ padding: "6px 13px", fontWeight: 600 }} onClick={() => persist({ ...av, emphasis: o.v })}>{o.l}</button>
-          ))}
-        </div>
-      </div>
+      {/* Block-Schwerpunkt (v1.9.0, extrahiert v2.7.0): prominent als Segmented-Control statt kleinem Dropdown. */}
+      <div style={{ marginBottom: 10 }}><EmphasisSelector /></div>
 
       {/* Harttage */}
       {trainingDays.length > 0 && (

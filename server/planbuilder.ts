@@ -174,7 +174,7 @@ export interface Availability {
   avoidWorkouts?: string[];     // Template-IDs, die vermieden werden sollen
 }
 
-export interface PlannedUnit { type: string; targetTss: number; ref?: unknown; pair?: string; }
+export interface PlannedUnit { type: string; targetTss: number; ref?: unknown; pair?: string; role?: "quality" | "long" | "easy" | "core"; }
 export interface ScheduledUnit {
   date: string; weekdayIdx: number; type: string; targetTss: number;
   budgetMin: number;  // Minuten-Budget je Einheit (bei Doppeleinheiten geteilt); 0 = unbegrenzt
@@ -213,10 +213,15 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   const out: ScheduledUnit[] = [];
   const pickFree = (): number | undefined => trainingDays.find((d) => !used.has(d));
 
-  const longs = units.filter((u) => isLongType(u.type));
-  const hards = units.filter((u) => isHardType(u.type));
-  const cores = units.filter((u) => isCoreType(u.type));
-  const easies = units.filter((u) => !isLongType(u.type) && !isHardType(u.type) && !isCoreType(u.type));
+  // v2.7.0: Klassifikation über die authoritative Rolle aus pickWeekWorkouts (quality|long|easy|core), sonst
+  // Fallback auf die Typ-Heuristik. WICHTIG für Quality-Tage: „Steady/LT1"/„Renntempo" tragen role="quality",
+  // stehen aber nicht in HARD_TYPES — ohne Rolle landeten sie fälschlich als Easy und wurden nicht auf Harttage gelegt.
+  const roleOf = (u: PlannedUnit): "quality" | "long" | "easy" | "core" =>
+    u.role ?? (isLongType(u.type) ? "long" : isHardType(u.type) ? "quality" : isCoreType(u.type) ? "core" : "easy");
+  const longs = units.filter((u) => roleOf(u) === "long");
+  const hards = units.filter((u) => roleOf(u) === "quality");
+  const cores = units.filter((u) => roleOf(u) === "core");
+  const easies = units.filter((u) => roleOf(u) === "easy");
 
   // 1) Longrun: bevorzugt longRunDay, sonst erster freier Trainingstag.
   for (const u of longs) {

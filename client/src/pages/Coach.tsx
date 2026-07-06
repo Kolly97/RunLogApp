@@ -10,7 +10,9 @@ import WeekSelector from "../components/WeekSelector.tsx";
 import AvailabilityCard from "../components/AvailabilityCard.tsx";
 import CustomWorkoutsCard from "../components/CustomWorkoutsCard.tsx";
 import OptimalZonesCard from "../charts/OptimalZonesCard.tsx";
-import BlockTimeline from "../charts/BlockTimeline.tsx";
+import BlockTimeline, { phaseColor } from "../charts/BlockTimeline.tsx";
+import BanisterTaperCard from "../components/BanisterTaperCard.tsx";
+import EmphasisSelector from "../components/EmphasisSelector.tsx";
 import { blockReadiness } from "../lib/blockReadiness.ts";
 import T from "../components/T.tsx";
 
@@ -145,14 +147,38 @@ export default function Coach() {
     requestAnimationFrame(() => document.getElementById(`bw-${w}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   };
 
-  // Baustein 2.4: Peak auf Renntag ausrichten — probiert sportwiss. valide Taper-Längen (1–3 Wo) durch und wählt die,
-  // deren Form-Readiness-Peak dem Renntag am nächsten kommt (Tie → Standard-Taper 2 Wo). Nur Vorschau — „Phasen
-  // übernehmen" schreibt es fest. Manuelle Phasen bleiben (derivePhaseSequence füllt nur leere).
+  // Baustein 2.4 + Banister: Peak auf Renntag ausrichten. WENN das athleten-kalibrierte Banister-Modell eine
+  // Taper-Länge liefert (peak_gain>0), TREIBT diese die Wahl — die renntag-genaue Tageszahl wird auf die nächste
+  // Race-Specific-Wochenzahl gerundet (der Block ist wochen-granular), Tageszahl + Taper-Start-Datum werden
+  // präzise gemeldet. Sonst Fallback auf die Heuristik (1–3 Wo, Form-Peak dem Renntag am nächsten). Nur Vorschau —
+  // „Phasen übernehmen" schreibt es fest.
   const [aligning, setAligning] = useState(false);
   async function alignPeak() {
     if (weekNo == null || aligning) return;
     setAligning(true); setMsg("");
     try {
+      // 1) Banister-getrieben, wenn belastbar. Distanz-typischer Taper-Floor (Server ist maßgeblich, hier nur fürs
+      // Wording konsistent): ein Marathon tapert min. ~14 Tage, auch wenn die persönliche Analyse kürzer sagt.
+      const dist = blockPlan?.goalDistanceM ?? 0;
+      const floorDays = dist >= 30000 ? 14 : dist >= 15000 ? 10 : dist >= 7000 ? 7 : 5;
+      const bt = (await api.mlBanister().catch(() => null))?.result ?? null;
+      if (bt && bt.peak_gain > 0) {
+        const taperDaysEff = Math.max(bt.taper_days, floorDays);
+        const floored = taperDaysEff > bt.taper_days;
+        const taperWk = Math.max(1, Math.min(3, Math.round(taperDaysEff / 7)));
+        const p = await api.blockSuggestion(weekNo, taperWk, taperDaysEff).catch(() => null);
+        if (p?.weeks?.length) {
+          const { peakIdx, raceIdx } = blockReadiness(p.weeks, p.raceDate);
+          const gap = raceIdx >= 0 ? Math.abs(raceIdx - peakIdx) : -1;
+          const start = p.raceDate ? new Date(Date.parse(p.raceDate) - taperDaysEff * 86_400_000).toISOString().slice(0, 10) : null;
+          const unsure = bt.peak_low <= 0 ? " (unsicher — mehr Rennen/Labor schärfen es)" : "";
+          const floorNote = floored ? ` (distanz-typisches Minimum statt persönlicher ${bt.taper_days} Tage — sicherer bei wenig Renn-Erfahrung)` : "";
+          setBlockPlan(p);
+          setMsg(`🎯 Taper: ${taperDaysEff} Tage${floorNote}${unsure}${start ? ` · Last tages-genau ab ~${start}` : ""} heruntergefahren (Struktur: ${taperWk} Race-Specific-Woche(n))${gap >= 0 ? ` · Form-Peak ${gap === 0 ? "auf dem Renntag" : `${gap} Wo entfernt`}` : ""}. „Phasen übernehmen" schreibt es fest.`);
+          return;
+        }
+      }
+      // 2) Fallback-Heuristik (kein/kein belastbares Banister-Ergebnis).
       const cands = await Promise.all([1, 2, 3].map((t) => api.blockSuggestion(weekNo, t).catch(() => null)));
       let best: BlockPlan | null = null, bestGap = Infinity, bestTaper = 2;
       cands.forEach((p, i) => {
@@ -163,7 +189,7 @@ export default function Coach() {
         const gap = Math.abs(raceIdx - peakIdx);
         if (gap < bestGap || (gap === bestGap && Math.abs(t - 2) < Math.abs(bestTaper - 2))) { best = p; bestGap = gap; bestTaper = t; }
       });
-      if (best) { setBlockPlan(best); setMsg(`🎯 Ausgerichtet: Taper ${bestTaper} Wo · Form-Peak ${bestGap === 0 ? "auf dem Renntag" : `${bestGap} Wo vom Renntag`}. „Phasen übernehmen" schreibt es fest.`); }
+      if (best) { setBlockPlan(best); setMsg(`🎯 Ausgerichtet (Heuristik): Taper ${bestTaper} Wo · Form-Peak ${bestGap === 0 ? "auf dem Renntag" : `${bestGap} Wo vom Renntag`}. Für datengetriebenes Taper das Banister-Modell berechnen. „Phasen übernehmen" schreibt es fest.`); }
       else setMsg("Keine Ausrichtung möglich (kein Renntag im Block).");
     } finally { setAligning(false); }
   }
@@ -228,6 +254,9 @@ export default function Coach() {
 
       {/* Coach ToDo 35: adaptives, faktenbasiertes Verdikt (steuert den Block-Plan, ehrlich geschichtet). */}
       {blockPlan?.coaching && <CoachingBanner c={blockPlan.coaching} freshness={blockPlan.freshness} mode={emphasisMode} onMode={changeEmphasisMode} busy={busy} />}
+      {blockPlan?.coaching && emphasisMode === "manual" && (
+        <div className="card tight" style={{ marginBottom: 12, marginTop: -6 }}><EmphasisSelector /></div>
+      )}
 
       {/* Item 3 (#7): distanzspezifisches Konzept — Sportwissenschaft sichtbar (Stoffwechsel + Schlüssel-Einheiten). */}
       {blockPlan?.distanceConcept && <DistanceConceptBox c={blockPlan.distanceConcept} />}
@@ -241,7 +270,7 @@ export default function Coach() {
               {busy ? "…" : blockPlan ? "↻ neu laden" : "▶ Block-Vorschlag laden"}
             </button>
             {blockPlan && blockPlan.weeks.length > 0 && blockPlan.raceDate && (
-              <button className="sm ghost" onClick={alignPeak} disabled={aligning || busy} title="Probiert sportwiss. valide Taper-Längen (1–3 Wochen) durch und wählt die, die den Form-Peak am besten auf den Renntag legt. Nur Vorschau; danach Phasen übernehmen schreibt es fest.">{aligning ? "…" : "🎯 Peak ausrichten"}</button>
+              <button className="sm ghost" onClick={alignPeak} disabled={aligning || busy} title="Nutzt — wenn belastbar — die Banister-Taperzeit aus deinen Markern und fährt die Last renntag-genau herunter (tages-präzise ab dem Taper-Start, nicht auf ganze Wochen gerundet); sonst eine sportwiss. Heuristik (1–3 Wochen). Legt den Form-Peak auf den Renntag. Nur Vorschau; „Phasen übernehmen“ schreibt es fest.">{aligning ? "…" : "🎯 Peak ausrichten"}</button>
             )}
             {blockPlan && blockPlan.weeks.length > 0 && (
               <button className="sm ghost" onClick={applyPhases} disabled={busy} title="Schreibt die abgeleiteten Phasen aller Wochen in den Saisonplan (manuelle Phasen bleiben).">Phasen übernehmen</button>
@@ -268,7 +297,10 @@ export default function Coach() {
                     <strong>Wo. {bw.week_no}</strong>
                     <span className="muted">{bw.start_date}</span>
                     <span style={{ color: confCol }}>{bw.headline}</span>
-                    <span className="tiny muted">{bw.tssActual} TSS · {weekKm(bw.days)} km{keySession(bw.days) ? ` · Kern: ${keySession(bw.days)}` : ""}{bw.isDeload ? " · Deload" : bw.phase ? ` · ${bw.phase}` : ""}</span>
+                    <span className="tiny muted">{bw.tssActual} TSS · {weekKm(bw.days)} km{keySession(bw.days) ? ` · Kern: ${keySession(bw.days)}` : ""}</span>
+                    {(bw.isDeload || bw.phase) && (
+                      <span className="tiny" style={{ color: phaseColor(bw.phase, bw.isDeload), fontWeight: 600 }}>{bw.isDeload ? "Deload" : bw.phase}</span>
+                    )}
                     <button className="sm ghost" style={{ marginLeft: "auto" }} onClick={(e) => { e.stopPropagation(); applyDays(bw.days, bw.week_no, bw.phase); }}>Übernehmen</button>
                   </div>
                   {open && <WeekPlanDetail days={bw.days} reasons={bw.reasons} />}
@@ -280,6 +312,9 @@ export default function Coach() {
           <p className="tiny muted" style={{ marginTop: 6 }}><T k="coach.block.hint">Lädt den kompletten Mesozyklus bis zum Renntag (inkl. Taper + Erholung). Pro Woche selektiv in die Wochenplanung übernehmbar.</T></p>
         )}
       </div>
+
+      {/* Datengetriebenes Taper (Banister Fitness−Fatigue) — persönliche Ergänzung zu „Peak ausrichten" */}
+      <BanisterTaperCard />
 
       {/* Optimale Zonen */}
       <div style={{ marginBottom: 12 }}><OptimalZonesCard /></div>

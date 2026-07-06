@@ -25,14 +25,16 @@ const TYPE_FAMILIES: Fam[] = [
 ];
 const famOf = (type: string) => (TYPE_FAMILIES.find((f) => f.match(type)) ?? TYPE_FAMILIES[TYPE_FAMILIES.length - 1]).key;
 
-function phaseColor(phase: string | null | undefined, isDeload: boolean): string {
+export function phaseColor(phase: string | null | undefined, isDeload: boolean): string {
   const p = (phase ?? "").toLowerCase();
-  if (isDeload || /entlast|deload/.test(p)) return "#64748b";
-  if (/taper|race week|raceweek/.test(p)) return "#a855f7";
-  if (/spec|race/.test(p)) return "#f97316";
-  if (/belast|build|aufbau/.test(p)) return "#22c55e";
-  if (/recovery|erholung|regener/.test(p)) return "#64748b";
-  return "#3b82f6"; // base / default
+  // Reihenfolge wichtig: Taper (Race Week) und Recovery sind technisch „deload", müssen aber ihre eigene Farbe
+  // behalten — daher VOR dem generischen Deload-Fang prüfen (sonst wird das Renn-Taper grau statt lila).
+  if (/taper|race ?week|raceweek/.test(p)) return "#a855f7"; // Taper = lila
+  if (/recovery|erholung|regener/.test(p)) return "#64748b"; // Erholung (nach dem Rennen) = grau
+  if (/spec|race/.test(p)) return "#f97316";                 // Race Specific = orange
+  if (isDeload || /entlast|deload/.test(p)) return "#64748b"; // Deload = grau
+  if (/belast|build|aufbau/.test(p)) return "#22c55e";       // Build = grün
+  return "#3b82f6"; // Base = blau
 }
 // Zyklus-Phasen (Menstruationszyklus) — eigene Semantik/Farben, getrennt vom Periodisierungs-Band.
 const CYCLE_PHASE_META: Record<string, { short: string; label: string; color: string }> = {
@@ -45,11 +47,12 @@ const CYCLE_PHASE_META: Record<string, { short: string; label: string; color: st
 
 function shortPhase(phase: string | null | undefined, isDeload: boolean): string {
   const p = (phase ?? "").toLowerCase();
-  if (isDeload || /entlast|deload/.test(p)) return "Deload";
-  if (/taper|race week|raceweek/.test(p)) return "Taper";
-  if (/spec|race/.test(p)) return "Specific";
-  if (/belast|build|aufbau/.test(p)) return "Build";
+  // Reihenfolge wie phaseColor: Taper/Recovery vor dem generischen Deload-Fang (sonst Renn-Taper als „Deload").
+  if (/taper|race ?week|raceweek/.test(p)) return "Taper";
   if (/recovery|erholung|regener/.test(p)) return "Recovery";
+  if (/spec|race/.test(p)) return "Specific";
+  if (isDeload || /entlast|deload/.test(p)) return "Deload";
+  if (/belast|build|aufbau/.test(p)) return "Build";
   return "Base";
 }
 
@@ -108,7 +111,12 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
   // --- Form-Readiness (2.2/2.3) via geteilten Helper (auch vom Coach-Peak-Optimierer 2.4 genutzt). ---
   const { readiness, peakIdx, raceIdx, hasIr } = blockReadiness(weeks, raceDate);
   const raceWk = raceIdx >= 0 ? `${weeks[raceIdx].week_no}` : null;
-  rows.forEach((r, i) => { r.readiness = readiness[i]; });
+  rows.forEach((r, i) => { r.readiness = readiness[i]; if (weeks[i].projVdot != null) r.projVdot = weeks[i].projVdot as number; });
+  // T10: prognostizierte VO2max/VDOT-Kurve je Woche (nur wenn eine Fitness-Projektion vorliegt). Eigene rechte
+  // Achse mit engem Wertebereich, damit der Anstieg sichtbar wird; gestrichelt = „prognostiziert", kein Messwert.
+  const vdots = weeks.map((w) => w.projVdot).filter((v): v is number => v != null);
+  const hasVdot = vdots.length > 1 && vdots.some((v, i) => i > 0 && v !== vdots[0]);
+  const vdotDomain: [number, number] = hasVdot ? [Math.floor(Math.min(...vdots) - 1), Math.ceil(Math.max(...vdots) + 1)] : [0, 100];
   let flag: { text: string; color: string } | null = null;
   if (raceIdx >= 0) {
     const gap = raceIdx - peakIdx; // >1 = Peak liegt zu früh
@@ -129,15 +137,16 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
   const renderTip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const all = payload as { name: string; value: number; color: string; dataKey: string }[];
-    const items = all.filter((p) => p.dataKey !== "readiness" && (p.value ?? 0) > 0);
+    const items = all.filter((p) => p.dataKey !== "readiness" && p.dataKey !== "projVdot" && (p.value ?? 0) > 0);
     const rd = all.find((p) => p.dataKey === "readiness");
+    const vd = all.find((p) => p.dataKey === "projVdot");
     const total = items.reduce((a, p) => a + (p.value || 0), 0);
     const wm = metaByWk.get(String(label));
     const cyc = wm?.cyclePhase ? CYCLE_PHASE_META[wm.cyclePhase] : null;
     return (
       <div style={{ ...TOOLTIP_STYLE, padding: "8px 10px" }}>
         <div style={{ fontWeight: 700, marginBottom: 2, color: "var(--ink)" }}>Woche {label} · Σ {Math.round(total)} {unit}{rd ? ` · Readiness ${Math.round(rd.value)}` : ""}</div>
-        {wm && <div style={{ fontSize: 11, marginBottom: 4, color: "var(--muted)" }}>{wm.km} km · {wm.tss} TSS{cyc ? ` · Zyklus: ${cyc.label}` : ""}</div>}
+        {wm && <div style={{ fontSize: 11, marginBottom: 4, color: "var(--muted)" }}>{wm.km} km · {wm.tss} TSS{vd?.value != null ? ` · VO₂max ~${Math.round(vd.value * 10) / 10} (prog.)` : ""}{cyc ? ` · Zyklus: ${cyc.label}` : ""}</div>}
         {items.map((p) => (
           <div key={p.dataKey} style={{ color: p.color, fontSize: 12, lineHeight: 1.55 }}>
             {p.name}: {Math.round(p.value)} {unit} <span style={{ opacity: 0.8 }}>({total > 0 ? Math.round((p.value / total) * 100) : 0}%)</span>
@@ -199,12 +208,14 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
           <XAxis dataKey="wk" interval={0} tick={{ fontSize: 10, fill: "var(--chart-tick)" }} />
           <YAxis yAxisId="load" width={YAXIS_W} tick={{ fontSize: 9, fill: "var(--chart-tick)" }} axisLine={false} tickLine={false} />
           <YAxis yAxisId="ready" hide domain={[0, 110]} />
+          {hasVdot && <YAxis yAxisId="vdot" hide domain={vdotDomain} />}
           {selectedWeek != null && <ReferenceLine yAxisId="load" x={`${selectedWeek}`} stroke="var(--accent, #0ea5e9)" strokeOpacity={0.22} strokeWidth={22} ifOverflow="visible" />}
           <Tooltip content={renderTip} cursor={{ fill: "var(--chart-grid)", fillOpacity: 0.18 }} />
           {stackKeys.map((s) => (
             <Bar yAxisId="load" key={s.dk} dataKey={s.dk} stackId="a" name={s.label} fill={s.color} isAnimationActive={false} radius={s.dk === stackKeys[stackKeys.length - 1]?.dk ? [2, 2, 0, 0] : undefined} />
           ))}
           <Line yAxisId="ready" type="monotone" dataKey="readiness" name="Form-Readiness" stroke="var(--accent, #0ea5e9)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
+          {hasVdot && <Line yAxisId="vdot" type="monotone" dataKey="projVdot" name="VO₂max (prognostiziert)" stroke="#a855f7" strokeWidth={2} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />}
           {raceIdx >= 0 && <ReferenceDot yAxisId="ready" x={`${weeks[peakIdx].week_no}`} y={readiness[peakIdx]} r={4} fill="var(--accent, #0ea5e9)" stroke="var(--card)" strokeWidth={1.5} ifOverflow="visible" />}
           {raceWk && <ReferenceLine yAxisId="load" x={raceWk} stroke="#ef4444" strokeWidth={2} label={{ value: "🏁", position: "top", fontSize: 15 }} ifOverflow="visible" />}
         </ComposedChart>
@@ -217,6 +228,14 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
             <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: "inline-block" }} />{s.label}
           </span>
         ))}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 12, height: 2.5, background: "var(--accent, #0ea5e9)", display: "inline-block" }} />Form-Readiness
+        </span>
+        {hasVdot && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }} title="Prognostiziertes VO₂max/VDOT-Äquivalent je Woche (Richtung Ziel, gedeckelt) — Prognose, kein Messwert.">
+            <span style={{ width: 12, height: 0, borderTop: "2px dashed #a855f7", display: "inline-block" }} />VO₂max (prognostiziert)
+          </span>
+        )}
       </div>
 
       {/* Zyklus-Phasen-Aggregat: Ø km / TSS je Phase (macht km & TSS pro Zyklusphase sichtbar). */}

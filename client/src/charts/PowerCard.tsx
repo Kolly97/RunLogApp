@@ -1,6 +1,6 @@
 // Lauf-Power-Sektion (v1.7.0): Critical Power, Power-Duration-Kurve, %CP-Zonen, CP-Trend, RSS.
 // Quelle: /api/power-curve (90-Tage-Hüllkurve + CP-Fit) und /api/cp-trend (rollendes CP).
-// Hinweis: Coros-Laufwatt sind gerätespezifisch → CP/Zonen/RSS sind RELATIV zu deinen Coros-Watt zu lesen.
+// Hinweis: Laufwatt sind gerätespezifisch (Uhren-Hersteller) → CP/Zonen/RSS sind RELATIV zu diesen Watt-Angaben zu lesen.
 import { useEffect, useState } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
@@ -27,8 +27,8 @@ export default function PowerCard() {
   if (!pc.cp || pc.n === 0) {
     return (
       <div className="card">
-        <div className="spread"><h2>Lauf-Power</h2><span className="pill" style={{ background: "#64748b", color: "#fff" }}>Coros-Watt</span></div>
-        <p className="tiny muted">Noch keine Lauf-Watt erfasst. Coros liefert Laufleistung über Strava — beim nächsten Sync mit „Details/Splits nachziehen" werden die Power-Streams angereichert (Läufe ≥ 10 min). Danach erscheinen hier Critical Power, Power-Kurve und Zonen.</p>
+        <div className="spread"><h2>Lauf-Power</h2><span className="pill" style={{ background: "#64748b", color: "#fff" }}>Geräte-Watt</span></div>
+        <p className="tiny muted">Noch keine Lauf-Watt erfasst. Deine Uhr liefert Laufleistung über Strava — beim nächsten Sync mit „Details/Splits nachziehen" werden die Power-Streams automatisch angereichert (Läufe ≥ 10 min, kein zusätzlicher Button nötig). Danach erscheinen hier Critical Power, Power-Kurve und Zonen — sie werden bei jedem Sync automatisch neu berechnet.</p>
       </div>
     );
   }
@@ -40,7 +40,7 @@ export default function PowerCard() {
     <div className="card" data-tour="power">
       <div className="spread">
         <h2>Lauf-Power (Critical Power)</h2>
-        <span className="pill" style={{ background: "#64748b", color: "#fff" }} title="Coros-Laufwatt sind gerätespezifisch — Werte relativ zu deinen Coros-Watt interpretieren.">relativ zu deinen Coros-Watt</span>
+        <span className="pill" style={{ background: "#64748b", color: "#fff" }} title="Relativ zu den Watt-Angaben deines Uhren-Herstellers interpretieren — wird bei jedem Strava-Sync automatisch neu berechnet, kein manueller Button nötig.">relativ zu Geräte-Watt</span>
       </div>
 
       <div className="row" style={{ gap: 24, flexWrap: "wrap", alignItems: "baseline", marginTop: 4 }}>

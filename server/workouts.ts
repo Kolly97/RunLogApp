@@ -298,9 +298,14 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     // Item 3 (Frage 6/D): Build dreht den Abwechslungs-Slot Richtung Zieldistanz — milder als Specific
     // (alle Vorlagen phasen-konform „belast"). HM/M → mehr Schwellen-/Kraftausdauer-Volumen; 5k/10k → VO2/Speed (Status quo).
     let thr2: string;
-    if (isLong || isMid) {
-      // thr1 ausschließen → keine zwei identischen Schwellen-Einheiten in derselben Woche.
-      const pool = av(["lt2_broken_tempo", lt2Pool[1] ?? "lt2_cruise", "hill_reps_long", "fartlek_structured", "lt2_1000s"].filter((id) => id !== thr1));
+    if (isLong) {
+      // Marathon-Build: Schwellen-/Kraftausdauer-VOLUMEN — KEIN VO2/Speed (der Marathon lebt von aerober Schwelle +
+      // MP-Ausdauer, nicht von Top-End-VO2). Unterscheidet den Marathon-Aufbau bewusst vom HM-Aufbau (T9b).
+      const pool = av(["lt2_broken_tempo", "lt2_1000s", "hill_reps_long", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
+      thr2 = rot(pool.length ? pool : ["lt2_broken_tempo"], weekInPhase);
+    } else if (isMid) {
+      // HM-Build: Schwelle + gelegentliche VO2/Renntempo-Schärfe (schnelleres Renntempo als Marathon → etwas Top-End).
+      const pool = av(["lt2_broken_tempo", "vo2_45", "hill_reps_long", "race_mix", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
       thr2 = rot(pool.length ? pool : ["lt2_broken_tempo"], weekInPhase);
     } else {
       thr2 = rot(av([hillPool[0], "fartlek_structured", "vo2_400s", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase);

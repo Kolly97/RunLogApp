@@ -449,9 +449,143 @@ def job_exposure_dose(payload):
     return {"method": "numpy-ridge-boot", "n_weeks": int(T), "models": out}
 
 
+def job_banister_ff(payload):
+    """Banister Fitness−Fatigue (Zweikomponenten): fittet perf = p0 + k1·Fit − k2·Fat an die gemessene Leistung
+    und simuliert daraus das optimale Taper/Peaking. Fit/Fat = exp-Faltung der Tageslast mit τ1 (langsam) / τ2
+    (schnell). PyMC-MCMC mit engen τ-Priors (nur wenn fit_tau); sonst k1,k2,p0 bei fixem τ. Rein beobachtend.
+    Spiegelt die Fixe-Skala + Unsicherheits-Propagation von job_dose_ir.
+    """
+    import numpy as np
+
+    load = np.asarray(payload.get("load", []), dtype=float)          # (D,) Tages-TSS, [D-1] = heute
+    t_obs = np.asarray(payload.get("t_obs", []), dtype=int)          # (n,) Tag-Offsets der Beobachtungen
+    y = np.asarray(payload.get("y", []), dtype=float)               # (n,) z-standardisierte Leistung
+    r = np.asarray(payload.get("r", []), dtype=float)               # (n,) Beobachtungsrauschen (z-SD)
+    D = load.shape[0]  # Anzahl Wochen
+    n = y.shape[0]
+    if n < 3 or D < 12 or t_obs.shape[0] != n:
+        raise ValueError("banister: zu wenig/inkonsistente Daten")
+    fit_tau = bool(payload.get("fit_tau", False))
+    tau1_0 = float(payload.get("tau1_0", 6.0))   # Wochen (≈ CTL 42 d)
+    tau2_0 = float(payload.get("tau2_0", 1.5))   # Wochen (≈ ATL 10 d)
+    H = int(payload.get("horizon_days", 21))
+    taper_frac = float(payload.get("taper_frac", 0.55))
+    recent_load = float(payload.get("recent_load", 0.0))
+    scale_perf = float(payload.get("scale_perf", 1.0))
+
+    s_idx = np.arange(D)
+    # Faltungs-Matrix an den Beobachtungen: Dist[i,s] = t_obs[i] − s, kausal (s ≤ t_obs[i]).
+    Dist = t_obs[:, None] - s_idx[None, :]
+    mask = (Dist >= 0).astype(float)
+
+    def ff_obs(ta1, ta2):
+        K1 = np.exp(-Dist / ta1) * mask
+        K2 = np.exp(-Dist / ta2) * mask
+        return K1 @ load, K2 @ load
+
+    # EINE gemeinsame FIXE Skala bei τ0 (bewahrt die Banister-Taper-Bedingung ρ>1; τ-unabhängig).
+    fit0o, fat0o = ff_obs(tau1_0, tau2_0)
+    s = max(float(fit0o.std()), 1e-6)
+
+    method = "ridge-banister"
+    try:
+        import pymc as pm
+        import pytensor.tensor as pt
+        method = "pymc-banister"
+    except Exception:
+        pm = None
+
+    if pm is not None:
+        with pm.Model():
+            if fit_tau:
+                log_tau1 = pm.Normal("log_tau1", np.log(tau1_0), 0.25)
+                log_tau2 = pm.Normal("log_tau2", np.log(tau2_0), 0.30)
+                tau1 = pm.Deterministic("tau1", pm.math.exp(log_tau1))
+                tau2 = pm.Deterministic("tau2", pm.math.exp(log_tau2))
+                K1 = pt.exp(-Dist / tau1) * mask
+                K2 = pt.exp(-Dist / tau2) * mask
+                A = pt.dot(K1, load) / s
+                B = pt.dot(K2, load) / s
+            else:
+                A = fit0o / s
+                B = fat0o / s
+            # Fit/Fat sind kollinear → k1,k2 nicht frei trennbar. Reparametrisierung k2 = ρ·k1 mit ρ (Fatigue:
+            # Fitness-Verhältnis) um den Physiologie-Prior ρ0≈1.5 (Banister: k2>k1 → Taper hilft) → Fatigue-Term
+            # immer positiv, ρ bewegt sich nur, wenn die Daten es tragen (sonst nahe Prior = Standard-Taper).
+            k1 = pm.HalfNormal("k1", 1.0)
+            rho = pm.TruncatedNormal("rho", mu=1.5, sigma=0.5, lower=0.3, upper=3.0)
+            k2 = pm.Deterministic("k2", rho * k1)
+            p0 = pm.Normal("p0", 0.0, 1.0)
+            s_extra = pm.HalfNormal("s_extra", 0.5)
+            sigma = pt.sqrt(r ** 2 + s_extra ** 2)
+            pm.Normal("obs", mu=p0 + k1 * A - k2 * B, sigma=sigma, observed=y)
+            idata = pm.sample(400, tune=500, chains=2, cores=1, random_seed=42,
+                              target_accept=0.9, progressbar=False, compute_convergence_checks=False)
+        post = idata.posterior
+        k1d = post["k1"].to_numpy().reshape(-1)
+        k2d = post["k2"].to_numpy().reshape(-1)
+        rhod = post["rho"].to_numpy().reshape(-1)
+        if fit_tau:
+            t1d = post["tau1"].to_numpy().reshape(-1)
+            t2d = post["tau2"].to_numpy().reshape(-1)
+        else:
+            t1d = np.full(k1d.shape, tau1_0)
+            t2d = np.full(k2d.shape, tau2_0)
+    else:
+        # numpy-Fallback (Python ohne PyMC): fixe τ, fixes ρ0 (kollinear), 2-Param-WLS auf C = (Fit − ρ0·Fat)/s.
+        rho0 = 1.5
+        C = (fit0o - rho0 * fat0o) / s
+        X = np.column_stack([np.ones(n), C])
+        W = np.diag(1.0 / np.maximum(r ** 2, 1e-9))
+        XtWX = X.T @ W @ X + np.diag([0.0, 1.0])
+        beta = np.linalg.solve(XtWX, X.T @ W @ y)
+        resid = y - X @ beta
+        sig2 = max(float(resid @ W @ resid) / max(1.0, n - 2), 1e-6)
+        cov = np.linalg.inv(XtWX) * sig2
+        k1m = max(0.0, float(beta[1])); k1s = float(np.sqrt(max(cov[1, 1], 1e-8)))
+        rng = np.random.default_rng(42)
+        k1d = np.clip(rng.normal(k1m, k1s, 600), 0, None)
+        rhod = np.full(600, rho0)
+        k2d = rhod * k1d
+        t1d = np.full(600, tau1_0); t2d = np.full(600, tau2_0)
+
+    # --- Charakteristische Taper-Simulation je Draw in TAGESRASTER (renntag-genau): τ_Tage = 7·τ_Wochen,
+    #     Tageslast = chronisch/7. Vom Steady-State bei chronischer Last H Tage reduzierte Last fortschreiben.
+    #     Niveaus von Tages-/Wochen-EWMA stimmen → s (Wochen-Fit) bleibt konsistent. Stabil, tagesform-unabhängig.
+    m = min(300, k1d.shape[0])
+    sel = np.linspace(0, k1d.shape[0] - 1, m).astype(int)
+    daily_load = recent_load / 7.0
+    taper_load = daily_load * taper_frac
+    trajs = np.empty((m, H))
+    for j, ix in enumerate(sel):
+        d1 = np.exp(-1.0 / (t1d[ix] * 7.0)); d2 = np.exp(-1.0 / (t2d[ix] * 7.0))
+        f0 = daily_load / (1.0 - d1); g0 = daily_load / (1.0 - d2)  # Tages-Steady-State
+        f, g = f0, g0
+        for d in range(H):
+            f = f * d1 + taper_load; g = g * d2 + taper_load
+            trajs[j, d] = (k1d[ix] * (f - f0) - k2d[ix] * (g - g0)) / s
+    tmean = trajs.mean(0); tlo = np.percentile(trajs, 3, 0); thi = np.percentile(trajs, 97, 0)
+    pk = int(np.argmax(tmean))
+
+    pct = lambda a, q: float(np.percentile(a, q))
+    k1_m, k2_m = float(k1d.mean()), float(k2d.mean())
+    return {
+        "method": method, "fit_tau": fit_tau, "coverage_ok": fit_tau, "n_obs": int(n),
+        "k1": k1_m, "k1_low": pct(k1d, 3), "k1_high": pct(k1d, 97),
+        "k2": k2_m, "k2_low": pct(k2d, 3), "k2_high": pct(k2d, 97),
+        "tau1": float(t1d.mean()) * 7.0, "tau2": float(t2d.mean()) * 7.0,  # Anzeige in Tagen
+        "ratio": float(rhod.mean()),
+        "taper_days": pk + 1, "peak_day": pk + 1,
+        "peak_gain": float(tmean[pk]), "peak_low": float(tlo[pk]), "peak_high": float(thi[pk]),
+        "peak_gain_disp": float(tmean[pk]) * scale_perf, "scale_perf": scale_perf,
+        "trajectory": [{"d": d + 1, "mean": float(tmean[d]), "lo": float(tlo[d]), "hi": float(thi[d])} for d in range(H)],
+        "reasons": [] if fit_tau else ["τ fix (zu wenig belastbare Marker fürs τ-Fitting)"],
+    }
+
+
 HANDLERS = {"health": job_health, "echo": job_echo, "ols": job_ols, "dose_bayes": job_dose_bayes,
             "dose_ir": job_dose_ir, "blocks_bayes": job_blocks_bayes, "phase_bayes": job_phase_bayes,
-            "exposure_dose": job_exposure_dose}
+            "exposure_dose": job_exposure_dose, "banister_ff": job_banister_ff}
 
 
 def main():

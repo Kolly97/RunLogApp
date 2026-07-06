@@ -512,7 +512,7 @@ function GoalGapCard() {
       {!usingEff && g.predictedEffTimeS != null && g.effVo2 && (
         <div className="tiny muted" style={{ marginTop: 2 }}>Zweitquelle eff. VO₂max: <strong>{fmtT(g.predictedEffTimeS)}</strong> (Konfidenz {g.effVo2.confidence})</div>
       )}
-      {g.feasible === false && <div className="tiny muted" style={{ marginTop: 2 }}>Realistische Prognose-Endzeit bei gedeckelter Progression: <strong>{fmtT(g.projEndTimeS)}</strong>. Ziel ggf. anpassen oder Vorbereitungszeit verlängern.</div>}
+      {g.feasible === false && <div className="tiny muted" style={{ marginTop: 2 }}>Realistisch erreichbar bis zum Renntag: <strong>{fmtT(g.projEndTimeS)}</strong>{g.projEndVdot != null ? <> (VO₂max ~{g.projEndVdot})</> : null}{g.goalVdot != null ? <> — das Ziel bräuchte VO₂max ~{g.goalVdot}</> : null}. Physiologisch wächst VO₂max mit abnehmendem Grenzertrag; für dieses Ziel Vorbereitungszeit verlängern oder Zielzeit anpassen.</div>}
     </div>
   );
 }

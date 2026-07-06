@@ -56,6 +56,8 @@ import {
   typeVolumeFactors,
   matchActivities,
   blockPlan,
+  projectVdot,
+  realisticVdotReach,
   injuryRiskFlag,
   adjustTodaySession,
   markerSnapshot,
@@ -87,7 +89,7 @@ import {
   stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
   stravaBackfillStatus, stravaBackfillStart, stravaBackfillStep, stravaBackfillCancel,
 } from "./strava.ts";
-import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
+import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, getBanister as mlGetBanister, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
 import { synthesizeTrainingVerdict, empiricalBayesGroups, ebFindings, REGIME_LABEL, EMPHASIS_LABEL, type VerdictInputs, type TrialResultLite, type EbPost, type TrainingVerdict } from "./ml/trainingVerdict.ts";
 import { deriveCoachingPrefs, coachHealthCap, type CoachingPrefs } from "./coachSynthesis.ts";
 import { runWithFallback as sidecarRunWithFallback } from "./ml/sidecar.ts";
@@ -856,9 +858,10 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
     : (inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null);
 
   const taperWeeks = req.query.taper != null ? Math.max(1, Math.min(3, Number(req.query.taper) || 2)) : undefined; // Baustein 2.4: Peak-Ausrichtung
+  const taperDays = req.query.taperDays != null ? Math.max(1, Math.min(28, Number(req.query.taperDays) || 0)) || undefined : undefined; // Banister: renntag-genaue Tages-Rampe
   // Baustein A1: verletzungssicheres km-Ceiling aus der eigenen Lauf-Historie (ACWR, letzte 28 Tage).
   const runKm28 = db.prepare("SELECT date, distance_m FROM activities WHERE profile_id=? AND sport='Run' AND date>=? AND date<=?").all(pid(), addDaysIso(today, -28), today) as { date: string; distance_m: number | null }[];
-  const kmCeil = kmCeiling(runKm28, today);
+  const kmCeil = kmCeiling(runKm28, today, 1.45); // v2.7.0: Volumen darf bis ACWR 1.45 wachsen (an den TSS-Cap angeglichen) → Ramp über MEHR Volumen möglich
   // Baustein B1: per-Einheiten-Typ Volumen-Loop aus den letzten Rückmeldungen (RPE + felt_vs_expected, Confounder raus).
   const fbRows = db.prepare("SELECT session_family, rpe, felt_vs_expected, confounder_flag FROM session_feedback_v2 WHERE profile_id=? AND date>=? ORDER BY date DESC LIMIT 80").all(pid(), addDaysIso(today, -70)) as { session_family: string | null; rpe: number | null; felt_vs_expected: number | null; confounder_flag: string | null }[];
   const vol = typeVolumeFactors(fbRows);
@@ -882,7 +885,7 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
       cycleByWeek!.set(w.week_no, { phase: ph, emphasis: bias.emphasis, loadFactor: bias.loadFactor, qualityVolFactor: bias.qualityVolFactor, tier: bias.tier, soften: bias.soften, reason: bias.reason });
     });
   }
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, taperDays, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
   for (const n of vol.notes) plan.reasons.push({ code: "rpe_loop", text: n });
   // Baustein 2.3: individuelle Fitness-Prognose (IR-Faltung) additiv je Woche, wenn ein Dose-Response-Run vorliegt.
   const doseEff = mlGetEffects(pid());
@@ -906,21 +909,25 @@ app.get("/api/plan/goal-gap", (_req, res) => {
   const predictedEffTimeS = effPred.length ? Math.round(effPred[0].time_s) : null;
   const goalTimeS = race.goal_time_s && race.goal_time_s > 0 ? Number(race.goal_time_s) : null;
   const weeks = Math.max(0, Math.round((Date.parse(race.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / (7 * 86400000)));
-  let goalVdot: number | null = null, gapS: number | null = null, reqVdotPerWeek: number | null = null, feasible: boolean | null = null, projEndTimeS: number | null = null;
+  let goalVdot: number | null = null, gapS: number | null = null, reqVdotPerWeek: number | null = null, feasible: boolean | null = null, projEndTimeS: number | null = null, projEndVdot: number | null = null;
   if (goalTimeS && cur.vdot) {
     goalVdot = vdot(race.distance_m, goalTimeS);
     gapS = predictedTimeS != null ? predictedTimeS - goalTimeS : null; // >0 = noch langsamer als Wunsch
     const need = goalVdot - cur.vdot;
-    reqVdotPerWeek = weeks > 0 ? Math.round((need / weeks) * 100) / 100 : null;
-    feasible = need <= 0.4 * weeks + 1e-9; // realistischer Cap 0.4 VDOT/Woche
-    const projEndVdot = cur.vdot + Math.min(Math.max(0, need), 0.4 * weeks);
+    reqVdotPerWeek = weeks > 0 ? Math.round((need / weeks) * 100) / 100 : null; // NÖTIGE Rate (Info)
+    // v2.7.0: physiologisch konsistent mit der Block-VO2max-Kurve — dieselbe Sättigungs-Projektion (diminishing
+    // returns, horizont- & fitness-abhängig) statt linear 0.4/Woche. So passen Ziel-Machbarkeit + Renntag-Prognose
+    // zur projizierten VO2max im Block. `machbar` = das Ziel liegt im realistisch Erreichbaren.
+    const vp = projectVdot(cur.vdot, goalVdot, weeks);
+    feasible = !vp.infeasible;
+    projEndVdot = Math.round((vp.perWeek[vp.perWeek.length - 1] ?? cur.vdot) * 10) / 10; // realistisch projizierte VO2max am Renntag
     const pe = predictFromVdot(projEndVdot, [race.distance_m]);
-    projEndTimeS = pe.length ? pe[0].time_s : null;
+    projEndTimeS = pe.length ? Math.round(pe[0].time_s) : null;
   }
   res.json({
     race: { id: race.id, name: race.name, date: race.date, distance_m: race.distance_m },
     weeks, curVdot: cur.vdot ? Math.round(cur.vdot * 10) / 10 : null, goalVdot: goalVdot ? Math.round(goalVdot * 10) / 10 : null,
-    predictedTimeS, goalTimeS, gapS, reqVdotPerWeek, feasible, projEndTimeS,
+    predictedTimeS, goalTimeS, gapS, reqVdotPerWeek, feasible, projEndTimeS, projEndVdot,
     predictedRange: predictedTimeS != null ? predRange(predictedTimeS, race.distance_m, "hoch") : null,
     effVo2: effNow ? { value: effNow.value, confidence: effNow.confidence, calibrated: effNow.calibrated } : null,
     predictedEffTimeS,
@@ -2785,7 +2792,7 @@ app.put("/api/ml/settings", (req, res) => {
 });
 app.post("/api/ml/recompute", (req, res) => {
   const k = String(req.query.kind);
-  const kind = k === "dose_response" || k === "readiness" ? k : "latent_fitness";
+  const kind = k === "dose_response" || k === "readiness" || k === "banister" ? k : "latent_fitness";
   res.json(mlStartRun(kind, pid()));
 });
 app.post("/api/ml/cancel", (req, res) => {
@@ -2800,11 +2807,12 @@ app.get("/api/ml/progress", (req, res) => {
 app.get("/api/ml/status", (req, res) => {
   const p = pid();
   const k = String(req.query.kind);
-  const kind = k === "dose_response" || k === "readiness" ? k : "latent_fitness";
+  const kind = k === "dose_response" || k === "readiness" || k === "banister" ? k : "latent_fitness";
   res.json({ freshness: mlFreshness(p, kind), latest: mlLatestRun(p, kind) });
 });
 app.get("/api/ml/latent-fitness", (_req, res) => res.json(mlGetLatentFitness(pid())));
 app.get("/api/ml/effects", (_req, res) => res.json(mlGetEffects(pid())));
+app.get("/api/ml/banister", (_req, res) => res.json(mlGetBanister(pid())));
 // Synthese „Was hilft dir?" (Zeile 39, Deliverable A): bündelt Dosis (L3) + Regime + Schwerpunkt + geprüfte Trials.
 /**
  * „Was hilft dir?"-Synthese server-seitig (geteilt von der Verdikt-Route UND dem adaptiven Coach) — dieselbe

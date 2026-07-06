@@ -24,7 +24,8 @@ export interface LatentOpts {
 }
 
 // Beobachtungsrauschen je Quelle in z-Einheiten (kleiner = höheres Gewicht, Labor am zuverlässigsten).
-const KIND_R: Record<string, number> = { lab_vo2max: 0.05, race_vdot: 0.3, eff_vo2max: 0.8 };
+// Exportiert als EINE Wahrheitsquelle — das Banister-F−F-Modell (banister.ts) nutzt dieselben Rausch-Gewichte.
+export const KIND_R: Record<string, number> = { lab_vo2max: 0.05, race_vdot: 0.3, eff_vo2max: 0.8 };
 
 function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;

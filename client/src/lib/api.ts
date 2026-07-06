@@ -46,10 +46,13 @@ export interface MethodBayesResult { regime?: MethodBayesAxis; emphasis?: Method
 // F3: Regime/Schwerpunkt-Dosis-Wirkung auf die latente Fitness (höher β = baut mehr Fitness)
 export interface RegimeLatentCell { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null; }
 export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; }
-export type MlKindName = "latent_fitness" | "dose_response" | "readiness";
+export type MlKindName = "latent_fitness" | "dose_response" | "readiness" | "banister";
 export interface MlReadinessPoint { date: string; value: number; sd: number; }
 export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
 export interface MlReadiness { runId: number | null; finishedAt: string | null; meta: { insufficient?: boolean; nDays?: number; drivers?: string[]; disclaimer?: string; bmi?: number | null } | null; points: MlReadinessPoint[]; flags: MlHealthFlag[]; }
+export interface MlBanisterTrajPoint { d: number; mean: number; lo: number; hi: number; }
+export interface MlBanisterResult { method: string; fit_tau: boolean; coverage_ok: boolean; n_obs: number; k1: number; k2: number; k1_low: number; k1_high: number; k2_low: number; k2_high: number; tau1: number; tau2: number; ratio: number; taper_days: number; peak_day: number; peak_gain: number; peak_low: number; peak_high: number; peak_gain_disp: number; scale_perf: number; trajectory: MlBanisterTrajPoint[]; reasons: string[]; }
+export interface MlBanister { run: MlRun | null; result: MlBanisterResult | null; engine: string | null; insufficient: boolean; }
 export type MlAuditStatus = "pass" | "warn" | "fail" | "info";
 export interface MlAuditCheck { key: string; label: string; status: MlAuditStatus; message: string; detail?: string; evidence?: Record<string, unknown>; }
 export interface MlAdversarialAudit {
@@ -133,7 +136,7 @@ export interface GoalGap {
   race: { id: number; name: string; date: string; distance_m: number } | null;
   weeks: number; curVdot: number | null; goalVdot: number | null;
   predictedTimeS: number | null; goalTimeS: number | null; gapS: number | null;
-  reqVdotPerWeek: number | null; feasible: boolean | null; projEndTimeS: number | null;
+  reqVdotPerWeek: number | null; feasible: boolean | null; projEndTimeS: number | null; projEndVdot?: number | null;
   // C1: zweite Quelle effektive VO2max (Q1 getrennt, Q2 Fallback) + Bereiche (Q4).
   predictedRange?: PredRange | null;
   effVo2?: EffVo2Src | null;
@@ -430,6 +433,7 @@ export interface BlockWeek {
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: individuelle IR-Fitness-Prognose je Woche (falls Dose-Run vorliegt)
+  projVdot?: number | null;  // T10: prognostiziertes VDOT/VO2max-Äquivalent je Woche (nur Anzeige, „prognostiziert")
   cyclePhase?: string | null; // Zyklus-Steuerung: (ggf. prognostizierte) Zyklusphase dieser Woche (Timeline-Band)
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
 }
@@ -633,7 +637,10 @@ export const api = {
   analyzeWeek: (no: number) => j<AnalyzeResult>(`/api/analyze/week/${no}`),
   today: (date?: string) => j<TodayResult>(`/api/today${date ? `?date=${date}` : ""}`),
   weekSuggestion: (weekNo?: number) => j<WeekSuggestionResult>(`/api/plan/week-suggestion${weekNo != null ? `?week=${weekNo}` : ""}`),
-  blockSuggestion: (weekNo?: number, taper?: number) => j<BlockPlan>(`/api/plan/block-suggestion${weekNo != null ? `?week=${weekNo}` : ""}${taper != null ? `${weekNo != null ? "&" : "?"}taper=${taper}` : ""}`),
+  blockSuggestion: (weekNo?: number, taper?: number, taperDays?: number) => {
+    const qs = [weekNo != null ? `week=${weekNo}` : null, taper != null ? `taper=${taper}` : null, taperDays != null ? `taperDays=${taperDays}` : null].filter(Boolean).join("&");
+    return j<BlockPlan>(`/api/plan/block-suggestion${qs ? `?${qs}` : ""}`);
+  },
   intervalsTrend: (q: { from?: string; to?: string }) => {
     const p = new URLSearchParams(q as Record<string, string>).toString();
     return j<IntervalEffortStat[]>(`/api/intervals/trend?${p}`);
@@ -736,6 +743,7 @@ export const api = {
   mlStatus: (kind?: MlKindName) => j<MlStatus>(`/api/ml/status${kind ? `?kind=${kind}` : ""}`),
   mlLatentFitness: () => j<MlLatentPoint[]>("/api/ml/latent-fitness"),
   mlEffects: () => j<MlEffects>("/api/ml/effects"),
+  mlBanister: () => j<MlBanister>("/api/ml/banister"),
   mlTrainingVerdict: () => j<TrainingVerdict>("/api/ml/training-verdict"),
   mlMethodBayes: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`, { method: "POST" }),
   mlRegimeLatent: (axis: "regime" | "emphasis") => j<RegimeLatentResult>(`/api/ml/regime-latent?axis=${axis}`),
