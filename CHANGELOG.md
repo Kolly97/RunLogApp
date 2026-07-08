@@ -5,7 +5,8 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 (keine Bestandsdaten gehen verloren).
 
 ## [Unreleased]
-## v2.9.0
+
+## [2.9.0] – 2026-07-08 — Beta-Test-Fixrunde: Übertrainings-Frühwarnung, Trail-/Kraft-Last, Bestzeiten-Grid & Research-Mode-Klarheit
 
 ### Hinzugefügt
 - **Vert-Load (Höhenmeter) + Kraft-Last sichtbar gemacht (Beta-Befund M-4):** Für Trail/Ultra-Läufer:innen gibt es
