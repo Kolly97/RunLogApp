@@ -91,7 +91,7 @@ import {
 } from "./strava.ts";
 import { startRun as mlStartRun, getRun as mlGetRun, cancelRun as mlCancelRun, latestRun as mlLatestRun, freshness as mlFreshness, getLatentFitness as mlGetLatentFitness, getLatentFitnessSources as mlGetLatentFitnessSources, getEffects as mlGetEffects, getReadinessResult as mlGetReadiness, getBanister as mlGetBanister, getResearchShap as mlGetResearchShap, adversarialAudit as mlAdversarialAudit, blockIrFitness, getAnchoredMcid } from "./mlJobs.ts";
 import { synthesizeTrainingVerdict, empiricalBayesGroups, ebFindings, REGIME_LABEL, EMPHASIS_LABEL, type VerdictInputs, type TrialResultLite, type EbPost, type TrainingVerdict } from "./ml/trainingVerdict.ts";
-import { deriveCoachingPrefs, coachHealthCap, type CoachingPrefs } from "./coachSynthesis.ts";
+import { deriveCoachingPrefs, coachHealthCap, healthGateVerdict, type CoachingPrefs } from "./coachSynthesis.ts";
 import { runWithFallback as sidecarRunWithFallback } from "./ml/sidecar.ts";
 import { weeklyLabelExposure } from "./ml/featureBackbone.ts";
 import { detectGainWindows } from "./ml/fitnessGainWindows.ts";
@@ -2278,6 +2278,15 @@ function weekActualKm(start: string, end: string): number {
   return Math.round(((row?.m || 0) / 1000) * 10) / 10;
 }
 
+// M-4: reale Wochen-Höhenmeter (Σ D+, Lauf) für den Vert-Load-Trend. sport='Run' wie weekActualKm, damit
+// Rad-Höhenmeter die Lauf-Vert-Last nicht aufblähen. elevation ist nullable → COALESCE.
+function weekActualVert(start: string, end: string): number {
+  const row = db
+    .prepare("SELECT SUM(COALESCE(elevation,0)) m FROM activities WHERE sport='Run' AND date BETWEEN ? AND ? AND profile_id=?")
+    .get(start, end, pid()) as { m: number };
+  return Math.round(row?.m || 0);
+}
+
 
 // Referenz für die Wochen-Last in der PLANUNG (ToDo A3): Ø der GEPLANTEN Wochen-TSS der letzten Wochen
 // (Summe planned_tss je Vor-Saisonwoche) — geplant↔geplant, kein Geplant/Real-Bruch.
@@ -2319,10 +2328,11 @@ app.get("/api/analyze/week/:no", (req, res) => {
 
   // Verlauf: reale km der bis zu 3 Vorwochen
   const recentWeeksKm: number[] = [];
+  const recentWeeksVert: number[] = []; // M-4: parallele Höhenmeter-Reihe für den Vert-Load-Mini-Trend
   if (wk) {
     // Vorwochen chronologisch über start_date (week_no kann negativ/umsortiert sein, #71).
     const prev = db.prepare("SELECT * FROM season_weeks_v2 WHERE start_date<? AND profile_id=? ORDER BY start_date DESC LIMIT 3").all(wk.start_date, pid()) as any[];
-    for (const p of prev.reverse()) recentWeeksKm.push(weekActualKm(p.start_date, p.end_date));
+    for (const p of prev.reverse()) { recentWeeksKm.push(weekActualKm(p.start_date, p.end_date)); recentWeeksVert.push(weekActualVert(p.start_date, p.end_date)); }
   }
 
   // Projektion CTL-Ramp & Form über die Woche
@@ -2430,13 +2440,14 @@ app.get("/api/analyze/week/:no", (req, res) => {
   });
   // realByCategory: reale Summen je Kategorie. `min` bleibt aus Kompatibilität (Welle-1-Client),
   // `h` (Stunden) kommt zusätzlich dazu (Fix-Runde, Anzeige in km/h).
-  const realByCategory: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } } =
-    { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0 } };
+  const realByCategory: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number; tss: number } } =
+    { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0, tss: 0 } };
+  let realVert = 0; // M-4: reale Wochen-Höhenmeter (Σ D+, Lauf) für Tile + D+/km
   // Plan-Erfüllung je gematchter Einheit (v0.14.0, ToDo 12)
   let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity: Record<number, number> } = { perSession: [], weekPct: null, matchByActivity: {} };
   if (wk) {
     const acts = db
-      .prepare("SELECT id, date, sport, type, distance_m, moving_s, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id, match_ignore FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
+      .prepare("SELECT id, date, sport, type, distance_m, moving_s, elevation, zones, zone_min, zone_km, pace_zone_min, tss, matched_session_id, match_ignore FROM activities WHERE date BETWEEN ? AND ? AND profile_id=?")
       .all(wk.start_date, wk.end_date, pid()) as any[];
     for (const a of acts) {
       const zKm = parseJson<Record<string, number> | null>(a.zone_km, null);
@@ -2459,11 +2470,13 @@ app.get("/api/analyze/week/:no", (req, res) => {
       if (a.sport === "Run") {
         realByCategory.run.km += km;
         realByCategory.run.min += min;
+        realVert += a.elevation || 0; // M-4: Vert-Load = Lauf-Höhenmeter (wie weekActualVert)
       } else if (a.sport?.startsWith("Bike") || a.sport === "General") {
         realByCategory.bike.km += km;
         realByCategory.bike.min += min;
       } else if (a.sport === "Strength" || a.sport === "Physio") {
         realByCategory.strength.min += min;
+        realByCategory.strength.tss += a.tss || 0; // M-4: reale Kraft-Last (Σ Kraft-TSS), bislang nur Zeit
       }
       // Hybrid: TSS dieser Aktivität auf easy/mod/hart verteilen.
       // v0.15.5 (O7): Harte Einheiten (Typ=hard) zählen KOMPLETT als hart (volle TSS rot), nicht nur der
@@ -2505,6 +2518,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realByCategory.bike.h = r1(realByCategory.bike.min / 60);
     realByCategory.strength.min = r1(realByCategory.strength.min);
     realByCategory.strength.h = r1(realByCategory.strength.min / 60);
+    realByCategory.strength.tss = Math.round(realByCategory.strength.tss);
+    realVert = Math.round(realVert);
 
     // Plan-Erfüllung je geplanter Einheit (v1.9.0): robustes Auto-Match (manuelle Zuordnung gewinnt).
     const matchMap = matchActivities(
@@ -2600,6 +2615,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realLoadFlag, realKmFlag, adherence, tssRec,
     monotony: monotony.monotony, strain: monotony.strain, monotonyFlag: monotony.flag,
     physioDist, polarizationIndex: polIndex, phaseTarget, realPolarizationFlag,
+    // M-4: Vert-Load (Höhenmeter) — aktuelle Woche + D+/km (Steilheit) + Vorwochen-Reihe für den Mini-Trend.
+    realVert, realVertPerKm: realByCategory.run.km > 0 ? Math.round((realVert / realByCategory.run.km) * 10) / 10 : null, recentWeeksVert,
   });
 });
 
@@ -2629,8 +2646,14 @@ app.get("/api/today", (req, res) => {
     recovery: todayRow?.recovery ?? null, soreness: todayRow?.soreness ?? null, sleepH: todayRow?.sleep_h ?? null,
   });
 
+  // Chronische Gesundheits-Flags (Übertraining/RED-S/HRV-Drift) an die Hauptfläche ziehen (Beta-Befund H-1/M-1):
+  // bisher nur auf der Methodik-Werkbank sichtbar. Getrennt vom akuten `readiness` (Einzeltag) — das ist der Trend.
+  const healthFlags = mlGetReadiness(pid()).flags ?? [];
+  const overtrainingHigh = healthFlags.some((f) => f.severity === "high");
+  const overtrainingWarn = healthFlags.some((f) => f.severity === "warn");
+
   const plannedTypes = (db.prepare("SELECT type FROM planned_sessions WHERE profile_id=? AND date=? AND type!='Rest'").all(pid(), date) as { type: string }[]).map((r) => r.type);
-  const recommendation = dailyRecommendation({ tsb, ctlRamp: ramp, phase, readinessLevel: readiness?.level ?? null, weekTssRec, plannedTypes });
+  const recommendation = dailyRecommendation({ tsb, ctlRamp: ramp, phase, readinessLevel: readiness?.level ?? null, weekTssRec, plannedTypes, overtrainingHigh, overtrainingWarn });
 
   // Überlastungs-Frühwarnung (v1.4.0, C2): ACWR + 7-Tage-Monotonie + Ramp + Readiness → erklärter Risiko-Flag.
   const tssByDay = new Map<string, number>((db.prepare("SELECT date, SUM(COALESCE(tss,0)) s FROM activities WHERE profile_id=? AND date BETWEEN ? AND ? GROUP BY date").all(pid(), addDaysIso(date, -6), date) as { date: string; s: number }[]).map((r) => [r.date, r.s]));
@@ -2672,7 +2695,7 @@ app.get("/api/today", (req, res) => {
   res.json({
     date,
     form: { ctl: round1(ctl), atl: round1(atl), tsb: tsb != null ? round1(tsb) : null, ramp, acwr },
-    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk, adjustment, nextHard,
+    phase, weekTssRec, readiness, plannedTypes, recommendation, injuryRisk, adjustment, nextHard, healthFlags,
   });
 });
 
@@ -2839,19 +2862,22 @@ function fnvHex(s: string): string {
 }
 /** Fingerprint = latest latent/dose Run-Id + bewertete-Trials-Signatur + verankerte MCID. Ändert sich einer davon,
  *  invalidiert der Cache automatisch (neue Berechnung); sonst Cache-Treffer. */
-function verdictFingerprint(p: number, mcid: { latent: number; cs: number; dosePerSd: number; source: string }): string {
+function verdictFingerprint(p: number, mcid: { latent: number; cs: number; dosePerSd: number; source: string }, healthSig: string): string {
   const latentRun = mlLatestRun(p, "latent_fitness")?.id ?? 0;
   const doseRun = mlLatestRun(p, "dose_response")?.id ?? 0;
   const trials = db.prepare("SELECT id, verdict FROM method_experiments WHERE profile_id=? AND state='evaluated' AND verdict IS NOT NULL ORDER BY id").all(p) as { id: number; verdict: string }[];
   const trialSig = trials.map((t) => `${t.id}:${t.verdict}`).join(",");
-  return fnvHex(`${latentRun}|${doseRun}|${trialSig}|${mcid.latent}:${mcid.cs}:${mcid.dosePerSd}:${mcid.source}`);
+  // H-1: Health-Flags in den Fingerprint — sonst greift die Dämpfung bei Flag-Wechsel nicht (Cache bliebe „grün").
+  return fnvHex(`${latentRun}|${doseRun}|${trialSig}|${mcid.latent}:${mcid.cs}:${mcid.dosePerSd}:${mcid.source}|${healthSig}`);
 }
 
 async function buildTrainingVerdict(p: number, opts: { fresh?: boolean } = {}): Promise<TrainingVerdict> {
   // Verdikt-Caching (Fingerprint-Auto): der teure Teil sind zwei Sidecar-exposure_dose-Läufe (je bis 120 s) — die
   // hier je Coach-/Verdikt-Laden anfielen. Bei unverändertem Input aus dem Cache antworten; ?fresh erzwingt neu.
   const mcid = getAnchoredMcid(p);
-  const fp = verdictFingerprint(p, mcid);
+  const healthFlags = mlGetReadiness(p).flags ?? [];
+  const healthSig = healthFlags.map((f) => `${f.kind}:${f.severity}`).sort().join(",");
+  const fp = verdictFingerprint(p, mcid, healthSig);
   if (!opts.fresh) {
     const cached = db.prepare("SELECT verdict_json FROM ml_verdict_cache WHERE profile_id=? AND fingerprint=?").get(p, fp) as { verdict_json: string } | undefined;
     if (cached) { try { return JSON.parse(cached.verdict_json) as TrainingVerdict; } catch { /* korrupt → neu berechnen */ } }
@@ -2877,8 +2903,10 @@ async function buildTrainingVerdict(p: number, opts: { fresh?: boolean } = {}): 
     trials: trials.map<TrialResultLite>((t) => ({ arm: t.emphasis_label ?? t.arm_a_label ?? t.label ?? "", label: t.label, verdict: t.verdict, kind: t.trial_kind, theta: t.theta })),
   };
   const verdict = synthesizeTrainingVerdict(inputs, { cs: mcid.cs, dosePerSd: mcid.dosePerSd });
+  // H-1: Gesundheits-Gate — bei aktiver Übertrainings-/RED-S-Signatur Erholung zur Headline, Intensität nicht als Top.
+  const gated = healthGateVerdict(verdict, healthFlags);
   const builtAt = new Date().toISOString();
-  const out: TrainingVerdict = { ...verdict, mcid, builtAt };
+  const out: TrainingVerdict = { ...gated, mcid, builtAt };
   db.prepare("INSERT INTO ml_verdict_cache(profile_id, fingerprint, verdict_json, built_at) VALUES(?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET fingerprint=excluded.fingerprint, verdict_json=excluded.verdict_json, built_at=excluded.built_at")
     .run(p, fp, JSON.stringify(out), builtAt);
   return out;

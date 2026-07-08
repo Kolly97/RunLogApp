@@ -46,7 +46,7 @@ function level(tss: number): number {
 
 type DayAgg = { tss: number; discW: Partial<Record<Disc, number>>; hard: boolean; real: boolean };
 
-export default function StreakCard({ acts, sessions, height }: { acts: Activity[]; sessions: PlannedSession[]; height?: number }) {
+export default function StreakCard({ acts, sessions, height, healthDampen }: { acts: Activity[]; sessions: PlannedSession[]; height?: number; healthDampen?: boolean }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [gridW, setGridW] = useState(0);
   useEffect(() => {
@@ -120,11 +120,16 @@ export default function StreakCard({ acts, sessions, height }: { acts: Activity[
         <h2 style={{ margin: 0 }}>Serie</h2>
         <span className="tiny muted">{monthName}</span>
       </div>
-      <div className="streak-head">
+      {/* M-1: Bei aktiver Gesundheits-Flag (Übertraining/RED-S) die 🔥-Feier dezent zurücknehmen — eine nie
+          unterbrochene Serie ist dann kein Achievement, sondern ein Erholungsdefizit. Zahl bleibt, nur entsättigt. */}
+      <div className="streak-head" style={healthDampen ? { opacity: 0.55, filter: "grayscale(1)" } : undefined}>
         <span className="streak-flame" aria-hidden="true">🔥</span>
         <span className="streak-num">{current}</span>
         <span className="tiny muted">Tage in Folge · {activeDays} aktiv diesen Monat{longest > 0 ? ` · längste ${longest}` : ""}</span>
       </div>
+      {healthDampen && (
+        <div className="tiny muted" style={{ marginTop: -2, marginBottom: 4 }}>Erholung zählt auch — deine Wellness-Werte deuten gerade auf Erholungsbedarf.</div>
+      )}
       <div ref={wrapRef}>
         <div className="streak-grid streak-wd" style={{ gridTemplateColumns: colTpl, gap }}>
           {WD.map((w) => <div key={w} className="streak-wdlabel">{w}</div>)}

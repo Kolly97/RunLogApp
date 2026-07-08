@@ -430,10 +430,13 @@ function SymptomPhaseStrip({ data }: { data: PhaseSymptomStat[] | null }) {
 }
 
 // Zellen-Farbe: nur bei ≥exploratory färben (ehrlich — schwache Daten bleiben grau). Effektgröße divergierend um 0.
+// M-Kosmetik: Sättigung an die CI-Belastbarkeit koppeln — überlappt das CI die 0 (nicht signifikant), wird die
+// Zelle deutlich blasser, damit die Farbintensität nicht mehr suggeriert, als der CI-gegatete Verdikt-Text zulässt.
 function cellStyle(e: CycleEvidence | undefined): { background: string; color: string } {
   if (!e || e.confidence === "insufficient" || e.effect_size == null) return { background: "var(--bg-soft, rgba(127,127,127,0.05))", color: "var(--muted)" };
   const es = Math.max(-1.5, Math.min(1.5, e.effect_size));
-  const a = 0.12 + (Math.abs(es) / 1.5) * 0.42;
+  const sig = e.ci_low != null && e.ci_high != null && (e.ci_low > 0 || e.ci_high < 0); // CI schließt 0 aus = belastbar
+  const a = (0.12 + (Math.abs(es) / 1.5) * 0.42) * (sig ? 1 : 0.4);
   return { background: es >= 0 ? `rgba(34,197,94,${a.toFixed(2)})` : `rgba(239,68,68,${a.toFixed(2)})`, color: "var(--text)" };
 }
 

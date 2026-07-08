@@ -238,6 +238,12 @@ export default function Methodik() {
               <ConfidenceBadge level={inference.confidence as ConfLevel} title={`${CONF_LABEL[inference.confidence]} · Block-Auswertung (zusammenhängende Regime-Wochen)`} />
             </p>
             <p className="tiny muted" style={{ marginTop: -6 }}>{inference.note}</p>
+            {/* M-6: Bei fehlender belastbarer Präferenz aktiv zum gezielten Kontrast-Experiment führen. */}
+            {!inference.best && (
+              <button className="btn btn-ghost tiny" style={{ marginTop: -2 }} onClick={() => setTab("experiments")}>
+                → Geführtes Experiment starten (kontrastierende Blöcke / N-of-1)
+              </button>
+            )}
             {inference.regimes.length > 0 && (
               <ExpertDetails summary={`Regime-Details (${inference.regimes.length}) — Korrelation, nicht Kausalität`}>
               <table className="table" style={{ width: "100%" }}>

@@ -7,6 +7,9 @@ build/sidecar/
 server/ml-sidecar/.venv/
 ToDo/
 
+# Test daten
+beta-test/
+
 # Persönliche Daten NICHT mitgeben (deine Trainingsdaten!) — beim Update nur data/ kopieren (Z.25)
 data/
 training.db

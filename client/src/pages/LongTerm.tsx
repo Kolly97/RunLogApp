@@ -16,7 +16,7 @@ import { useSeason } from "../lib/hooks.ts";
 import { useOptions, phaseLabel } from "../lib/options.ts";
 import { useNavigate } from "react-router-dom";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate, cyclePhaseRunsByDate, yearMarksByDate, yearMarksByDateAll } from "../lib/markers.ts";
-import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur, pbMarkers } from "../lib/util.ts";
+import { fmtDate, fmtDateY, paceStr, addDays, todayIso, weekLabel, isoWeek, fmtDur, pbMarkers, VERT_WEEK_HM } from "../lib/util.ts";
 import RangeSelector, { type DateRange } from "../charts/RangeSelector.tsx";
 import ZoneHistogram from "../charts/ZoneHistogram.tsx";
 import ThresholdTrendChart from "../charts/ThresholdTrendChart.tsx";
@@ -217,14 +217,19 @@ export default function LongTerm() {
   const namesByDate: Record<string, string> = {};
   for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
 
-  // Kacheln: Summen je Kategorie im gewählten Zeitraum (#17)
-  const cat = { run: { km: 0, s: 0 }, bike: { km: 0, s: 0 }, str: { s: 0 } };
+  // Kacheln: Summen je Kategorie im gewählten Zeitraum (#17). M-4: + Vert (Lauf-Höhenmeter) + Kraft-Last (Σ TSS).
+  const cat = { run: { km: 0, s: 0, vert: 0 }, bike: { km: 0, s: 0 }, str: { s: 0, tss: 0 } };
   for (const a of acts) {
     const km = (a.distance_m || 0) / 1000, s = a.moving_s || 0;
-    if (a.sport === "Run") { cat.run.km += km; cat.run.s += s; }
+    if (a.sport === "Run") { cat.run.km += km; cat.run.s += s; cat.run.vert += a.elevation || 0; }
     else if (a.sport?.startsWith("Bike") || a.sport === "General") { cat.bike.km += km; cat.bike.s += s; }
-    else if (a.sport === "Strength" || a.sport === "Physio") { cat.str.s += s; }
+    else if (a.sport === "Strength" || a.sport === "Physio") { cat.str.s += s; cat.str.tss += a.tss || 0; }
   }
+  const vertPerKm = cat.run.km > 0 ? Math.round((cat.run.vert / cat.run.km) * 10) / 10 : null;
+  // Trail-Modul-Gate: Ø Höhenmeter/Woche über den Datenbereich der Läufe (nicht absolute Summe — die klettert jeder voll).
+  const runTimes = acts.filter((a) => a.sport === "Run" && a.date).map((a) => Date.parse(a.date));
+  const vertWeeks = runTimes.length ? Math.max(1, Math.round((Math.max(...runTimes) - Math.min(...runTimes)) / (7 * 86400000))) : 1;
+  const trailActive = cat.run.vert / vertWeeks >= VERT_WEEK_HM;
 
   const visibleRows = range
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
@@ -376,8 +381,14 @@ export default function LongTerm() {
         <div className="card stat"><div className="label"><T k="lt.tile.bike">Rad (indoor + outdoor + Commute)</T></div><div className="value">{Math.round(cat.bike.km)} km</div><div className="sub">{fmtDur(cat.bike.s)}</div></div>
       )}</EgItem>
       <EgItem id="sum-str" title={t("lt.tile.strength", "Kraft / Mobility")} defaultSpan={4} defaultHeight={60}>{() => (
-        <div className="card stat"><div className="label"><T k="lt.tile.strength">Kraft / Mobility</T></div><div className="value">{fmtDur(cat.str.s)}</div><div className="sub"><T k="lt.tile.strength.sub">nur Zeit</T></div></div>
+        <div className="card stat"><div className="label"><T k="lt.tile.strength">Kraft / Mobility</T></div><div className="value">{fmtDur(cat.str.s)}</div><div className="sub">{cat.str.tss > 0 ? `${Math.round(cat.str.tss)} TSS` : <T k="lt.tile.strength.sub">nur Zeit</T>}</div></div>
       )}</EgItem>
+      {/* M-4: Höhenmeter-Tile nur als Trail-Modul, wenn im Zeitraum nennenswert geklettert wurde. */}
+      {trailActive && (
+      <EgItem id="sum-vert" title={t("lt.tile.vert", "Höhenmeter")} defaultSpan={4} defaultHeight={60}>{() => (
+        <div className="card stat"><div className="label">Höhenmeter (Trail)</div><div className="value">{Math.round(cat.run.vert)} hm</div><div className="sub">{vertPerKm != null ? `${vertPerKm} hm/km` : "—"}</div></div>
+      )}</EgItem>
+      )}
       {/* PMC über den gewählten Zeitraum */}
       <EgItem id="pmc" title={t("lt.block.pmc.title", "Performance Management Chart")} defaultSpan={12} defaultHeight={360}>{(h) => (
       <div className="card">

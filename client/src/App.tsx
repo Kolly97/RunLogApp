@@ -43,8 +43,9 @@ function SparkToggle() {
   );
 }
 
-// Stand des letzten inhaltlichen Updates (Footer/Impressum, #75).
-const BUILD_DATE = "04.07.2026"; // v2.6.0
+// Stand des letzten inhaltlichen Updates (Footer/Impressum, #75). An package.json gekoppelt (wie pkg.version),
+// beim Release zusammen mit der Version gepflegt — kein Datum-Raten/Automatik.
+const BUILD_DATE = (pkg as { buildDate?: string }).buildDate ?? "";
 
 // v1.10.0 UI-Konzept A2: Navigation in 5 Gruppen entlang der echten Nutzungs-Schleifen (Heute · Planen · Tracken ·
 // Analysieren · Lernen) + Einstellungen separat. Routen unverändert.

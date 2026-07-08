@@ -129,10 +129,11 @@ button:active { transform: translateY(0.5px) scale(0.985); }
 .frv { font-size: 26px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .frl { font-size: 11px; color: var(--muted); margin-top: 3px; }
 /* M6: Celebration (edle Belohnung bei Erfolgen). */
-.celebrate-overlay { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.14); backdrop-filter: blur(1px); }
-.celebrate-burst { position: absolute; top: 46%; left: 50%; width: 0; height: 0; pointer-events: none; }
+/* M-3: dezenter Ecken-Toast statt zentralem Modal — blockiert die darunterliegende Seite (z. B. Coach) nicht mehr. */
+.celebrate-overlay { position: fixed; right: 20px; bottom: 20px; z-index: 1100; display: flex; align-items: flex-end; justify-content: flex-end; pointer-events: none; }
+.celebrate-burst { position: absolute; top: 40%; left: 50%; width: 0; height: 0; pointer-events: none; }
 .celebrate-piece { position: absolute; width: 9px; height: 9px; border-radius: 2px; will-change: transform, opacity; }
-.celebrate-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-lift); padding: 22px 28px; text-align: center; max-width: 340px; }
+.celebrate-card { position: relative; pointer-events: auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-lift); padding: 18px 22px; text-align: center; max-width: 320px; }
 .celebrate-emoji { font-size: 42px; line-height: 1; margin-bottom: 8px; }
 .celebrate-card strong { font-size: 16px; display: block; }
 /* Cineastischer Intro (M6): einmaliger, skippbarer Erst-Start. */

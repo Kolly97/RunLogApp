@@ -184,7 +184,7 @@ function ResearchShapPanel() {
   const maxGlobal = Math.max(1e-9, ...(rs.globalImportance ?? []).map((g) => g.importance));
 
   return (
-    <ExpertDetails summary={`Research-Mode (SHAP) — ${!rs.available ? (suff && !suff.ok ? "noch zu wenig Daten" : "noch nicht berechnet") : rs.plausible ? "Modell passt" : "schwacher Fit"}`}>
+    <ExpertDetails summary={`Research-Mode (SHAP) — ${rs.engineUnavailable ? "Engine/Sidecar nicht verfügbar" : !rs.available ? (suff && !suff.ok ? "noch zu wenig Daten" : "noch nicht berechnet") : rs.plausible ? "Modell passt" : "schwacher Fit"}`}>
       <p className="tiny muted" style={{ marginTop: 0 }}>
         Nichtlineares Baum-Modell (LightGBM) auf denselben Wochen-Daten <strong>plus</strong> Session-Feedback (RPE,
         gefühlt-vs-erwartet, Readiness) — findet auch Zusammenhänge, die das lineare Dosis-Modell oben nicht sieht.
@@ -201,6 +201,13 @@ function ResearchShapPanel() {
           </button>
           {rs.available && <span className="tiny muted">Engine: {rs.engine ?? "?"} · {rs.nWeeks} Wochen{rs.cvR2 != null ? ` · Cross-Val-R² ${rs.cvR2.toFixed(2)}` : ""}</span>}
         </div>
+      )}
+      {rs.engineUnavailable && (
+        <p className="tiny" style={{ margin: "0 0 6px", color: "var(--warn)" }}>
+          ⚠ Genug Daten vorhanden, aber die Rechen-Engine (Python-Sidecar mit LightGBM/SHAP) ist auf diesem System nicht
+          verfügbar — im gepackten App-Build ist sie enthalten; in einer frischen Entwickler-Umgebung ggf. neu installieren.
+          Solange wird nichts berechnet.
+        </p>
       )}
       {rs.available && !rs.plausible && (
         <p className="tiny" style={{ margin: "0 0 6px", color: "var(--warn)" }}>

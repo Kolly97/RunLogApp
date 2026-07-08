@@ -78,6 +78,7 @@ export interface MlResearchShap {
   enabled: boolean;
   run?: MlRun | null;
   available?: boolean;
+  engineUnavailable?: boolean;   // M-5: genug Daten, aber Python-Sidecar (LightGBM/SHAP) fehlte
   engine?: string | null;
   insufficient?: boolean;
   sufficiency?: ResearchShapSufficiency;
@@ -305,7 +306,9 @@ export interface AnalyzeResult {
   // reale + geplante Verteilung/Kategorien (vom Server geliefert)
   plannedZoneKm?: Record<number, number>;
   realZoneMin?: Record<number, number>; realZoneKm?: Record<number, number>;
-  realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number } };
+  realByCategory?: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number; tss?: number } };
+  // M-4 — Vert-Load (Höhenmeter) der realen Woche + D+/km (Steilheit) + Vorwochen-Reihe für den Mini-Trend.
+  realVert?: number; realVertPerKm?: number | null; recentWeeksVert?: number[];
   // v0.14.0 (ToDo 12) — Plan-Erfüllung je gematchter Einheit + Wochenmittel
   adherence?: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity?: Record<number, number> };
   // v0.15.0 (O4) — TSS-Wochenempfehlung (Korridor) aus CTL + Saisonplan-Phase, 3:1-Prinzip
@@ -330,6 +333,7 @@ export interface TodayResult {
   recommendation: { headline: string; sessionType: string; doseHint: string; reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig" };
   adjustment: SessionAdjustment | null;
   nextHard?: { date: string; type: string; adjustment: SessionAdjustment } | null; // v1.9.0: nächste harte Einheit
+  healthFlags?: MlHealthFlag[]; // H-1/M-1: chronische Gesundheits-Flags (Übertraining/RED-S) an der Hauptfläche
 }
 export interface SessionAdjustment {
   changed: boolean;

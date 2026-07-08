@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type PmcPoint, type AnalyzeResult, type IntervalEffortStat, type PlannedSession, type Activity, type Race, type FitnessTrend, type TodayResult, type BestsResult, type CyclePhaseSpan } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
-import { addDays, todayIso, fmtDate, weekLabel, pbMarkers } from "../lib/util.ts";
+import { addDays, todayIso, fmtDate, weekLabel, pbMarkers, VERT_WEEK_HM } from "../lib/util.ts";
 import { typeColor, typeLabel } from "../lib/options.ts";
 import { useCountUp, useReveal } from "../lib/motion.ts";
 import FormRibbon from "../charts/FormRibbon.tsx";
@@ -101,6 +101,11 @@ export default function Dashboard() {
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
     : rows;
   const dashBlocks = blockCards();
+  // M-4: Vert-Load (Trail) — aktuelle Woche + Vorwochen; Tile nur bei nennenswerter Kletterlast über ~4 Wochen.
+  const wVert = Math.round(analyze?.realVert ?? 0);
+  const wRecentVert: number[] = analyze?.recentWeeksVert ?? [];
+  const vertSeriesDash = [...wRecentVert, wVert];
+  const vertTrail = vertSeriesDash.length > 0 && vertSeriesDash.reduce((a, b) => a + b, 0) / vertSeriesDash.length >= VERT_WEEK_HM;
 
   return (
     <div>
@@ -118,13 +123,18 @@ export default function Dashboard() {
       {/* A3: Leitfrage „Was mache ich heute?" zuerst — fix & prominent. */}
       {todayPanel()}
 
+      {/* H-1: Chronisches Gesundheitssignal (Übertraining/RED-S) als First-Class-Karte — nur wenn aktiv (kein Dauer-Alarm). */}
+      {healthPanel()}
+
       <div className="tiny muted" style={{ fontWeight: 600, margin: "2px 0 4px" }}><T k="dashboard.form.title">Form-Überblick</T></div>
-      <div className="grid" ref={formRef} style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="grid" ref={formRef} style={{ gridTemplateColumns: `repeat(${vertTrail ? 6 : 5}, 1fr)` }}>
         <StatCard label={t("dashboard.stat.fitness.label", "Fitness (CTL)")} value={last?.ctl ?? 0} cls="fitness" sub={t("dashboard.stat.fitness.sub", "42-Tage-Last")} spark={showSparks ? pastPmc.map((p) => p.ctl) : undefined} sparkColor="var(--fitness)" />
         <StatCard label={t("dashboard.stat.fatigue.label", "Fatigue (ATL)")} value={last?.atl ?? 0} cls="fatigue" sub={t("dashboard.stat.fatigue.sub", "7-Tage-Last")} spark={showSparks ? pastPmc.map((p) => p.atl) : undefined} sparkColor="var(--fatigue)" />
         <StatCard label={t("dashboard.stat.form.label", "Form (TSB)")} value={last?.tsb ?? 0} cls="form" sub={formHint(last?.tsb, t)} spark={showSparks ? pastPmc.map((p) => p.tsb) : undefined} sparkColor="var(--form)" />
         <StatCard label={t("dashboard.stat.ctlramp.label", "CTL-Ramp")} value={pmc?.ctlRamp7 ?? 0} sub={t("dashboard.stat.ctlramp.sub", "pro Woche (7d)")} />
         <Vo2maxCard data={fit} />
+        {/* M-4: Vert-Load-Tile nur für Trail-Athleten (über ~4 Wochen nennenswert geklettert). */}
+        {vertTrail && <StatCard label={t("dashboard.stat.vert.label", "Vert (Woche)")} value={wVert} sub={analyze?.realVertPerKm != null ? `${analyze.realVertPerKm} hm/km` : "Höhenmeter"} spark={showSparks ? [...wRecentVert, wVert] : undefined} sparkColor="var(--fitness)" />}
       </div>
 
       {/* Zeitraum gilt für die großen Übersichts-Charts (PMC, Saison-Progression, Intervall-Trend) */}
@@ -136,6 +146,37 @@ export default function Dashboard() {
       <EditableGrid page="dashboard" blocks={dashBlocks} />
     </div>
   );
+
+  // H-1: chronisches Gesundheitssignal (Übertraining/RED-S/HRV-Drift) prominent an der Hauptfläche — aber NUR
+  // wenn tatsächlich ein high/warn-Flag aktiv ist (sonst unsichtbar, kein Dauer-Alarm). Beschreibend, nicht-diagnostisch.
+  function healthPanel() {
+    const flags = (today?.healthFlags ?? []).filter((f) => f.severity === "high" || f.severity === "warn");
+    if (!flags.length) return null;
+    const high = flags.some((f) => f.severity === "high");
+    const sevColor = (s: string) => (s === "high" ? "var(--danger)" : "var(--warn)");
+    return (
+      <div className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${high ? "var(--danger)" : "var(--warn)"}` }}>
+        <div className="spread" style={{ alignItems: "baseline" }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Gesundheit &amp; Erholung</h2>
+          <span className="tiny muted">beschreibend · nicht-diagnostisch</span>
+        </div>
+        <p className="tiny muted" style={{ margin: "4px 0 8px" }}>
+          {high
+            ? "Deine Wellness-Werte deuten auf ein Übertrainings-/RED-S-Muster — Erholung hat aktuell Vorrang vor mehr Intensität."
+            : "Deine Wellness-Werte driften (z. B. HRV/Ruhepuls) — halte die Last die nächsten Tage konservativ."}
+        </p>
+        {flags.map((f, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: sevColor(f.severity), border: `1px solid ${sevColor(f.severity)}`, borderRadius: 999, padding: "0 7px", whiteSpace: "nowrap" }}>{f.severity === "high" ? "hoch" : "Warnung"}</span>
+            <span className="tiny">{f.message}</span>
+          </div>
+        ))}
+        <p className="tiny muted" style={{ marginTop: 6, marginBottom: 0 }}>
+          <button className="linklike" style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--accent)", cursor: "pointer" }} onClick={() => navigate("/methodik")}>Details: Readiness &amp; Gesundheit</button> · im Zweifel mit einer Fachperson sprechen.
+        </p>
+      </div>
+    );
+  }
 
   // A3 (UI-Konzept): die heutige Entscheidung ist die Leitfrage des Dashboards → fix & prominent ganz oben
   // (statt als verschiebbare Kachel unter den Form-Stats). Inkl. Renn-Countdown.
@@ -245,7 +286,8 @@ export default function Dashboard() {
       },
       {
         id: "streak", title: t("dashboard.block.streak.title", "Serie"), defaultSpan: 4, defaultHeight: 300,
-        render: (h) => <StreakCard acts={acts} sessions={allSessions} height={h} />,
+        render: (h) => <StreakCard acts={acts} sessions={allSessions} height={h}
+          healthDampen={(today?.healthFlags ?? []).some((f) => f.severity === "high" || f.severity === "warn")} />,
       },
       {
         id: "week", title: t("dashboard.block.week.title", "Aktuelle Woche"), defaultSpan: 4,

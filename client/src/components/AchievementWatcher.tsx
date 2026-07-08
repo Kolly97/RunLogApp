@@ -13,6 +13,9 @@ import { celebrate } from "./Celebration.tsx";
 const STREAK_MILESTONES = [4, 8, 12, 26, 52];
 // Nur „Arbeitsblöcke" feiern — nicht Entlastung (Deload), Race Week (Taper) oder Krank.
 const WORK_PHASES = new Set(["Base", "Belastung", "Race Specific"]);
+// M-3: Obergrenze für „Block abgeschlossen"-Feier. Ein 41-Wochen-Monoblock ist physiologisch kein sinnvoll
+// periodisierter Block — solche Überlängen (Fixture-Artefakt oder fehlende Periodisierung) NICHT feiern.
+const MAX_BLOCK_WEEKS = 16;
 
 function mondayOf(iso: string): string {
   const d = new Date(iso + "T00:00:00Z");
@@ -86,7 +89,7 @@ export default function AchievementWatcher() {
         }
         const today = todayIso();
         const completed = runs
-          .filter((r) => WORK_PHASES.has(r.phase) && r.weeks >= 2 && r.end < today)
+          .filter((r) => WORK_PHASES.has(r.phase) && r.weeks >= 2 && r.weeks <= MAX_BLOCK_WEEKS && r.end < today)
           .map((r) => ({ r, k: `${r.phase}|${r.end}` }));
         const fresh = completed.filter((c) => !done.has(c.k)).sort((a, b) => a.r.end.localeCompare(b.r.end));
         for (const c of completed) done.add(c.k);

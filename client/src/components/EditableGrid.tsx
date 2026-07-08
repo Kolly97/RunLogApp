@@ -4,14 +4,12 @@
 //    Design-A4-Box (794×1123 px @96dpi); im Editor per CSS-transform skaliert, im Druck 1:1 →
 //    PDF = Editor. Kacheln bleiben per maxRows/isBounded innerhalb der Seite; Seitenwechsel per Button.
 // Layout pro Profil server-seitig persistiert (api.getLayout/setLayout).
-import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
-import GridLayout, { WidthProvider, type Layout } from "react-grid-layout";
+import { Children, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import GridLayout, { type Layout } from "react-grid-layout";
 import { api, type LayoutMap } from "../lib/api.ts";
 import { usePageActions } from "./PageActionsBar.tsx";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-
-const AutoGrid = WidthProvider(GridLayout); // continuous (misst Breite selbst)
 
 export interface EgBlock {
   id: string;
@@ -39,6 +37,8 @@ const HEADER_PX = 96;
 const TOOLBAR_PX = 34;
 const MIN_W = 3;
 const MIN_H = 6;
+const MIN_STAGE_W = 320;   // Floor: fängt „zu schmal/0 gemessen" — sonst stapelt react-grid-layout 1-spaltig (H-2)
+const DEFAULT_STAGE_W = 1024; // nur für den ersten (nie gemalten) Render vor der useLayoutEffect-Messung
 const rowSpanFor = (px: number) => Math.max(MIN_H, Math.ceil((px + MARGIN) / (ROW_H + MARGIN)));
 
 // ---- paged (A4 @96dpi) ----
@@ -93,6 +93,7 @@ export default function EditableGrid({ page, blocks, children, paged }: {
   const [autoH, setAutoH] = useState<Record<string, number>>({});
   const [extraPages, setExtraPages] = useState(1);   // manuell hinzugefügte Seiten (paged)
   const [stageW, setStageW] = useState(A4_W);        // gemessene Editor-Breite (paged)
+  const [contW, setContW] = useState(0);             // gemessene Stage-Breite (continuous, H-2)
   // Diagramm-Textgröße (paged): kleiner % → größere Design-Leinwand → fixe px-Schriften relativ kleiner.
   const [textPct, setTextPct] = useState<number>(() => {
     const v = Number(localStorage.getItem(`eg-text-${page}`));
@@ -102,6 +103,7 @@ export default function EditableGrid({ page, blocks, children, paged }: {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const obs = useRef<ResizeObserver | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const contRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { api.getLayout(page).then((m) => { setLayout(m || {}); setLoaded(true); }).catch(() => setLoaded(true)); }, [page]);
 
@@ -123,6 +125,20 @@ export default function EditableGrid({ page, blocks, children, paged }: {
     const el = stageRef.current;
     if (!el) return;
     const update = () => setStageW(el.clientWidth || A4_W);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [paged, loaded]);
+
+  // continuous: reale Stage-Breite selbst messen → explizite Grid-Breite (H-2). WidthProvider misst nur auf
+  // window-resize und bleibt bei einer initial zu schmal gemessenen Breite hängen → 1-spaltiger Kollaps auf /bests.
+  // ResizeObserver auf das echte .eg-stage-Element re-misst, sobald der Container seine wahre Breite erreicht.
+  useLayoutEffect(() => {
+    if (paged) return;
+    const el = contRef.current;
+    if (!el) return;
+    const update = () => setContW(el.clientWidth || 0);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -293,10 +309,11 @@ export default function EditableGrid({ page, blocks, children, paged }: {
     persist({ ...layout, [id]: { ...layout[id], hidden: false, x: 0, y: maxY, w: layout[id]?.w ?? d.w } });
   };
 
+  const stageW2 = Math.max(MIN_STAGE_W, contW || DEFAULT_STAGE_W);
   return (
     <>
-      <div className="eg-stage">
-        <AutoGrid className={"editable-grid" + (editing ? " editing" : "")} layout={rgl} cols={COLS} rowHeight={ROW_H}
+      <div className="eg-stage" ref={contRef}>
+        <GridLayout className={"editable-grid" + (editing ? " editing" : "")} width={stageW2} layout={rgl} cols={COLS} rowHeight={ROW_H}
           margin={[MARGIN, MARGIN]} containerPadding={[0, 0]} isDraggable={editing} isResizable={editing}
           draggableCancel=".eg-nodrag" resizeHandles={["se", "sw", "ne", "nw"]}
           isBounded={false} compactType="vertical" preventCollision={false}
@@ -322,7 +339,7 @@ export default function EditableGrid({ page, blocks, children, paged }: {
               </div>
             );
           })}
-        </AutoGrid>
+        </GridLayout>
       </div>
       {tray}
     </>

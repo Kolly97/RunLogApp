@@ -164,3 +164,8 @@ export function groupByYear<T extends { start_date?: string }>(items: T[]): { ye
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([year, list]) => ({ year, items: list }));
 }
+
+// M-4 (Trail-Modul): Vert-Load-UI (Höhenmeter-Tile/-Trend) nur zeigen, wenn Klettern ein relevanter Trainings-
+// anteil ist — gemessen als Ø Höhenmeter/Woche (Lauf), NICHT als absolute Summe (die klettert jeder über Monate voll).
+// Schwelle: ~450 hm/Woche trennt Trail/Berg (Yara ~492, Petra ~473) von rollend/flach (Clara ~371, Noah ~398). Tunable.
+export const VERT_WEEK_HM = 450;

@@ -51,6 +51,30 @@ export function coachHealthCap(flags: HealthFlagLite[]): CoachHealthCap {
   return { loadFactor: 1, dropTopIntensity: false, reason: null };
 }
 
+// H-1: Gesundheits-Gate aufs „Was hilft dir?"-Verdikt (dieselbe Flag-Politik wie coachHealthCap — eine Wahrheitsquelle).
+// Bei aktiver Übertrainings-/RED-S-Signatur (high) wird Erholung zur Headline und die Intensitäts-„hilft"-Empfehlung
+// NICHT als Top ausgespielt (umrahmen + dämpfen, nicht löschen — die Achsen-Daten bleiben unter der Headline sichtbar).
+// Bei warn nur umrahmen. Ohne high/warn-Flags exakt unverändert (kein Effekt für gesunde Athlet:innen).
+const INTENSITY_KEYS = new Set(["VO2", "vo2", "Schwelle", "schwelle", "threshold", "T", "I", "R"]);
+export function healthGateVerdict(v: TrainingVerdict, flags: HealthFlagLite[]): TrainingVerdict {
+  const cap = coachHealthCap(flags);
+  if (!cap.reason) return v;                         // keine high/warn-Flags → identisch zu vorher
+  const high = flags.some((f) => f.severity === "high");
+  let axes = v.axes;
+  if (high) {
+    // Dosis-Intensität nicht als Top-Empfehlung: Richtung neutralisieren (Zahl/Details bleiben in der Achse sichtbar).
+    axes = v.axes.map((ax) => {
+      if (ax.axis !== "dose" || !ax.best || ax.best.direction !== "hilft" || !INTENSITY_KEYS.has(ax.best.key)) return ax;
+      return { ...ax, best: { ...ax.best, direction: "neutral" as const }, insight: "Wegen deiner Wellness-Signale zurückgestellt — Erholung geht vor mehr Intensität." };
+    });
+  }
+  const headline = high
+    ? "Priorität: Erholung — deine Wellness-Signale kippen gerade (Übertrainings-/RED-S-Muster). Zuerst regenerieren, dann wieder Reize setzen."
+    : `Wellness-Vorsicht: ${v.headline} Aber deine Erholungswerte deuten auf Bedarf — aktuell konservativ dosieren.`;
+  const note = `${cap.reason} ${v.note}`.trim();
+  return { ...v, axes, headline, note };
+}
+
 /**
  * Kern: Synthese → Planer-Prefs. `best` einer Achse ist per Konstruktion nur gesetzt, wenn der Kandidat praktisch
  * belastbar & positiv („hilft") ist → genau die Belastbarkeits-Schwelle für das Steuern. Hypothesen (kein best)

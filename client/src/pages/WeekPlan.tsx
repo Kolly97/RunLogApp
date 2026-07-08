@@ -445,13 +445,18 @@ function ReadinessCard() {
   const r = td.readiness;
   const rCol = r ? (r.level === "red" ? "var(--danger)" : r.level === "yellow" ? "var(--warn)" : "var(--ok)") : "var(--muted)";
   const when = nh ? (nh.date === td.date ? "heute" : fmtDateLabel(nh.date)) : "heute";
-  const borderCol = adj ? (/red|recovery/.test(adj.action) ? "var(--danger)" : "var(--warn)") : "var(--ok)";
+  // H-1-Konsistenz: dieselben chronischen Gesundheits-Flags wie im Dashboard (mehrtägiger Trend) — damit die
+  // Wochenplanung nicht „grün · passt wie geplant" sagt, während das Dashboard Übertraining warnt. Tageswert (akut,
+  // Einzeltag) und Trend (mehrtägig) sind zwei Horizonte: der Tag kann ok sein, der Trend trotzdem mahnen.
+  const chronic = (td.healthFlags ?? []).filter((f) => f.severity === "high" || f.severity === "warn");
+  const chronicHigh = chronic.some((f) => f.severity === "high");
+  const borderCol = adj ? (/red|recovery/.test(adj.action) ? "var(--danger)" : "var(--warn)") : chronic.length ? (chronicHigh ? "var(--danger)" : "var(--warn)") : "var(--ok)";
   const apply = async () => { if (!adj?.adjusted) return; await api.applyAdjustment(adj.originalSessionId, adj.adjusted as object).catch(() => {}); setMsg("Übernommen ✓"); load(); };
   return (
     <div className="card tight no-print" data-tour="readiness" style={{ marginBottom: 8, borderLeft: `4px solid ${borderCol}` }}>
       <div className="spread">
         <strong style={{ fontSize: 13 }}>⚡ Readiness{nh ? ` — nächste harte Einheit (${when}, ${typeLabel(nh.type)})` : ""}</strong>
-        {r ? <span className="tiny" style={{ fontWeight: 700, color: rCol }}>Readiness {r.score} · {r.level === "red" ? "rot" : r.level === "yellow" ? "gelb" : "grün"}</span>
+        {r ? <span className="tiny" style={{ fontWeight: 700, color: rCol }} title="Tageswert (akut, Einzeltag) — getrennt vom mehrtägigen Gesundheits-Trend">Readiness heute {r.score} · {r.level === "red" ? "rot" : r.level === "yellow" ? "gelb" : "grün"}</span>
           : <span className="tiny muted">keine HRV/Schlaf-Daten heute</span>}
       </div>
       {adj && adj.adjusted ? (
@@ -464,6 +469,10 @@ function ReadinessCard() {
             {msg && <span className="tiny" style={{ color: "var(--ok)" }}>{msg}</span>}
           </div>
         </>
+      ) : chronic.length ? (
+        <div className="tiny" style={{ marginTop: 2, color: chronicHigh ? "var(--danger)" : "var(--warn)" }}>
+          {r ? "Tageswert ok, aber " : ""}mehrtägiger Gesundheits-Trend mahnt zur Erholung: {chronic.map((f) => f.message).join(" · ")}
+        </div>
       ) : (
         <div className="tiny muted" style={{ marginTop: 2 }}>{r ? "Werte gut — die Einheit passt wie geplant." : "Trage HRV/Schlaf in den Tagesfaktoren ein, damit die App harte Einheiten bei Bedarf entschärfen kann."}</div>
       )}

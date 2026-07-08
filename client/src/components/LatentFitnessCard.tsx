@@ -11,6 +11,55 @@ import LatentFitnessChart from "../charts/LatentFitnessChart.tsx";
 const FRESH_LABEL: Record<string, string> = { fresh: "aktuell", stale: "veraltet", none: "noch nicht berechnet", running: "rechnet…" };
 const FRESH_COLOR: Record<string, string> = { fresh: "var(--ok)", stale: "var(--warn)", none: "var(--muted)", running: "#0ea5e9" };
 
+// Sportwissenschaftliche Kurz-Interpretation der Trajektorie — beschreibend, beobachtet ≠ kausal, KEIN Trainingsbefehl.
+// Bounded (Statistik-Brille): eine Richtung wird nur behauptet, wenn die Veränderung im jüngsten Fenster klar über dem
+// Unsicherheitsband (±SD der geglätteten Schätzung) liegt — sonst „stabil". Ursachen werden als typische Zusammenhänge
+// genannt, nicht diagnostiziert (Sportwissenschaft-Brille); Framing motivierend statt alarmistisch (Psychologie-Brille).
+type LatTone = "up" | "flat" | "down";
+function interpretLatent(points: MlLatentPoint[]): { tone: LatTone; headline: string; detail: string } | null {
+  const n = points.length;
+  if (n < 8) return null;                                   // zu kurz für eine belastbare Trendaussage
+  const last = points[n - 1];
+  const noise = last.sd || 0.5;
+  const w = Math.min(13, Math.max(6, Math.round(n / 4)));   // Fenster: jüngste ~w Wochen (wöchentliches Raster)
+  const start = points[n - w];
+  const weeks = Math.max(1, Math.round((Date.parse(last.date) - Date.parse(start.date)) / (7 * 86_400_000)));
+  const dRecent = last.value - start.value;
+  const per4 = (dRecent / weeks) * 4;
+  const notable = Math.abs(dRecent) >= 1.5 * noise;         // klar über dem Rauschband?
+  const tone: LatTone = !notable ? "flat" : dRecent > 0 ? "up" : "down";
+
+  // Voller Zeitraum: Höchststand vs. aktuell (Kontext „wie weit vom Peak entfernt").
+  let peak = points[0], peakI = 0;
+  points.forEach((p, i) => { if (p.value > peak.value) { peak = p; peakI = i; } });
+  const fromPeak = last.value - peak.value;
+  const pctPeak = peak.value > 0 ? (fromPeak / peak.value) * 100 : 0;
+  const peakTxt = peakI < n - w && fromPeak < -1.5 * noise
+    ? ` Vom Höchststand ${peak.value.toFixed(1)} (${fmtDateY(peak.date)}) bist du aktuell ${fromPeak.toFixed(1)} (${pctPeak.toFixed(0)} %) entfernt.`
+    : "";
+  const rate = `≈ ${per4 >= 0 ? "+" : ""}${per4.toFixed(1)} Punkte / 4 Wochen (jüngste ${weeks} Wochen).`;
+
+  if (tone === "up") return {
+    tone, headline: "Aufwärtstrend — deine aerobe Komposit-Fitness steigt.",
+    detail: `${rate} Der aktuelle Trainingsreiz baut messbar Fitness auf (beobachtet, nicht kausal).${peakTxt}`,
+  };
+  if (tone === "down") return {
+    tone, headline: "Abwärtstrend — deine aerobe Komposit-Fitness sinkt.",
+    detail: `${rate} Ein anhaltender Rückgang von CS/VDOT/VO2max hängt typischerweise mit zu wenig aerobem Reiz (Umfang/Kontinuität), unvollständiger Erholung oder einer Kranken-/Pausenphase zusammen — beobachtet, nicht diagnostiziert.${peakTxt}`,
+  };
+  // „Stabil" differenzieren: deutlich unter einem früheren Höchststand = eher „stabilisiert nach Rückgang".
+  const belowPeak = peakTxt !== "";
+  return belowPeak
+    ? {
+        tone, headline: "Stabilisiert — der längere Rückgang ist zuletzt zum Stillstand gekommen.",
+        detail: `${rate} Kurzfristig gehalten, aber klar unter deinem früheren Höchststand — für einen Wiederaufbau braucht es wieder progressiven aeroben Reiz (Umfang/Kontinuität), sofern Gesundheit und Erholung es zulassen.${peakTxt}`,
+      }
+    : {
+        tone, headline: "Stabil — Fitness gehalten.",
+        detail: `${rate} Dein Reiz erhält die Fitness; für weiteren Aufbau braucht es einen neuen oder größeren Reiz (mehr aerobes Volumen oder gezielte Intensität).${peakTxt}`,
+      };
+}
+
 export default function LatentFitnessCard() {
   const [status, setStatus] = useState<MlStatus | null>(null);
   const [points, setPoints] = useState<MlLatentPoint[]>([]);
@@ -79,6 +128,17 @@ export default function LatentFitnessCard() {
           <div className="tiny muted" style={{ marginTop: 4 }}>
             Aktuell: <strong>{last ? last.value.toFixed(1) : "—"}</strong> (±{last ? last.sd.toFixed(1) : "—"}) · {nObs} Punkte (VO2-äquivalent)
           </div>
+          {(() => {
+            const it = interpretLatent(points);
+            if (!it) return null;
+            const c = it.tone === "up" ? "var(--ok)" : it.tone === "down" ? "var(--warn)" : "var(--muted)";
+            return (
+              <div style={{ marginTop: 8, padding: "8px 10px", borderLeft: `3px solid ${c}`, background: "var(--bg-soft, rgba(127,127,127,0.05))", borderRadius: 6 }}>
+                <div className="tiny" style={{ fontWeight: 700 }}>{it.headline}</div>
+                <div className="tiny muted" style={{ marginTop: 2, lineHeight: 1.55 }}>{it.detail}</div>
+              </div>
+            );
+          })()}
         </>
       )}
       <ExpertDetails summary="Modell-Interna">

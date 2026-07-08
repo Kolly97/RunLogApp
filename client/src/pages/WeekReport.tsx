@@ -10,8 +10,9 @@ import {
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
-  fmtDur, weekLabel, phaseLabel, addDays, pbMarkers,
+  fmtDur, weekLabel, phaseLabel, addDays, pbMarkers, VERT_WEEK_HM,
 } from "../lib/util.ts";
+import Sparkline from "../components/Sparkline.tsx";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
 import { useOptions, typeIntensity } from "../lib/options.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
@@ -214,6 +215,14 @@ export default function WeekReport() {
   const plannedCat: Cat = analyze?.totals?.byCategory ?? catsFromPlan(sessions);
   const serverRealCat: Cat | undefined = anyAnalyze?.totals?.realByCategory ?? anyAnalyze?.realByCategory;
   const realCat: Cat = serverRealCat ?? catsFromActs(acts);
+  // M-4 — reale Kraft-Last (Σ Kraft-TSS) + Vert-Load (Höhenmeter der Woche + D+/km + Mini-Trend). Server-Werte.
+  const strTss = Math.round(anyAnalyze?.realByCategory?.strength?.tss ?? 0);
+  const weekVert = Math.round(anyAnalyze?.realVert ?? 0);
+  const vertPerKm: number | null = anyAnalyze?.realVertPerKm ?? null;
+  const recentVert: number[] = anyAnalyze?.recentWeeksVert ?? [];
+  const vertSeries = [...recentVert, weekVert];
+  // Trail-Modul-Gate: Ø Höhenmeter/Woche über die verfügbaren Wochen (glättet Flach-/Erholungswochen).
+  const trailActive = vertSeries.length > 0 && vertSeries.reduce((a, b) => a + b, 0) / vertSeries.length >= VERT_WEEK_HM;
 
   // Item 1: Erfüllungs-Prozent (Ist/Plan) für die schlanke Completion-Bar.
   const pct = (real: number, planned: number) => (planned > 0 ? (real / planned) * 100 : null);
@@ -303,10 +312,22 @@ export default function WeekReport() {
             pct={pct(realCat.bike.km, plannedCat.bike.km) ?? pct(realCat.bike.min, plannedCat.bike.min)} />
         )}</EgItem>
         <EgItem id="cat-str" title={t("report.tile.cats.str", "Kraft / Mobility")} defaultSpan={4} defaultHeight={84}>{() => (
-          <CatStat label={t("report.cat.strength", "Kraft / Mobility")} value={hours(realCat.strength.min)}
+          <CatStat label={t("report.cat.strength", "Kraft / Mobility")} value={`${hours(realCat.strength.min)}${strTss > 0 ? ` · ${strTss} TSS` : ""}`}
             planned={`${t("report.cat.planned", "geplant")} ${hours(plannedCat.strength.min)}`}
             pct={pct(realCat.strength.min, plannedCat.strength.min)} />
         )}</EgItem>
+
+        {/* M-4: Vert-Load (Höhenmeter) — nur als Trail-Modul, wenn über die letzten Wochen nennenswert geklettert wurde. */}
+        {trailActive && (
+        <EgItem id="cat-vert" title={t("report.tile.cats.vert", "Höhenmeter")} defaultSpan={4} defaultHeight={84}>{() => (
+          <div className="card stat cat-stat">
+            <div className="label" title="Vertikale Last (Trail) — Σ Höhenmeter der Woche, nur Läufe">{t("report.cat.vert", "Höhenmeter (Trail)")}</div>
+            <div className="value">{weekVert} hm</div>
+            <div className="sub">{vertPerKm != null ? `${vertPerKm} hm/km · Steilheit` : "Steilheit —"}</div>
+            {vertSeries.length > 1 && <div style={{ marginTop: 4 }}><Sparkline data={vertSeries} improveDir="up" color="var(--fitness)" width={110} height={22} /></div>}
+          </div>
+        )}</EgItem>
+        )}
 
         {/* Einheiten geplant vs. real — Notizen als gedämpfte Zeile unter jeder Einheit */}
         <EgItem id="units" title={t("report.tile.units", "Einheiten")} defaultSpan={12} defaultHeight={420}>{() => (

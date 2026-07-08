@@ -843,8 +843,11 @@ function inferByClassifier<T extends string>(
   const overallConf: GroupInferenceResult["confidence"] = best && top.nBlocks >= 2 && top.nWeeks >= 6 ? "hoch" : best ? "mittel" : "niedrig";
   const blkTxt = (r: GroupStat<T>) => `n=${r.nWeeks} Wochen${r.nBlocks > 1 ? ` in ${r.nBlocks} Blöcken` : ""}`;
   let note: string;
+  // M-6: Wer konsistent trainiert, erzeugt keinen Block-Kontrast → Passive Inferenz bleibt dauerhaft „nicht belastbar".
+  // Deshalb aktiv erklären, was es dafür braucht, statt nur „mehr Daten nötig".
+  const contrastHint = "Für eine belastbare Aussage brauchst du bewusst kontrastierende Blöcke (mehrere Wochen mit klar unterschiedlichem Schwerpunkt) — oder starte einen gezielten N-of-1-Trial (Geführte Experimente).";
   if (!ranked.length) {
-    note = `Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine ${topic}.`;
+    note = `Noch zu wenig vergleichbare Daten (nach Confounder-Filter) für eine ${topic}. ${contrastHint}`;
   } else if (best) {
     const runner = ranked[1];
     const csTxt = (v: number) => `${v <= 0 ? "" : "+"}${v} s/km CS`;
@@ -852,7 +855,7 @@ function inferByClassifier<T extends string>(
       (runner ? `; ${labelOf(runner.group)} ${csTxt(runner.csChange!)} (${blkTxt(runner)})` : "") +
       ". Korrelation, nicht Kausalität — kleine n beachten.";
   } else {
-    note = `Trend, aber (noch) nicht belastbar: bestes ${noun} ${labelOf(top.group)} (${top.csChange} s/km CS, ${blkTxt(top)}). Mehr Wochen/Daten nötig.`;
+    note = `Trend, aber (noch) nicht belastbar: bestes ${noun} ${labelOf(top.group)} (${top.csChange} s/km CS, ${blkTxt(top)}). ${contrastHint}`;
   }
   return { groups, best, lagWeeks, note, confidence: overallConf };
 }
@@ -1019,6 +1022,8 @@ export function dailyRecommendation(args: {
   readinessLevel: ReadinessLevel | null;
   weekTssRec: TssRec | null;
   plannedTypes: string[];
+  overtrainingHigh?: boolean;  // H-1: chronische Übertrainings-/RED-S-Signatur aktiv → Erholung an die Hauptfläche
+  overtrainingWarn?: boolean;  // H-1: früher Wellness-Drift → keine Intensitäts-Empfehlung anbieten
 }): DailyRec {
   const reasons: { code: string; text: string }[] = [];
   const p = (args.phase || "").toLowerCase();
@@ -1026,7 +1031,11 @@ export function dailyRecommendation(args: {
   let headline: string;
   let confidence: DailyRec["confidence"] = "mittel";
 
-  if (args.readinessLevel === "red") {
+  if (args.overtrainingHigh) {
+    sessionType = "Easy"; headline = "Erholung — deine Wellness-Werte deuten auf Übertraining";
+    reasons.push({ code: "health_overtraining", text: "Chronische Wellness-Signale (Übertraining/RED-S) → Erholung geht heute vor Intensität" });
+    confidence = "hoch";
+  } else if (args.readinessLevel === "red") {
     sessionType = "Easy"; headline = "Erholung — locker oder Ruhetag";
     reasons.push({ code: "readiness_red", text: "Readiness niedrig → heute regenerieren statt belasten" });
     confidence = "hoch";
@@ -1036,7 +1045,7 @@ export function dailyRecommendation(args: {
   } else if (p.includes("entlast") || p.includes("deload")) {
     sessionType = "Easy"; headline = "Entlastungswoche — locker halten";
     reasons.push({ code: "deload", text: "Entlastungsphase (3:1) → Umfang/Intensität runter" });
-  } else if (args.tsb != null && args.tsb > 5 && args.readinessLevel !== "yellow") {
+  } else if (args.tsb != null && args.tsb > 5 && args.readinessLevel !== "yellow" && !args.overtrainingWarn) {
     sessionType = "Threshold"; headline = "Qualität möglich — Schwelle/Intervalle";
     reasons.push({ code: "fresh", text: `Form frisch (TSB ${Math.round(args.tsb)}) + Readiness ok → Schlüsseleinheit` });
     confidence = "hoch";
@@ -1047,6 +1056,7 @@ export function dailyRecommendation(args: {
     sessionType = "Easy"; headline = "Lockerer Dauerlauf (Grundlage)";
     reasons.push({ code: "base", text: "Standard-Grundlageneinheit (Z2)" });
   }
+  if (args.overtrainingWarn && !args.overtrainingHigh) reasons.push({ code: "health_drift", text: "Wellness driftet (HRV/Ruhepuls) → Intensität heute konservativ halten" });
   if (args.readinessLevel === "yellow") reasons.push({ code: "readiness_yellow", text: "Readiness mittel → Intensität eher zurückhaltend" });
   if (args.ctlRamp != null && args.ctlRamp > CTL_RAMP_WARN) reasons.push({ code: "ramp_high", text: `CTL-Ramp hoch (${args.ctlRamp}/Woche) — nicht überziehen` });
   if (args.plannedTypes.length) reasons.push({ code: "already_planned", text: `Heute geplant: ${args.plannedTypes.join(", ")}` });

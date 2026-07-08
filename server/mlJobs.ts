@@ -362,13 +362,25 @@ export function reapStaleRuns(profileId: number): void {
     .run(nowIso(), profileId, cutoffResearch);
 }
 
+// research_shap: ein „done"-Lauf ist nur dann ein gültiger Cache, wenn er entweder echt gerechnet hat (available)
+// ODER legitim wegen zu wenig Daten leer blieb (insufficient). Ein Lauf, der über den TS-Fallback endete, weil der
+// Python-Sidecar (LightGBM/SHAP) damals fehlte (available:false, nicht insufficient), darf NICHT wiederverwendet
+// werden — sonst bleibt „neu berechnen" für immer wirkungslos, sobald die Engine später verfügbar ist (Mira-Abbruch).
+function researchRunReusable(settingsJson: string | null): boolean {
+  if (!settingsJson) return false;
+  try {
+    const s = JSON.parse(settingsJson) as { available?: boolean; insufficient?: boolean };
+    return !!s.available || !!s.insufficient;
+  } catch { return false; }
+}
+
 export function startRun(kind: MlKind, profileId: number): { runId: number; reused?: boolean } {
   reapStaleRuns(profileId);
   const hash = runHash(kind, profileId);
   const done = db
-    .prepare("SELECT id FROM ml_runs WHERE profile_id=? AND kind=? AND status='done' AND input_hash=? AND model_version=? ORDER BY id DESC LIMIT 1")
-    .get(profileId, kind, hash, MODEL_VERSION) as { id: number } | undefined;
-  if (done) return { runId: done.id, reused: true }; // code-versions-bewusst: alte Läufe werden nicht wiederverwendet
+    .prepare("SELECT id, settings_json FROM ml_runs WHERE profile_id=? AND kind=? AND status='done' AND input_hash=? AND model_version=? ORDER BY id DESC LIMIT 1")
+    .get(profileId, kind, hash, MODEL_VERSION) as { id: number; settings_json: string | null } | undefined;
+  if (done && (kind !== "research_shap" || researchRunReusable(done.settings_json))) return { runId: done.id, reused: true }; // code-versions-bewusst: alte Läufe werden nicht wiederverwendet
 
   const info = db
     .prepare("INSERT INTO ml_runs(profile_id, kind, status, engine, model_version, seed, input_hash, progress, started_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
@@ -524,6 +536,9 @@ async function runJob(runId: number, kind: MlKind, profileId: number): Promise<v
             JSON.stringify({
               insufficient: false,
               available: !!result,
+              // M-5: genug Daten, aber Sidecar (LightGBM/SHAP) lieferte null → Engine fehlt (kein „bricht ab").
+              // Sauber getrennt von insufficient (zu wenig Daten) und !plausible (gerechnet, Fit schwach).
+              engineUnavailable: !result,
               engine,
               nWeeks: result?.n_weeks ?? rows.length,
               cvR2: result?.cv_r2 ?? null,
@@ -577,6 +592,7 @@ export function getBanister(profileId: number): BanisterView {
 export interface ResearchShapView {
   run: RunRow | null;
   available: boolean;
+  engineUnavailable: boolean;   // M-5: genug Daten, aber Python-Sidecar (LightGBM/SHAP) fehlte → Engine-Zustand
   engine: string | null;
   insufficient: boolean;
   sufficiency: ResearchShapSufficiency;
@@ -596,11 +612,11 @@ export interface ResearchShapView {
 export function getResearchShap(profileId: number): ResearchShapView {
   const sufficiency = researchShapSufficiency(profileId);
   const run = matchingDoneRun(profileId, "research_shap");
-  const empty = { run, available: false, engine: run?.engine ?? null, insufficient: !sufficiency.ok, sufficiency, nWeeks: 0, cvR2: null, plausible: false, baseValue: null, featureNames: RESEARCH_FEATURE_NAMES, globalImportance: [], local: [] };
+  const empty = { run, available: false, engineUnavailable: false, engine: run?.engine ?? null, insufficient: !sufficiency.ok, sufficiency, nWeeks: 0, cvR2: null, plausible: false, baseValue: null, featureNames: RESEARCH_FEATURE_NAMES, globalImportance: [], local: [] };
   if (!run?.settings_json) return empty;
   try {
     const s = JSON.parse(run.settings_json) as {
-      insufficient?: boolean; available?: boolean; engine?: string; nWeeks?: number; cvR2?: number | null;
+      insufficient?: boolean; available?: boolean; engineUnavailable?: boolean; engine?: string; nWeeks?: number; cvR2?: number | null;
       plausible?: boolean; baseValue?: number | null; featureNames?: string[]; local?: ResearchLocalPoint[];
     };
     const globalRows = db
@@ -609,6 +625,7 @@ export function getResearchShap(profileId: number): ResearchShapView {
     return {
       run,
       available: !!s.available,
+      engineUnavailable: !!s.engineUnavailable && sufficiency.ok,
       engine: s.engine ?? run.engine,
       insufficient: !!s.insufficient || !sufficiency.ok,
       sufficiency,

@@ -5,6 +5,96 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 (keine Bestandsdaten gehen verloren).
 
 ## [Unreleased]
+## v2.9.0
+
+### Hinzugefügt
+- **Vert-Load (Höhenmeter) + Kraft-Last sichtbar gemacht (Beta-Befund M-4):** Für Trail/Ultra-Läufer:innen gibt es
+  jetzt ein **Trail-Modul** — Σ Höhenmeter/Woche als Kennzahl + **D+/km** (Steilheit) + Mini-Trend, im Wochenbericht,
+  in der Langzeit-Ansicht und (bei aktiven Trail-Athleten) als Dashboard-Kachel. Es erscheint **nur**, wenn Klettern
+  ein relevanter Trainingsanteil ist (Ø ≥ 450 hm/Woche, real-seitig, nur Läufe) — kein Ballast für Flachland-Läufer.
+  Zusätzlich zeigt die **„Kraft / Mobility"-Kategorie** jetzt die real geleistete **Kraft-Last** (Σ Kraft-TSS) statt
+  nur der Zeit. Rein additiv (keine Migration; `activities.elevation`/`tss` existierten bereits); die Kraft bleibt
+  bewusst **außerhalb** der „Was wirkt bei dir?"-Dosis-Kanäle (sportwiss.: keine Pace-Zone/kein VO2-Outcome).
+  Betrifft `server/index.ts` (weekActualVert/recentWeeksVert/realVert/Kraft-TSS) + `WeekReport.tsx`/`LongTerm.tsx`/`Dashboard.tsx`.
+- **Latente Fitness bekommt eine sportwissenschaftliche Kurz-Deutung:** Unter der Trajektorie steht jetzt ein knapper,
+  ehrlicher Kommentar zur Fitness-Entwicklung — Richtung (Aufwärts/Stabil/Abwärts) im jüngsten Fenster + Rate (Punkte
+  je 4 Wochen) + Abstand zum bisherigen Höchststand. Eine Richtung wird nur behauptet, wenn die Veränderung klar über
+  dem Unsicherheitsband (±SD) liegt (sonst „stabil"/„stabilisiert nach Rückgang"). Ursachen werden als typische
+  Zusammenhänge genannt (zu wenig aerober Reiz/Erholung/Kranken-Pause), **beobachtet ≠ kausal, kein Trainingsbefehl**,
+  Framing motivierend statt alarmistisch. (`LatentFitnessCard.tsx`, reine Anzeige aus den vorhandenen Punkten.)
+- **Chronisches Übertraining/RED-S wird an den Entscheidungs-Flächen sichtbar (Beta-Befund H-1):** Chronische
+  Wellness-Signale (Übertraining/RED-S/HRV-Drift) waren bisher nur auf der Methodik-Werkbank sichtbar — Dashboard,
+  Coach und „Was hilft dir?"-Verdikt blieben grün und empfahlen sogar „mehr VO2max" für eine überreichte Athletin.
+  Jetzt: (1) eine First-Class-Karte **„Gesundheit & Erholung"** erscheint prominent im Dashboard, sobald ein high/warn-
+  Flag aktiv ist (sonst unsichtbar, kein Dauer-Alarm); (2) die **Heute-Empfehlung** bietet bei aktiver Signatur keine
+  Intensität mehr an, sondern rät zu Erholung; (3) das **„Was hilft dir?"-Verdikt** wird per Gesundheits-Gate gedämpft
+  — bei aktiver Übertrainings-Signatur wird „Priorität: Erholung" zur Headline und die Intensitäts-Empfehlung nicht
+  mehr als Top ausgespielt (umrahmen + dämpfen, die Achsen-Details bleiben sichtbar). Auslöser ist dieselbe Flag-Politik
+  wie `coachHealthCap` (eine Wahrheitsquelle); die Health-Flags fließen in den Verdikt-Fingerprint ein, damit die
+  Dämpfung bei Flag-Wechsel greift. Für gesunde Athlet:innen (keine Flags) bleibt alles unverändert.
+
+### Geändert
+- **Zyklus-Heatmap: Farbsättigung an die CI-Belastbarkeit gekoppelt (Beta-Kosmetik):** Eine kräftig gefärbte Zelle
+  neben einem „CIs überlappen 0"-Verdikt suggerierte mehr, als der Text zuließ. Zellen, deren Konfidenzintervall die 0
+  enthält (nicht belastbar), werden jetzt deutlich blasser dargestellt; nur CI-ohne-0-Zellen bekommen volle Sättigung.
+  Die Zahl/Caption bleibt unverändert (`CycleScaffoldCard.tsx`).
+- **Footer-„Stand"-Datum an `package.json` gekoppelt (Beta-Kosmetik):** Das Datum im Footer war hart im Code
+  kodiert (und lief der Version hinterher). Es kommt jetzt aus einem neuen `buildDate`-Feld in `package.json` —
+  dieselbe eine Quelle wie `pkg.version`, beim Release mitgepflegt. (Version selbst wird weiterhin von Kolja gebumpt.)
+- **Passive Inferenz erklärt jetzt aktiv, was für eine belastbare Aussage fehlt (Beta-Befund M-6):** Wer konsistent
+  trainiert, erzeugt keinen Block-Kontrast — die Karte blieb dauerhaft „nicht belastbar", ohne zu sagen warum. Der
+  Hinweistext nennt jetzt konkret, dass es dafür bewusst kontrastierende Blöcke (mehrere Wochen mit klar
+  unterschiedlichem Schwerpunkt) oder einen gezielten N-of-1-Trial braucht; dazu ein Button, der direkt zur
+  „Experimente"-Tab führt. Betrifft `blockInference` (Regime + Schwerpunkt) in `server/analysis.ts` und `Methodik.tsx`.
+
+### Behoben
+- **Widerspruch Dashboard ↔ Wochenplanung bei der Gesundheitseinschätzung:** Die Readiness-Karte der Wochenplanung
+  zeigte nur den **akuten Tageswert** („Readiness grün · passt wie geplant"), während das Dashboard denselben Tag als
+  Übertrainings-Trend warnte — das las sich widersprüchlich. Die Wochenplanungs-Karte berücksichtigt jetzt dieselben
+  chronischen Gesundheits-Flags (mehrtägiger Trend) wie das Dashboard: Tageswert und Trend werden als **zwei
+  Horizonte** dargestellt („Tageswert ok, aber mehrtägiger Trend mahnt zur Erholung: …"), Rahmenfarbe entsprechend.
+  Kein „passt wie geplant" mehr, während anderswo gewarnt wird. (`WeekPlan.tsx`)
+- **SHAP „berechnen" blieb bei manchen Profilen wirkungslos (z. B. Mira) — obwohl die Engine verfügbar war:** Ein
+  früherer research_shap-Lauf, der über den TS-Fallback endete (weil der Python-Sidecar damals fehlte), wurde als
+  „fertig" gespeichert und von `startRun` dauerhaft **wiederverwendet** — jeder „neu berechnen"-Klick gab den alten,
+  leeren Lauf zurück (kurzes Laden, dann nichts). Ein research_shap-„fertig"-Lauf gilt jetzt nur noch dann als
+  wiederverwendbarer Cache, wenn er **echt gerechnet hat** (`available`) oder legitim wegen zu wenig Daten leer blieb
+  (`insufficient`); ein Engine-fehlt-Lauf wird beim nächsten Klick neu gerechnet, sobald die Engine da ist. (`mlJobs.ts`)
+- **Serie („Streak") wird bei Erholungsdefizit dezent zurückgenommen (Beta-Befund M-1):** Eine nie unterbrochene
+  Serie ist bei aktivem Übertrainings-/RED-S-Signal kein Achievement, sondern ein Warnzeichen. Sind chronische
+  Gesundheits-Flags (Übertraining/RED-S/HRV-Drift) aktiv, wird die 🔥-Serie im Dashboard entsättigt/gedämpft und
+  ein Hinweis „Erholung zählt auch" eingeblendet — die Serien-Berechnung selbst bleibt unverändert. Dafür liefert
+  `/api/today` jetzt zusätzlich die chronischen `healthFlags` (bisher nur auf der Methodik-Werkbank sichtbar).
+- **Erfolgs-Feier blockiert den Inhalt nicht mehr + keine unphysiologischen Block-Feiern (Beta-Befund M-3):** Die
+  Achievement-Feier war ein zentrales Modal, das z. B. die Coach-Taper-Karte überdeckte — jetzt ein dezenter
+  Ecken-Toast (unten rechts), der die Seite darunter nicht mehr blockiert. Zusätzlich wird „Trainingsblock
+  abgeschlossen" nur noch für plausibel lange Blöcke (≤ 16 Wochen) gefeiert; überlange Monoblöcke (z. B. „41 Wochen
+  Base") gelten nicht als sinnvoll periodisierter Block und werden nicht mehr gefeiert.
+- **Research-Mode (SHAP) wirkte wie „bricht ab", wenn die Rechen-Engine fehlte (Beta-Befund M-5):** Fehlte der
+  Python-Sidecar (LightGBM/SHAP), landete der Lauf als „fertig, aber nichts verfügbar" und die Methodik-Karte zeigte
+  irreführend „noch nicht berechnet". Jetzt sauber in drei Zustände getrennt: „noch zu wenig Daten" · **„Engine/Sidecar
+  nicht verfügbar"** (mit Hinweis, dass die Engine im gepackten Build enthalten ist / in einer Dev-Umgebung ggf. neu
+  installiert werden muss) · „gerechnet, aber Fit schwach (Cross-Val-R²)". Neues Feld `engineUnavailable` (Server →
+  `/api/ml/research-shap` → UI).
+- **Bestzeiten-Raster klappte manchmal in eine schmale Spalte (Beta-Befund H-2):** Beim Direktaufruf von `/bests`
+  konnte das anpassbare Chart-Raster (`EditableGrid`, continuous-Modus) alle Karten 1-spaltig in ~340 px stapeln,
+  während rechts ~1000 px leer blieben — Ursache war die unzuverlässige Breitenmessung von `react-grid-layout`s
+  `WidthProvider` (misst nur auf window-resize, bleibt bei einer initial zu schmal gemessenen Breite hängen). Jetzt
+  misst das Raster die reale `.eg-stage`-Breite selbst per `ResizeObserver` (re-misst, sobald der Container seine
+  wahre Breite erreicht) und übergibt sie explizit an das Grid, mit Mindestbreiten-Floor gegen 0/zu-schmal-Messungen.
+
+### Dev
+- **Beta-Test-Personas + Test-Harness (interne Test-Infrastruktur, keine Nutzerwirkung):** Acht fiktive Athlet:innen
+  (`profile_id` 101–108) mit je 60–96 Wochen physiologisch handgeschnitzter Voll-Datenlage, strikt additiv auf
+  eigenen Profil-IDs (echte Profile <100 unberührt; Integritäts-Assertion für Profil 1). Deterministisch (seeded RNG),
+  idempotent, löschbar über einen Beta-Marker (`beta_persona_ids`). Personas decken Baseline (Clara), Chaos/Multisport
+  (Jonas), Übertraining (Petra), regelmäßigen (Mira) und unregelmäßigen Zyklus (Sina), Cold-Start/Master (Tom),
+  Elite-Hochlast (Noah) und Trail-Ultra (Yara) ab und treffen/verfehlen die ML-Datengates gezielt (Doppelnutzen:
+  Beta-Test + spätere Modell-Trainings-/Validierungs-Fixtures). Neu: `server/betaPersonas.ts`, Runner `_seedBeta.ts`
+  (Backup + Integritäts-Snapshot), Compute-Pipeline `_computeBeta.ts` (TSS-Recompute + latent/dose/readiness/banister
+  + method-bayes + research_shap + Zyklus-Backfill), Playwright-Screenshot-Harness `scripts/betaShots.mjs`
+  (Onboarding-Touren unterdrückt, Profil-Assertion, Methodik-Tabs), `playwright` als devDependency. Befund-Reports unter
+  `beta-test/BETA_FINDINGS.md` + `beta-test/ML_FIXTURES.md` (+ Screenshots).
 
 ## [2.8.0] Retrospektive Fitness-Sprung-Erkennung, Nerd-Seite mit ML plots, Kontinuierliche Reps/Sets-Progression, und Reasearch mode
 ### Hinzugefügt
