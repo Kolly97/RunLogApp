@@ -1,5 +1,5 @@
 // VO2max-Kachel (v0.15.0, O1): große VDOT-Zahl (≈ VO2max) + Alters-Niveau + Mini-Sparkline.
-// Quelle: /api/fitness-trend (90-Tage-Rolling-Window, Daniels-VDOT aus Bestzeiten).
+// Quelle: /api/fitness-trend (90-Tage-Rolling-Window, Daniels-VDOT aus Bestleistungen).
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { FitnessTrend } from "../lib/api.ts";

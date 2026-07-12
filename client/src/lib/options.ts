@@ -33,6 +33,7 @@ export const DEFAULT_SPORTS: Option[] = [
 export const DEFAULT_SESSION_TYPES: Option[] = [
   { kind: "sessionType", value: "Easy", label: "Easy / GA1", color: "#3b82f6", intensity: "easy" },
   { kind: "sessionType", value: "Long", label: "Longrun", color: "#6366f1", intensity: "easy" },
+  { kind: "sessionType", value: "Trail", label: "Trail Run", color: "#16a34a", intensity: "moderate" },
   { kind: "sessionType", value: "Steady", label: "Steady / Tempo", color: "#22c55e", intensity: "moderate" },
   { kind: "sessionType", value: "MarathonPace", label: "Marathon-Pace", color: "#0ea5e9", intensity: "moderate" },
   { kind: "sessionType", value: "LT1", label: "LT1 (Sub-Threshold)", color: "#84cc16", intensity: "moderate" },

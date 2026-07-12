@@ -2,6 +2,7 @@
 // Erklärung (zentrales Overlay, kein Element-Anchoring → robust). Merkt sich „gesehen" in localStorage.
 // Wiederverwendbar via storageKey + steps. Druckt nicht mit.
 import { useState } from "react";
+import { OverlayPortal } from "./OverlayPortal.tsx";
 
 export default function OnboardingTour({ storageKey, steps }: { storageKey: string; steps: { title: string; body: string }[] }) {
   const [i, setI] = useState(0);
@@ -10,6 +11,7 @@ export default function OnboardingTour({ storageKey, steps }: { storageKey: stri
   const finish = () => { try { localStorage.setItem(storageKey, "1"); } catch { /* ignore */ } setDone(true); };
   const s = steps[i];
   return (
+    <OverlayPortal>
     <div className="no-print" onClick={finish} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="card" style={{ maxWidth: 470, width: "90%", boxShadow: "0 14px 44px rgba(0,0,0,0.28)" }}>
         <div className="tiny muted">Tour · {i + 1}/{steps.length}</div>
@@ -26,5 +28,6 @@ export default function OnboardingTour({ storageKey, steps }: { storageKey: stri
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

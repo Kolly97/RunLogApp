@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-test("Tutorial: Mara regenerates idempotently with raw ML-ready demo data", async () => {
+test("Tutorial: Isabel regenerates idempotently with raw ML-ready demo data", async () => {
   const oldDb = process.env.RUNLOG_DB;
-  const dir = mkdtempSync(join(tmpdir(), "runlog-mara-"));
+  const dir = mkdtempSync(join(tmpdir(), "runlog-isabel-"));
   process.env.RUNLOG_DB = join(dir, "training.db");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -20,11 +20,11 @@ test("Tutorial: Mara regenerates idempotently with raw ML-ready demo data", asyn
     const id = regenerateTutorial(today);
     assert.equal(tutorialProfileId(), id);
 
-    const oneTutorial = db.prepare("SELECT COUNT(*) n FROM profiles WHERE name IN ('Tutorial: Mara','Tutorial')").get() as { n: number };
+    const oneTutorial = db.prepare("SELECT COUNT(*) n FROM profiles WHERE name IN ('Tutorial: Isabel','Tutorial: Mara','Tutorial')").get() as { n: number };
     assert.equal(oneTutorial.n, 1);
 
     const profile = db.prepare("SELECT name FROM profiles WHERE id=?").get(id) as { name: string };
-    assert.equal(profile.name, "Tutorial: Mara");
+    assert.equal(profile.name, "Tutorial: Isabel");
 
     const count = (table: string) => (db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE profile_id=?`).get(id) as { n: number }).n;
     assert.ok(count("activities") >= 330);

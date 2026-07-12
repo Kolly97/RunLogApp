@@ -16,7 +16,7 @@ export default function OptimalZonesCard() {
     return (
       <div className="card">
         <h2>Optimale Zonen</h2>
-        <p className="tiny muted">Noch zu wenig Laufdaten für eine Zonen-Berechnung — es braucht ein paar Bestzeiten (für VDOT/CS). Danach erscheinen hier vorgeschlagene Pace-, HF- und Watt-Zonen.</p>
+        <p className="tiny muted">Noch zu wenig Laufdaten für eine Zonen-Berechnung — es braucht ein paar Bestleistungen (für VDOT/CS). Danach erscheinen hier vorgeschlagene Pace-, HF- und Watt-Zonen.</p>
       </div>
     );
   }

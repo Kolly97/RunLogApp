@@ -260,7 +260,7 @@ export default function TrainingVerdictCard({ onGotoTrials, refreshKey }: { onGo
   if (!loaded) return null;
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
+    <div className="card" data-tour="verdict" style={{ marginTop: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>Was hilft dir? <span className="tiny muted">— Gesamtbild aus allen Modellen</span></h3>
         {v && <ConfChip conf={v.overallConfidence} />}

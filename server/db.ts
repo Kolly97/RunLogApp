@@ -179,6 +179,36 @@ function addColumn(table: string, col: string, decl: string): void {
   if (!hasColumn(table, col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`);
 }
 
+// v3.0.0 (Beta-Befund): die idempotenten Options-Seeds unten liefen bislang per `INSERT OR IGNORE` bei
+// JEDEM Start — das kann eine bewusste Nutzer-Löschung (✕ in „Auswahllisten", z. B. „REM (h)"/„Tief (h)"
+// bei den Tagesfaktoren) nicht von „taucht zum ersten Mal auf" unterscheiden und hat sie nach einem
+// Neustart (z. B. frischer Electron-Build) klammheimlich wiederhergestellt. Der Ledger (settings-Key
+// `options_seed_ledger`) merkt sich JE (kind,value), ob es diesem Profil-Ordner schon einmal angeboten
+// wurde; nur ein wirklich NEUER Wert aus einem künftigen Update wird noch automatisch angelegt.
+// Bootstrap-Regel beim allerersten Lauf mit Ledger: War die `options`-Tabelle vorher schon befüllt
+// (Bestandsinstallation), wird NICHTS nachträglich erzwungen — nur der aktuelle Soll-Bestand vermerkt,
+// sonst kämen mit diesem Fix alle früher gelöschten Standardwerte einmalig zurück. Eine brandneue,
+// leere Installation bootstrapped stattdessen normal (seedOptions() befüllt sie ohnehin zuerst).
+let seedLedger: Set<string> = new Set();
+let seedLedgerIsBootstrap = false;
+let seedLedgerDirty = false;
+function initSeedLedger(hadOptionsBefore: boolean): void {
+  const exists = db.prepare("SELECT 1 FROM settings WHERE key='options_seed_ledger'").get();
+  seedLedgerIsBootstrap = !exists && hadOptionsBefore;
+  seedLedger = new Set(getSetting<string[]>("options_seed_ledger", []));
+  seedLedgerDirty = false;
+}
+function seedOnce(kind: string, value: string, run: () => void): void {
+  const token = `${kind}:${value}`;
+  if (seedLedger.has(token)) return;
+  seedLedger.add(token);
+  seedLedgerDirty = true;
+  if (!seedLedgerIsBootstrap) run();
+}
+function flushSeedLedger(): void {
+  if (seedLedgerDirty) { setSetting("options_seed_ledger", [...seedLedger]); seedLedgerDirty = false; }
+}
+
 function migrate(): void {
   // ToDo 23: kcal je Aktivität · ToDo 1/20: strukturierte Efforts · ToDo 4: reale min je Zone
   addColumn("activities", "kcal", "REAL");
@@ -254,7 +284,9 @@ function migrate(): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_options_kind_value ON options(kind, value);
   `);
+  const hadOptionsBefore = (db.prepare("SELECT COUNT(*) n FROM options").get() as { n: number }).n > 0;
   seedOptions();
+  initSeedLedger(hadOptionsBefore);
 
   // ToDo Z.41/v0.7.0: Intensität (easy/moderat/hart) je Einheitstyp — Grundlage für den TSS-Donut „nach Typ".
   // In „Auswahllisten" pro Typ einstellbar. Defaults idempotent setzen + neuen Typ „Steady/Tempo" (moderat).
@@ -263,10 +295,10 @@ function migrate(): void {
   for (const [value, intensity] of [
     ["Easy", "easy"], ["Long", "easy"], ["Threshold", "hard"], ["VO2", "hard"], ["Hill", "hard"], ["Race", "hard"],
   ] as const) setIntensity.run(intensity, value);
-  db.prepare(
+  seedOnce("sessionType", "Steady", () => db.prepare(
     "INSERT OR IGNORE INTO options(kind, value, label, color, sort, active, intensity) " +
       "VALUES('sessionType','Steady','Steady / Tempo','#22c55e',(SELECT COALESCE(MAX(sort),0)+1 FROM options WHERE kind='sessionType'),1,'moderate')",
-  ).run();
+  ).run());
 
   // v0.11.0 (ToDo 10): granulare Lauf-Typen fürs Tracking — LT1/LT2 + VO2max kurz/lang (idempotent).
   const insType = db.prepare(
@@ -278,7 +310,7 @@ function migrate(): void {
     ["LT2", "LT2 (Threshold)", "#eab308", "hard"],
     ["VO2short", "VO2max kurz", "#f97316", "hard"],
     ["VO2long", "VO2max lang", "#fb7185", "hard"],
-  ] as const) insType.run(value, label, color, intensity);
+  ] as const) seedOnce("sessionType", value, () => insType.run(value, label, color, intensity));
 
   // v0.11.0 (ToDo 7): manuelle Wochen-Checks als konfigurierbare Auswahlliste (kind='check', idempotent).
   const insCheck = db.prepare(
@@ -291,7 +323,7 @@ function migrate(): void {
     ["longrun", "Longrun", "#6366f1"],
     ["plyo", "Plyo/Athletik", "#14b8a6"],
     ["physio", "Physio/KG", "#64748b"],
-  ].forEach(([value, label, color], i) => insCheck.run(value, label, color, i));
+  ].forEach(([value, label, color], i) => seedOnce("check", value, () => insCheck.run(value, label, color, i)));
 
   // v0.12.0 (ToDo 12): konfigurierbare Tagesfaktoren (kind='daily'); Feldtyp in der intensity-Spalte
   // (number|time|text|checkbox|scale). Basis-Felder zuerst (niedrige sort), Rest danach.
@@ -313,13 +345,13 @@ function migrate(): void {
     ["pain", "Schmerz 0-10", "scale"], ["pain_location", "Schmerz-Ort", "text"], ["rpe", "RPE 1-10", "scale"],
     ["alcohol", "Alkohol (Einh.)", "number"], ["caffeine", "Koffein (mg)", "number"],
     ["hydration", "Hydration", "number"], ["fueling", "Fueling", "text"], ["travel", "Reise", "text"],
-  ].forEach(([value, label, type], i) => insDaily.run(value, label, i, type));
+  ].forEach(([value, label, type], i) => seedOnce("daily", value, () => insDaily.run(value, label, i, type)));
 
   // v0.13.0: Tagesfaktoren in logische, in „Auswahllisten" editierbare Kategorien gruppieren.
   // Kategorie-Liste = kind='dailyCat'; die Zuordnung eines Felds steht in dessen color-Spalte (Kategorie-Wert).
   const insDailyCat = db.prepare("INSERT OR IGNORE INTO options(kind, value, label, color, sort, active) VALUES('dailyCat', ?, ?, NULL, ?, 1)");
   [["morgens", "Morgens"], ["schlaf", "Schlaf"], ["subjektiv", "Subjektiv"], ["sonstiges", "Sonstiges"]]
-    .forEach(([value, label], i) => insDailyCat.run(value, label, i));
+    .forEach(([value, label], i) => seedOnce("dailyCat", value, () => insDailyCat.run(value, label, i)));
   // Kategorie je Tagesfaktor setzen (nur wo noch keine gesetzt ist → Nutzer-Zuordnungen bleiben).
   const setCat = db.prepare("UPDATE options SET color=? WHERE kind='daily' AND value=? AND (color IS NULL OR color='')");
   const DAILY_CAT: Record<string, string[]> = {
@@ -712,6 +744,21 @@ function migrate(): void {
   // Kanonische Einheitstypen: wichtig für die ML-Reiz-Klassifizierung → gesperrt (nicht löschbar/umbenennbar).
   addColumn("options", "locked", "INTEGER NOT NULL DEFAULT 0");
   seedCanonicalSessionTypes();
+
+  // v3.0.0 (Beta-Befund „nur eine VO2max/LT1/LT2 Tag, nix redundantes"): historisch redundante
+  // sessionType-Werte aus der Nutzer-Dropdown nehmen — „Rep" war ein Duplikat von „Repetitions" (0 echte
+  // Nutzungen), „VO2short"/„VO2long" redundant zum kanonischen „VO2" fürs manuelle Tracking (die
+  // Granularität lebt intern in Strava-Auto-Klassifizierung/Intervall-Trend-Analyse unverändert weiter).
+  // Rein additiv: deaktiviert (active=0), NICHT gelöscht — bestehende Aktivitäten/geplante Einheiten mit
+  // diesen Werten zeigen weiter korrekt (typeLabel() fällt auf DEFAULT_SESSION_TYPES zurück, genau wie es
+  // „Threshold" als planerinterner Wert schon lange unauffällig tut). Einmalig, per settings-Marke; „Rep"
+  // war zudem `locked` und für den Nutzer in der UI gar nicht löschbar — ging nur serverseitig.
+  if (!getSetting("migrated_dedupe_sessiontypes_v3", false)) {
+    db.prepare("UPDATE options SET active=0 WHERE kind='sessionType' AND value IN ('Rep','VO2short','VO2long')").run();
+    setSetting("migrated_dedupe_sessiontypes_v3", true);
+  }
+
+  flushSeedLedger();
 }
 
 // v2-Kopie einer Tabelle mit zusammengesetztem PK inkl. profile_id; Altbestand wird einmalig
@@ -781,7 +828,8 @@ const CANONICAL_SESSION_TYPES: { value: string; label: string; intensity: string
   { value: "LT1", label: "LT1 (aerobe Schwelle)", intensity: "moderate", color: "#84cc16" },
   { value: "LT2", label: "LT2 / Schwelle", intensity: "hard", color: "#eab308" },
   { value: "VO2", label: "VO2max", intensity: "hard", color: "#f97316" },
-  { value: "Rep", label: "Repetitions (>VO2max)", intensity: "hard", color: "#ef4444" },
+  // "Rep" (v3.0.0 entfernt): war ein reines Duplikat von „Repetitions" — dieselbe Bedeutung, zwei Zeilen
+  // in der Dropdown (Beta-Befund „nix redundantes"). „Repetitions" ist der tatsächlich genutzte Wert.
   { value: "Repetitions", label: "Repetitions", intensity: "hard", color: "#ef4444" },
 ];
 function seedCanonicalSessionTypes(): void {
@@ -791,7 +839,7 @@ function seedCanonicalSessionTypes(): void {
   );
   const upd = db.prepare("UPDATE options SET label=?, intensity=?, locked=1 WHERE kind='sessionType' AND value=?");
   for (const c of CANONICAL_SESSION_TYPES) {
-    ins.run(c.value, c.label, c.color, c.intensity);
+    seedOnce("sessionType", c.value, () => ins.run(c.value, c.label, c.color, c.intensity));
     upd.run(c.label, c.intensity, c.value);
   }
 }

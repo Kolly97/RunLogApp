@@ -39,7 +39,7 @@ export default function Pmc({
   data: PmcPoint[]; height?: number;
   highlight?: { from: string; to: string };
   races?: RaceMarker[];
-  /** Bestzeiten-Marker (M5): dezente Wimpel am oberen Rand bei PB-Daten. */
+  /** Bestleistungen-Marker (M5): dezente Wimpel am oberen Rand bei PB-Daten. */
   pbs?: PbMarker[];
   /** Jahreszeiten-Deko (M7 Easter Egg) — nur Dashboard/Langzeit, nicht im Druck-Bericht. */
   seasonal?: boolean;

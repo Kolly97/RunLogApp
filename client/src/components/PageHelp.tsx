@@ -36,7 +36,7 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
     "Ergebnisse + km-Splits. Trage am Ziel-Rennen eine Wunsch-Zielzeit ein.",
     "Die Wunschzeit treibt die Pace-Progression der Trainings-Einheiten und den Soll/Ist-Abgleich in der Wochenplanung.",
   ] },
-  bests: { title: "Bestzeiten — Leistungsmarker", bullets: [
+  bests: { title: "Bestleistungen — Leistungsmarker", bullets: [
     "PB je Distanz → VDOT/VO2max + Renn-Prognose. Critical Power (CP) + Power-Kurve aus den Coros-Laufwatt (relativ zu deinem Gerät).",
     "W′ = anaerobe Reserve oberhalb CP. Kacheln verschieb-/ausblendbar.",
   ] },
@@ -48,7 +48,7 @@ export const HELP: Record<string, { title: string; bullets: string[] }> = {
   profile: { title: "Profil — Athlet, Zonen & Präferenzen", bullets: [
     "Athlet · Zonen/Schwellen · Verfügbarkeit · Block-Präferenzen (Schwerpunkt, Lieblings/Vermeiden) · Leistungstests.",
     "Eigene Einheiten: Coros-artiger Builder — Segmente & Gruppen, Spielraum auf Anzahl, Pausen, Pace-Offset. Engine löst Tageswert nach Form auf.",
-    "'Tutorial: Mara' enthält 18 Monate HM-Demo-Daten plus Zukunftsplan zum gefahrlosen Ausprobieren.",
+    "'Tutorial: Isabel' enthält 18 Monate HM-Demo-Daten plus Zukunftsplan zum gefahrlosen Ausprobieren.",
   ] },
 };
 

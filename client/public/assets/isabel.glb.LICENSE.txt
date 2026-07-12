@@ -1,0 +1,10 @@
+isabel.glb — Basis-Modell von Quaternius (https://quaternius.com)
+Bezogen über poly.pizza (https://poly.pizza/m/nIItLV9nxS, "Animated Woman")
+
+Lizenz: CC0 1.0 Universal (Public Domain Dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+CharacterArmature-Rig mit 24 Clips (u. a. Idle_Neutral, Walk, Run, Wave, Idle_Gun_Pointing, Interact).
+Zur Laufzeit in RunLog-Farben umgefärbt (blond, RunLog-Blau); "Isabel", Tutorial-Guide.
+
+Keine Namensnennung erforderlich; wir nennen Quaternius aus Wertschätzung.

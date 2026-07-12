@@ -1,5 +1,5 @@
 import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
+import { TOOLTIP_STYLE, TOOLTIP_ITEM_STYLE } from "../lib/chartTheme.ts";
 import type { HrZone } from "../lib/api.ts";
 
 // Erwartet Reihen wie { name: "Geplant", values: {1: km, 2: km, …} } und stellt sie als %-Stapelbalken dar.
@@ -26,8 +26,8 @@ export default function ZoneDistribution({
       <ResponsiveContainer width="100%" height={chartH}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} unit="%" ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
-          <YAxis type="category" dataKey="name" width={58} tick={{ fontSize: 12, fill: "#46505f" }} />
-          <Tooltip formatter={(v: number, n: string) => [`${v}%`, zoneLabel(zones, n)]} contentStyle={TOOLTIP_STYLE} />
+          <YAxis type="category" dataKey="name" width={58} tick={{ fontSize: 12, fill: "var(--chart-tick)" }} />
+          <Tooltip formatter={(v: number, n: string) => [`${v}%`, zoneLabel(zones, n)]} contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
           {zones.map((z) => (
             <Bar key={z.z} dataKey={"z" + z.z} stackId="a" name={"Z" + z.z} barSize={barSize}>
               {data.map((_, i) => <Cell key={i} fill={z.color} />)}

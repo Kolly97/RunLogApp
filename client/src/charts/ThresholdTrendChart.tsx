@@ -12,7 +12,7 @@ export default function ThresholdTrendChart({ height }: { height?: number }) {
   const anim = drawOn(useMotion()); // M5: gegateter Draw-on
   useEffect(() => { api.thresholdTrend(12).then(setT).catch(() => setT(null)); }, []);
   const data = (t?.points ?? []).filter((p) => p.thrPace != null || p.cp != null);
-  if (data.length < 2) return <p className="tiny muted">Noch zu wenig Verlauf für einen Schwellen-Trend (kommt mit mehr Bestzeiten/Watt-Daten).</p>;
+  if (data.length < 2) return <p className="tiny muted">Noch zu wenig Verlauf für einen Schwellen-Trend (kommt mit mehr Bestleistungen/Watt-Daten).</p>;
   const hasCp = data.some((p) => p.cp != null);
   // M5: Gradient-Fläche unter der Schwellen-Pace. Pace-Achse ist invertiert (schneller = oben) → Basislinie
   // an den langsamsten Wert (unterer Rand), damit die Fläche „unter" der Linie liegt.

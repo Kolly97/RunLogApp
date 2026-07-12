@@ -1,4 +1,4 @@
-// PB-Watcher (Premium-Politur M6): erkennt neue/verbesserte Bestzeiten gegenüber dem letzten Besuch (Snapshot je
+// PB-Watcher (Premium-Politur M6): erkennt neue/verbesserte Bestleistungen gegenüber dem letzten Besuch (Snapshot je
 // Profil in localStorage) und feiert sie. Beim ALLERERSTEN Lauf wird nur stillschweigend der Snapshot gesetzt
 // (sonst würde jede erste Ansicht feiern). Unsichtbar — rendert nichts.
 import { useEffect } from "react";

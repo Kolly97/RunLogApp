@@ -1,6 +1,42 @@
-// Lern-/Glossar-Seite (v1.9.0): nachschlagbare Erklärung aller Marker + Richtwerte + Zusammenspiel.
-// Begleitet die seitenübergreifende Coachmark-Tour (Knopf oben startet sie neu). Rein erklärend, keine Daten.
-import { startTour } from "../components/Coachmark.tsx";
+// Lernen-Seite (v2.10.0): Tutorial-Hub (Isabel-Abschnitte mit Fortschritt/Neustart) + Glossar darunter
+// + „Für Entdecker"-Fußnote zu den zwei versteckten Seiten. Ersetzt die alte Coachmark-Tour.
+import { lazy, Suspense, useEffect, useState } from "react";
+import { api, type TutorialProgress } from "../lib/api.ts";
+import { startTutorial } from "../components/tutorial/TutorialHost.tsx";
+import { SECTIONS, isUnlocked } from "../components/tutorial/sections.ts";
+import { CINEMA_META, CINEMA_READY } from "../components/tutorial/cinema/meta.ts";
+import { OverlayPortal } from "../components/tutorial/ui.tsx";
+import type { CinemaChartId } from "../components/tutorial/types.ts";
+
+const ChartCinema = lazy(() => import("../components/tutorial/cinema/ChartCinema.tsx"));
+
+// Daten-Kino (v2.11.0): jede 3D-Szene auch einzeln aufrufbar — gleiche Szenen wie im Tutorial-Fluss.
+function CinemaRow() {
+  const [open, setOpen] = useState<CinemaChartId | null>(null);
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <h2 style={{ marginBottom: 2 }}>🎬 Daten-Kino</h2>
+      <p className="tiny muted" style={{ margin: "0 0 10px" }}>
+        Isabel erklärt dir die wichtigsten Diagramme in begehbaren 3D-Szenen — konkrete Werte, wie du sie liest,
+        wie das Programm reagiert und was du daraus machst.
+      </p>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        {CINEMA_READY.map((id) => (
+          <button key={id} className="sm ghost" onClick={() => setOpen(id)}>
+            {CINEMA_META[id]!.icon} {CINEMA_META[id]!.label}
+          </button>
+        ))}
+      </div>
+      {open && (
+        <OverlayPortal>
+          <Suspense fallback={<div className="tiny muted" style={{ position: "fixed", inset: 0, zIndex: 1100, background: "#0d1526", color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>Das Daten-Kino öffnet…</div>}>
+            <ChartCinema chart={open} stepInfo="Daten-Kino" onDone={() => setOpen(null)} onClose={() => setOpen(null)} doneLabel="Schließen ✓" />
+          </Suspense>
+        </OverlayPortal>
+      )}
+    </div>
+  );
+}
 
 type Term = { t: string; was: string; ref?: string; play?: string };
 type Cat = { title: string; intro: string; terms: Term[] };
@@ -40,10 +76,10 @@ const CATS: Cat[] = [
   },
   {
     title: "Leistungsmarker",
-    intro: "Aus Bestzeiten und Lauf-Watt geschätzte Fähigkeiten — die Treiber von Zonen und Prognosen.",
+    intro: "Aus Bestleistungen und Lauf-Watt geschätzte Fähigkeiten — die Treiber von Zonen und Prognosen.",
     terms: [
       { t: "VDOT / VO₂max", was: "Daniels-Leistungsindex aus deiner besten Distanzleistung — entspricht der nutzbaren VO₂max.", ref: "Höher = schneller. Treibt Pace-Zonen + Renn-Prognosen." },
-      { t: "Critical Speed (CS)", was: "Schwellengeschwindigkeit aus dem Zeit-Distanz-Verhältnis mehrerer Bestzeiten.", ref: "≈ 1-Stunden-Tempo · robuster Schwellen-Anker (primärer Marker)." },
+      { t: "Critical Speed (CS)", was: "Schwellengeschwindigkeit aus dem Zeit-Distanz-Verhältnis mehrerer Bestleistungen.", ref: "≈ 1-Stunden-Tempo · robuster Schwellen-Anker (primärer Marker)." },
       { t: "Critical Power (CP)", was: "Analog zu CS, aber in Lauf-Watt (aus den Geräte-Laufwatt, relativ kalibriert).", ref: "Asymptote der Power-Dauer-Kurve." },
       { t: "W′ (W-prime)", was: "Anaerobe Reserve oberhalb CP — die begrenzte „Batterie“ für harte Surges.", ref: "Wird in harten Intervallen entladen und in den Pausen wieder aufgefüllt (Skiba-Modell)." },
     ],
@@ -76,19 +112,63 @@ const CATS: Cat[] = [
   },
 ];
 
+// Tutorial-Hub: 4+1 Abschnitts-Karten mit Fortschritt (aus /api/tutorial/progress), Start/Wiederholen.
+// Erstdurchlauf in fester Reihenfolge (Abschnitt N erst nach N−1), danach frei wiederholbar; Nerd immer frei.
+function TutorialHub() {
+  const [progress, setProgress] = useState<TutorialProgress>({ done: [], dismissed: true });
+  useEffect(() => { api.tutorialProgress().then(setProgress).catch(() => {}); }, []);
+  const mains = SECTIONS.filter((s) => !s.optional);
+  const doneMain = mains.filter((s) => progress.done.includes(s.id)).length;
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="spread">
+        <div>
+          <h2 style={{ marginBottom: 2 }}>🎓 Das Isabel-Tutorial</h2>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Isabel führt dich in vier Abschnitten durch den besten Athleten-Workflow — interaktiv, an deiner echten App.
+          </p>
+        </div>
+        <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>{doneMain}/{mains.length} Abschnitte ✓</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 10 }}>
+        {SECTIONS.map((s) => {
+          const done = progress.done.includes(s.id);
+          const unlocked = done || isUnlocked(s, progress.done);
+          return (
+            <div key={s.id} style={{ border: "1px solid var(--border, #e3e8ef)", borderRadius: 10, padding: "10px 12px", opacity: s.available ? 1 : 0.55, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>
+                {s.icon} {s.optional ? "Add-on" : `Abschnitt ${s.nr}`}: {s.title.split(" — ")[0]} {done && <span style={{ color: "#16a34a" }}>✓</span>}
+              </div>
+              <div className="tiny muted" style={{ lineHeight: 1.4, flex: 1 }}>{s.tagline}</div>
+              <div className="spread">
+                <span className="tiny muted">~{s.minutes} min{s.optional ? " · optional" : ""}</span>
+                {!s.available
+                  ? <span className="tiny muted">in Arbeit — kommt mit dem nächsten Update</span>
+                  : !unlocked
+                    ? <span className="tiny muted" title="Erstdurchlauf in fester Reihenfolge — schließe erst den Abschnitt davor ab">🔒 erst Abschnitt {s.nr - 1}</span>
+                    : <button className="sm primary" onClick={() => startTutorial(s.id)}>{done ? "Wiederholen" : "Starten ▶"}</button>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Lernen() {
   return (
     <div>
       <div className="spread no-print">
         <div>
-          <h1>Lernen &amp; Glossar</h1>
-          <span className="tiny muted" style={{ display: "block", marginTop: -2 }}>Alle Kennzahlen, Richtwerte und ihr Zusammenspiel — zum Nachschlagen.</span>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="primary" onClick={() => startTour("whatis")} title="Jede Grafik & Tabelle einmal erklärt">▶ Tour „Was ist was"</button>
-          <button className="primary" onClick={() => startTour("profit")} title="Am Beispiel Mara Demo: Daten lesen & Training steuern">▶ Tour „Wie profitiere ich"</button>
+          <h1>Lernen</h1>
+          <span className="tiny muted" style={{ display: "block", marginTop: -2 }}>Tutorial mit Isabel + Glossar aller Kennzahlen — zum Lernen und Nachschlagen.</span>
         </div>
       </div>
+
+      <TutorialHub />
+
+      <CinemaRow />
 
       <div className="card tight" style={{ marginBottom: 12, borderLeft: "3px solid var(--primary, #2563eb)" }}>
         <p className="tiny" style={{ margin: 0, lineHeight: 1.5 }}>
@@ -114,6 +194,13 @@ export default function Lernen() {
           </div>
         </div>
       ))}
+
+      {/* Dezente Entdecker-Fußnote: die zwei bewusst versteckten Seiten (v2.10.0 — laut ToDo offen genannt). */}
+      <p className="tiny muted no-print" style={{ marginTop: 16, lineHeight: 1.5 }}>
+        🕵️ Für Entdecker: Es gibt zwei versteckte Seiten. Die <strong>Nerd-Seite</strong> (Rohdaten &amp; Mathematik
+        hinter allen ML-Kennzahlen) öffnet sich mit den Pfeiltasten → → ← ← ↑ ↓ ↑ ↓, der <strong>Lab Mode</strong>{" "}
+        (Lifetime-Statistiken) mit ↑ ↑ ↓ ↓ ← → ← →.
+      </p>
     </div>
   );
 }

@@ -2,6 +2,10 @@
 // M2: theme-fähig über CSS-Variablen — Recharts gibt stroke/fill an SVG bzw. contentStyle an ein div weiter, beide
 // unterstützen var(); so passen sich Tooltip/Gitter/Ticks automatisch an Hell/Dunkel an (kein Hook nötig).
 export const TOOLTIP_STYLE = { borderRadius: 10, border: "1px solid var(--border)", fontSize: 12, background: "var(--card)", color: "var(--ink)" } as const;
+// Recharts setzt die Tooltip-Zeilenfarbe defaultmäßig auf `entry.color || '#000'` — bei Bar/Pie-Charts, die
+// ihre Farbe nur je <Cell> (nicht am <Bar>/<Pie> selbst) tragen, bleibt entry.color leer → schwarzer Text im
+// Dark Mode (Beta-Befund). Für genau diese Charts itemStyle mitgeben, um die feste Fallback-Farbe zu überschreiben.
+export const TOOLTIP_ITEM_STYLE = { color: "var(--ink)" } as const;
 export const AXIS_TICK = { fontSize: 11, fill: "var(--chart-tick)" } as const;
 export const AXIS_TICK_SM = { fontSize: 10, fill: "var(--chart-tick)" } as const;
 export const GRID_STROKE = "var(--chart-grid)";

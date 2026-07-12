@@ -6,6 +6,228 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+### Behoben
+- **Auswahllisten kamen nach einem Neustart (z. B. frischer Electron-Build) teilweise zurück, obwohl sie
+  gelöscht waren — z. B. „REM (h)"/„Tief (h)" bei den Tagesfaktoren (Beta-Befund):** Die idempotenten
+  Options-Seeds liefen bei JEDEM Start per `INSERT OR IGNORE` und konnten eine bewusste Löschung (✕ in
+  „Auswahllisten") nicht von „taucht zum ersten Mal auf" unterscheiden. Neuer Seed-Ledger (settings-Key
+  `options_seed_ledger`) merkt sich je (Kategorie, Wert), ob es schon einmal angeboten wurde — gelöschte
+  Standardwerte bleiben jetzt dauerhaft weg, während ein wirklich NEUER Wert aus einem künftigen Update
+  weiterhin automatisch für Bestandsinstallationen ergänzt wird. Bootstrap-sicher: keine bereits gelöschten
+  Werte kommen beim Umstieg auf diesen Fix einmalig zurück. (`server/db.ts`)
+
+### Geändert
+- **Einheitstypen aufgeräumt („nur eine VO2max/LT1/LT2, nix Redundantes"):** „Rep" (reines Duplikat von
+  „Repetitions", 0 echte Nutzungen) sowie „VO2short"/„VO2long" (redundant zum kanonischen „VO2" fürs
+  manuelle Tracking) sind aus der Einheitstyp-Dropdown entfernt — additiv deaktiviert, nicht gelöscht:
+  bestehende Aktivitäten/geplante Einheiten mit diesen Werten zeigen weiter korrekt an, und Strava-Auto-
+  Klassifizierung/Intervall-Trend-Analyse nutzen die granularen Werte intern unverändert weiter.
+  (`server/db.ts` `CANONICAL_SESSION_TYPES`)
+- **„Bestzeiten" heißt jetzt „Bestleistungen"** — passt besser, da die Seite längst nicht nur Zeiten zeigt
+  (Critical Power, W′, Labor-VO2max). Umbenannt in Navigation, Seitentitel, Hilfetexten und im Tutorial.
+
+## [3.0.0] – 2026-07-12 — Isabel-Tutorial & Chart-Kino komplett, Dark-Mode-/Trail-/Tracking-Fixes
+
+### Behoben
+- **Dark Mode: schwarzer Text bei Hover-Tooltips (Zonenverteilung, Intensitäts-Donut, Zonen-Histogramm,
+  Renn-Pace-Splits):** Recharts fällt bei Bar-/Pie-Charts, deren Farbe nur je `<Cell>` (nicht am `<Bar>`/
+  `<Pie>` selbst) gesetzt ist, in der Tooltip-Legende auf `entry.color || '#000'` zurück — unlesbar auf
+  dunklem Grund. Neuer `TOOLTIP_ITEM_STYLE` (chartTheme.ts) erzwingt `var(--ink)`, ergänzt an allen vier
+  betroffenen Charts; dazu eine hartkodierte Achsenbeschriftungsfarbe (`#46505f`) durch die theme-fähige
+  `var(--chart-tick)` ersetzt. (`ZoneDistribution.tsx`, `IntensityDonut.tsx`, `ZoneHistogram.tsx`, `Races.tsx`)
+- **Modal öffnete am Seitenanfang statt am Klickort (Wochenplanung „Einheit bearbeiten", Vorlagen
+  verwalten, Onboarding-Tour):** `position: fixed` bricht, sobald ein Seiten-Vorfahre transform/filter
+  setzt (containing block) — hier die Route-Wechsel-Animation `.route-enter`, die jede Seite umschließt.
+  Betroffene Overlays hängen jetzt per Portal direkt an `document.body`; `OverlayPortal` ist dafür aus dem
+  Tutorial-Ordner in eine app-weite `components/OverlayPortal.tsx` gewandert (Tutorial-Importe bleiben
+  über einen Re-Export stabil). (`SessionModal.tsx`, `TemplateManager.tsx`, `OnboardingTour.tsx`)
+- **Tracking: „nicht zuordnen" bei der Plan-Zuordnung wirkte manchmal nicht / sprang zurück:** Der
+  Speicherfehler wurde bislang still verschluckt (`.catch(() => {})`), sodass ein fehlgeschlagener Save
+  aussah wie „speichert nicht". Die Auswahl ist jetzt lokal + optimistisch mit Rollback und sichtbarer
+  Fehlermeldung bei echtem Fehlschlag; zusätzlich schützt ein Reload-Generationszähler in `WeekTrack.tsx`
+  davor, dass eine überholte, noch laufende Server-Antwort eine neuere überschreibt.
+- **Tutorial-Profil: vereinzelte Alt-Installationen trugen noch „(Mara Demo)" in den Aktivitätsnamen** —
+  eine frühe Migration (vor Einführung von `regenerateTutorial`) hatte nur den Profilnamen umbenannt, ohne
+  die Aktivitäten neu zu erzeugen. Wird jetzt erkannt (Legacy-Label-Scan) und vollständig neu generiert.
+  (`server/tutorial.ts`)
+
+### Geändert
+- **Höhenmeter (Vert-Load) zählen nur noch bei „Trail"-getypten Läufen** statt bei jeder Aktivität mit
+  `sport=Run` — eine hügelige Straßenrunde bläht die Trail-Last von Flachland-Läufern nicht mehr künstlich
+  auf. D+/km („Steilheit") bezieht sich jetzt korrekt auf die Trail-Kilometer statt auf alle Lauf-Kilometer
+  (sonst hätte reines Straßenvolumen die Steilheit verwässert). Der kanonische Einheitstyp „Trail" existierte
+  serverseitig bereits, ist jetzt auch im Client-Fallback ergänzt. Dazu ein neuer Footer-Toggle
+  „Vert-Load: an/aus", um die Auswertung unabhängig von der automatischen ~450-hm/Woche-Erkennung komplett
+  auszublenden. (`server/index.ts` `weekActualVert`, `lib/vertPref.ts`, `Dashboard.tsx`, `WeekReport.tsx`,
+  `LongTerm.tsx`)
+
+### Hinzugefügt
+- **Chart-Kino, Etappe K3 — eine Isabel überall + Feinschliff (nach 8 Entscheidungsfragen):**
+  (1) **Abschluss-Szenen auf GLTF:** Die Abschnitts-Enden und das Zieleinlauf-Finale nutzen jetzt dieselbe
+  GLTF-Isabel wie das Daten-Kino (geteilter Actor-Cache; Run-Clip auf der Kreisbahn mit Kurvenlage,
+  Wave + Freuden-Hüpfer im Finale) — die Bahn bleibt als Erzähl-Ort, das Licht ist ans Holodeck
+  angeglichen; die Primitiv-Figur ist Geschichte. (`IsabelScene.tsx`)
+  (2) **PMC-Bänder (K3-ToDo):** Trainingsphasen- und Zyklus-Leiste liegen jetzt wie im echten Chart
+  unter der 3D-Szene (Base/Build/Specific/Taper + Krank-Zelle · Menstruation/Follikel/Ovulation/Luteal
+  als zusammenhängende Segmente) und bekommen einen eigenen Erklär-Beat („Die Bänder unten") + Hotspot —
+  PMC hat jetzt 9 Beats. (`cinema/scenes/pmc.ts`)
+  (3) **Hotspots deutlich sichtbarer (K3-ToDo):** größere Kugel + weicher additiver Glüh-Halo +
+  dauerhaft sichtbares Label je Leuchtpunkt.
+  (4) **Labels clippen nie mehr (K3-ToDo, image-41):** alle Sprite-Labels mit halbtransparentem
+  Plättchen, depthTest aus + hoher renderOrder; Zyklus-Phasen-/Wert-Labels zusätzlich versetzt.
+  (`cinema/sceneKit.ts`, `cinema/scenes/cycle.ts`)
+  (5) **Aufbau-Reveal:** jede Szene wächst beim Öffnen in ~1 s von links nach rechts (Clipping-Plane
+  nur auf Chart-Materialien, Labels faden parallel; „Animationen aus" → sofort da).
+  (6) **Adaptiver Render-Loop:** volle Bildrate nur bei Aktivität (Kamerafahrt, Isabel unterwegs,
+  Orbit, Sandbox, Reveal), sonst ~30 fps — kühler und leiser auf Laptops.
+  (7) **Qualitäts-Preset:** Auto-Detect (zähe Start-Frames → pixelRatio 1 + Halos aus) plus manueller
+  ⚙-Schalter Auto/Hoch/Niedrig oben rechts (persistiert in localStorage). (`cinema/ChartCinema.tsx`)
+- **Chart-Kino, Etappe K2 — alle 9 Szenen sind da:** Zusätzlich zur PMC-Szene erklärt Isabel jetzt in 3D:
+  **Latente Fitness** (Kalman-Kurve mit ±SD-Hülle + Quell-Punkte Labor/Rennen/Läufe; Isabel läuft die
+  18-Monats-Kurve hinauf), **eff. VO2max je Lauf** (Zacken-Rauschen vs. Trend, Labor-Anker, „ein Punkt ist
+  Wetter, zehn sind ein Trend"), **Reizkanäle/Forest** (schwebende 94%-HDI-Stäbe an der Null-Wand, MCID-Band,
+  „Easy negativ richtig lesen", beobachtet ≠ kausal), **Wellness-Signale** (HRV/Ruhepuls/Schlaf mit
+  persönlichen Normalbändern, 3-Tage-Alarm-Cluster), **Readiness & Gesundheit** (geglättete Kurve, November-
+  Einbruch als Querverweis auf PMC/Wellness, aktueller Absturz auf 23), **Schwellen-Trend** (Treppen statt
+  Rampe; ehrliche Pace↔CP-Divergenz als Prüfsignal), **Lauf-Power** (Power-Duration-Kurve, CP-Asymptote,
+  W′-Batterie als Fläche + W′-bal-Sägezahn einer 6×3′-Einheit, tiefster Stand 6 %) und **Zyklus** (Phase×Reiz
+  als begehbare Turmlandschaft, +1.4 Follikel×Schwelle vs. −1.4 späte Luteal, Consent/gestuft/bounded).
+  Jede Szene folgt der Didaktik-Schablone Wert → Lesen → Interpretieren → Programm-Reaktion → Deine Reaktion,
+  mit kuratierten Zahlen aus Isabels Screenshots (eine Wahrheitsquelle je Szene) und klickbaren Hotspots.
+  (`client/src/components/tutorial/cinema/scenes/*`)
+- **Tutorial-Integration + Hub:** Die Szenen ersetzen die bisherigen 2D-Chart-Erklärungen im Fluss —
+  Abschnitt 2: Morgen-Signale (bei den Tagesfaktoren), Schwellen-Trend + Lauf-Power (Langzeit-Schritt);
+  Abschnitt 3: Status-Trilogie (latente Fitness, eff. VO2max, Readiness) nach dem Werkbank-Schritt, der
+  Forest-Plot-Say wurde zur Dose-Szene, der zweite Zyklus-Say zur Zyklus-Szene. Hub-Karten zeigen die
+  ehrlichen neuen Dauern (Abschnitt 2 ~17 min, Abschnitt 3 ~21 min); die „🎬 Daten-Kino"-Karte auf der
+  Lernen-Seite listet alle 9 Szenen einzeln. (`sections.ts`, `meta.ts`, `Lernen.tsx`)
+- **Chart-Kino, Etappe K1 (v2.11.0-Grundstein) — Isabel erklärt das PMC in 3D:** Neues „Daten-Kino":
+  Vollbild-3D-Szene im Holodeck-Look (App-Farben, leuchtende Ribbons, Bodengrid), in der Isabel als **echtes
+  Low-Poly-GLTF** (Basis „Animated Woman" von Quaternius, CC0, zur Laufzeit in RunLog-Farben umgefärbt +
+  Pferdeschwanz; `client/public/assets/isabel.glb` + Lizenzdatei) das Diagramm Beat für Beat erklärt —
+  Didaktik je Szene: Wert zeigen → lesen → interpretieren → Programm-Reaktion → deine Reaktion. Die
+  **PMC-Szene** rechnet ihre kuratierte 16-Wochen-Story (3:1-Rhythmus, Krankheitswoche, Taper, Renntag) mit
+  der echten EWMA-Mathematik; alle Zahlen in den Texten kommen aus denselben Arrays wie die Geometrie
+  (heute: CTL 51 · ATL 74 · TSB −14 · Renntag +12). Extras: Isabel **läuft die TSB-Linie ab**
+  (Landschafts-Beat), klickbare **Hotspots** (heute/Krankheitswoche/Renntag springen zum Beat), geführte
+  Kamerafahrten mit **freiem Orbit** dazwischen, Ausruf-Blasen am Kopf („TSB −14!"), und eine
+  **Was-wäre-wenn-Sandbox**: Slider schiebt eine harte Extra-Woche in den Plan — ATL/TSB-Geisterlinien
+  morphen live, Kommentar erklärt die Programm-Reaktion (Ramp-Warnung, Entschärfen). Einstiege: als
+  `chart3d`-Step in Tutorial-Abschnitt 2 (ersetzt die Text-Erklärung der TSB-Faustregeln) **und** einzeln
+  über die neue „🎬 Daten-Kino"-Karte auf der Lernen-Seite. Reduced-Motion: harte Schnitte statt Fahrten,
+  Posen statt Laufen. Alles lazy (eigener Cinema-Chunk, GLB lädt on demand) — Haupt-Bundle unverändert.
+  Neu: `client/src/components/tutorial/cinema/` (ChartCinema, isabelActor, sceneKit, meta, scenes/pmc),
+  geteilte Karten-UI nach `tutorial/ui.tsx` extrahiert. Die 7 übrigen Szenen folgen als Etappe K2.
+- **Isabel-Tutorial, Etappe C — das Nerd-Add-on ist da:** Der optionale fünfte Abschnitt öffnet sechs
+  Motorhauben — TSS/PMC, VDOT/Critical Speed, latente Fitness (Kalman/RTS), Dosis-Wirkung (Ridge/Bayes inkl.
+  Retention/Halbwertszeit), Permutationstest (N-of-1) und Banister-Taper. Je Modell eine eigene Three.js-
+  3D-Intuition (neuer Step-Typ `model`, `NerdVisual.tsx`: echte Daten-Skizzen — EWMA-Kurven über Tagesbalken,
+  Tempo-Dauer-Asymptote, Kalman-Band mit Quell-Punkten, Forest-Plot, Permutations-Nullverteilung mit θ_obs,
+  Fitness-/Ermüdungs-Zerfall mit Renntag-Marker) plus aufklappbare **echte Formel** (aus
+  `ToDo/tutorial_plan/ML_MATHEMATIK.md`, wie implementiert notiert) und 2 Quizfragen (Halbwertszeit,
+  warum nur Randomisierung kausal ist). Abschluss verlinkt die Nerd-Seite (→→←←↑↓↑↓) und den Lab Mode.
+- **Three.js-Politur der Isabel-Szenen (Etappe C):** Kontaktschatten, der Isabel folgt (löst sich beim
+  Hüpfer leicht), Kurvenlage beim Rundenlauf, sanfte handgeführte Kamera-Drift, Hemisphärenlicht statt
+  flachem Ambient. Three.js liegt jetzt in einem geteilten Lazy-Chunk (IsabelScene + NerdVisual) —
+  das Haupt-Bundle bleibt unberührt.
+- **Isabel-Tutorial, Etappe B — Abschnitt 3 „Analyse" + Abschnitt 4 „Coach" sind da:** Die beiden Hub-Karten
+  „in Arbeit" sind jetzt spielbar. **Abschnitt 3** führt in drei Unterkapiteln durchs Trainingslabor: 3a Verdikt
+  „Was hilft dir?" + Dosis-Wirkung (Forest-Plot, Retention/MCID, echte Aufgabe: Analyse auf Isabels Profil selbst
+  rechnen lassen), 3b Regime-Inferenz + Kausal-Experiment (N-of-1, Isabels laufender Trial als Anschauung) +
+  Research-Mode, 3c Zyklus (optional, mit Consent-/Bounded-Ehrlichkeit). **Abschnitt 4** geht Isabels Weg zum
+  Halbmarathon: Rennen + Wunschzeit → Block laden → Timeline/Phasen/Readiness lesen → 🎯 Peak ausrichten
+  (Banister vs. Heuristik erklärt) → Woche übernehmen → Coaching-Verdikt & „Warum diese Einheit" — Finale ist
+  Isabels Zieleinlauf als eigene Three.js-Szene (Zielbogen + Jubelpose). Beide Abschnitte enthalten je 2
+  Quizfragen mit ehrlichem Feedback (beobachtet ≠ kausal, Taper-Physiologie).
+  (`client/src/components/tutorial/sections.ts`, `types.ts`, `IsabelScene.tsx`)
+- **Tutorial übersteht den Profilwechsel:** Abschnitt 3/4 lassen den Nutzer geführt auf das Sandkasten-Profil
+  „Tutorial: Isabel" und zurück wechseln. Der Profilwechsel lädt die App komplett neu — das Tutorial merkt sich
+  den laufenden Schritt jetzt via `sessionStorage` und setzt nach dem Reload exakt dort fort (stirbt mit dem
+  Fenster, darum startet ein Abschnitt in einer neuen Sitzung weiterhin vorn). (`TutorialHost.tsx`)
+
+### Geändert
+- **Daten-Kino: Kamera-Einfahrt + Isabel ohne Zopf (Kolja-Entscheid):** Jede Szene beginnt jetzt mit einer
+  filmischen Einfahrt — die Kamera startet weiter draußen und erhöht und fährt in ~2,4 s auf die erste
+  Beat-Position, parallel zum Aufbau-Reveal („Animationen aus" → sofort in Position). Der transplantierte
+  Pferdeschwanz ist komplett entfernt (Dutt pur; `isabel-zopf.json` gelöscht, Zopf-Code + Viewer-Regler
+  ausgebaut — der Dev-Viewer /isabel-preview bleibt als Clip-/Look-Betrachter).
+  (`cinema/ChartCinema.tsx`, `cinema/isabelActor.ts`, `cinema/IsabelPreview.tsx`)
+
+### Behoben
+- **Doppelte Beschriftungen im Daten-Kino + Zopf-Sitz (Kolja-Befunde):** Die Hotspot-Leuchtpunkte trugen
+  ein eigenes Label zusätzlich zu den Szenen-Beschriftungen derselben Stelle („heute"/„heute",
+  „Renntag"/„Renntag 🏁", „Krankheitswoche"/„krank") — die Hotspot-Labels sind entfernt, die Szenen
+  beschriften ihre Stellen allein (geprüft: an jedem Leuchtpunkt existiert ein Szenen-Label).
+  Außerdem setzt Isabels Zopf jetzt am Dutt an statt zu tief am Nacken (`ZOPF_DEFAULT.y` 0.04 → 0.11).
+  (`cinema/ChartCinema.tsx`, `cinema/isabelActor.ts`)
+- **PMC-Sandbox zeigte die Renntag-Folgen zu harmlos + „gelbes Tuch" entfernt (Kolja-Befunde, K1):**
+  (1) Der Was-wäre-wenn-Regler sabotiert jetzt den ganzen TAPER (Extra-Last in jeder Restwoche statt nur
+  Woche 13) — bei voller Stärke bleibt die Ermüdung bis zur Startlinie bei ~75 und die Form kippt am
+  Renntag ins Minus; die Geister-Formlinie färbt sich rot, ein dynamisches „Renntag: TSB −5 ✗"-Label
+  macht es unübersehbar, und der Kommentar bleibt ehrlich (CTL steigt auf dem Papier, ist aber nicht
+  abrufbar). (2) Die prozedural am Kopf-Bone angebaute Langhaar-Geometrie schwang mit der Bone-Animation
+  unkontrolliert mit und klippte in die Kamera — entfernt; das eingebaute Modell-Haar bleibt hellblond,
+  ein echtes Langhaar-Mesh ist ein K3-Asset-Thema. (`cinema/scenes/pmc.ts`, `cinema/isabelActor.ts`)
+- **Daten-Kino öffnete eingeklemmt im Seiten-Layout statt als Vollbild:** `position: fixed` bricht, sobald
+  ein Seiten-Vorfahre transform/filter setzt (containing block) — auf der Lernen-Seite war genau das der
+  Fall. Alle Kino-Overlays (inkl. Lade-Fallbacks) hängen jetzt per React-Portal direkt an `document.body`
+  (`OverlayPortal` in `tutorial/ui.tsx`). (Beta-Befund von Kolja, K1)
+
+### Geändert
+- **Die „perfekte Isabel" (nach 6 Entscheidungsfragen):** Basis ist jetzt die Quaternius-Frau mit
+  hochgestecktem Haar (CC0, poly.pizza/m/nIItLV9nxS) — **gleiches Gesten-Rig wie die ursprüngliche Isabel**
+  (Winken, Zeigen, Interact, alle 24 Clips), benannte Materialien → RunLog-Look per Umfärbung (blond,
+  blaues Kleid, Teal-Gürtel, Amber-Schuhe, heller Teint). Dazu der **transplantierte blonde Pferdeschwanz**
+  aus Quaternius' „Woman in Dress" (CC0): einmalig per Node-Skript aus dem GLB extrahiert (Material „Hair",
+  Dreiecks-Filter auf die Zopf-Region, Z-up→Y-up, `isabel-zopf.json`, 16 kB) und per attach() unter dem
+  Dutt am Head-Bone verankert = Messy-Bun-mit-Zopf-Look. Sitz justierbar im neuen **Dev-Modell-Viewer**
+  `/isabel-preview` (nur Dev-Modus, lazy): Clips durchschalten, Orbit, Regler für Zopf-Offset/Größe/Neigung,
+  Werte werden zum Einbaken geloggt. Fällt der Zopf-Load aus → Dutt pur (kein Blocker).
+  (`cinema/isabelActor.ts`, `cinema/IsabelPreview.tsx`, `App.tsx`, `client/public/assets/isabel{.glb,-zopf.json}`)
+- **Isabel: Modell mit ECHTEM langem blondem Haar + zierlichere Größe:** Nach mehreren erfolglosen
+  prozeduralen Haar-Anläufen („Wurm") ist jetzt ein fertiges Modell im Einsatz: Quaternius' blonde
+  „Animated Woman" (CC0, poly.pizza/m/9kF7eTDbhO) — modelliertes, über die Schultern fallendes Haar,
+  gleicher Low-Poly-Look. `isabel.glb` getauscht, Actor angepasst: Clip-Namen dieses Rigs
+  (Idle/Walking/Running/Jump/PickUp …), Gesten als Einmal-Clips mit weichem Rückblenden zu Idle
+  (Gruß = fröhlicher Hüpfer, „Interact" = PickUp; ein Zeige-Clip existiert nicht — das Zeigen übernehmen
+  Highlight-Puls, Kamera und Ausruf-Blase). Prozeduraler Haar-/Verlet-Code komplett entfernt.
+  Isabel bleibt zierlich skaliert (1,60 m). (`cinema/isabelActor.ts`, `client/public/assets/isabel.glb`)
+- **Isabel-Look nach Vorlage angepasst:** lange hellblonde Haare (Ansatz-Schwung + langer Fall bis
+  Rückenmitte + Spitze) statt kurzem Pferdeschwanz, hellerer Teint — konsistent in beiden Darstellungen:
+  GLTF-Actor im Daten-Kino (`cinema/isabelActor.ts`, Haar-Materialien vereinheitlicht hellblond) und
+  stilisierte Figur der Abschluss-Szenen (`IsabelScene.tsx`, Haar federt sanft im Lauf/Jubel mit).
+
+- **Methodik: `?tab=`-Deep-Link wirkt auch nach dem Mount** — das Tutorial (und künftige Links) kann zwischen
+  Status/„Was wirkt?"/Experimente/Zyklus navigieren, ohne dass die Seite neu gemountet werden muss. (`Methodik.tsx`)
+- **Neue Spotlight-Anker (`data-tour`)** auf den Analyse-/Coach-Karten für das Tutorial: Verdikt, Dosis-Wirkung,
+  Regime-Inferenz, Kausal-Experiment, Zyklus, Coaching-Verdikt, Wettkampf-Block(+Timeline), Banister-Taper —
+  reine Attribute, kein Verhalten geändert.
+- **Isabel-Tutorial, Etappe A (v2.10.0-Grundstein):** Neues interaktives Tutorial mit Guide-Persona **Isabel** —
+  läuft als Overlay über der echten App, mit echten Aufgaben (Engine wartet und prüft automatisch, bis z. B. die
+  Athletendaten oder die erste geplante Einheit wirklich da sind), Mini-Wissens-Checks mit freundlichem Feedback
+  und einem Three.js-Abschluss-Moment je Abschnitt (lazy geladen, eigener Chunk — kostet das Haupt-Bundle nichts).
+  Enthalten: **Abschnitt 1 „Start"** (Profil, LT1/LT2-Zonen mit/ohne Laktattest, Strava geführt inkl. ehrlicher
+  Rate-Limit-Erklärung + Skip-Pfad, Verfügbarkeit, Auswahllisten, Layout) und **Abschnitt 2 „Planen &
+  Dokumentieren"** (Wochenkopf CTL/ATL/TSB lesen, Einheit planen, Tracking + Plan-%, Tagesfaktoren/Feedback als
+  Analyse-Futter, Wochenbericht, Langzeit). Abschnitte 3 (Analyse), 4 (Coach) und das Nerd-Add-on folgen als
+  eigene Etappen und sind im Hub als „in Arbeit" sichtbar. Auto-Start beim ersten App-Start (skippbar);
+  Fortschritt je Abschnitt pro Profil (`tutorial_progress`, additiv; `GET/PUT /api/tutorial/progress`).
+  Neu: `client/src/components/tutorial/` (Engine + Step-Registry + Isabel-3D-Szene), Dependency `three`.
+- **Lernen-Seite wird Tutorial-Hub:** oben die Abschnitts-Karten mit Fortschritt/Wiederholen (Erstdurchlauf in
+  fester Reihenfolge, danach frei), darunter das bestehende Glossar, ganz unten eine dezente „Für Entdecker"-
+  Fußnote mit den Tastenkombis der zwei versteckten Seiten (Nerd-Seite →→←←↑↓↑↓ · Lab Mode ↑↑↓↓←→←→).
+
+### Geändert
+- **Tutorial-Profil „Mara" → „Isabel":** Die Demo-Athletin heißt jetzt Isabel und ist zugleich der Tutorial-Guide
+  (eine Persona, eine Story). Bestehende Mara-/Alt-Installationen werden beim Start automatisch migriert
+  (Marker-basierte Erkennung unverändert — echte Profile bleiben strikt unberührt). (`server/tutorial.ts`)
+
+### Entfernt
+- **Alte Coachmark-Tour** („Was ist was" / „Wie profitiere ich", v1.9/v1.10): geht im neuen Isabel-Tutorial auf —
+  eine geführte Erfahrung statt zwei parallele. usage.html bleibt als Nachschlagewerk erhalten.
+  (`client/src/components/Coachmark.tsx` entfernt, Einstiege auf der Lernen-Seite ersetzt;
+  `scripts/betaShots.mjs` unterdrückt statt der Tour jetzt das Tutorial-Welcome.)
+
 ## [2.9.0] – 2026-07-08 — Beta-Test-Fixrunde: Übertrainings-Frühwarnung, Trail-/Kraft-Last, Bestzeiten-Grid & Research-Mode-Klarheit
 
 ### Hinzugefügt

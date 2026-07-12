@@ -217,7 +217,7 @@ export interface StravaBackfillState {
   updated_at?: string;
 }
 
-// Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8)
+// Bestleistungen + VDOT-Prognose (v0.14.0, ToDo 8)
 export interface Pb { distance_m: number; time_s: number; pace_s: number; date: string; name: string; manual?: boolean; }
 export interface PredItem extends PredRange { distance_m: number; }
 export interface BestsResult {
@@ -571,6 +571,9 @@ export interface MethodInferenceResult {
   confidence: "hoch" | "mittel" | "niedrig";
 }
 
+// v2.10.0: Isabel-Tutorial-Fortschritt (nur je Abschnitt persistiert)
+export interface TutorialProgress { done: string[]; dismissed: boolean }
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
   if (!r.ok) throw new Error(`${r.status} ${url}`);
@@ -720,7 +723,7 @@ export const api = {
     return j<PacingResult>(`/api/races/${id}/pacing${qs ? `?${qs}` : ""}`);
   },
 
-  // Bestzeiten + Critical Speed (v0.14.0, ToDo 8)
+  // Bestleistungen + Critical Speed (v0.14.0, ToDo 8)
   bests: () => j<BestsResult>("/api/bests"),
   setBestOverride: (distance_m: number, time_s: number, date: string) =>
     j<{ ok: boolean }>("/api/bests/override", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ distance_m, time_s, date }) }),
@@ -761,6 +764,9 @@ export const api = {
   tutorialStatus: () => j<{ id: number | null }>("/api/tutorial"), // v1.8.0 Tutorial-Profil
   regenerateTutorial: () => j<{ ok: boolean; id: number }>("/api/tutorial/regenerate", { method: "POST" }),
   deleteTutorial: () => j<{ ok: boolean }>("/api/tutorial", { method: "DELETE" }),
+  // v2.10.0: Isabel-Tutorial-Fortschritt (abgeschlossene Abschnitte + Dismiss-Flag) je Profil
+  tutorialProgress: () => j<TutorialProgress>("/api/tutorial/progress"),
+  saveTutorialProgress: (b: TutorialProgress) => j<{ ok: boolean }>("/api/tutorial/progress", { method: "PUT", body: JSON.stringify(b) }),
 
   // konfigurierbare Auswahllisten (ToDo 13/24)
   options: (kind?: string) => j<Option[]>(`/api/options${kind ? `?kind=${kind}` : ""}`),

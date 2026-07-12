@@ -37,7 +37,7 @@ const METHODS = [
 // v1.11.1: Tooltip-Erklärungen je Marker (Hover) — macht klar, was die Zahl misst (Fenster/Einheit/Richtung).
 const MARKER_HELP: Record<string, string> = {
   csPace: "Critical Speed — aktueller Schätzwert über das 14-Tage-Fenster, als Pace (s/km, kleiner = schneller). Nicht zu verwechseln mit „Δ CS\" in der Regime-Tabelle (Veränderung je Block).",
-  vdot: "VDOT (≈ VO2max) aus deinen Bestzeiten, 14-Tage-Fenster. Höher = besser.",
+  vdot: "VDOT (≈ VO2max) aus deinen Bestleistungen, 14-Tage-Fenster. Höher = besser.",
   lt1Pace: "Aerobe Schwelle LT1 — Pace an der ersten Laktatschwelle (Z2/Z3-Grenze, aus deinem Zonen-Set). Kleiner = schneller. LT1 = lockeres aerobes Schwellentempo, deutlich unter LT2.",
   thresholdPace: "Laktatschwelle LT2 — Schwellen-Pace über das 14-Tage-Fenster. Kleiner = schneller. LT2 = renn-spezifisches Schwellentempo (über LT1).",
   thresholdHr: "Schwellen-Herzfrequenz (LT2) über das 14-Tage-Fenster.",
@@ -91,6 +91,10 @@ export default function Methodik() {
   const paramTab = params.get("tab");
   const initialTab: MethodikTab = paramTab === "effects" || paramTab === "experiments" || paramTab === "cycle" ? paramTab : "status";
   const [tab, setTab] = useState<MethodikTab>(initialTab);
+  // v2.10.0: ?tab= wirkt auch NACH dem Mount (Isabel-Tutorial navigiert zwischen den Tabs, Seite bleibt gemountet).
+  useEffect(() => {
+    if (paramTab === "status" || paramTab === "effects" || paramTab === "experiments" || paramTab === "cycle") setTab(paramTab);
+  }, [paramTab]);
   const [verdictTick, setVerdictTick] = useState(0); // bumpt nach Dosis-Recompute → Gesamtbild neu laden
   const [cycleEnabled, setCycleEnabled] = useState(false);
   const showSparks = useSparkPref();
@@ -221,7 +225,7 @@ export default function Methodik() {
       <DoseResponseCard onRecomputed={() => setVerdictTick((t) => t + 1)} />
 
       {/* Passive Inferenz */}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card" data-tour="regime" style={{ marginTop: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0 }}>Passive Inferenz <span className="tiny muted">— Regime ↔ Marker-Reaktion</span></h3>
           {/* F3: primär auf latenter Fitness (Δ Fitness je +1 SD, höher=besser) — Button oben rechts wie „Was wirkt bei dir?" */}

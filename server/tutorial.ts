@@ -1,5 +1,6 @@
-// Tutorial-Profil (v2.2.x): erzeugt ein vollständiges, realistisches Demo-Profil für Mara,
-// eine fiktive Halbmarathonläuferin. Strikt auf eigenem profile_id: echte Profile bleiben unberührt.
+// Tutorial-Profil (v2.10.0): erzeugt ein vollständiges, realistisches Demo-Profil für Isabel,
+// die fiktive Halbmarathonläuferin, die zugleich als Guide durch das interaktive Tutorial führt
+// (ihre Daten SIND die Tutorial-Story). Strikt auf eigenem profile_id: echte Profile bleiben unberührt.
 // Deterministisch (seeded RNG), idempotent, löschbar, mit 78 Wochen Historie + 6 Wochen Ziel-HM-Plan.
 import { db, setSetting, getSetting, setProfileSetting, DEFAULT_HR_ZONES } from "./db.ts";
 import {
@@ -12,9 +13,10 @@ import {
 } from "./cycleTraining.ts";
 import { createProspectiveTrial } from "./mlJobs.ts";
 
-const TUT = "Tutorial: Mara";
-const LEGACY_TUT = "Tutorial";
-const TUTORIAL_NAMES = [TUT, LEGACY_TUT];
+const TUT = "Tutorial: Isabel";
+// Legacy-Namen früherer Tutorial-Generationen (Alex → Mara → Isabel): nur für die einmalige Migration.
+const LEGACY_TUTS = ["Tutorial: Mara", "Tutorial"];
+const TUTORIAL_NAMES = [TUT, ...LEGACY_TUTS];
 const MASS = 61; // kg
 const HEIGHT_CM = 168;
 const DAY_MS = 86_400_000;
@@ -23,7 +25,7 @@ type ProfileRow = { id: number; name: string };
 
 // N-1: Marker-Set als autoritative Demo-Erkennung. Damit kann ein echtes Nutzerprofil (auch wenn es zufällig
 // „Tutorial" heißt) NIE als Demo gelöscht/regeneriert werden. Namensauflösung bleibt nur als einmaliger
-// Legacy-Fallback für Installationen VOR Einführung des Markers (Migration Alt-„Tutorial"/Alex → Mara).
+// Legacy-Fallback für Installationen VOR Einführung des Markers (Migration Alt-„Tutorial"/Alex/Mara → Isabel).
 const TUT_IDS_KEY = "tutorial_profile_ids";
 function markedTutorialIds(): number[] {
   const raw = getSetting<number[]>(TUT_IDS_KEY, []);
@@ -45,13 +47,16 @@ export function tutorialProfileId(): number | null {
   const marked = markedTutorialIds();
   if (marked.length) {
     const ph = marked.map(() => "?").join(",");
-    const mara = db.prepare(`SELECT id FROM profiles WHERE name=? AND id IN (${ph}) LIMIT 1`).get(TUT, ...marked) as { id: number } | undefined;
-    return mara?.id ?? marked[0];
+    const isabel = db.prepare(`SELECT id FROM profiles WHERE name=? AND id IN (${ph}) LIMIT 1`).get(TUT, ...marked) as { id: number } | undefined;
+    return isabel?.id ?? marked[0];
   }
   const primary = db.prepare("SELECT id FROM profiles WHERE name=? ORDER BY id LIMIT 1").get(TUT) as { id: number } | undefined;
   if (primary) return primary.id;
-  const legacy = db.prepare("SELECT id FROM profiles WHERE name=? ORDER BY id LIMIT 1").get(LEGACY_TUT) as { id: number } | undefined;
-  return legacy?.id ?? null;
+  for (const name of LEGACY_TUTS) {
+    const legacy = db.prepare("SELECT id FROM profiles WHERE name=? ORDER BY id LIMIT 1").get(name) as { id: number } | undefined;
+    if (legacy) return legacy.id;
+  }
+  return null;
 }
 
 function tutorialProfiles(): ProfileRow[] {
@@ -91,6 +96,7 @@ export function deleteTutorial(): void {
         `cycle_consent:${id}`,
         `cycle_contraception:${id}`,
         `prospective_cooldown:${id}`,
+        `tutorial_progress:${id}`,
       ]) db.prepare("DELETE FROM settings WHERE key=?").run(key);
       db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`layout:%:${id}`);
       db.prepare("DELETE FROM profiles WHERE id=?").run(id);
@@ -104,11 +110,21 @@ export function deleteTutorial(): void {
   }
 }
 
+// v2.11.0 (Beta-Befund): frühe Mara→Isabel-Migrationen (vor Einführung von regenerateTutorial) haben teils
+// nur den PROFILNAMEN umbenannt — die Aktivitäts-Namen von generateTutorial() trugen damals noch
+// "(Mara Demo)" und wurden nie neu erzeugt. `primary` allein (Name stimmt) erkennt diesen Altstand nicht,
+// darum zusätzlich auf das Legacy-Label prüfen und in dem Fall vollständig regenerieren.
+function hasLegacyDemoLabel(profileId: number): boolean {
+  const row = db.prepare("SELECT 1 FROM activities WHERE profile_id=? AND name LIKE '%Mara Demo%' LIMIT 1").get(profileId);
+  return !!row;
+}
+
 export function ensureTutorialProfile(today: string): void {
   const rows = tutorialProfiles();
   const primary = rows.find((r) => r.name === TUT);
   if (!rows.length) generateTutorial(today);
-  else if (!primary) regenerateTutorial(today); // alte "Tutorial"/Alex-Installationen durch Mara ersetzen
+  else if (!primary) regenerateTutorial(today); // alte "Tutorial"/Alex/Mara-Installationen durch Isabel ersetzen
+  else if (hasLegacyDemoLabel(primary.id)) regenerateTutorial(today); // Alt-Aktivitäten mit "(Mara Demo)"-Label
 }
 
 export function regenerateTutorial(today: string): number {
@@ -208,10 +224,10 @@ function disturbanceFor(date: string, anchors: { illnessStart: string; travelSta
 // Kleiner DETERMINISTISCHER Jitter aus dem Datum (ohne den RNG-Strom zu verbrauchen) → Within-Phase-Streuung.
 const symJit = (date: string, salt: number) => ((date.charCodeAt(5) + date.charCodeAt(8) + date.charCodeAt(9) + salt) % 3) - 1; // -1..+1
 /**
- * Physiologisch korrektes Zyklus-Symptommuster für Mara (natürlicher Zyklus, Kupferspirale = nicht-hormonell,
+ * Physiologisch korrektes Zyklus-Symptommuster für Isabel (natürlicher Zyklus, Kupferspirale = nicht-hormonell,
  * aber stärkere Menses/Krämpfe). 1..5. Follikel/Ovulation = Leistungshoch; späte Luteal = PMS-Gradient.
  */
-function maraSymptom(phase: string | null, cd: number, date: string): { cramps: number | null; energy: number; sleep: number; mood: number; flow: number | null; note: string } {
+function isabelSymptom(phase: string | null, cd: number, date: string): { cramps: number | null; energy: number; sleep: number; mood: number; flow: number | null; note: string } {
   const c = (v: number) => clamp(Math.round(v), 1, 5);
   switch (phase) {
     case "menstrual": // cd 1..5: Krämpfe/Flow früh stark, Energie/Mood niedrig, steigend
@@ -257,7 +273,7 @@ function generateCycleData(profileId: number, week0: string, today: string, nowI
   for (const p of periods) {
     insPeriod.run(profileId, p.start_date, p.end_date, "Tutorial: stabiler natürlicher Zyklus (Kupferspirale).", nowIso);
   }
-  // Tägliches, physiologisch korrektes Symptom-Tracking über die letzten ~5 Zyklen (Mara begann vor ~150 Tagen
+  // Tägliches, physiologisch korrektes Symptom-Tracking über die letzten ~5 Zyklen (Isabel begann vor ~150 Tagen
   // zu tracken). Kleine, deterministische Lücken (~1/12) wirken realistisch. Ältere Historie bleibt untracked.
   const symStart = addDays(today, -150);
   for (let d = 0; addDays(week0, d) <= today; d++) {
@@ -265,7 +281,7 @@ function generateCycleData(profileId: number, week0: string, today: string, nowI
     if (date < symStart) continue;
     if ((date.charCodeAt(8) + date.charCodeAt(9)) % 12 === 0) continue; // ~1 von 12 Tagen ausgelassen
     const ctx = buildFeedbackContext(periods, { method: "copper_iud" }, date);
-    const s = maraSymptom(ctx.cycle_phase, ctx.cycle_day ?? 0, date);
+    const s = isabelSymptom(ctx.cycle_phase, ctx.cycle_day ?? 0, date);
     insSymptom.run(profileId, date, s.cramps, s.energy, s.sleep, s.mood, s.flow, s.note, nowIso);
   }
   const stab = evaluateCycleStability(periods, today);
@@ -373,7 +389,7 @@ function seedActiveTrial(profileId: number, today: string, nowIso: string): void
     washoutWeeks: 1,
     lagWeeks: 3,
     consentedAt: nowIso,
-    proposalHash: "tutorial-mara-aerob-longrun-vs-threshold-hmpace",
+    proposalHash: "tutorial-isabel-aerob-longrun-vs-threshold-hmpace",
     startDate: trialStart,
   });
 }
@@ -400,7 +416,7 @@ function generateTutorial(today: string): number {
     addTutorialMarker(pid); // N-1: ab jetzt autoritativ per Marker statt Name erkannt
 
     setProfileSetting("athlete", {
-      name: "Mara Demo",
+      name: "Isabel Demo",
       sex: "f",
       birth_year: 1995,
       weight: MASS,
@@ -435,7 +451,7 @@ function generateTutorial(today: string): number {
     const paceZones = [390, 330, 292, 244, 222, 185];
     const repPace = paceZones.map((p, i) => (i === 0 ? p + 20 : Math.round((paceZones[i - 1] + p) / 2)));
     db.prepare("INSERT INTO zone_sets(profile_id, valid_from, hr_zones, pace_zones, lthr, ftp, threshold_pace, lt1_hr, lt1_pace, source, note, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(pid, addDays(today, -560), JSON.stringify(hrZones), JSON.stringify(paceZones), 169, 232, 244, 151, 292, "Tutorial", "Demo-Zonen fuer Mara (HM-Fokus).", nowIso);
+      .run(pid, addDays(today, -560), JSON.stringify(hrZones), JSON.stringify(paceZones), 169, 232, 244, 151, 292, "Tutorial", "Demo-Zonen fuer Isabel (HM-Fokus).", nowIso);
 
     db.prepare(
       `INSERT INTO cycle_training_settings(profile_id, cycle_adaptive_enabled, method_emphasis, method_emphasis_weight, phase_stimulus_map, feedback_sensitivity, symptom_override_enabled, observation_mode_only, updated_at)
@@ -466,7 +482,7 @@ function generateTutorial(today: string): number {
           : phase === "Threshold/HM-Pace" ? "Haupttreiber: Schwelle und HM-Pace, VO2 dosiert."
             : phase === "Specific" ? "Spezifischer HM-Block mit Race-Pace-Anteilen."
               : "Taper: Last runter, Schaerfe erhalten.";
-      insWeek.run(pid, w + 1, `Mara W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote);
+      insWeek.run(pid, w + 1, `Isabel W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote);
 
       const keys = weekKeys(phase, w, deload);
       let weekKm = 0;
@@ -542,7 +558,7 @@ function generateTutorial(today: string): number {
           : disturb === "niggle" ? "Tutorial-Confounder: leichter Waden-/Achilles-Niggle."
             : null;
         if (isPast) {
-          const info = insAct.run(pid, date, "Run", "tutorial", `${s.label} (Mara Demo)`, s.type, distM, movingS, movingS + Math.round(jit(90, 50)), avgHr, maxHr,
+          const info = insAct.run(pid, date, "Run", "tutorial", `${s.label} (Isabel Demo)`, s.type, distM, movingS, movingS + Math.round(jit(90, 50)), avgHr, maxHr,
             runNp, Math.round(jit(k === "long" ? 180 : 55, 35)), Math.round(jit(174, 6)), tss, null, JSON.stringify(zoneMin),
             JSON.stringify(zoneKm), JSON.stringify(zoneMin), avgPace, decoup, effV, runNp, powerCurve, bests, efforts, note, 0);
           activities.push({ id: Number(info.lastInsertRowid), date, type: s.type, key: k, phase, disturbance: disturb });

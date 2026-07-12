@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { api, type SessionTemplate } from "../lib/api.ts";
 import { typeColor, typeLabel, sportLabel } from "../lib/util.ts";
+import { OverlayPortal } from "./OverlayPortal.tsx";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -26,6 +27,7 @@ export default function TemplateManager({
   }
 
   return (
+    <OverlayPortal>
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={modal} className="card">
         <div className="spread mb">
@@ -61,6 +63,7 @@ export default function TemplateManager({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

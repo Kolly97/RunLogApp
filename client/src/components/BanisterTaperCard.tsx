@@ -88,7 +88,7 @@ export default function BanisterTaperCard() {
   const uncertain = !!r && r.peak_low <= 0; // Band überlappt 0 → keine belastbare Aussage
 
   return (
-    <div className="card" style={{ marginBottom: 12 }}>
+    <div className="card" data-tour="banister" style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>
           Dein optimales Taper <span className="tiny muted">— wann bist du frisch & spitz?</span>

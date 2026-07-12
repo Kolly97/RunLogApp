@@ -179,7 +179,7 @@ export default function CycleScaffoldCard() {
   );
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
+    <div className="card" data-tour="cycle" style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>Zyklus-Steuerung <span className="tiny muted">— N-of-1, Gerüst (Default aus)</span></h3>
         <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)", border: "1px solid var(--muted)", borderRadius: 999, padding: "0 7px" }}>{st?.needsConsent === false ? "aktiviert" : "aus"}</span>

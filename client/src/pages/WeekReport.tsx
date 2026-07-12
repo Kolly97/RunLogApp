@@ -26,6 +26,7 @@ import WeekPmcStrip from "../components/WeekPmcStrip.tsx";
 import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
+import { useVertPref } from "../lib/vertPref.ts";
 
 // Tagesfaktoren für Seite 2 — alles, was eingetragen werden kann, ist hier auffindbar.
 type MetricDef = { key: string; label: string; text?: boolean };
@@ -87,6 +88,7 @@ export default function WeekReport() {
   const [bikeFactor, setBikeFactor] = useState(0.25); // Rad-km → Lauf-km (Wochentags-Chart, ToDo Z.9)
   const [bests, setBests] = useState<BestsResult | null>(null); // M5: PB-Marker im PMC
   useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
+  const vertPrefOn = useVertPref(); // v2.11.0: vor den Early-Returns (Hooks-Regel) — Footer-Toggle fürs Vert-Load-Modul
   const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
 
   async function reload() {
@@ -221,8 +223,9 @@ export default function WeekReport() {
   const vertPerKm: number | null = anyAnalyze?.realVertPerKm ?? null;
   const recentVert: number[] = anyAnalyze?.recentWeeksVert ?? [];
   const vertSeries = [...recentVert, weekVert];
-  // Trail-Modul-Gate: Ø Höhenmeter/Woche über die verfügbaren Wochen (glättet Flach-/Erholungswochen).
-  const trailActive = vertSeries.length > 0 && vertSeries.reduce((a, b) => a + b, 0) / vertSeries.length >= VERT_WEEK_HM;
+  // Trail-Modul-Gate: Ø Höhenmeter/Woche über die verfügbaren Wochen (glättet Flach-/Erholungswochen) —
+  // und der Footer-Toggle (v2.11.0), falls der Nutzer die Auswertung grundsätzlich abgeschaltet hat.
+  const trailActive = vertPrefOn && vertSeries.length > 0 && vertSeries.reduce((a, b) => a + b, 0) / vertSeries.length >= VERT_WEEK_HM;
 
   // Item 1: Erfüllungs-Prozent (Ist/Plan) für die schlanke Completion-Bar.
   const pct = (real: number, planned: number) => (planned > 0 ? (real / planned) * 100 : null);

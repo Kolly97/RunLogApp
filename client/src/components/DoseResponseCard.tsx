@@ -138,7 +138,7 @@ export default function DoseResponseCard({ onRecomputed }: { onRecomputed?: () =
   const fixedCount = settings?.channel_count ?? 5;
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
+    <div className="card" data-tour="dose-response" style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>
           Was wirkt bei dir? <span className="tiny muted">— Reiz-Kanäle → latente Fitness</span>

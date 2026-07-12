@@ -1,5 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
+import { TOOLTIP_STYLE, TOOLTIP_ITEM_STYLE } from "../lib/chartTheme.ts";
 
 export const INT_COLORS = { easy: "#3b82f6", mod: "#22c55e", hard: "#f97316" };
 
@@ -29,7 +29,7 @@ export default function IntensityDonut({
             } startAngle={90} endAngle={-270}>
               {data.map((d) => <Cell key={d.key} fill={INT_COLORS[d.key as keyof typeof INT_COLORS]} />)}
             </Pie>
-            <Tooltip formatter={(v: number, n: string) => [`${Math.round(v)}%`, n]} contentStyle={TOOLTIP_STYLE} />
+            <Tooltip formatter={(v: number, n: string) => [`${Math.round(v)}%`, n]} contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
           </PieChart>
         </ResponsiveContainer>
         <div className="donut-center">

@@ -31,6 +31,7 @@ import EditableGrid, { EgItem } from "../components/EditableGrid.tsx";
 import FitnessGainWindowsCard from "../components/FitnessGainWindowsCard.tsx";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
+import { useVertPref } from "../lib/vertPref.ts";
 
 // ---- Wellness-Metriken (kleine Multiples) ----
 type Fmt = (v: number) => string;
@@ -218,18 +219,25 @@ export default function LongTerm() {
   for (const a of acts) namesByDate[a.date] = namesByDate[a.date] ? `${namesByDate[a.date]}, ${a.name || a.sport}` : (a.name || a.sport);
 
   // Kacheln: Summen je Kategorie im gewählten Zeitraum (#17). M-4: + Vert (Lauf-Höhenmeter) + Kraft-Last (Σ TSS).
-  const cat = { run: { km: 0, s: 0, vert: 0 }, bike: { km: 0, s: 0 }, str: { s: 0, tss: 0 } };
+  // v2.11.0: Vert zählt nur Trail-getypte Läufe (sonst bläht eine hügelige Straßenrunde die Trail-Last auf);
+  // trailKm als eigener Nenner, sonst verwässern Straßen-km die D+/km-Steilheit der Trail-Einheiten.
+  const cat = { run: { km: 0, s: 0, vert: 0, trailKm: 0 }, bike: { km: 0, s: 0 }, str: { s: 0, tss: 0 } };
   for (const a of acts) {
     const km = (a.distance_m || 0) / 1000, s = a.moving_s || 0;
-    if (a.sport === "Run") { cat.run.km += km; cat.run.s += s; cat.run.vert += a.elevation || 0; }
+    if (a.sport === "Run") {
+      cat.run.km += km; cat.run.s += s;
+      if (a.type === "Trail") { cat.run.vert += a.elevation || 0; cat.run.trailKm += km; }
+    }
     else if (a.sport?.startsWith("Bike") || a.sport === "General") { cat.bike.km += km; cat.bike.s += s; }
     else if (a.sport === "Strength" || a.sport === "Physio") { cat.str.s += s; cat.str.tss += a.tss || 0; }
   }
-  const vertPerKm = cat.run.km > 0 ? Math.round((cat.run.vert / cat.run.km) * 10) / 10 : null;
-  // Trail-Modul-Gate: Ø Höhenmeter/Woche über den Datenbereich der Läufe (nicht absolute Summe — die klettert jeder voll).
+  const vertPerKm = cat.run.trailKm > 0 ? Math.round((cat.run.vert / cat.run.trailKm) * 10) / 10 : null;
+  // Trail-Modul-Gate: Ø Höhenmeter/Woche über den Datenbereich der Läufe (nicht absolute Summe — die klettert
+  // jeder voll) — und der Footer-Toggle (v2.11.0), falls der Nutzer die Auswertung abgeschaltet hat.
+  const vertPrefOn = useVertPref();
   const runTimes = acts.filter((a) => a.sport === "Run" && a.date).map((a) => Date.parse(a.date));
   const vertWeeks = runTimes.length ? Math.max(1, Math.round((Math.max(...runTimes) - Math.min(...runTimes)) / (7 * 86400000))) : 1;
-  const trailActive = cat.run.vert / vertWeeks >= VERT_WEEK_HM;
+  const trailActive = vertPrefOn && cat.run.vert / vertWeeks >= VERT_WEEK_HM;
 
   const visibleRows = range
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))

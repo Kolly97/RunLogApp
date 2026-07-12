@@ -74,7 +74,7 @@ export default function ProspectiveTrialCard() {
   const abort = async (id: number) => { if (!window.confirm("Trial abbrechen? Die bisherigen Blöcke bleiben archiviert.")) return; setBusy(true); try { await api.mlAbortTrial(id); await load(); } finally { setBusy(false); } };
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
+    <div className="card" data-tour="trial" style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>Kausal-Experiment <span className="tiny muted">— randomisierte N-of-1-Blöcke</span></h3>
         <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ok)", border: "1px solid var(--ok)", borderRadius: 999, padding: "0 7px" }}>einziger kausaler Pfad</span>

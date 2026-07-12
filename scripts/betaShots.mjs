@@ -46,6 +46,11 @@ await ctx.addInitScript(() => {
   const _get = Storage.prototype.getItem;
   Storage.prototype.getItem = function (k) { return /^(tour-|runlog-tour)|onboard|intro/i.test(k) ? "1" : _get.call(this, k); };
 });
+// v2.10.0: Isabel-Tutorial-Welcome unterdrücken (Fortschritt kommt vom Server, nicht aus localStorage).
+await ctx.route("**/api/tutorial/progress", (route) => {
+  if (route.request().method() === "GET") route.fulfill({ json: { done: [], dismissed: true } });
+  else route.continue();
+});
 const page = await ctx.newPage();
 page.on("pageerror", (e) => console.log(`  [pageerror] ${String(e).slice(0, 120)}`));
 

@@ -3,6 +3,7 @@ import { api, type PlannedSession, type SessionTemplate, type ZoneSet } from "..
 import { num, clockToSec, secToClock, typeColor, typeLabel } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
 import EffortBuilder, { ZONE_COLORS, zoneRange } from "./EffortBuilder.tsx";
+import { OverlayPortal } from "./OverlayPortal.tsx";
 import T from "./T.tsx";
 import { useT } from "../lib/i18n.tsx";
 import "../pages/track.css"; // B1: gemeinsame Zonen-Editor-Optik (Strava-Stil)
@@ -60,6 +61,7 @@ export default function SessionModal({
   const zoneSum = Object.values(km).reduce((a, b) => a + (b || 0), 0);
 
   return (
+    <OverlayPortal>
     <div onClick={onClose} style={overlay} className="modal-overlay">
       <div onClick={(e) => e.stopPropagation()} style={modal} className="card modal-pop">
         <div className="spread mb">
@@ -176,6 +178,7 @@ export default function SessionModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

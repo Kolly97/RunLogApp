@@ -1,4 +1,4 @@
-// Bestzeiten + VDOT-Prognose (v0.14.0, ToDo 8): PBs je Standarddistanz aus Stravas best_efforts,
+// Bestleistungen + VDOT-Prognose (v0.14.0, ToDo 8): PBs je Standarddistanz aus Stravas best_efforts,
 // dazu eine VO2max/VDOT-Schätzung (Jack Daniels) + leistungs-äquivalente Renn-Prognosen.
 import { useEffect, useState } from "react";
 import {
@@ -86,7 +86,7 @@ export default function Bests() {
     reload();
   };
 
-  if (err) return <div className="empty"><T k="bests.err">Bestzeiten konnten nicht geladen werden.</T></div>;
+  if (err) return <div className="empty"><T k="bests.err">Bestleistungen konnten nicht geladen werden.</T></div>;
   if (!data) return <p className="muted"><T k="bests.loading">Lädt…</T></p>;
 
   const { pbs, vdot, vdotLevel, age, predictions, effVo2, predictionsEff } = data;
@@ -95,22 +95,22 @@ export default function Bests() {
 
   return (
     <div>
-      <h1><T k="bests.title">Bestzeiten</T></h1>
+      <h1><T k="bests.title">Bestleistungen</T></h1>
       <p className="tiny muted" style={{ marginTop: -4 }}>
-        <T k="bests.hint">Persönliche Bestzeiten je Standarddistanz aus den Strava-Daten und eine VDOT-Prognose (Jack Daniels) daraus. Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").</T>
+        <T k="bests.hint">Persönliche Bestleistungen je Standarddistanz aus den Strava-Daten und eine VDOT-Prognose (Jack Daniels) daraus. Die Liste füllt sich über die Strava-Syncs („Details/Splits nachziehen").</T>
       </p>
 
       {!pbs.length && (
         <div className="empty">
-          <T k="bests.empty">Noch keine Bestzeiten. In den Einstellungen Strava verbinden und „Details/Splits nachziehen" ausführen — die Bestzeiten werden dann (budgetiert über mehrere Durchläufe) ergänzt.</T>
+          <T k="bests.empty">Noch keine Bestleistungen. In den Einstellungen Strava verbinden und „Details/Splits nachziehen" ausführen — die Bestleistungen werden dann (budgetiert über mehrere Durchläufe) ergänzt.</T>
         </div>
       )}
 
       <EditableGrid page="bests">
-        {pbs.length > 0 && <EgItem id="pb-table" title="Persönliche Bestzeiten" defaultSpan={6}>{() => (
+        {pbs.length > 0 && <EgItem id="pb-table" title="Persönliche Bestleistungen" defaultSpan={6}>{() => (
           <div className="card">
             <div className="spread">
-              <h2><T k="bests.pb.title">Persönliche Bestzeiten</T></h2>
+              <h2><T k="bests.pb.title">Persönliche Bestleistungen</T></h2>
               <button className="tiny" onClick={() => setNewPb({ distance_m: "", timeStr: "", date: todayIso() })}><T k="bests.pb.addManual">+ Manuell</T></button>
             </div>
             <table>

@@ -1050,6 +1050,17 @@ app.get("/api/tutorial", (_req, res) => res.json({ id: tutorialProfileId() }));
 app.post("/api/tutorial/regenerate", (_req, res) => { const id = regenerateTutorial(todayIso()); res.json({ ok: true, id }); });
 app.delete("/api/tutorial", (_req, res) => { deleteTutorial(); res.json({ ok: true }); });
 
+// v2.10.0: Isabel-Tutorial-Fortschritt je Profil — nur abgeschlossene Abschnitte + Dismiss-Flag (kein Schritt-Resume).
+app.get("/api/tutorial/progress", (_req, res) => res.json(getProfileSetting("tutorial_progress", { done: [], dismissed: false })));
+app.put("/api/tutorial/progress", (req, res) => {
+  const b = (req.body ?? {}) as { done?: unknown; dismissed?: unknown };
+  setProfileSetting("tutorial_progress", {
+    done: Array.isArray(b.done) ? b.done.map(String).slice(0, 20) : [],
+    dismissed: !!b.dismissed,
+  });
+  res.json({ ok: true });
+});
+
 app.get("/api/cp-trend", (req, res) => {
   const months = Math.max(3, Math.min(36, Number((req.query as Record<string, string>).months) || 12));
   const today = todayIso();
@@ -2280,9 +2291,12 @@ function weekActualKm(start: string, end: string): number {
 
 // M-4: reale Wochen-Höhenmeter (Σ D+, Lauf) für den Vert-Load-Trend. sport='Run' wie weekActualKm, damit
 // Rad-Höhenmeter die Lauf-Vert-Last nicht aufblähen. elevation ist nullable → COALESCE.
+// v2.11.0: NUR als „Trail" getypte Einheiten zählen — sonst bläht eine hügelige Straßen-Runde die Trail-
+// Last von Flachland-Läufern künstlich auf (Beta-Befund). Der Typ „Trail" ist ein kanonischer Einheitstyp
+// (CANONICAL_SESSION_TYPES) und im Tracking je Aktivität wählbar.
 function weekActualVert(start: string, end: string): number {
   const row = db
-    .prepare("SELECT SUM(COALESCE(elevation,0)) m FROM activities WHERE sport='Run' AND date BETWEEN ? AND ? AND profile_id=?")
+    .prepare("SELECT SUM(COALESCE(elevation,0)) m FROM activities WHERE sport='Run' AND type='Trail' AND date BETWEEN ? AND ? AND profile_id=?")
     .get(start, end, pid()) as { m: number };
   return Math.round(row?.m || 0);
 }
@@ -2442,7 +2456,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
   // `h` (Stunden) kommt zusätzlich dazu (Fix-Runde, Anzeige in km/h).
   const realByCategory: { run: { km: number; min: number; h: number }; bike: { km: number; min: number; h: number }; strength: { min: number; h: number; tss: number } } =
     { run: { km: 0, min: 0, h: 0 }, bike: { km: 0, min: 0, h: 0 }, strength: { min: 0, h: 0, tss: 0 } };
-  let realVert = 0; // M-4: reale Wochen-Höhenmeter (Σ D+, Lauf) für Tile + D+/km
+  let realVert = 0; // M-4: reale Wochen-Höhenmeter (Σ D+, nur Trail-getypte Läufe) für Tile + D+/km
+  let realTrailKm = 0; // v2.11.0: eigener km-Nenner für D+/km — sonst verwässert Straßen-km die Trail-Steilheit
   // Plan-Erfüllung je gematchter Einheit (v0.14.0, ToDo 12)
   let adherence: { perSession: { session_id: number; date: string; type: string; pct: number; tssOnly: boolean }[]; weekPct: number | null; matchByActivity: Record<number, number> } = { perSession: [], weekPct: null, matchByActivity: {} };
   if (wk) {
@@ -2470,7 +2485,7 @@ app.get("/api/analyze/week/:no", (req, res) => {
       if (a.sport === "Run") {
         realByCategory.run.km += km;
         realByCategory.run.min += min;
-        realVert += a.elevation || 0; // M-4: Vert-Load = Lauf-Höhenmeter (wie weekActualVert)
+        if (a.type === "Trail") { realVert += a.elevation || 0; realTrailKm += km; } // v2.11.0: nur Trail-getypte Läufe
       } else if (a.sport?.startsWith("Bike") || a.sport === "General") {
         realByCategory.bike.km += km;
         realByCategory.bike.min += min;
@@ -2615,8 +2630,8 @@ app.get("/api/analyze/week/:no", (req, res) => {
     realLoadFlag, realKmFlag, adherence, tssRec,
     monotony: monotony.monotony, strain: monotony.strain, monotonyFlag: monotony.flag,
     physioDist, polarizationIndex: polIndex, phaseTarget, realPolarizationFlag,
-    // M-4: Vert-Load (Höhenmeter) — aktuelle Woche + D+/km (Steilheit) + Vorwochen-Reihe für den Mini-Trend.
-    realVert, realVertPerKm: realByCategory.run.km > 0 ? Math.round((realVert / realByCategory.run.km) * 10) / 10 : null, recentWeeksVert,
+    // M-4: Vert-Load (Höhenmeter) — aktuelle Woche + D+/km (Steilheit, nur über die Trail-km) + Vorwochen-Reihe.
+    realVert, realVertPerKm: realTrailKm > 0 ? Math.round((realVert / realTrailKm) * 10) / 10 : null, recentWeeksVert,
   });
 });
 

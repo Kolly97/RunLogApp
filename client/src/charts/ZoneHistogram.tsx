@@ -1,6 +1,6 @@
 // Zonen-Histogramm (v1.4.0, C3): aggregierte Zeit in HF- und Pace-Zonen als horizontale Balkengrafiken.
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
+import { TOOLTIP_STYLE, TOOLTIP_ITEM_STYLE } from "../lib/chartTheme.ts";
 import type { ZoneHistogramData } from "../lib/api.ts";
 
 function fmtMin(m: number): string {
@@ -32,7 +32,7 @@ export default function ZoneHistogram({ data, height = 160 }: Props) {
               <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={fmtMin} />
               <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} width={62} />
               <Tooltip formatter={(v: number) => [fmtMin(v) + ` (${hrTotal > 0 ? Math.round(v / hrTotal * 100) : 0}%)`, "Zeit"]}
-                contentStyle={TOOLTIP_STYLE} />
+                contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
               <Bar dataKey="min" radius={[0, 3, 3, 0]}>
                 {data.hrBands.map((b, i) => <Cell key={i} fill={b.color} />)}
               </Bar>
@@ -48,7 +48,7 @@ export default function ZoneHistogram({ data, height = 160 }: Props) {
               <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={fmtMin} />
               <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} width={90} />
               <Tooltip formatter={tip("Zeit")}
-                contentStyle={TOOLTIP_STYLE} />
+                contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
               <Bar dataKey="min" radius={[0, 3, 3, 0]}>
                 {data.paceBands.map((b, i) => <Cell key={i} fill={b.color} />)}
               </Bar>

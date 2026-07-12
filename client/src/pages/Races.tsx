@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Race, type RaceSplit, type PacingResult } from "../lib/api.ts";
 import { fmtDateY, paceStr, todayIso, num } from "../lib/util.ts";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_STYLE, TOOLTIP_ITEM_STYLE } from "../lib/chartTheme.ts";
 import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
@@ -217,7 +218,7 @@ function PacingPanel({ race, onClose }: { race: Race; onClose: () => void }) {
             <BarChart data={result.splits} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
               <XAxis dataKey="km" tick={{ fontSize: 9 }} interval={Math.floor(result.splits.length / 8)} />
               <YAxis domain={["dataMin - 10", "dataMax + 10"]} tick={{ fontSize: 9 }} tickFormatter={(v) => paceStr(v)} width={38} />
-              <Tooltip formatter={(v: number, name: string) => [paceStr(v) + "/km", name === "pace_s" ? "Soll-Pace" : "GAP"]} labelFormatter={(l) => `km ${l}`} />
+              <Tooltip formatter={(v: number, name: string) => [paceStr(v) + "/km", name === "pace_s" ? "Soll-Pace" : "GAP"]} labelFormatter={(l) => `km ${l}`} contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
               <ReferenceLine y={result.even_pace_s} stroke="var(--muted, #94a3b8)" strokeDasharray="3 3" />
               <Bar dataKey="pace_s" name="pace_s" radius={[1, 1, 0, 0]}>
                 {result.splits.map((s, i) => (

@@ -95,10 +95,10 @@ export default function ProfilePage() {
                   ))}
                 </tbody>
               </table>
-              {/* Tutorial-Profil: Mara-Demo zum Ausprobieren aller Funktionen. */}
+              {/* Tutorial-Profil: Isabel-Demo zum Ausprobieren aller Funktionen (zugleich Guide des Tutorials). */}
               <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <div className="tiny muted" style={{ marginBottom: 6 }}>
-                  <T k="profile.tutorial.hint">„Tutorial: Mara" enthält 18 Monate fiktive, physiologisch plausible Halbmarathon-Daten plus Zukunftsplan, Feedback und Zyklus-Demo. Deine echten Daten bleiben unberührt.</T>
+                  <T k="profile.tutorial.hint">„Tutorial: Isabel" enthält 18 Monate fiktive, physiologisch plausible Halbmarathon-Daten plus Zukunftsplan, Feedback und Zyklus-Demo. Isabel führt auch durch das Tutorial (Lernen-Seite). Deine echten Daten bleiben unberührt.</T>
                 </div>
                 <div className="row" style={{ gap: 8 }}>
                   <button className="sm ghost" onClick={async () => { if (!window.confirm("Tutorial-Profil neu erzeugen? (überschreibt das vorhandene Tutorial-Profil)")) return; await api.regenerateTutorial().catch(() => {}); setMsg("Tutorial-Profil neu erzeugt."); reload(); }}>

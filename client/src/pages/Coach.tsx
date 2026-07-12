@@ -106,7 +106,7 @@ function CoachingBanner({ c, freshness, mode, onMode, busy }: { c: NonNullable<B
   const tierCol = (t: string) => (t === "geprüft" ? "var(--ok)" : "var(--accent, #0ea5e9)");
   const accent = c.healthCap.loadFactor < 1 ? "var(--danger)" : c.layer === "causal" ? "var(--ok)" : "var(--accent, #0ea5e9)";
   return (
-    <div className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${accent}` }}>
+    <div className="card" data-tour="coaching-verdict" style={{ marginBottom: 12, borderLeft: `4px solid ${accent}` }}>
       <div className="spread">
         <h2 style={{ margin: 0 }}>Adaptives Coaching-Verdikt</h2>
         <span className="tiny muted">{c.layer === "causal" ? "kausal geprüft" : "beobachtet (Korrelation)"} · Konfidenz {c.overallConfidence}</span>
@@ -262,7 +262,7 @@ export default function Coach() {
       {blockPlan?.distanceConcept && <DistanceConceptBox c={blockPlan.distanceConcept} />}
 
       {/* Wettkampf-Block bis Renntag */}
-      <div className="card tight" style={{ marginBottom: 12 }}>
+      <div className="card tight" data-tour="block" style={{ marginBottom: 12 }}>
         <div className="spread">
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>Wettkampf-Block</h2>
@@ -280,7 +280,7 @@ export default function Coach() {
         </div>
 
         {blockPlan && blockPlan.weeks.length > 0 ? (
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div data-tour="block-timeline" style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             <div className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}</div>
             <BlockTimeline weeks={blockPlan.weeks} raceDate={blockPlan.raceDate} goalNote={goalNote} onSelectWeek={selectWeek} selectedWeek={selWeek} />
             {blockPlan.reasons?.some((r) => r.code === "rpe_loop") && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api, type Profile } from "./lib/api.ts";
 import { useLang } from "./lib/i18n.tsx";
@@ -17,7 +17,10 @@ import OptionsConfig from "./pages/OptionsConfig.tsx";
 import Lernen from "./pages/Lernen.tsx";
 import Coach from "./pages/Coach.tsx";
 import { PageActionsProvider, PageActionsBar } from "./components/PageActionsBar.tsx";
-import Coachmark from "./components/Coachmark.tsx";
+import TutorialHost from "./components/tutorial/TutorialHost.tsx";
+
+// Dev-Modell-Viewer (v2.11.0): nur im Dev-Modus registriert, lazy — landet nicht im Prod-Erlebnis.
+const IsabelPreview = lazy(() => import("./components/tutorial/cinema/IsabelPreview.tsx"));
 import BrandMark from "./components/BrandMark.tsx";
 import Celebration from "./components/Celebration.tsx";
 import Intro from "./components/Intro.tsx";
@@ -29,6 +32,7 @@ import NerdPage from "./pages/NerdPage.tsx";
 import { applyTheme, getThemePref, setThemePref, type ThemePref } from "./lib/theme.ts";
 import { motionEnabled, getMotionPref, setMotionPref } from "./lib/motion.ts";
 import { useSparkPref, setSparkPref } from "./lib/sparkPref.ts";
+import { useVertPref, setVertPref } from "./lib/vertPref.ts";
 import pkg from "../../package.json";
 
 // T15: globaler Footer-Toggle für Marker-Sparklines (Pref in localStorage, gelesen auf der Methodik-Seite).
@@ -39,6 +43,20 @@ function SparkToggle() {
       title="Marker-Verläufe (Sparklines) auf der Methodik-Seite ein-/ausblenden"
       style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--accent)", cursor: "pointer" }}>
       Sparklines: {on ? "an" : "aus"}
+    </button>
+  );
+}
+
+// v2.11.0: globaler Footer-Toggle für die Vert-Load-Kachel/-Modul (Dashboard/Wochenbericht/Langzeit) —
+// die automatische Trail-Erkennung (Ø hm/Woche) bleibt daneben aktiv, dieser Schalter blendet zusätzlich
+// komplett aus, für alle, die die Höhenmeter-Auswertung grundsätzlich nicht sehen wollen.
+function VertToggle() {
+  const on = useVertPref();
+  return (
+    <button type="button" className="linklike" onClick={() => setVertPref(!on)}
+      title="Höhenmeter-Auswertung (Vert-Load) in Dashboard/Wochenbericht/Langzeit ein-/ausblenden"
+      style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--accent)", cursor: "pointer" }}>
+      Vert-Load: {on ? "an" : "aus"}
     </button>
   );
 }
@@ -62,7 +80,7 @@ const NAV_GROUPS: { label?: string; tk?: string; items: NavItem[] }[] = [
   { label: "Analysieren", tk: "nav.group.analyze", items: [
     { to: "/report", ico: "🖨", tk: "nav.report", label: "Wochenbericht" },
     { to: "/longterm", ico: "📈", tk: "nav.longterm", label: "Langzeit" },
-    { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestzeiten" },
+    { to: "/bests", ico: "🏅", tk: "nav.bests", label: "Bestleistungen" },
     { to: "/methodik", ico: "🔬", tk: "nav.methodik", label: "Methodik" },
     { to: "/races", ico: "🏁", tk: "nav.races", label: "Races" },
   ] },
@@ -138,16 +156,20 @@ export default function App() {
             <Route path="/options" element={<OptionsConfig />} />
             {/* v2.8.0 (Item 4): versteckte Nerd-Seite — bewusst NICHT in NAV_GROUPS gelistet, nur per Tastenkombi erreichbar. */}
             <Route path="/nerd" element={<NerdPage />} />
+            {import.meta.env.DEV && (
+              <Route path="/isabel-preview" element={<Suspense fallback={<p className="muted">Lädt…</p>}><IsabelPreview /></Suspense>} />
+            )}
           </Routes>
         </div>
         <footer className="footer no-print">
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
           <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a> ·{" "}
-          <SparkToggle />
+          <SparkToggle /> ·{" "}
+          <VertToggle />
         </footer>
         <PageActionsBar />
       </main>
-      <Coachmark />
+      <TutorialHost />
       <Celebration />
       <PbWatcher />
       <AchievementWatcher />

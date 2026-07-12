@@ -17,6 +17,7 @@ import EditableGrid, { type EgBlock } from "../components/EditableGrid.tsx";
 import StreakCard from "../components/StreakCard.tsx";
 import Sparkline from "../components/Sparkline.tsx";
 import { useSparkPref } from "../lib/sparkPref.ts";
+import { useVertPref } from "../lib/vertPref.ts";
 import T from "../components/T.tsx";
 import { useT, renderFlag } from "../lib/i18n.tsx";
 
@@ -101,11 +102,13 @@ export default function Dashboard() {
     ? rows.filter((r) => (!r.end || r.end >= range.from) && (!r.start || r.start <= range.to))
     : rows;
   const dashBlocks = blockCards();
-  // M-4: Vert-Load (Trail) — aktuelle Woche + Vorwochen; Tile nur bei nennenswerter Kletterlast über ~4 Wochen.
+  // M-4: Vert-Load (Trail) — aktuelle Woche + Vorwochen; Tile nur bei nennenswerter Kletterlast über ~4 Wochen
+  // UND wenn der Nutzer die Auswertung nicht per Footer-Toggle abgeschaltet hat (v2.11.0).
   const wVert = Math.round(analyze?.realVert ?? 0);
   const wRecentVert: number[] = analyze?.recentWeeksVert ?? [];
   const vertSeriesDash = [...wRecentVert, wVert];
-  const vertTrail = vertSeriesDash.length > 0 && vertSeriesDash.reduce((a, b) => a + b, 0) / vertSeriesDash.length >= VERT_WEEK_HM;
+  const vertPrefOn = useVertPref();
+  const vertTrail = vertPrefOn && vertSeriesDash.length > 0 && vertSeriesDash.reduce((a, b) => a + b, 0) / vertSeriesDash.length >= VERT_WEEK_HM;
 
   return (
     <div>

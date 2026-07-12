@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type PlannedSession, type Activity, type DailyLog, type ZoneSet, type CycleStatus, type CycleSymptom } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
@@ -35,9 +35,12 @@ export default function WeekTrack() {
   const [selDate, setSelDate] = useState<string>(""); // gewählter Tag im Tag-Modus
   const [cycleStatus, setCycleStatus] = useState<CycleStatus | null>(null);
   const [weekSymptoms, setWeekSymptoms] = useState<Record<string, CycleSymptom>>({});
+  const reloadGen = useRef(0); // Bug #78: verhindert, dass ein ÄLTERER reload() (z.B. vor einer manuellen
+  // Zuordnungs-Änderung gestartet) den State eines JÜNGEREN überschreibt — sonst „springt" die Auswahl zurück.
 
   async function reload() {
     if (!week) return;
+    const gen = ++reloadGen.current;
     const [s, a, d, z, an] = await Promise.all([
       api.sessions({ week: week.week_no }),
       api.activities({ from: week.start_date, to: week.end_date }),
@@ -45,6 +48,7 @@ export default function WeekTrack() {
       api.zoneset(week.start_date).catch(() => null),
       api.analyzeWeek(week.week_no).catch(() => null),
     ]);
+    if (gen !== reloadGen.current) return; // eine neuere Anfrage ist schon unterwegs/angekommen — diese verwerfen
     setSessions(s); setActs(a);
     setDaily(Object.fromEntries(d.map((x) => [x.date, x])));
     setZs(z);
@@ -370,6 +374,13 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
   const [zoneUnit, setZoneUnit] = useState<"km" | "min">(() => defaultZoneUnit(a));
   const [saving, setSaving] = useState(false);
   const { sports, sessionTypes } = useOptions();
+  // Bug #78: die Zuordnungs-Auswahl lokal + optimistisch führen (statt direkt am `a`-Prop hängen) — der Fehler
+  // wurde bislang stillschweigend verschluckt (`.catch(() => {})`), sodass ein fehlgeschlagener Save aussah wie
+  // "springt zurück, speichert nicht". Bei Erfolg bestätigt reload() denselben Wert; bei Fehler Rollback + Meldung.
+  const matchOf = (act: Activity) => (act.match_ignore ? "__ignore__" : act.matched_session_id != null ? String(act.matched_session_id) : "");
+  const [matchSel, setMatchSel] = useState(() => matchOf(a));
+  const [matchErr, setMatchErr] = useState("");
+  useEffect(() => { setMatchSel(matchOf(a)); }, [a.match_ignore, a.matched_session_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const tr = useT();
   const set = (patch: Partial<Activity>) => setE((p) => ({ ...p, ...patch }));
   const bike = isBikeSport(e.sport);
@@ -455,10 +466,17 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
       {!isNew && a.id != null && (planned?.filter((p) => p.id != null && p.type !== "Rest").length ?? 0) > 0 && (
         <label className="field" style={{ margin: "0 0 8px", maxWidth: 320 }}>
           <span><T k="track.field.matchSession">Gehört zu geplanter Einheit</T></span>
-          <select value={a.match_ignore ? "__ignore__" : a.matched_session_id ?? ""} onChange={async (x) => {
+          <select value={matchSel} onChange={async (x) => {
             const v = x.target.value;
-            await api.matchActivity(a.id!, v && v !== "__ignore__" ? Number(v) : null, v === "__ignore__").catch(() => {});
-            onChange();
+            const prev = matchSel;
+            setMatchSel(v); setMatchErr(""); // sofort sichtbar, statt auf den Server-Roundtrip zu warten
+            try {
+              await api.matchActivity(a.id!, v && v !== "__ignore__" ? Number(v) : null, v === "__ignore__");
+              onChange();
+            } catch {
+              setMatchSel(prev);
+              setMatchErr("Konnte nicht gespeichert werden — bitte erneut versuchen.");
+            }
           }}>
             <option value="">automatisch zuordnen</option>
             <option value="__ignore__">nicht zuordnen</option>
@@ -466,6 +484,7 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
               <option key={p.id} value={p.id!}>{typeLabel(p.type)}{p.planned_tss ? ` · ${Math.round(p.planned_tss)} TSS` : ""}</option>
             ))}
           </select>
+          {matchErr && <span className="tiny" style={{ color: "var(--danger)" }}>{matchErr}</span>}
         </label>
       )}
       {/* Layout in logische Blöcke (ToDo 13, v0.12.0): oben Sport/Typ/Name, dann Leistung, dann Körper/Last. */}
