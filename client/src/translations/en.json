@@ -81,6 +81,7 @@
   "flag.week_load_low": "Weekly load low: {{w}} TSS vs. avg {{a}} (last 4 wks).",
   "flag.week_load_ok": "Weekly load moderate: {{w}} TSS vs. avg {{a}} (last 4 wks).",
   "footer.guide": "Guide",
+  "footer.changelog": "What's new?",
   "lt.block.adh.hint": "How consistently planned sessions were completed (matched sessions per week).",
   "lt.block.adh.sub": "TSS match + time in target pace zone, per week",
   "lt.block.adh.title": "Plan adherence (weekly avg)",

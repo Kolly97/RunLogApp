@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RunLog — Was ist neu?</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("runlog.docs.theme");
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = t;
+      } catch (e) { /* Default: CSS-Fallback */ }
+    })();
+  </script>
+  <script type="module" src="/src/docs/changelog/main.ts"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#top">Run<b>Log</b></a>
+  <span class="doc-kind">Changelog</span>
+  <span class="spacer"></span>
+  <a class="top-link" href="/usage.html">Anleitung</a>
+  <a class="top-link" href="/">Zur App</a>
+  <button class="theme-toggle" title="Hell/Dunkel umschalten" aria-label="Farbschema umschalten">
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+</header>
+
+<div class="shell" id="top">
+
+  <nav class="toc" aria-label="Inhalt">
+    <input class="toc-filter" type="search" placeholder="Version suchen … ( / )" aria-label="Versionen filtern" />
+    <div class="grp">Die Geschichte</div>
+    <a href="#era-3"><span class="no">3.x</span>Isabel &amp; das Daten-Kino</a>
+    <a href="#era-2"><span class="no">2.x</span>Das Trainingslabor</a>
+    <a href="#era-1"><span class="no">1.x</span>Vom Logbuch zum Coach</a>
+    <a href="#era-0"><span class="no">0.x</span>Das Fundament</a>
+    <div class="grp">Alle Versionen</div>
+    <!-- TOC:VERSIONS (wird von main.ts befüllt) -->
+  </nav>
+
+  <main>
+
+    <section class="hero">
+      <p class="kicker">Changelog · Release-Geschichte</p>
+      <h1>Vom Logbuch zum <em>Trainingslabor</em>.</h1>
+      <p class="lede">Jede Version, vollständig dokumentiert — und darüber die Geschichte: vier Ären, in denen
+        aus einem Wochenplaner ein lokales sportwissenschaftliches Labor wurde. Klick in der Timeline springt
+        zur Version; jede Version klappt ihre vollständigen Details auf.</p>
+      <div class="hero-meta">
+        <div class="m"><b data-stat="versions">—</b><span>Versionen</span></div>
+        <div class="m"><b data-stat="days">—</b><span>Tage Entwicklung</span></div>
+        <div class="m"><b data-stat="entries">—</b><span>Changelog-Einträge</span></div>
+        <div class="m"><b>0</b><span>verlorene Datensätze</span></div>
+      </div>
+      <div class="timeline-wrap" aria-label="Versions-Timeline"></div>
+    </section>
+
+    <!-- ================================================================
+         STORY-LAYER: VIER ÄREN
+         ================================================================ -->
+    <section class="chapter reveal" id="story">
+      <header class="chapter-head">
+        <span class="no">Die Geschichte</span>
+        <h2>Vier Ären, ein Werkzeug</h2>
+        <p class="sub">Was die App in jeder Phase gelernt hat — und was dir das heute bringt. Die vollständigen
+          Details jeder Version stehen darunter im <a href="#volltext">Volltext</a>.</p>
+      </header>
+
+      <div class="era reveal" id="era-0" style="--era-c: var(--series-1)">
+        <span class="era-range">0.1 – 0.15.5 · 11.–16. Juni 2026 · 16 Versionen</span>
+        <h3>Das Fundament</h3>
+        <p>In den ersten sechs Tagen entsteht der Kern: Wochenplanung und Tracking, Profile, der
+          Strava-Import und die Auswertung im TrainingPeaks-Stil — <strong>PMC mit CTL/ATL/TSB</strong> und
+          echtem <strong>rTSS aus NGP</strong> (steigungs-bereinigt nach Minetti) statt grober Schätzwerte,
+          dazu Rad-TSS aus Normalized Power. Es folgen der KW-basierte Saisonplan, Races mit Splits,
+          <strong>Bestzeiten + Critical-Speed-Modell</strong> mit ersten Renn-Prognosen, die Plan-Erfüllung
+          („% Plan") und die VO2max-Einordnung nach Alters-Normen.</p>
+        <p><em>Seitdem gilt:</em> Jede Zahl in der App hat eine dokumentierte Formel, Migrationen sind additiv,
+          und die Trainingsdaten sind unantastbar.</p>
+      </div>
+
+      <div class="era reveal" id="era-1" style="--era-c: var(--series-5)">
+        <span class="era-range">1.1 – 1.12.1 · 17.–29. Juni 2026 · 16 Versionen</span>
+        <h3>Vom Logbuch zum Coach</h3>
+        <p>Die App beginnt zu beraten: Der <strong>Coach „Heute"</strong> gibt erklärbare Tages-Empfehlungen aus
+          Form und Readiness, der <strong>Mesoplaner</strong> baut komplette Blöcke bis zum Renntag, und die
+          <strong>Einheiten-Bibliothek</strong> (Daniels · Norwegian · Seiler · Billat) liefert konkrete
+          Qualitätseinheiten mit Paces aus den eigenen Zonen — ab v1.11 <strong>dynamisch</strong>
+          („5–6 × 1000 m, heute: 5", nach Phase · TSB · Fitness). Dazu kommen Laktat-Diagnostik (LT1/LT2,
+          mod. Dmax), die <strong>Effective VO2max</strong> je Lauf, die N-of-1-Methodik-Seite, Lauf-Power,
+          der frei anordnbare WYSIWYG-Druck von Wochenbericht und Langzeit — und mit v1.10 die Premium-Politur:
+          Dark Mode, Motion-System, Form-Ribbon. Der strukturierte <strong>Workout-Builder</strong> (v1.12)
+          schließt die Ära ab.</p>
+        <p><em>Seitdem gilt:</em> Die App schlägt vor, du entscheidest — und jede Empfehlung nennt ihr Warum.</p>
+      </div>
+
+      <div class="era reveal" id="era-2" style="--era-c: var(--series-3)">
+        <span class="era-range">2.0 – 2.9 · 29. Juni – 8. Juli 2026 · 11 Versionen</span>
+        <h3>Das Trainingslabor</h3>
+        <p>Die zentrale Frage wird messbar: <strong>Welches Training wirkt bei dir?</strong> v2.2 bringt die
+          ML-Trainingssteuerung — <strong>latente Fitness</strong> (Kalman), <strong>Dosis-Wirkung</strong>
+          (Forest-Plot mit ehrlicher Unsicherheit), randomisierte <strong>N-of-1-Experimente</strong> mit exaktem
+          Permutationstest und das Zyklus-Tracking (Consent-first). v2.4 macht den Coach zum
+          <strong>Cockpit</strong>: visuelle Block-Timeline, Wettkampf-Prognose bis zum Renntag, adaptive Regler
+          (ATL:CTL-Band, ACWR-km-Ceiling, RPE-Loop) und das Coaching-Verdikt, das die Evidenz gestuft in den
+          Plan holt. v2.5–2.7 verankern die <strong>MCID an der eigenen Messgenauigkeit</strong>, machen den
+          Zyklus zum vierten Steuer-Input, bündeln den <strong>Python-Rechenkern (PyMC)</strong> ins Paket und
+          kalibrieren mit <strong>Banister</strong> das persönliche Taper — „🎯 Peak ausrichten" wird
+          renntag-genau. v2.8/2.9 ergänzen Nerd-Seite, Research-Mode (LightGBM+SHAP), Fitness-Sprung-Erkennung
+          und die Übertrainings-Frühwarnung an allen Entscheidungs-Flächen.</p>
+        <p><em>Seitdem gilt:</em> beobachtet ≠ kausal — jede Aussage trägt Effekt, Unsicherheit, Konfidenz und
+          ihr Evidenz-Etikett.</p>
+      </div>
+
+      <div class="era reveal" id="era-3" style="--era-c: var(--series-2)">
+        <span class="era-range">3.0 · 12. Juli 2026</span>
+        <h3>Isabel &amp; das Daten-Kino</h3>
+        <p>Das Labor bekommt eine Lehrerin: Das <strong>Isabel-Tutorial</strong> führt in vier Abschnitten plus
+          Nerd-Add-on durch die ganze App — mit echten Aufgaben, Quiz und einem Sandkasten-Profil mit 18 Monaten
+          Demo-Historie. Im <strong>Daten-Kino</strong> erklärt Isabel als 3D-Figur neun Diagramme Beat für Beat:
+          begehbare Szenen mit Kamerafahrten, klickbaren Hotspots und einer Was-wäre-wenn-Sandbox im PMC.
+          Dazu Trail-/Vert-Load-Schärfung, Dark-Mode- und Tracking-Fixes.</p>
+        <p><em>Seitdem gilt:</em> Niemand muss die Modelle verstehen, um sie zu nutzen — aber jeder kann.</p>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         VOLLTEXT: ALLE VERSIONEN
+         ================================================================ -->
+    <section class="chapter reveal" id="volltext">
+      <header class="chapter-head">
+        <span class="no">Volltext</span>
+        <h2>Alle Versionen im Detail</h2>
+        <p class="sub">Vollständig aus der CHANGELOG.md übernommen — nichts gekürzt. Klick auf eine Version
+          klappt ihre Details auf; der Filter links springt direkt zur Version.</p>
+      </header>
+
+      <details class="release" id="unreleased" data-version="Unreleased" data-era="3" open>
+  <summary><span class="v">Next</span><span class="d">in Arbeit</span><span class="t">Unveröffentlichte Änderungen</span></summary>
+  <div class="rel-body">
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Auswahllisten kamen nach einem Neustart (z. B. frischer Electron-Build) teilweise zurück, obwohl sie gelöscht waren — z. B. „REM (h)"/„Tief (h)" bei den Tagesfaktoren (Beta-Befund):</strong> Die idempotenten Options-Seeds liefen bei JEDEM Start per <code>INSERT OR IGNORE</code> und konnten eine bewusste Löschung (✕ in „Auswahllisten") nicht von „taucht zum ersten Mal auf" unterscheiden. Neuer Seed-Ledger (settings-Key <code>options_seed_ledger</code>) merkt sich je (Kategorie, Wert), ob es schon einmal angeboten wurde — gelöschte Standardwerte bleiben jetzt dauerhaft weg, während ein wirklich NEUER Wert aus einem künftigen Update weiterhin automatisch für Bestandsinstallationen ergänzt wird. Bootstrap-sicher: keine bereits gelöschten Werte kommen beim Umstieg auf diesen Fix einmalig zurück. (<code>server/db.ts</code>)</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Einheitstypen aufgeräumt („nur eine VO2max/LT1/LT2, nix Redundantes"):</strong> „Rep" (reines Duplikat von „Repetitions", 0 echte Nutzungen) sowie „VO2short"/„VO2long" (redundant zum kanonischen „VO2" fürs manuelle Tracking) sind aus der Einheitstyp-Dropdown entfernt — additiv deaktiviert, nicht gelöscht: bestehende Aktivitäten/geplante Einheiten mit diesen Werten zeigen weiter korrekt an, und Strava-Auto- Klassifizierung/Intervall-Trend-Analyse nutzen die granularen Werte intern unverändert weiter. (<code>server/db.ts</code> <code>CANONICAL_SESSION_TYPES</code>)</li>
+<li><strong>„Bestzeiten" heißt jetzt „Bestleistungen"</strong> — passt besser, da die Seite längst nicht nur Zeiten zeigt (Critical Power, W′, Labor-VO2max). Umbenannt in Navigation, Seitentitel, Hilfetexten und im Tutorial.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v3-0-0" data-version="3.0.0" data-era="3" data-date="2026-07-12">
+  <summary><span class="v">v3.0.0</span><span class="d">2026-07-12</span><span class="t">Isabel-Tutorial &amp; Chart-Kino komplett, Dark-Mode-/Trail-/Tracking-Fixes</span></summary>
+  <div class="rel-body">
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Dark Mode: schwarzer Text bei Hover-Tooltips (Zonenverteilung, Intensitäts-Donut, Zonen-Histogramm, Renn-Pace-Splits):</strong> Recharts fällt bei Bar-/Pie-Charts, deren Farbe nur je <code>&lt;Cell&gt;</code> (nicht am <code>&lt;Bar&gt;</code>/ <code>&lt;Pie&gt;</code> selbst) gesetzt ist, in der Tooltip-Legende auf <code>entry.color || '#000'</code> zurück — unlesbar auf dunklem Grund. Neuer <code>TOOLTIP_ITEM_STYLE</code> (chartTheme.ts) erzwingt <code>var(--ink)</code>, ergänzt an allen vier betroffenen Charts; dazu eine hartkodierte Achsenbeschriftungsfarbe (<code>#46505f</code>) durch die theme-fähige <code>var(--chart-tick)</code> ersetzt. (<code>ZoneDistribution.tsx</code>, <code>IntensityDonut.tsx</code>, <code>ZoneHistogram.tsx</code>, <code>Races.tsx</code>)</li>
+<li><strong>Modal öffnete am Seitenanfang statt am Klickort (Wochenplanung „Einheit bearbeiten", Vorlagen verwalten, Onboarding-Tour):</strong> <code>position: fixed</code> bricht, sobald ein Seiten-Vorfahre transform/filter setzt (containing block) — hier die Route-Wechsel-Animation <code>.route-enter</code>, die jede Seite umschließt. Betroffene Overlays hängen jetzt per Portal direkt an <code>document.body</code>; <code>OverlayPortal</code> ist dafür aus dem Tutorial-Ordner in eine app-weite <code>components/OverlayPortal.tsx</code> gewandert (Tutorial-Importe bleiben über einen Re-Export stabil). (<code>SessionModal.tsx</code>, <code>TemplateManager.tsx</code>, <code>OnboardingTour.tsx</code>)</li>
+<li><strong>Tracking: „nicht zuordnen" bei der Plan-Zuordnung wirkte manchmal nicht / sprang zurück:</strong> Der Speicherfehler wurde bislang still verschluckt (<code>.catch(() =&gt; {})</code>), sodass ein fehlgeschlagener Save aussah wie „speichert nicht". Die Auswahl ist jetzt lokal + optimistisch mit Rollback und sichtbarer Fehlermeldung bei echtem Fehlschlag; zusätzlich schützt ein Reload-Generationszähler in <code>WeekTrack.tsx</code> davor, dass eine überholte, noch laufende Server-Antwort eine neuere überschreibt.</li>
+<li><strong>Tutorial-Profil: vereinzelte Alt-Installationen trugen noch „(Mara Demo)" in den Aktivitätsnamen</strong> — eine frühe Migration (vor Einführung von <code>regenerateTutorial</code>) hatte nur den Profilnamen umbenannt, ohne die Aktivitäten neu zu erzeugen. Wird jetzt erkannt (Legacy-Label-Scan) und vollständig neu generiert. (<code>server/tutorial.ts</code>)</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Höhenmeter (Vert-Load) zählen nur noch bei „Trail"-getypten Läufen</strong> statt bei jeder Aktivität mit <code>sport=Run</code> — eine hügelige Straßenrunde bläht die Trail-Last von Flachland-Läufern nicht mehr künstlich auf. D+/km („Steilheit") bezieht sich jetzt korrekt auf die Trail-Kilometer statt auf alle Lauf-Kilometer (sonst hätte reines Straßenvolumen die Steilheit verwässert). Der kanonische Einheitstyp „Trail" existierte serverseitig bereits, ist jetzt auch im Client-Fallback ergänzt. Dazu ein neuer Footer-Toggle „Vert-Load: an/aus", um die Auswertung unabhängig von der automatischen ~450-hm/Woche-Erkennung komplett auszublenden. (<code>server/index.ts</code> <code>weekActualVert</code>, <code>lib/vertPref.ts</code>, <code>Dashboard.tsx</code>, <code>WeekReport.tsx</code>, <code>LongTerm.tsx</code>)</li>
+</ul>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Chart-Kino, Etappe K3 — eine Isabel überall + Feinschliff (nach 8 Entscheidungsfragen):</strong> (1) <strong>Abschluss-Szenen auf GLTF:</strong> Die Abschnitts-Enden und das Zieleinlauf-Finale nutzen jetzt dieselbe GLTF-Isabel wie das Daten-Kino (geteilter Actor-Cache; Run-Clip auf der Kreisbahn mit Kurvenlage, Wave + Freuden-Hüpfer im Finale) — die Bahn bleibt als Erzähl-Ort, das Licht ist ans Holodeck angeglichen; die Primitiv-Figur ist Geschichte. (<code>IsabelScene.tsx</code>) (2) <strong>PMC-Bänder (K3-ToDo):</strong> Trainingsphasen- und Zyklus-Leiste liegen jetzt wie im echten Chart unter der 3D-Szene (Base/Build/Specific/Taper + Krank-Zelle · Menstruation/Follikel/Ovulation/Luteal als zusammenhängende Segmente) und bekommen einen eigenen Erklär-Beat („Die Bänder unten") + Hotspot — PMC hat jetzt 9 Beats. (<code>cinema/scenes/pmc.ts</code>) (3) <strong>Hotspots deutlich sichtbarer (K3-ToDo):</strong> größere Kugel + weicher additiver Glüh-Halo + dauerhaft sichtbares Label je Leuchtpunkt. (4) <strong>Labels clippen nie mehr (K3-ToDo, image-41):</strong> alle Sprite-Labels mit halbtransparentem Plättchen, depthTest aus + hoher renderOrder; Zyklus-Phasen-/Wert-Labels zusätzlich versetzt. (<code>cinema/sceneKit.ts</code>, <code>cinema/scenes/cycle.ts</code>) (5) <strong>Aufbau-Reveal:</strong> jede Szene wächst beim Öffnen in ~1 s von links nach rechts (Clipping-Plane nur auf Chart-Materialien, Labels faden parallel; „Animationen aus" → sofort da). (6) <strong>Adaptiver Render-Loop:</strong> volle Bildrate nur bei Aktivität (Kamerafahrt, Isabel unterwegs, Orbit, Sandbox, Reveal), sonst ~30 fps — kühler und leiser auf Laptops. (7) <strong>Qualitäts-Preset:</strong> Auto-Detect (zähe Start-Frames → pixelRatio 1 + Halos aus) plus manueller ⚙-Schalter Auto/Hoch/Niedrig oben rechts (persistiert in localStorage). (<code>cinema/ChartCinema.tsx</code>)</li>
+<li><strong>Chart-Kino, Etappe K2 — alle 9 Szenen sind da:</strong> Zusätzlich zur PMC-Szene erklärt Isabel jetzt in 3D: <strong>Latente Fitness</strong> (Kalman-Kurve mit ±SD-Hülle + Quell-Punkte Labor/Rennen/Läufe; Isabel läuft die 18-Monats-Kurve hinauf), <strong>eff. VO2max je Lauf</strong> (Zacken-Rauschen vs. Trend, Labor-Anker, „ein Punkt ist Wetter, zehn sind ein Trend"), <strong>Reizkanäle/Forest</strong> (schwebende 94%-HDI-Stäbe an der Null-Wand, MCID-Band, „Easy negativ richtig lesen", beobachtet ≠ kausal), <strong>Wellness-Signale</strong> (HRV/Ruhepuls/Schlaf mit persönlichen Normalbändern, 3-Tage-Alarm-Cluster), <strong>Readiness &amp; Gesundheit</strong> (geglättete Kurve, November- Einbruch als Querverweis auf PMC/Wellness, aktueller Absturz auf 23), <strong>Schwellen-Trend</strong> (Treppen statt Rampe; ehrliche Pace↔CP-Divergenz als Prüfsignal), <strong>Lauf-Power</strong> (Power-Duration-Kurve, CP-Asymptote, W′-Batterie als Fläche + W′-bal-Sägezahn einer 6×3′-Einheit, tiefster Stand 6 %) und <strong>Zyklus</strong> (Phase×Reiz als begehbare Turmlandschaft, +1.4 Follikel×Schwelle vs. −1.4 späte Luteal, Consent/gestuft/bounded). Jede Szene folgt der Didaktik-Schablone Wert → Lesen → Interpretieren → Programm-Reaktion → Deine Reaktion, mit kuratierten Zahlen aus Isabels Screenshots (eine Wahrheitsquelle je Szene) und klickbaren Hotspots. (<code>client/src/components/tutorial/cinema/scenes/*</code>)</li>
+<li><strong>Tutorial-Integration + Hub:</strong> Die Szenen ersetzen die bisherigen 2D-Chart-Erklärungen im Fluss — Abschnitt 2: Morgen-Signale (bei den Tagesfaktoren), Schwellen-Trend + Lauf-Power (Langzeit-Schritt); Abschnitt 3: Status-Trilogie (latente Fitness, eff. VO2max, Readiness) nach dem Werkbank-Schritt, der Forest-Plot-Say wurde zur Dose-Szene, der zweite Zyklus-Say zur Zyklus-Szene. Hub-Karten zeigen die ehrlichen neuen Dauern (Abschnitt 2 ~17 min, Abschnitt 3 ~21 min); die „🎬 Daten-Kino"-Karte auf der Lernen-Seite listet alle 9 Szenen einzeln. (<code>sections.ts</code>, <code>meta.ts</code>, <code>Lernen.tsx</code>)</li>
+<li><strong>Chart-Kino, Etappe K1 (v2.11.0-Grundstein) — Isabel erklärt das PMC in 3D:</strong> Neues „Daten-Kino": Vollbild-3D-Szene im Holodeck-Look (App-Farben, leuchtende Ribbons, Bodengrid), in der Isabel als <strong>echtes Low-Poly-GLTF</strong> (Basis „Animated Woman" von Quaternius, CC0, zur Laufzeit in RunLog-Farben umgefärbt + Pferdeschwanz; <code>client/public/assets/isabel.glb</code> + Lizenzdatei) das Diagramm Beat für Beat erklärt — Didaktik je Szene: Wert zeigen → lesen → interpretieren → Programm-Reaktion → deine Reaktion. Die <strong>PMC-Szene</strong> rechnet ihre kuratierte 16-Wochen-Story (3:1-Rhythmus, Krankheitswoche, Taper, Renntag) mit der echten EWMA-Mathematik; alle Zahlen in den Texten kommen aus denselben Arrays wie die Geometrie (heute: CTL 51 · ATL 74 · TSB −14 · Renntag +12). Extras: Isabel <strong>läuft die TSB-Linie ab</strong> (Landschafts-Beat), klickbare <strong>Hotspots</strong> (heute/Krankheitswoche/Renntag springen zum Beat), geführte Kamerafahrten mit <strong>freiem Orbit</strong> dazwischen, Ausruf-Blasen am Kopf („TSB −14!"), und eine <strong>Was-wäre-wenn-Sandbox</strong>: Slider schiebt eine harte Extra-Woche in den Plan — ATL/TSB-Geisterlinien morphen live, Kommentar erklärt die Programm-Reaktion (Ramp-Warnung, Entschärfen). Einstiege: als <code>chart3d</code>-Step in Tutorial-Abschnitt 2 (ersetzt die Text-Erklärung der TSB-Faustregeln) <strong>und</strong> einzeln über die neue „🎬 Daten-Kino"-Karte auf der Lernen-Seite. Reduced-Motion: harte Schnitte statt Fahrten, Posen statt Laufen. Alles lazy (eigener Cinema-Chunk, GLB lädt on demand) — Haupt-Bundle unverändert. Neu: <code>client/src/components/tutorial/cinema/</code> (ChartCinema, isabelActor, sceneKit, meta, scenes/pmc), geteilte Karten-UI nach <code>tutorial/ui.tsx</code> extrahiert. Die 7 übrigen Szenen folgen als Etappe K2.</li>
+<li><strong>Isabel-Tutorial, Etappe C — das Nerd-Add-on ist da:</strong> Der optionale fünfte Abschnitt öffnet sechs Motorhauben — TSS/PMC, VDOT/Critical Speed, latente Fitness (Kalman/RTS), Dosis-Wirkung (Ridge/Bayes inkl. Retention/Halbwertszeit), Permutationstest (N-of-1) und Banister-Taper. Je Modell eine eigene Three.js- 3D-Intuition (neuer Step-Typ <code>model</code>, <code>NerdVisual.tsx</code>: echte Daten-Skizzen — EWMA-Kurven über Tagesbalken, Tempo-Dauer-Asymptote, Kalman-Band mit Quell-Punkten, Forest-Plot, Permutations-Nullverteilung mit θ_obs, Fitness-/Ermüdungs-Zerfall mit Renntag-Marker) plus aufklappbare <strong>echte Formel</strong> (aus <code>ToDo/tutorial_plan/ML_MATHEMATIK.md</code>, wie implementiert notiert) und 2 Quizfragen (Halbwertszeit, warum nur Randomisierung kausal ist). Abschluss verlinkt die Nerd-Seite (→→←←↑↓↑↓) und den Lab Mode.</li>
+<li><strong>Three.js-Politur der Isabel-Szenen (Etappe C):</strong> Kontaktschatten, der Isabel folgt (löst sich beim Hüpfer leicht), Kurvenlage beim Rundenlauf, sanfte handgeführte Kamera-Drift, Hemisphärenlicht statt flachem Ambient. Three.js liegt jetzt in einem geteilten Lazy-Chunk (IsabelScene + NerdVisual) — das Haupt-Bundle bleibt unberührt.</li>
+<li><strong>Isabel-Tutorial, Etappe B — Abschnitt 3 „Analyse" + Abschnitt 4 „Coach" sind da:</strong> Die beiden Hub-Karten „in Arbeit" sind jetzt spielbar. <strong>Abschnitt 3</strong> führt in drei Unterkapiteln durchs Trainingslabor: 3a Verdikt „Was hilft dir?" + Dosis-Wirkung (Forest-Plot, Retention/MCID, echte Aufgabe: Analyse auf Isabels Profil selbst rechnen lassen), 3b Regime-Inferenz + Kausal-Experiment (N-of-1, Isabels laufender Trial als Anschauung) + Research-Mode, 3c Zyklus (optional, mit Consent-/Bounded-Ehrlichkeit). <strong>Abschnitt 4</strong> geht Isabels Weg zum Halbmarathon: Rennen + Wunschzeit → Block laden → Timeline/Phasen/Readiness lesen → 🎯 Peak ausrichten (Banister vs. Heuristik erklärt) → Woche übernehmen → Coaching-Verdikt &amp; „Warum diese Einheit" — Finale ist Isabels Zieleinlauf als eigene Three.js-Szene (Zielbogen + Jubelpose). Beide Abschnitte enthalten je 2 Quizfragen mit ehrlichem Feedback (beobachtet ≠ kausal, Taper-Physiologie). (<code>client/src/components/tutorial/sections.ts</code>, <code>types.ts</code>, <code>IsabelScene.tsx</code>)</li>
+<li><strong>Tutorial übersteht den Profilwechsel:</strong> Abschnitt 3/4 lassen den Nutzer geführt auf das Sandkasten-Profil „Tutorial: Isabel" und zurück wechseln. Der Profilwechsel lädt die App komplett neu — das Tutorial merkt sich den laufenden Schritt jetzt via <code>sessionStorage</code> und setzt nach dem Reload exakt dort fort (stirbt mit dem Fenster, darum startet ein Abschnitt in einer neuen Sitzung weiterhin vorn). (<code>TutorialHost.tsx</code>)</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Daten-Kino: Kamera-Einfahrt + Isabel ohne Zopf (Kolja-Entscheid):</strong> Jede Szene beginnt jetzt mit einer filmischen Einfahrt — die Kamera startet weiter draußen und erhöht und fährt in ~2,4 s auf die erste Beat-Position, parallel zum Aufbau-Reveal („Animationen aus" → sofort in Position). Der transplantierte Pferdeschwanz ist komplett entfernt (Dutt pur; <code>isabel-zopf.json</code> gelöscht, Zopf-Code + Viewer-Regler ausgebaut — der Dev-Viewer /isabel-preview bleibt als Clip-/Look-Betrachter). (<code>cinema/ChartCinema.tsx</code>, <code>cinema/isabelActor.ts</code>, <code>cinema/IsabelPreview.tsx</code>)</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Doppelte Beschriftungen im Daten-Kino + Zopf-Sitz (Kolja-Befunde):</strong> Die Hotspot-Leuchtpunkte trugen ein eigenes Label zusätzlich zu den Szenen-Beschriftungen derselben Stelle („heute"/„heute", „Renntag"/„Renntag 🏁", „Krankheitswoche"/„krank") — die Hotspot-Labels sind entfernt, die Szenen beschriften ihre Stellen allein (geprüft: an jedem Leuchtpunkt existiert ein Szenen-Label). Außerdem setzt Isabels Zopf jetzt am Dutt an statt zu tief am Nacken (<code>ZOPF_DEFAULT.y</code> 0.04 → 0.11). (<code>cinema/ChartCinema.tsx</code>, <code>cinema/isabelActor.ts</code>)</li>
+<li><strong>PMC-Sandbox zeigte die Renntag-Folgen zu harmlos + „gelbes Tuch" entfernt (Kolja-Befunde, K1):</strong> (1) Der Was-wäre-wenn-Regler sabotiert jetzt den ganzen TAPER (Extra-Last in jeder Restwoche statt nur Woche 13) — bei voller Stärke bleibt die Ermüdung bis zur Startlinie bei ~75 und die Form kippt am Renntag ins Minus; die Geister-Formlinie färbt sich rot, ein dynamisches „Renntag: TSB −5 ✗"-Label macht es unübersehbar, und der Kommentar bleibt ehrlich (CTL steigt auf dem Papier, ist aber nicht abrufbar). (2) Die prozedural am Kopf-Bone angebaute Langhaar-Geometrie schwang mit der Bone-Animation unkontrolliert mit und klippte in die Kamera — entfernt; das eingebaute Modell-Haar bleibt hellblond, ein echtes Langhaar-Mesh ist ein K3-Asset-Thema. (<code>cinema/scenes/pmc.ts</code>, <code>cinema/isabelActor.ts</code>)</li>
+<li><strong>Daten-Kino öffnete eingeklemmt im Seiten-Layout statt als Vollbild:</strong> <code>position: fixed</code> bricht, sobald ein Seiten-Vorfahre transform/filter setzt (containing block) — auf der Lernen-Seite war genau das der Fall. Alle Kino-Overlays (inkl. Lade-Fallbacks) hängen jetzt per React-Portal direkt an <code>document.body</code> (<code>OverlayPortal</code> in <code>tutorial/ui.tsx</code>). (Beta-Befund von Kolja, K1)</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Die „perfekte Isabel" (nach 6 Entscheidungsfragen):</strong> Basis ist jetzt die Quaternius-Frau mit hochgestecktem Haar (CC0, poly.pizza/m/nIItLV9nxS) — <strong>gleiches Gesten-Rig wie die ursprüngliche Isabel</strong> (Winken, Zeigen, Interact, alle 24 Clips), benannte Materialien → RunLog-Look per Umfärbung (blond, blaues Kleid, Teal-Gürtel, Amber-Schuhe, heller Teint). Dazu der <strong>transplantierte blonde Pferdeschwanz</strong> aus Quaternius' „Woman in Dress" (CC0): einmalig per Node-Skript aus dem GLB extrahiert (Material „Hair", Dreiecks-Filter auf die Zopf-Region, Z-up→Y-up, <code>isabel-zopf.json</code>, 16 kB) und per attach() unter dem Dutt am Head-Bone verankert = Messy-Bun-mit-Zopf-Look. Sitz justierbar im neuen <strong>Dev-Modell-Viewer</strong> <code>/isabel-preview</code> (nur Dev-Modus, lazy): Clips durchschalten, Orbit, Regler für Zopf-Offset/Größe/Neigung, Werte werden zum Einbaken geloggt. Fällt der Zopf-Load aus → Dutt pur (kein Blocker). (<code>cinema/isabelActor.ts</code>, <code>cinema/IsabelPreview.tsx</code>, <code>App.tsx</code>, <code>client/public/assets/isabel{.glb,-zopf.json}</code>)</li>
+<li><strong>Isabel: Modell mit ECHTEM langem blondem Haar + zierlichere Größe:</strong> Nach mehreren erfolglosen prozeduralen Haar-Anläufen („Wurm") ist jetzt ein fertiges Modell im Einsatz: Quaternius' blonde „Animated Woman" (CC0, poly.pizza/m/9kF7eTDbhO) — modelliertes, über die Schultern fallendes Haar, gleicher Low-Poly-Look. <code>isabel.glb</code> getauscht, Actor angepasst: Clip-Namen dieses Rigs (Idle/Walking/Running/Jump/PickUp …), Gesten als Einmal-Clips mit weichem Rückblenden zu Idle (Gruß = fröhlicher Hüpfer, „Interact" = PickUp; ein Zeige-Clip existiert nicht — das Zeigen übernehmen Highlight-Puls, Kamera und Ausruf-Blase). Prozeduraler Haar-/Verlet-Code komplett entfernt. Isabel bleibt zierlich skaliert (1,60 m). (<code>cinema/isabelActor.ts</code>, <code>client/public/assets/isabel.glb</code>)</li>
+<li><strong>Isabel-Look nach Vorlage angepasst:</strong> lange hellblonde Haare (Ansatz-Schwung + langer Fall bis Rückenmitte + Spitze) statt kurzem Pferdeschwanz, hellerer Teint — konsistent in beiden Darstellungen: GLTF-Actor im Daten-Kino (<code>cinema/isabelActor.ts</code>, Haar-Materialien vereinheitlicht hellblond) und stilisierte Figur der Abschluss-Szenen (<code>IsabelScene.tsx</code>, Haar federt sanft im Lauf/Jubel mit).</li>
+<li><strong>Methodik: <code>?tab=</code>-Deep-Link wirkt auch nach dem Mount</strong> — das Tutorial (und künftige Links) kann zwischen Status/„Was wirkt?"/Experimente/Zyklus navigieren, ohne dass die Seite neu gemountet werden muss. (<code>Methodik.tsx</code>)</li>
+<li><strong>Neue Spotlight-Anker (<code>data-tour</code>)</strong> auf den Analyse-/Coach-Karten für das Tutorial: Verdikt, Dosis-Wirkung, Regime-Inferenz, Kausal-Experiment, Zyklus, Coaching-Verdikt, Wettkampf-Block(+Timeline), Banister-Taper — reine Attribute, kein Verhalten geändert.</li>
+<li><strong>Isabel-Tutorial, Etappe A (v2.10.0-Grundstein):</strong> Neues interaktives Tutorial mit Guide-Persona <strong>Isabel</strong> — läuft als Overlay über der echten App, mit echten Aufgaben (Engine wartet und prüft automatisch, bis z. B. die Athletendaten oder die erste geplante Einheit wirklich da sind), Mini-Wissens-Checks mit freundlichem Feedback und einem Three.js-Abschluss-Moment je Abschnitt (lazy geladen, eigener Chunk — kostet das Haupt-Bundle nichts). Enthalten: <strong>Abschnitt 1 „Start"</strong> (Profil, LT1/LT2-Zonen mit/ohne Laktattest, Strava geführt inkl. ehrlicher Rate-Limit-Erklärung + Skip-Pfad, Verfügbarkeit, Auswahllisten, Layout) und <strong>Abschnitt 2 „Planen &amp; Dokumentieren"</strong> (Wochenkopf CTL/ATL/TSB lesen, Einheit planen, Tracking + Plan-%, Tagesfaktoren/Feedback als Analyse-Futter, Wochenbericht, Langzeit). Abschnitte 3 (Analyse), 4 (Coach) und das Nerd-Add-on folgen als eigene Etappen und sind im Hub als „in Arbeit" sichtbar. Auto-Start beim ersten App-Start (skippbar); Fortschritt je Abschnitt pro Profil (<code>tutorial_progress</code>, additiv; <code>GET/PUT /api/tutorial/progress</code>). Neu: <code>client/src/components/tutorial/</code> (Engine + Step-Registry + Isabel-3D-Szene), Dependency <code>three</code>.</li>
+<li><strong>Lernen-Seite wird Tutorial-Hub:</strong> oben die Abschnitts-Karten mit Fortschritt/Wiederholen (Erstdurchlauf in fester Reihenfolge, danach frei), darunter das bestehende Glossar, ganz unten eine dezente „Für Entdecker"- Fußnote mit den Tastenkombis der zwei versteckten Seiten (Nerd-Seite →→←←↑↓↑↓ · Lab Mode ↑↑↓↓←→←→).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Tutorial-Profil „Mara" → „Isabel":</strong> Die Demo-Athletin heißt jetzt Isabel und ist zugleich der Tutorial-Guide (eine Persona, eine Story). Bestehende Mara-/Alt-Installationen werden beim Start automatisch migriert (Marker-basierte Erkennung unverändert — echte Profile bleiben strikt unberührt). (<code>server/tutorial.ts</code>)</li>
+</ul>
+<h5 class="cat-rem">Entfernt</h5>
+<ul>
+<li><strong>Alte Coachmark-Tour</strong> („Was ist was" / „Wie profitiere ich", v1.9/v1.10): geht im neuen Isabel-Tutorial auf — eine geführte Erfahrung statt zwei parallele. usage.html bleibt als Nachschlagewerk erhalten. (<code>client/src/components/Coachmark.tsx</code> entfernt, Einstiege auf der Lernen-Seite ersetzt; <code>scripts/betaShots.mjs</code> unterdrückt statt der Tour jetzt das Tutorial-Welcome.)</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-9-0" data-version="2.9.0" data-era="2" data-date="2026-07-08">
+  <summary><span class="v">v2.9.0</span><span class="d">2026-07-08</span><span class="t">Beta-Test-Fixrunde: Übertrainings-Frühwarnung, Trail-/Kraft-Last, Bestzeiten-Grid &amp; Research-Mode-Klarheit</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Vert-Load (Höhenmeter) + Kraft-Last sichtbar gemacht (Beta-Befund M-4):</strong> Für Trail/Ultra-Läufer:innen gibt es jetzt ein <strong>Trail-Modul</strong> — Σ Höhenmeter/Woche als Kennzahl + <strong>D+/km</strong> (Steilheit) + Mini-Trend, im Wochenbericht, in der Langzeit-Ansicht und (bei aktiven Trail-Athleten) als Dashboard-Kachel. Es erscheint <strong>nur</strong>, wenn Klettern ein relevanter Trainingsanteil ist (Ø ≥ 450 hm/Woche, real-seitig, nur Läufe) — kein Ballast für Flachland-Läufer. Zusätzlich zeigt die <strong>„Kraft / Mobility"-Kategorie</strong> jetzt die real geleistete <strong>Kraft-Last</strong> (Σ Kraft-TSS) statt nur der Zeit. Rein additiv (keine Migration; <code>activities.elevation</code>/<code>tss</code> existierten bereits); die Kraft bleibt bewusst <strong>außerhalb</strong> der „Was wirkt bei dir?"-Dosis-Kanäle (sportwiss.: keine Pace-Zone/kein VO2-Outcome). Betrifft <code>server/index.ts</code> (weekActualVert/recentWeeksVert/realVert/Kraft-TSS) + <code>WeekReport.tsx</code>/<code>LongTerm.tsx</code>/<code>Dashboard.tsx</code>.</li>
+<li><strong>Latente Fitness bekommt eine sportwissenschaftliche Kurz-Deutung:</strong> Unter der Trajektorie steht jetzt ein knapper, ehrlicher Kommentar zur Fitness-Entwicklung — Richtung (Aufwärts/Stabil/Abwärts) im jüngsten Fenster + Rate (Punkte je 4 Wochen) + Abstand zum bisherigen Höchststand. Eine Richtung wird nur behauptet, wenn die Veränderung klar über dem Unsicherheitsband (±SD) liegt (sonst „stabil"/„stabilisiert nach Rückgang"). Ursachen werden als typische Zusammenhänge genannt (zu wenig aerober Reiz/Erholung/Kranken-Pause), <strong>beobachtet ≠ kausal, kein Trainingsbefehl</strong>, Framing motivierend statt alarmistisch. (<code>LatentFitnessCard.tsx</code>, reine Anzeige aus den vorhandenen Punkten.)</li>
+<li><strong>Chronisches Übertraining/RED-S wird an den Entscheidungs-Flächen sichtbar (Beta-Befund H-1):</strong> Chronische Wellness-Signale (Übertraining/RED-S/HRV-Drift) waren bisher nur auf der Methodik-Werkbank sichtbar — Dashboard, Coach und „Was hilft dir?"-Verdikt blieben grün und empfahlen sogar „mehr VO2max" für eine überreichte Athletin. Jetzt: (1) eine First-Class-Karte <strong>„Gesundheit &amp; Erholung"</strong> erscheint prominent im Dashboard, sobald ein high/warn- Flag aktiv ist (sonst unsichtbar, kein Dauer-Alarm); (2) die <strong>Heute-Empfehlung</strong> bietet bei aktiver Signatur keine Intensität mehr an, sondern rät zu Erholung; (3) das <strong>„Was hilft dir?"-Verdikt</strong> wird per Gesundheits-Gate gedämpft — bei aktiver Übertrainings-Signatur wird „Priorität: Erholung" zur Headline und die Intensitäts-Empfehlung nicht mehr als Top ausgespielt (umrahmen + dämpfen, die Achsen-Details bleiben sichtbar). Auslöser ist dieselbe Flag-Politik wie <code>coachHealthCap</code> (eine Wahrheitsquelle); die Health-Flags fließen in den Verdikt-Fingerprint ein, damit die Dämpfung bei Flag-Wechsel greift. Für gesunde Athlet:innen (keine Flags) bleibt alles unverändert.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Zyklus-Heatmap: Farbsättigung an die CI-Belastbarkeit gekoppelt (Beta-Kosmetik):</strong> Eine kräftig gefärbte Zelle neben einem „CIs überlappen 0"-Verdikt suggerierte mehr, als der Text zuließ. Zellen, deren Konfidenzintervall die 0 enthält (nicht belastbar), werden jetzt deutlich blasser dargestellt; nur CI-ohne-0-Zellen bekommen volle Sättigung. Die Zahl/Caption bleibt unverändert (<code>CycleScaffoldCard.tsx</code>).</li>
+<li><strong>Footer-„Stand"-Datum an <code>package.json</code> gekoppelt (Beta-Kosmetik):</strong> Das Datum im Footer war hart im Code kodiert (und lief der Version hinterher). Es kommt jetzt aus einem neuen <code>buildDate</code>-Feld in <code>package.json</code> — dieselbe eine Quelle wie <code>pkg.version</code>, beim Release mitgepflegt. (Version selbst wird weiterhin von Kolja gebumpt.)</li>
+<li><strong>Passive Inferenz erklärt jetzt aktiv, was für eine belastbare Aussage fehlt (Beta-Befund M-6):</strong> Wer konsistent trainiert, erzeugt keinen Block-Kontrast — die Karte blieb dauerhaft „nicht belastbar", ohne zu sagen warum. Der Hinweistext nennt jetzt konkret, dass es dafür bewusst kontrastierende Blöcke (mehrere Wochen mit klar unterschiedlichem Schwerpunkt) oder einen gezielten N-of-1-Trial braucht; dazu ein Button, der direkt zur „Experimente"-Tab führt. Betrifft <code>blockInference</code> (Regime + Schwerpunkt) in <code>server/analysis.ts</code> und <code>Methodik.tsx</code>.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Widerspruch Dashboard ↔ Wochenplanung bei der Gesundheitseinschätzung:</strong> Die Readiness-Karte der Wochenplanung zeigte nur den <strong>akuten Tageswert</strong> („Readiness grün · passt wie geplant"), während das Dashboard denselben Tag als Übertrainings-Trend warnte — das las sich widersprüchlich. Die Wochenplanungs-Karte berücksichtigt jetzt dieselben chronischen Gesundheits-Flags (mehrtägiger Trend) wie das Dashboard: Tageswert und Trend werden als <strong>zwei Horizonte</strong> dargestellt („Tageswert ok, aber mehrtägiger Trend mahnt zur Erholung: …"), Rahmenfarbe entsprechend. Kein „passt wie geplant" mehr, während anderswo gewarnt wird. (<code>WeekPlan.tsx</code>)</li>
+<li><strong>SHAP „berechnen" blieb bei manchen Profilen wirkungslos (z. B. Mira) — obwohl die Engine verfügbar war:</strong> Ein früherer research_shap-Lauf, der über den TS-Fallback endete (weil der Python-Sidecar damals fehlte), wurde als „fertig" gespeichert und von <code>startRun</code> dauerhaft <strong>wiederverwendet</strong> — jeder „neu berechnen"-Klick gab den alten, leeren Lauf zurück (kurzes Laden, dann nichts). Ein research_shap-„fertig"-Lauf gilt jetzt nur noch dann als wiederverwendbarer Cache, wenn er <strong>echt gerechnet hat</strong> (<code>available</code>) oder legitim wegen zu wenig Daten leer blieb (<code>insufficient</code>); ein Engine-fehlt-Lauf wird beim nächsten Klick neu gerechnet, sobald die Engine da ist. (<code>mlJobs.ts</code>)</li>
+<li><strong>Serie („Streak") wird bei Erholungsdefizit dezent zurückgenommen (Beta-Befund M-1):</strong> Eine nie unterbrochene Serie ist bei aktivem Übertrainings-/RED-S-Signal kein Achievement, sondern ein Warnzeichen. Sind chronische Gesundheits-Flags (Übertraining/RED-S/HRV-Drift) aktiv, wird die 🔥-Serie im Dashboard entsättigt/gedämpft und ein Hinweis „Erholung zählt auch" eingeblendet — die Serien-Berechnung selbst bleibt unverändert. Dafür liefert <code>/api/today</code> jetzt zusätzlich die chronischen <code>healthFlags</code> (bisher nur auf der Methodik-Werkbank sichtbar).</li>
+<li><strong>Erfolgs-Feier blockiert den Inhalt nicht mehr + keine unphysiologischen Block-Feiern (Beta-Befund M-3):</strong> Die Achievement-Feier war ein zentrales Modal, das z. B. die Coach-Taper-Karte überdeckte — jetzt ein dezenter Ecken-Toast (unten rechts), der die Seite darunter nicht mehr blockiert. Zusätzlich wird „Trainingsblock abgeschlossen" nur noch für plausibel lange Blöcke (≤ 16 Wochen) gefeiert; überlange Monoblöcke (z. B. „41 Wochen Base") gelten nicht als sinnvoll periodisierter Block und werden nicht mehr gefeiert.</li>
+<li><strong>Research-Mode (SHAP) wirkte wie „bricht ab", wenn die Rechen-Engine fehlte (Beta-Befund M-5):</strong> Fehlte der Python-Sidecar (LightGBM/SHAP), landete der Lauf als „fertig, aber nichts verfügbar" und die Methodik-Karte zeigte irreführend „noch nicht berechnet". Jetzt sauber in drei Zustände getrennt: „noch zu wenig Daten" · <strong>„Engine/Sidecar nicht verfügbar"</strong> (mit Hinweis, dass die Engine im gepackten Build enthalten ist / in einer Dev-Umgebung ggf. neu installiert werden muss) · „gerechnet, aber Fit schwach (Cross-Val-R²)". Neues Feld <code>engineUnavailable</code> (Server → <code>/api/ml/research-shap</code> → UI).</li>
+<li><strong>Bestzeiten-Raster klappte manchmal in eine schmale Spalte (Beta-Befund H-2):</strong> Beim Direktaufruf von <code>/bests</code> konnte das anpassbare Chart-Raster (<code>EditableGrid</code>, continuous-Modus) alle Karten 1-spaltig in ~340 px stapeln, während rechts ~1000 px leer blieben — Ursache war die unzuverlässige Breitenmessung von <code>react-grid-layout</code>s <code>WidthProvider</code> (misst nur auf window-resize, bleibt bei einer initial zu schmal gemessenen Breite hängen). Jetzt misst das Raster die reale <code>.eg-stage</code>-Breite selbst per <code>ResizeObserver</code> (re-misst, sobald der Container seine wahre Breite erreicht) und übergibt sie explizit an das Grid, mit Mindestbreiten-Floor gegen 0/zu-schmal-Messungen.</li>
+</ul>
+<h5 class="cat-etc">Dev</h5>
+<ul>
+<li><strong>Beta-Test-Personas + Test-Harness (interne Test-Infrastruktur, keine Nutzerwirkung):</strong> Acht fiktive Athlet:innen (<code>profile_id</code> 101–108) mit je 60–96 Wochen physiologisch handgeschnitzter Voll-Datenlage, strikt additiv auf eigenen Profil-IDs (echte Profile &lt;100 unberührt; Integritäts-Assertion für Profil 1). Deterministisch (seeded RNG), idempotent, löschbar über einen Beta-Marker (<code>beta_persona_ids</code>). Personas decken Baseline (Clara), Chaos/Multisport (Jonas), Übertraining (Petra), regelmäßigen (Mira) und unregelmäßigen Zyklus (Sina), Cold-Start/Master (Tom), Elite-Hochlast (Noah) und Trail-Ultra (Yara) ab und treffen/verfehlen die ML-Datengates gezielt (Doppelnutzen: Beta-Test + spätere Modell-Trainings-/Validierungs-Fixtures). Neu: <code>server/betaPersonas.ts</code>, Runner <code>_seedBeta.ts</code> (Backup + Integritäts-Snapshot), Compute-Pipeline <code>_computeBeta.ts</code> (TSS-Recompute + latent/dose/readiness/banister + method-bayes + research_shap + Zyklus-Backfill), Playwright-Screenshot-Harness <code>scripts/betaShots.mjs</code> (Onboarding-Touren unterdrückt, Profil-Assertion, Methodik-Tabs), <code>playwright</code> als devDependency. Befund-Reports unter <code>beta-test/BETA_FINDINGS.md</code> + <code>beta-test/ML_FIXTURES.md</code> (+ Screenshots).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-8-0" data-version="2.8.0" data-era="2" data-date="2026-07-06">
+  <summary><span class="v">v2.8.0</span><span class="d">2026-07-06</span><span class="t">Retrospektive Fitness-Sprung-Erkennung, Nerd-Seite mit ML-Plots, kontinuierliche Reps/Sets-Progression &amp; Research-Mode</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Retrospektive Fitness-Sprung-Erkennung (v2.8.0 Item 2):</strong> Neue Karte „Fitness-Sprünge" auf der Langzeit-Seite erkennt Zeitpunkte, an denen sich die latente Fitness (L2) signifikant verändert hat — <strong>symmetrisch</strong>, Fortschritt UND Rückschritt (sachlich gerahmt, kein Vorwurf), über Mean-Shift-Segmentierung (<code>detectChangepoints</code>, bereits vorhandener Detektor) + Hedges' g zwischen den beiden angrenzenden Segmenten (Schwelle ≥0.5, „medium"). Zu jedem Fenster: Kontext der <strong>Wochen DAVOR</strong> (nicht danach — Trainingsadaption braucht Zeit, das Fenster nach dem Sprung ist das Ergebnis, nicht die Ursache): Zonen-Mix + Polarisierungs-Index, Season-Phase, Schlaf/HRV/Stimmung/Stress-Durchschnitte (rein deskriptiv, kein Ranking — bei einem einzelnen Fenster wäre eine Kausal-Aussage statistisch nicht haltbar). <strong>Konfundierungs-Schutz:</strong> überlappt das Fenster mit einer Taper-/Entlastungsphase oder einem Health-Flag, wird das gekennzeichnet, damit ein taper-bedingter Anstieg nicht fälschlich als Trainingserfolg gelesen wird. Kein zweiter Detektor (CTL/rohe VDOT) — die latente Fitness bleibt der alleinige, bewusst „saubere" Outcome. (<code>server/ml/fitnessGainWindows.ts</code> neu, <code>hedgesG</code> aus <code>cycleTraining.ts</code> exportiert/wiederverwendet, <code>GET /api/ml/fitness-gain-windows</code>, <code>FitnessGainWindowsCard.tsx</code> in <code>LongTerm.tsx</code>)</li>
+<li><strong>Versteckte „Nerd-Seite" mit Rohdaten-Diagrammen + Methodik der ML-Engines (v2.8.0 Item 4):</strong> Neue, bewusst nicht in der Navigation gelistete Route <code>/nerd</code>, nur über eine globale Tastenkombi erreichbar (→→←←↑↓↑↓, Vorbild <code>KonamiLab.tsx</code>, navigiert statt Overlay). Read-only, keine Recompute-Buttons. 7 Panels zeigen die tatsächlichen Rohdaten-Diagramme HINTER den Kennzahlen (nicht nur Zahlen) plus einen knappen Methodik/Mathematik-Block je Panel: (1) L2 — geglättete latente-Fitness-Kurve MIT den rohen Quellpunkten überlagert (Labor-VO2max/Race-VDOT/ eff. VO2max, farblich unterschieden — neuer Endpoint <code>/api/ml/latent-fitness/sources</code>, dieselbe Berechnung wie der echte Fit, nur zur Anzeige) + Kalman-Filter-Erklärung (Zustand/R je Quelle); (2) L3 — echter Forest-Plot (Wiederverwendung von <code>ForestPlot.tsx</code>) für Mediator- UND Volumen-bereinigte Effekte, VIF-Ladder-Tabelle, Fit-Diagnostik (VIF/λ/Bootstrap — war schon berechnet, jetzt erstmals zurückgegeben); (3) Dosis-Wirkungs-Kernel — echte Zerfallskurven exp(−t/τ) je Kanal PLUS die Was-wäre-wenn-Trajektorie als Band-Chart (nicht nur der Peak-Wert als Zahl); (4) F3 — Mini-Forest-Plot der Regime-β + die komplette rohe wöchentliche Exposure-Zeitreihe als Liniendiagramm mit der latenten Fitness überlagert (neues Datum-Array im Response, vorher nur intern berechnet und verworfen); (5) Phase×Reiz als echte Heatmap (Zellfarbe = Effekt, Deckkraft = Posterior-Gewicht, reiner Reuse von <code>/api/cycle-training/evidence</code>); (6) prospektive N-of-1-Trials — Paar-Diagramm (Arm A vs. B je Block, aus <code>blocks_json</code> geparst) zeigt die Rohdaten hinter θ, plus den exakten Permutations-p-Wert (volle Null-Verteilung bewusst nicht rekonstruiert — nicht persistiert, ehrlich gelabelt); (7) das bestehende 3-Achsen-Verdikt (<code>TrainingVerdictCard</code> wiederverwendet). Jedes Panel hat einen eigenen „Methodik"-Block mit der tatsächlichen Formel/dem Verfahren (Kalman-Zustandsraum, Ridge+Block-Bootstrap+VIF, Bayes-Zerfallskern, Exposure-EWMA, Shrinkage-Gewichtung, exakter Vorzeichen-Permutationstest) — gegen den jeweiligen Code verifiziert, nicht geraten. (<code>NerdPage.tsx</code>, <code>NerdKeybind.tsx</code>, <code>App.tsx</code>; additive Erweiterungen in <code>mlJobs.ts</code>/<code>index.ts</code>: <code>getLatentFitnessSources</code>, <code>diagnostics</code> in der Dosis-Wirkungs-Meta, <code>dates</code> in <code>/api/ml/regime-latent</code>)</li>
+<li><strong>Kontinuierliche Reps/Sets-Progression über Phasen hinweg (v2.8.0 Item 1):</strong> Reps/Sets-Vorgaben folgten bisher vier getrennten, teils inkonsistenten Pfaden (<code>repsForFitness</code>/<code>repsBand</code>/Struktur-Baum/Segmente) und einem phasen-lokalen <code>progress</code>, das bei jedem 4.-Wochen-Deload auf den Phasen-Anfangswert zurückfiel (sägezahnend) — außerdem ignorierten Struktur-Baum und Mehrsegment-Einheiten (Ladder/Cut-down/Mixed/Float) Taper/RPE-Loop-Volumen komplett (echter Nebenbug). Jetzt läuft alles über eine geteilte <code>resolveBand()</code> und einen <strong>kontinuierlichen, CTL-basierten Fortschritts-Score</strong> (<code>ctlProgress</code>, gedeckelt bei +35 % CTL über der Block-Baseline, mit natürlichem — nicht geratchetem — Dip nach jedem Deload) statt des phasen-lokalen <code>progress</code>. Ein <strong>Sprung- Limiter</strong> (max. Δ0,15/Woche) schützt zusätzlich vor unplausiblen Ein-Wochen-Sprüngen bei Datenkorrekturen — verifiziert bis zu einem künstlichen CTL-Sprung von 34→90 in einer Woche (ctlProgress bleibt ≤0,15/Woche). <code>setsByFitness</code> (4 Templates: <code>lt2_ladder</code>/<code>lt2_cutdown</code>/<code>lt2_mixed</code>/<code>race_mix</code>) von fixem Wert auf <code>[lo,hi]</code>-Band migriert (wie <code>repsByFitness</code>, mit demselben <code>RB()</code>-Helfer). (<code>workouts.ts</code> <code>resolveBand</code>, <code>analysis.ts</code> <code>ctlProgress</code>/<code>CTLPROGRESS_CEILING_MULT</code>/<code>MAX_CTLPROGRESS_STEP_PER_WEEK</code>, <code>BlockDay.prescription</code>)</li>
+<li><strong>Progressive Steady/LT1-Struktur + Qualität im Longrun (v2.8.0 Item 1b, sportwissenschaftlich fundiert):</strong> Eine lange LT1-Einheit lief bisher immer als EIN durchgehender Block, unabhängig von der Fitness. Jetzt evolviert die Struktur mit <code>ctlProgress</code> — durchgehend (niedrig) → aufgeteilt in Wiederholungen (mittel, „Cruise Intervals", Daniels) → eingebettet in den Longrun (hoch, neues Template <code>long_lt1_segments</code>, Pfitzinger/Canova-Prinzip „medium long run"): der separate Steady-Slot wird dann zu einem lockeren Tag, die Last wandert in den Longrun. Greift an BEIDEN Stellen, an denen eine LT1-Einheit entstehen kann (Base-Rotation UND Schwerpunkt-Swap-Pool), über eine gemeinsame <code>applyLt1Progression()</code>. (<code>workouts.ts</code> <code>long_lt1_segments</code>, <code>applyLt1Progression</code>, <code>BlockPrefs.ctlProgress</code>)</li>
+<li><strong>Research-Mode: LightGBM+SHAP-Engine (v2.8.0 Item 3, größter Umbau):</strong> Neue, standardmäßig ausgeblendete Sektion ganz unten unter „Was hilft dir?" (Methodik-Seite) — zeigt sich dort als eigene Zeile mit einem „aktivieren"-Knopf (schaltet <code>research_mode_enabled</code> um, kein separater Einstellungs-Zugang nötig). Ein nichtlineares Baum-Modell (LightGBM) auf denselben Wochen-Daten wie das lineare Dosis-Modell (Kanal-CTL aerob/threshold/vo2) <strong>plus</strong> neuen Features aus <code>session_feedback_v2</code> (Ø RPE, Ø gefühlt-vs-erwartet, Ø Readiness, Interaktionsterm VO2-Wochenlast×Readiness — bisher in keinem Modell genutzt). Zeigt SHAP-Erklärungen <strong>global</strong> (was erklärt die Woche-zu-Woche-Schwankung am meisten) UND <strong>lokal</strong> (Drill-down je Woche: „warum war diese Woche gut/schlecht"), rein explorativ/Hypothesen-generierend wie <code>exploratory.ts</code> — fließt <strong>nicht</strong> in die Trainingssteuerung oder den Verdikt-Fingerprint ein. Zeitlich geblockte Cross-Validation liefert eine ehrliche Fit-Güte (Cross-Val-R²) als <strong>Plausibilitäts-Gate</strong>: bei schlechtem Fit zeigt die UI eine Warnung statt eines vermeintlich verlässlichen Ergebnisses. <strong>Mindest- Datenmenge-Gate</strong> (≥26 Wochen + ≥15 Feedback-Einträge) zeigt bei zu wenig Daten einen ehrlichen Hinweis statt eines stummen deaktivierten Buttons. Darf mehrere Stunden rechnen (kein Timeout-Zerschneiden, eigener 6h-Stale-Schwellenwert getrennt von den schnellen Läufen) und wird wie der Verdikt-Cache per Daten-Fingerprint zwischengespeichert — ein Seitenaufruf löst nie ungefragt einen neuen mehrstündigen Lauf aus. <strong>Packaging:</strong> LightGBM+SHAP werden jetzt fest ins Electron-Paket gebündelt; da das vorgefertigte macOS-Wheel von LightGBM zur Laufzeit Homebrews <code>libomp.dylib</code> braucht (auf einem sauberen Endnutzer-Mac nicht vorhanden), wird LightGBM beim Packaging aus dem Quellcode ohne OpenMP gebaut (Single-Thread, kein Runtime-Dependency) — verifiziert lauffähig (SHAP-Additivität exakt korrekt). (<code>server/ml-sidecar/engine.py</code> <code>job_research_shap</code>, <code>scripts/build-sidecar.mjs</code>, <code>mlJobs.ts</code> <code>MlKind "research_shap"</code>/<code>buildResearchShapDesign</code>/<code>researchShapSufficiency</code>/<code>getResearchShap</code>, <code>db.ts</code> Tabelle <code>ml_research_shap</code>, <code>GET /api/ml/research-shap</code>, <code>TrainingVerdictCard.tsx</code> neue <code>ResearchShapPanel</code>-Sektion)</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Dark-Mode-Kontrast in der Options-Navigation:</strong> <code>.opt-nav button:hover</code> und <code>.opt-nav .badge</code> nutzten hartcodiert <code>#eef2f7</code> (hell) statt eines theme-fähigen Tokens — im Dark Mode kaum lesbar. Jetzt <code>var(--surface2)</code> (bereits im Rest der App für denselben Zweck verwendet). (<code>styles.css</code>)</li>
+<li><strong>Wochenplan-Modal: lange Einheiten liefen unten aus dem Viewport:</strong> <code>SessionModal.tsx</code> hatte kein <code>maxHeight</code>/<code>overflowY</code> — bei langen strukturierten Einheiten waren Speichern/Abbrechen unerreichbar. Jetzt <code>maxHeight: 84vh</code> + <code>overflowY: auto</code>. (<code>SessionModal.tsx</code>)</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-7-0" data-version="2.7.0" data-era="2" data-date="2026-07-06">
+  <summary><span class="v">v2.7.0</span><span class="d">2026-07-06</span><span class="t">Reverse-from-Race-Coach-Engine, physiologische Fitness-Prognose &amp; Coach-Feinschliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>„Dein optimales Taper" — athleten-kalibriertes Banister-Fitness−Fatigue-Modell (Coach-Karte + Peak-Ausrichtung):</strong> Neue Karte im Coach sagt dir aus DEINEN Leistungsmarkern (eff_VO2max/Race-VDOT/Labor), <strong>wie viele Tage reduzierte Last bis zum Form-Peak</strong> (renntag-genau — 9 statt 7/14) und <strong>wie viel Gewinn</strong> — mit ehrlichem Unsicherheits-Band, Prognose ≠ Messwert. Zweikomponenten-Modell <code>perf = p0 + k1·Fitness − k2·Fatigue</code>: der <strong>Fit läuft auf Wochenraster</strong> (schnell + entrauscht, τ1≈42 d Fitness / τ2≈11 d Fatigue), die <strong>Taper-Simulation in Tagesraster</strong> (τ_Tage = 7·τ_Wochen, konsistente Skala) aus dem Steady-State bei deiner <strong>chronischen</strong> Last (charakteristisch, tagesform-unabhängig). <strong>Identifizierbarkeit</strong> (Fitness/Fatigue kollinear) über <code>k2 = ρ·k1</code>, Prior <strong>ρ≈1.5</strong> (Banister-typisch k2&gt;k1 — nur so entsteht ein Taper-Vorteil): PyMC (gebündelt) schätzt ρ und — bei belastbarer Datenlage (≥5 Rennen/Labor, adaptives Gate) — auch τ mit; TS-Fallback fixiert ρ ehrlich. Engine-Badge (pymc/ts) + „unsicher"-Hinweis bei dünner Datenlage. <strong>„🎯 Peak ausrichten" nutzt jetzt diese Taperzeit — renntag-genau:</strong> die Last wird <strong>tages-präzise</strong> heruntergefahren (rampende Last in der Grenzwoche vor der Race Week, ab dem exakten Taper-Start-Datum = Renntag − Tage — <strong>nicht</strong> auf ganze Wochen gerundet); die Race Week behält ihren Wochen-Taper. Spiegelt den bestehenden Tuneup-Mini-Taper, keine Wochen-Kopplung berührt; Tageszahl + Taper-Start-Datum werden genannt. Sonst Heuristik-Fallback. Rein beobachtend; <strong>die PMC bleibt unangetastet</strong>. Neu: pures <code>server/ml/banister.ts</code>, Sidecar-kind <code>banister_ff</code> (<code>engine.py</code>), Lauf-Art <code>banister</code> + <code>GET /api/ml/banister</code>, <code>BanisterTaperCard.tsx</code> + <code>alignPeak</code>-Verdrahtung, <code>blockPlan</code>-Tages-Taper-Overlay (<code>analysis.ts</code> <code>taperDays</code>, <code>index.ts</code>, <code>api.ts</code>); <code>MODEL_VERSION 0.7.1</code>.</li>
+</ul>
+<h5 class="cat-chg">Geändert (Trainingslogik)</h5>
+<ul>
+<li><strong>Aufbau nutzt jetzt mehr Volumen für höhere CTL-Ramp (ACWR-gedeckelt bei 1.45):</strong> Der km-Ceiling (Volumen- Sicherung) deckelte bisher bei <strong>ACWR 1.3</strong> — strenger als der TSS-Cap (1.45). Jetzt darf das Wochen-Volumen bis <strong>ACWR 1.45</strong> wachsen (an den TSS-Cap angeglichen), und produktive Aufbauwochen zielen an den oberen sicheren ACWR-Rand (Base ~1.30, Belastung ~1.42 → Progression über den Mesozyklus). So steigt die Fitness mit MEHR Volumen spürbar schneller (Runner: +21 statt +14 CTL/16 Wo bei mehr Trainingszeit) — Deloads, Health-Cap und die harte CTL-Ramp-Grenze (≤8) bleiben. Physik-Hinweis: eine Wochen-Ramp von 4 braucht bei CTL ~50 ACWR ~1.52 (&gt;1.45); innerhalb ACWR ≤1.45 liegt das Maximum bei ~3.4 und die volle 4 wird mit steigender CTL (~60) erreicht. (<code>load.ts</code> <code>kmCeiling maxAcwr=1.45</code>, <code>analysis.ts</code> <code>PRODUCTIVE_ACWR_BASE/BUILD</code>)</li>
+<li><strong>CTL-Ramp im Aufbau sanfter geführt (physiologisch sinnvoller Fitnessanstieg):</strong> Die Warnschwelle „CTL-Ramp hoch" liegt jetzt bei <strong>6/Woche</strong> (vorher 8) — der aggressive Bereich wird früher markiert. Zusätzlich deckelt die Engine die Wochenlast jetzt hart so, dass die <strong>projizierte Ramp 8 CTL/Woche nie übersteigt</strong> (Verletzungs-/ Übertrainings-Grenze), unabhängig von der ACWR-Deckelung — greift v. a. bei niedriger CTL/Wiedereinstieg. (<code>analysis.ts</code>, <code>CTL_RAMP_WARN</code>/<code>RAMP_HARD_CAP</code>)</li>
+<li><strong>Distanz-abhängiger Taper — ein Marathon tapert jetzt richtig (behebt „soll kaum tabern"):</strong> Der Tages-Taper wird jetzt <strong>immer</strong> angewandt (nicht nur bei „Peak ausrichten") und respektiert einen <strong>distanz-typischen Mindest-Taper</strong>: Marathon ~14 Tage, HM ~10, 10k ~7, 5k ~5. Die persönliche (Banister-)Taper-Schätzung darf <strong>verlängern, aber nicht unterschreiten</strong> — auch wenn die Eigen-Analyse „nur 3 Tage" sagt (bei wenig Renn-Erfahrung ist der distanz-typische Taper die sichere Untergrenze). Vorher tapierte der Normal-Pfad einen Marathon faktisch nur die Race Week. (<code>analysis.ts</code> <code>blockPlan</code> <code>taperFloorWeeks</code>/<code>taperFloorDays</code>; <code>Coach.tsx</code> <code>alignPeak</code> fürs Wording).</li>
+<li><strong>Progressive Überlast im Coach-Block (Fitness steigt übers Jahr statt flach zu plateauen):</strong> Das TSS-Zielband war bisher rein an die AKTUELLE CTL gekoppelt (<code>base = CTL×7 × Phasen-Ratio</code>) und lief über die Blöcke in ein Erhaltungs-Gleichgewicht — für bereits Trainierte sichtbar flach (img-30). Produktive Aufbauwochen (Base/Belastung) rampen jetzt das <strong>Band-Ziel-CTL</strong> modest über die aktuelle CTL (kumulativ +2 %/Aufbauwoche, gedeckelt bei +10 %), sodass die Last kontinuierlich steigt. <strong>ACWR-gedeckelt:</strong> die fertige Wochenlast wird hart auf 1.45× acute:chronic (relativ zur echten CTL) geklemmt, Deloads (3:1) und Taper bleiben; Specific (Schärfung) rampt nicht. Das Load-Impact-% bleibt ehrlich gegen die echte CTL. Neuer Grund je Woche: „Progressive Überlast: Aufbau-Ziel +X %". Verifiziert (Runner, 26 Wo.): CTL-Verlauf Δ+22.6 statt Δ+17.3, weiter steigend statt Plateau. (<code>analysis.ts</code> <code>blockPlan</code>/<code>weekStructureRecommendation</code>, Konstanten <code>PROG_RAMP_PER_WEEK</code>/<code>PROG_LIFT_CAP</code>/<code>ACWR_WEEK_CAP</code>)</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Ziel-Prognose &amp; VO₂max-Kurve konsistent + horizont-abhängig (war widersprüchlich):</strong> Die Ziel-Machbarkeit („nötig +X VDOT/Woche · machbar") rechnete noch mit der ALTEN linearen 0.4-VDOT/Woche-Logik, während die Block-VO₂max-Kurve schon die neue physiologische Sättigung nutzte — dadurch behauptete die Prognose z. B. eine 2:25-Marathon (VDOT 69) sei „machbar", obwohl der Block nur ~62 VO₂max projizierte. Jetzt speist <strong>dieselbe <code>projectVdot</code>-Projektion</strong> beide: Machbarkeit, Renntag-Prognosezeit UND die Kurve. Zusätzlich ist der realistisch erreichbare Zuwachs <strong>horizont-abhängig</strong> (mehr Vorbereitungszeit ⇒ mehr möglich, mit √Jahre-Sättigung und Fitness-Kopfraum) statt eines fixen Deckels — realistischer für lange Aufbauten. Ergebnis: 2:25 zeigt jetzt ehrlich „sehr ambitioniert" + realistische Endzeit (~2:37, VO₂max ~63) mit Hinweis „Ziel bräuchte VO₂max ~69"; erreichbare Ziele bleiben „machbar". (<code>analysis.ts</code> <code>projectVdot</code>/<code>realisticVdotReach</code>, <code>index.ts</code> <code>/goal-gap</code>, <code>WeekPlan.tsx</code> GoalGapCard)</li>
+<li><strong>Taper-Band jetzt sichtbar lila (war fälschlich grau „Deload"):</strong> In der Block-Timeline prüften <code>phaseColor</code>/ <code>shortPhase</code> den generischen Deload-Fall VOR der Race Week — die Renn-Woche ist technisch auch „deload" und wurde daher grau statt lila „Taper" gezeichnet (und mit den Recovery-Wochen zu einem grauen Block verschmolzen). Jetzt gewinnen Taper (lila) und Recovery ihre eigene Farbe/Label vor dem Deload-Fang. (<code>BlockTimeline.tsx</code>)</li>
+<li><strong>Voller Renn-Anlauf tapert (nicht nur die Renn-Woche):</strong> Der Volumen-Taper spannt jetzt den GANZEN zusammen- hängenden Anlauf (alle Race-Specific-Wochen + Race Week) aus der Phasenfolge — vorher blieb die erste Race-Specific-Woche hoch belastet, weil die Taper-Länge an der distanz-typischen Zahl statt am tatsächlichen Specific-Block hing. (<code>analysis.ts</code> <code>taperSpanWks</code>)</li>
+<li><strong>Form-Peak fällt jetzt auf den Renntag (Taper-Adäquanz, behebt „Peak zu früh"):</strong> Die „Race Specific"-Wochen vor dem Rennen liefen bisher als voll belasteter Block (2+ harte Einheiten, Ratio 1.15–1.32) — die Ermüdung wurde nicht abgebaut, die Renn-Woche erreichte nur TSB ~+2…+5 (statt des Frische-Sweet-Spots ~+12), und der Form-Peak fiel auf eine FRÜHERE Deload-Woche. Jetzt läuft der ganze Renn-Anlauf (Race-Specific-Wochen + Race Week) als <strong>progressiver Volumen-Taper</strong>: ein einheitlicher, fallender <code>taperRatio</code> senkt <strong>Qualitäts-Volumen UND Easy/Long-Last</strong> Richtung Renntag und <strong>reduziert die Anzahl harter Einheiten</strong> (früh 2 → Mitte 1 kurze Schärfe → Renn-Woche 0, kein Longrun); Intensität/Pace bleibt. Ergebnis (Runner): Renn-TSB landet bei ~+11…+15, der Peak trifft bei realistischen Blocklängen (10–18 Wo) den Renntag. Sehr lange Einzelblöcke (24 Wo+) können weiterhin einen früheren Form-Peak zeigen — das ist trainingswissenschaftlich ehrlich (Fitness plateaut; ein Tune-up-Rennen/kürzerer Schlussblock ist dann sinnvoll), und der Hinweis „Peak zu früh" bleibt sichtbar. (<code>analysis.ts</code> <code>blockPlan</code>, <code>TAPER_START_RATIO</code>/ <code>TAPER_RACE_RATIO</code>, race-week-index-basierter Taper-Ramp)</li>
+<li><strong>VO₂max-/VDOT-Prognose physiologisch korrigiert (war unrealistisch):</strong> Die Fitness-Projektion stieg bisher <strong>linear</strong> mit 0.4 VDOT/Woche Richtung Ziel — über lange Blöcke ergab das absurde Zuwächse (+25 VDOT) und einen unphysiologischen Geraden-Anstieg. Jetzt folgt sie einer <strong>Sättigungskurve mit abnehmendem Grenzertrag</strong> (schnell früh, dann Plateau) und ist auf einen <strong>realistisch erreichbaren Saison-Zuwachs gedeckelt</strong>, der mit steigender Fitness knapper wird (diminishing returns nahe dem Leistungs-Plateau): z. B. ~+4 VDOT über einen langen Block bei mittlerer Fitness, weniger bei schon hoher. Utopische Ziele werden gedeckelt + ehrlich als nicht erreichbar markiert, statt sie fälschlich zu projizieren. Betrifft die VO₂max-Kurve (T10) UND die projizierten Trainings-Paces. (<code>analysis.ts</code> <code>projectVdot</code> + <code>resolvePlannedSession</code>, <code>realisticVdotReach</code>/<code>vdotHeadroom</code>)</li>
+<li><strong>Taper-Guard: kein harter Reiz mehr kurz vor dem Rennen (behebt „VO2max 2 Tage vorm Wettkampf"):</strong> Der Coach-Block enthielt in der Race Week fix eine effort-5-Qualität (VO2/Renntempo), die je nach Harttag-Profil gefährlich nah an den Renntag rutschen konnte. Jetzt wird jede geplante harte Einheit (effort ≥ 4 = LT2/VO2/ Renntempo/lange Berg-Reps) in den letzten 4 Tagen vor dem Renntag automatisch auf einen lockeren Lauf heruntergestuft (Steigerungen bleiben als neuromuskuläre Öffner erlaubt); transparent via Grund „Taper-Schutz". Greift datumsbasiert phasenübergreifend, nicht nur in der Race Week. (<code>analysis.ts</code> <code>blockPlan</code>)</li>
+<li><strong>Marathon-Aufbau ≠ Halbmarathon-Aufbau (behebt „1:1 dasselbe wie vor dem Halbmarathon"):</strong> In der Aufbauphase unterschieden sich Marathon- und HM-Block bisher nur im Longrun. Jetzt betont der <strong>Marathon-Build</strong> Schwellen-/ Kraftausdauer-Volumen <strong>ohne VO2/Speed</strong> (der Marathon lebt von aerober Schwelle + MP-Ausdauer), während der <strong>HM-Build</strong> zusätzlich gelegentliche VO2-/Renntempo-Schärfe bekommt — plus die bestehenden Longrun-Unterschiede (MP-Blöcke für Marathon, schnelles Ende für HM). (<code>workouts.ts</code> <code>pickWeekWorkouts</code>)</li>
+<li><strong>Quality-Tage werden jetzt eingehalten (Coach-Block):</strong> Der Tages-Scheduler klassifizierte harte Einheiten bisher über den Typ-String, in dem „Steady/LT1" und „Renntempo" <strong>nicht</strong> als hart galten — sie landeten fälschlich als Easy-Füller auf dem ersten freien Tag (meist Montag) statt auf den eingestellten Qualitätstagen (z. B. Di/Do). Jetzt wird die <strong>authoritative Rolle</strong> aus <code>pickWeekWorkouts</code> (quality|long|easy|core) durch <code>PlannedUnit</code> bis in <code>scheduleWeek</code> durchgereicht; Sub-Threshold-Steady und Renntempo zählen korrekt als Qualität und werden auf Harttage mit ≥48 h Abstand gelegt (Typ-Heuristik bleibt Fallback für rohe Aufrufe). (<code>planbuilder.ts</code>, <code>analysis.ts</code>)</li>
+<li><strong>„🎯 Peak ausrichten" wirkt jetzt wiederholt (nicht nur einmal):</strong> Sobald die Saison-Wochen phasiert waren (eigener Saisonplan oder „Phasen übernehmen"), konnte eine geänderte Taper-Länge den Form-Peak nicht mehr verschieben — <code>derivePhaseSequence</code> behielt gepinnte Phasen bei und ignorierte den neuen Taper. Jetzt legt die Peak-Ausrichtung das <strong>Taper-Fenster</strong> (Race Week + Race-Specific-Wochen) explizit neu über bestehende Pins, räumt veraltete Taper-Wochen bei kürzerem Taper weg, und lässt die Aufbau-Phasen davor unangetastet. (<code>analysis.ts</code> <code>derivePhaseSequence</code>/<code>blockPlan</code>, <code>forceTaperWindow</code>)</li>
+</ul>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Erwartete VO₂max je Woche in der Block-Timeline (T10):</strong> Die Wettkampf-Block-Timeline zeigt jetzt zusätzlich zur Form-Readiness-Kurve eine <strong>prognostizierte VO₂max/VDOT-Kurve</strong> je Woche (gestrichelt, eigene Achse, Tooltip + Legende). Werte kommen aus der bestehenden Fitness-Projektion (Richtung Ziel-VDOT, gedeckelt) und sind klar als „prognostiziert" gelabelt (beobachtet ≠ prognostiziert) — man sieht auf einen Blick, wie die erwartete Fitness bis zum Renntag steigt. (<code>analysis.ts</code> <code>BlockWeek.projVdot</code>, <code>api.ts</code>, <code>BlockTimeline.tsx</code>)</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Coach-Wochenzeile: Trainingsphase jetzt farbig</strong> (statt reinem Text) — nutzt dieselbe Farbpalette wie die Block-Timeline direkt darüber, damit die Wochenliste sich an der Timeline orientiert statt eine eigene Konvention zu zeigen. <code>phaseColor()</code> aus <code>BlockTimeline.tsx</code> exportiert, in <code>Coach.tsx</code> wiederverwendet.</li>
+<li><strong>Schwerpunkt-Selector direkt im Coach sichtbar:</strong> Der Segmented-Control „Schwerpunkt im Block" (bisher nur in der Verfügbarkeits-Karte weiter unten) erscheint jetzt zusätzlich direkt unter dem Coaching-Verdikt, sobald Schwerpunkt-Modus „manuell" gewählt ist — keine Navigation/Scrollen mehr nötig. Aus <code>AvailabilityCard.tsx</code> in eine eigenständige <code>EmphasisSelector.tsx</code> extrahiert (eine Wahrheitsquelle, an zwei Stellen genutzt).</li>
+<li><strong>Lauf-Power-Karte herstellerneutral gelabelt:</strong> „relativ zu deinen Coros-Watt" → „relativ zu Geräte-Watt" (die Analyse ist nicht Coros-spezifisch, sondern gilt für alle über Strava gelieferten Laufwatt). Hinweistext ergänzt, dass Critical Power/Power-Kurve bei jedem Strava-Sync automatisch neu berechnet werden — kein manueller Button nötig (verifiziert: <code>/api/power-curve</code> rechnet live aus den gespeicherten Power-Streams, keine Cache-Schicht).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-6-0" data-version="2.6.0" data-era="2" data-date="2026-07-04">
+  <summary><span class="v">v2.6.0</span><span class="d">2026-07-04</span><span class="t">Zyklus-Plansteuerung, MCID-Verankerung &amp; plattformübergreifender Python-Rechenkern</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Python-ML-Sidecar cross-platform gepackt (mac/win/linux):</strong> Das gepackte Electron-Paket bringt jetzt eine eigenständige, relocatable CPython (python-build-standalone 3.12.11) samt <strong>numpy + PyMC</strong> mit, sodass der schwere Bayes-Dosis-Wirkungs-Pfad (<code>dose_bayes</code>) auch in der ausgelieferten App echte Berechnungen macht — nicht nur der Pure-TS-Fallback. <strong>Compiler-frei:</strong> pytensor wird auf sauberen Endnutzer-Rechnern über <code>PYTENSOR_FLAGS=cxx=</code> auf den Python-Pfad gezwungen (kein System-gcc/clang/MSVC nötig), Compile-Cache in ein sicher beschreibbares Temp-Verzeichnis. <strong>Cross-OS-Guard:</strong> <code>scripts/build-sidecar.mjs</code> bricht jetzt ab, wenn Ziel-OS ≠ Host-OS (<code>--target</code>), damit nie eine fremde Python in ein Paket verschifft wird — jedes OS wird auf seinem OS gebaut. lightgbm/shap werden bewusst <strong>nicht</strong> gebündelt (kein gepackter Sidecar-Pfad nutzt sie; spart ~100+ MB je OS). (<code>scripts/build-sidecar.mjs</code>, <code>server/ml/sidecar.ts</code>, <code>server/ml-sidecar/requirements.txt</code>, <code>package.json</code>.)</li>
+<li><strong>Behoben (Sidecar-Runtime wurde nie gebaut):</strong> Der gepinnte CPython-Download zeigte auf <code>3.12.4+20250612</code>, das im Release <strong>nicht existiert</strong> (404) → der Runtime-Download scheiterte still und die App fiel immer auf TS zurück. Korrigiert auf die im Tag real vorhandene <code>3.12.11</code>.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-5-0" data-version="2.5.0" data-era="2" data-date="2026-07-04">
+  <summary><span class="v">v2.5.0</span><span class="d">2026-07-04</span><span class="t">Zyklus steuert den Plan (4. Steuer-Input), MCID-Anker &amp; Verdikt-Caching</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Zyklus steuert jetzt den Plan (4. Steuer-Input, gestuft + health-first):</strong> Die menstruationszyklus-adaptive Steuerung ist nicht mehr nur Anzeige — mit dem Master-Schalter <strong>„Zyklus steuert meinen Plan"</strong> fließt sie neben Dosis/Regime/Schwerpunkt in den Coach-Blockplan ein. <strong>Gestuft:</strong> an DEINEN Daten belastbar gemessene Phasen×Reiz- Effekte (≥2 Zyklen, CI ohne 0, |g|≥0.2) steuern real; sonst nudged nur der schwache mechanistische Prior sanft (klar „Hypothese"). <strong>Hebel Typ + sanfte Last:</strong> in günstigen Phasen wird eine Qualität Richtung VO2/Schwelle gedreht, in Menstruation/später Lutealphase aerob/lockerer + etwas weniger Wochenlast — alles <strong>geklemmt</strong> ins Periodisierungs- Band; Health-Cap, km-Ceiling (ACWR) und Periodisierung übersteuern <strong>immer</strong>, jede Anpassung im Coach begründet. Heutige starke Symptome dämpfen die nächste Woche zusätzlich (health-first). (<code>server/cycleTraining.ts</code> <code>cyclePlanningBias</code>/<code>projectedPhaseForDate</code>, <code>server/analysis.ts</code> <code>blockPlan</code> <code>cycleByWeek</code>, <code>server/index.ts</code>.)</li>
+<li><strong>Zyklus-Band + km/TSS je Woche in der Coach-Timeline:</strong> Die Überblicksgrafik zeigt zusätzlich zum Periodisierungs- Band ein <strong>Zyklus-Phasen-Band je Woche</strong> (Men/Fol/Ovu/fLut/sLut, vorausberechnet), der Tooltip nennt <strong>Σ km und Σ TSS</strong> je Woche + Phase, plus eine <strong>Ø km/TSS-je-Phase</strong>-Zeile. (<code>client/src/charts/BlockTimeline.tsx</code>.)</li>
+<li><strong>4. Zyklus-Panel im „Was hilft dir?"-Verdikt:</strong> zusammengefasste Zyklus-Antwort (aktuelle Phase, was je Phase favorisiert wird — gemessen/Hypothese — und ob er den Plan steuert), consent-gated. (<code>TrainingVerdictCard.tsx</code>, <code>GET /api/cycle-training/status</code> <code>planningSummary</code>.)</li>
+<li><strong>MCID an die eigene Messgenauigkeit verankert (Reliable-Change + Marker-Floor):</strong> Die Praxisschwelle „ab hier zählt ein Effekt als echt" ist keine feste Magic-Number mehr, sondern wird aus dem <strong>eigenen latenten Messrauschen</strong> abgeleitet (Median der latenten <code>sd</code>) und nach unten am physiologischen Test-Retest-Minimum gefloort — verrauschte/ dünne Daten heben die Schwelle, präzise Daten senken sie bis zum Minimum, nie darunter. Verankert werden die <strong>latente MCID</strong> (Trials/Prospektiv, Erfolgsschwelle wird am Design-Zeitpunkt fixiert = Prä-Registrierung) und die <strong>CS-Achse</strong> (jetzt aus einer Quelle <code>MARKER_MCID</code> statt doppeltem <code>MIN_CS</code>-Literal); die per-SD-Dosis-Schwelle (<code>DOSE_PER_SD_MCID</code>) ist zentralisiert, aber bewusst fix (Slope ohne Marker-Analog). Neue pure Kern-Datei <code>server/ml/mcidAnchor.ts</code>; Trials setzen <code>mcid_source</code> = <code>anchored|default|user</code>.</li>
+<li><strong>Praxisschwellen-Erklär-Block im „Was hilft dir?"-Verdikt:</strong> transparenter Block „Deine Praxisschwelle (MCID)" (<code>TrainingVerdictCard.tsx</code>) — was die Schwelle bedeutet, dass sie an die eigene Messgenauigkeit gekoppelt ist, aktuelle Werte + Quelle; das Kausal-Experiment nennt seine verankerte Erfolgsschwelle. <code>GET /api/ml/settings</code> liefert die verankerte MCID live mit.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Verdikt-Caching (Fingerprint-Auto):</strong> Das „Was hilft dir?"-Verdikt wird je Profil gecacht (<code>ml_verdict_cache</code>, additiv). Der teure Teil — zwei Sidecar-<code>exposure_dose</code>-Läufe (je bis 120 s), die bisher bei <strong>jedem Coach-Laden</strong> neu anfielen — wird nur noch berechnet, wenn sich die Inputs ändern (neuer ML-Run, neuer bewerteter Trial, geänderte MCID); sonst Cache-Treffer. <code>?fresh=1</code> erzwingt Neuberechnung. Coach lädt spürbar schneller. (<code>server/index.ts</code> <code>buildTrainingVerdict</code>/<code>verdictFingerprint</code>, <code>server/db.ts</code>.)</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-4-0" data-version="2.4.0" data-era="2" data-date="2026-07-04">
+  <summary><span class="v">v2.4.0</span><span class="d">2026-07-04</span><span class="t">Coach-Cockpit, Wettkampf-Prognose &amp; adaptive Steuerung</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Visueller Wettkampf-Block + Wettkampf-Prognose bis zum Renntag (Baustein 2.1–2.4):</strong> Der Coach-Block ist jetzt ein Timeline-Dashboard statt Textliste, mit Form-Prognose und automatischer Peak-Ausrichtung.</li>
+<ul>
+<li><strong>Timeline-Dashboard (2.1):</strong> Wochen bis Renntag als gestapelter Load-Balken (umschaltbar <strong>Zonen ↔ Einheiten-Art</strong>), Phasen-Band, Renntag-Marker, je Woche <strong>KM + Kern-Einheit</strong>. <strong>Klick auf eine Woche im Diagramm klappt ihren Tagesplan auf</strong> (Akkordeon + Scroll + Spalten-Highlight); Tagesplan clean neu gestaltet (farbige Typ-Kante · Pill · Beschreibung · min·TSS · Begründungszeile). „Übernehmen"/„Phasen übernehmen" erhalten.</li>
+<li><strong>Form-Readiness-Kurve (2.2):</strong> über der Timeline Readiness = Fitness × Frische (CTL × TSB-Frische, Gauss-Band um TSB +12) mit <strong>Peak-Marker</strong> + Ampel „Peak trifft/verfehlt den Renntag" (+ Block/Taper-Empfehlung), gekoppelt an die Ziel-Prognose („am Renntag bereit für X:XX vs. Ziel Y:YY", aus <code>tuneupProgress</code>).</li>
+<li><strong>Individuelle IR-Fitness-Prognose (2.3):</strong> liegt ein Dose-Response-Run vor, nutzt die Readiness die individuelle Fitness-Prognose (Faltung der geplanten Kanal-Lasten mit den gefitteten Impulse-Response-Kernels β·exp(−Δ/τ)) statt der groben CTL — <strong>automatisch, ohne neuen Sidecar-Lauf</strong>; sonst PMC-Form-Fallback + Hinweis „Dose-Response rechnen".</li>
+<li><strong>„Peak auf Renntag ausrichten" + intelligenter Taper (2.4):</strong> Button <strong>🎯 Peak ausrichten</strong> probiert valide <strong>Taper-Längen (1–3 Wochen)</strong> durch und legt den Form-Peak möglichst auf den Renntag (nur Vorschau; manuelle Phasen bleiben). Der Taper reduziert zudem das Qualitäts-<strong>VOLUMEN</strong> (weniger Reps — Race Week ~−50 %, Deload ~−30 %) bei <strong>gleicher Pace</strong> („Tempo in kleineren Dosen"), Steigerungen bleiben voll. (<code>server/analysis.ts</code> <code>derivePhaseSequence(taperWeeks)</code>/<code>blockPlan</code>, <code>server/mlJobs.ts</code> <code>blockIrFitness</code>, <code>server/index.ts</code> block-suggestion (<code>?taper=</code>), <code>server/workouts.ts</code> <code>RenderCtx.taperFactor</code>, <code>client/src/charts/BlockTimeline.tsx</code>, <code>client/src/lib/blockReadiness.ts</code>, <code>client/src/pages/Coach.tsx</code>, <code>BlockWeek.irFitness</code> in <code>analysis.ts</code>+<code>api.ts</code>.)</li>
+</ul>
+<li><strong>Adaptiver Last-/Intensitäts-Regler (athleten-angepasst, gebündelt-auto + transparent):</strong> Drei geschlossene Regelkreise steuern den Coach-Block jetzt individuell: <strong>(C1) Load-Regler</strong> — das Wochen-TSS-Ziel folgt einem phasengerechten <strong>ATL:CTL-Band</strong> (Intensity-Trend „Load Impact / Base Fitness"): Belastung/Specific am oberen „Optimized"-Rand (~120–135 %), Base darunter, Entlastung/Taper drunter, <strong>nie „Excessive"</strong> (Kappung &lt; 150 %). <strong>(A1) km-Ceiling</strong> — verletzungssicheres Wochen-km-Limit aus der eigenen Historie (<strong>ACWR</strong> akut 7 d : chronisch 28 d, ≤ 1.3), progressiv wachsend; deckelt auch manuelle km + flaggt. <strong>(B1) RPE-Loop</strong> — je Einheiten-Typ (LT2/VO2/Race) fließen RPE + <code>felt_vs_expected</code> (Confounder raus) in das <strong>Volumen</strong> der nächsten gleichen Qualität (weniger Reps wenn zuletzt zu hart, mehr wenn zu leicht — <strong>Pace bleibt</strong>). Jede Anpassung mit Begründung im Coach; Health-Cap vetot über allem. (<code>server/analysis.ts</code> <code>tssRecommendation</code>/ <code>typeVolumeFactors</code>/<code>blockPlan</code>, <code>server/load.ts</code> <code>kmCeiling</code>, <code>server/workouts.ts</code> <code>RenderCtx.volumeFactor</code>, <code>server/index.ts</code> block-suggestion, <code>client/src/pages/Coach.tsx</code>.)</li>
+<li><strong>LT1 ↔ LT2 getrennt: neuer Schwerpunkt „LT1 (aerobe Schwelle)" + LT1-Marker.</strong> Der Coach unterscheidet jetzt die aerobe Schwelle (LT1, Z3 — hohes lockeres Volumen, Fettstoffwechsel/Clearance) von der Laktatschwelle (LT2, Z4 — renn-spezifisches Tempo) und steuert beide getrennt: neuer Block-Schwerpunkt „lt1" (Coach/Availability + Methodik- Analyse), der LT1-Volumen phasengerecht setzt (Base/Build; in Specific bewusst nicht erzwungen). Die Evidenz spricht den Schwellenbereich als LT1/LT2 (Dose-Kanäle „M → LT1 · Marathon", „T → LT2 · Schwelle"; Kanal→Schwerpunkt-Map M/Marathon-Pace → lt1 statt schwelle); <code>classifyWeekEmphasis</code> trennt LT1 (LT1/Steady/Marathon-Pace) von LT2. Neuer <strong>LT1-Pace-Marker</strong> in der Methodik-Batterie (<code>zones.lt1_pace</code>, Z2/Z3-Grenze), LT2 als „LT2 · Threshold-Pace" präzisiert. (<code>server/analysis.ts</code> (<code>Markers</code>+<code>MarkerZones</code>), <code>server/workouts.ts</code>, <code>server/coachSynthesis.ts</code>, <code>server/ml/trainingVerdict.ts</code>, <code>server/index.ts</code> /api/markers, <code>client/src/components/{AvailabilityCard, MethodEmphasisCard}.tsx</code>, <code>client/src/charts/ForestPlot.tsx</code>, <code>client/src/pages/Methodik.tsx</code>.)</li>
+<li><strong>Adaptives, faktenbasiertes Coaching-Gerüst (ToDo 35):</strong> Der Coach zieht jetzt die „Was hilft dir?"-Synthese in die konkrete Planung. Der Block-Vorschlag (<code>/api/plan/block-suggestion</code>) leitet aus dem geschichteten Verdikt einen <strong>Schwerpunkt</strong> (→ <code>pickWeekWorkouts</code>) und eine <strong>Verteilung</strong> (→ Intensitäts-Nudge) ab — <strong>automatisch, wenn belastbar</strong> (sonst sportwissenschaftlicher Standard), <strong>gestuft</strong> (kausal-geprüfte N-of-1-Trials stark · beobachtet sanft · Hypothese nur Anzeige). <strong>Health-Flags (RED-S/Übertraining) kappen die Wochenlast + höchste Intensität HART</strong> (übersteuert die Evidenz), Readiness moduliert, Zyklus bleibt beratend. Neuer „Adaptives Coaching-Verdikt"-Banner im Coach erklärt das „warum" (ehrlich beobachtet vs. kausal geprüft) + Auto/manuell-Schwerpunkt-Umschalter (<code>coach_emphasis_mode</code>) + Frische-Hinweis. Neues pures Modul <code>server/coachSynthesis.ts</code>; geteilter <code>buildTrainingVerdict</code>-Helper (identische Zahlen wie die Karten). (<code>server/index.ts</code>, <code>server/analysis.ts</code>, <code>server/workouts.ts</code>-Emphasis-Pfad, <code>client/pages/Coach.tsx</code>.)</li>
+<li><strong>Zyklus-N-of-1-Aktivierung (Teil 5, beratend, Opt-in je Effekt):</strong> Die bereits gebaute, beobachtende Phase×Reiz- Auswertung darf jetzt auf „aktiv" flippen — aber nur für Zellen, die der Nutzer bewusst freischaltet. Neuer Master- Schalter „Aktivierung erlauben" (<code>cycle_adaptive_enabled</code>) + Per-Effekt-Opt-in (persistiert in <code>phase_stimulus_map</code>), neue Route <code>POST /api/cycle-training/activate</code> (schaltet nur belastbare Zellen frei: Konf≥mittel · CI ohne 0 · |g|≥0.2 · ≥2 Zyklen). Neuer Zustand <code>activatable</code> (belastbar, aber noch nicht freigeschaltet). Rein beratend — kein Eingriff in den Planer; Health-Gate (Amenorrhoe/RED-S) und Symptom-Override schlagen jede Aktivierung. (<code>cycleTraining.ts</code>, <code>index.ts</code>, <code>CycleScaffoldCard.tsx</code>, <code>api.ts</code>.)</li>
+<li><strong>Composition-Bayes (Volumen-bereinigt):</strong> Die „Volumen-bereinigt"-Sicht der Dosis-Wirkungs-Karte nutzt jetzt die Bayes-Engine (vorher TS-Ridge) — mit Sum-to-zero-Constraint (Σβ=0), da die gegen den Gesamt-Umfang residualisierten Kanäle rank-defizient sind. Jeder Effekt = Abweichung vom mittleren Mix bei gleichem Umfang; Effekte summieren sich zu 0.</li>
+<li><strong>Engine-Reset/Abbrechen:</strong> Der „Neu berechnen"-Button lässt sich während des Rechnens erneut klicken = laufenden/ hängenden Lauf abbrechen und die Engine zurücksetzen (<code>POST /api/ml/cancel</code> markiert den Lauf sofort als abgebrochen).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Coach &amp; Methodik: klare Rollentrennung „Cockpit + Werkbank" — keine doppelten Regler mehr.</strong> Der <strong>Block-Schwerpunkt</strong> (<code>availability.emphasis</code>) ist jetzt <strong>nur noch im Coach</strong> (Cockpit) einstellbar; die <code>MethodEmphasisCard</code> in der Methodik (Werkbank) ist <strong>read-only</strong> geworden (zeigt gewählten + evidenz-besten Schwerpunkt) und verlinkt „→ im Coach einstellen" — beseitigt die bisher dreifache, verwirrende Setz-Möglichkeit. Neue <strong>bidirektionale Deep-Links</strong>: Coach-Verdikt → „→ Belege in Methodik" (öffnet direkt den „Was wirkt?"-Tab via <code>?tab=</code>), Werkbank → „→ im Coach einstellen". Untertitel beider Seiten geschärft (Coach = „Cockpit — was jetzt zu tun ist", Methodik = „Werkbank — das Warum dahinter"). Reine UI-/Framing-Änderung, keine Modell-/Datenänderung. (<code>client/src/components/MethodEmphasisCard.tsx</code>, <code>client/src/pages/Methodik.tsx</code>, <code>client/src/pages/Coach.tsx</code>.)</li>
+<li><strong>Schwerpunkt wirkt jetzt in JEDER Blockwoche — auch in Base.</strong> Der evidenz-abgeleitete Schwerpunkt (aus dem Coaching-Verdikt) drehte bisher nur in Build/Specific eine Qualität; in Base wurde er ignoriert. Jetzt greift er auch in Base/phasenlos — physiologisch korrekt über base-legale Präkursoren (Schwelle→LT1-Volumen, VO2→Fartlek/Bergsprints, Berg→Hügel, Norwegian→LT1-Reps, Fartlek→Fartlek). Deload/Taper/Race-Week/Recovery bleiben unangetastet. Zusätzlich zeigt der Wettkampf-Block je Qualitäts-/Long-Tag eine knappe „Warum diese Einheit"-Begründung (physiologischer Zweck), am schwerpunkt-getriebenen Tag mit Schwerpunkt-Label. (<code>server/workouts.ts</code>, <code>server/analysis.ts</code>, <code>client/src/lib/api.ts</code>, <code>client/src/pages/Coach.tsx</code>.)</li>
+<li><strong>„Race Specific"-Token getrennt vom Wettkampf:</strong> Race-Specific-Workouts (<code>Renntempo</code>) zeigen jetzt ihr eigenes Token <strong>„Race Specific"</strong> (statt fälschlich „Wettkampf"); „Wettkampf" bleibt echten Rennen vorbehalten. Ursache war der Alias <code>Renntempo→Race</code> bei fehlendem Nutzer-Token; gefixt via eigenem Label + Default-Set-Fallback im Token-Resolver, plus eigener Bar-Familie „Race Specific" in der Block-Timeline. (<code>client/src/lib/options.ts</code>, <code>client/src/charts/BlockTimeline.tsx</code>.)</li>
+<li><strong>Forest-Plot zeigt den Bayes-Posterior:</strong> Balken + Intervall zeigen jetzt Posterior-Mittel/94%-HDI, wenn eine Bayes-Engine lief (deckt sich mit Engine-Label und Detail-Panel) — sonst weiter TS-Punktschätzung + Block-Bootstrap-CI.</li>
+<li><strong>Auto-Kanalwahl mit VIF-Reserve:</strong> Auto splittet nur in feinere Kanäle, wenn deutlich trennbar (autoVifThreshold 6), nicht mehr haarscharf an der 8er-Grenze; die Leiter kennzeichnet die 6–8-Zone als „grenzwertig".</li>
+<li><strong>„Was hilft dir?"-Overview:</strong> unterscheidet ehrlich „berechnet, aber kein eindeutiges Ergebnis" (Effekt statistisch klar, aber unter der Praxisschwelle MCID) von „sammelt Daten"; MCID-Gate prüft gegen dieselbe Schätzung, die angezeigt wird (Bayes-HDI bzw. TS), und aktualisiert sich nach einem Recompute automatisch.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Falscher/veralteter Dosis-Lauf angezeigt:</strong> Anzeige und Frische nehmen jetzt den zum aktuellen Input-Hash passenden Lauf (nicht blind den mit der höchsten ID) — nach einem Kanal-Wechsel zeigte die Karte sonst den falschen, wiederver- wendeten Lauf und blieb fälschlich „veraltet".</li>
+<li><strong>Hängende „rechnet…"-Anzeige:</strong> tote Läufe heilen sich beim Status-Poll selbst (Reap &gt; 20 min); der Bayes-Lauf rechnet bis zur vollen Genauigkeit durch (Timeout 15 min statt ~2 min → kein vorzeitiger Rückfall auf die gröbere TS-Ridge).</li>
+<li><strong>Graue Einheiten-Pills im Coach-Block:</strong> generierte Einheiten mit einem Session-Typ, den die eigene Auswahlliste nur unter einem Synonym führt (z.B. „Threshold" vs. konfiguriert „LT2"), nutzen jetzt das passende fixierte Farb-/Label-Token (Synonym-Fallback in <code>typeColor</code>/<code>typeLabel</code>: Threshold↔LT2, Repetitions↔Rep, Renntempo↔Race; exakte Treffer gewinnen).</li>
+</ul>
+<h5 class="cat-etc">Dev</h5>
+<ul>
+<li><strong>Changelog-Pflicht in CLAUDE.md (§5c):</strong> nach jeder Änderung sofort diesen <code>[Unreleased]</code>-Block pflegen.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-3-0" data-version="2.3.0" data-era="2" data-date="2026-07-02">
+  <summary><span class="v">v2.3.0</span><span class="d">2026-07-02</span><span class="t">Analytik-Feinschliff, flexible Planung &amp; ehrliche Kausal-Vorschläge</span></summary>
+  <div class="rel-body">
+<p>Baut auf dem Research-Lab-Fundament von v2.2.1 auf: die Langzeit-Analytik wird klarer, die Wochenplanung flexibler, die kausalen Trainingsvorschläge ehrlicher — und der gesamte Zuwachs ist durch einen Architektur- und Stabilitäts-Audit gegangen. Alle Migrationen bleiben additiv, echte Trainingsdaten werden nie verändert.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Langzeit-Charts, einheitlicher Trend-Look:</strong> Pace-vs-HF, Effizienz-Faktor, aerobe Entkopplung und effective VO2max zeigen jetzt dezente Rohpunkte, eine klare Trendlinie, das Monatsmittel als distinkte Marker und ein subtiles Streuband — analytisch, nicht überladen.</li>
+<li><strong>Zyklus-Steuerung als Profil-Option:</strong> im Profil aktivierbar; erst danach erscheinen der Methodik-Zyklus-Tab und das Symptom-Tagesmodul im Tracking. Standardmäßig aus, lokal, nicht-diagnostisch.</li>
+<li><strong>Marathon-Pace &amp; Repetitions voll integriert:</strong> eigene Auswahl-Labels/Farben und wissenschaftlich korrekte Konkretisierung — Marathon-Pace als moderater Z3-Dauerlauf (~84 % VO2max, Daniels M), Repetitions als kurze, schnelle Z6-Intervalle mit voller Erholung (~107 % VO2max, Daniels R).</li>
+<li><strong>Flexibler Qualitätstag:</strong> ein bevorzugter Berg-Tag ist zugleich Qualitätstag — je nach Trainingsphase kann dort Berg <strong>oder</strong> Tempodauerlauf liegen, statt den Tag starr auf einen Typ festzunageln.</li>
+<li><strong>„Warum dieser Vorschlag / warum nicht die anderen":</strong> die Trial-Vorschläge begründen im Klartext, warum ein Kontrast oben steht und warum die Alternativen niedriger ranken (nach Datenlage, Nutzen, Dauer, Risiko, Erklärbarkeit — bewusst ohne „Erfolgswahrscheinlichkeit").</li>
+<li><strong>Zyklus-Phasen rückwirkend:</strong> neu geloggte Periodenstarts rekonstruieren die Phase der bereits getaggten Einheiten aus der vollen Historie (statt nur zum Erfassungszeitpunkt zu stempeln) — leakage-frei und additiv.</li>
+<li><strong>Echter adversarial Audit-Workflow:</strong> <code>POST /api/ml/audit</code> rekonstruiert das aktuelle Dosis-Wirkungs-Design und prüft Zeitordnung/CV-Basis, Frische, Identifizierbarkeit, Shrinkage/FDR/MCID, Vorzeichen-Stabilität sowie Gesundheits-Confounder. Die Methodik-Karte zeigt den Report per „Audit laufen lassen".</li>
+<li><strong>Verhütung/Status-Mehrwert:</strong> die Zyklus-Karte erklärt je Methode konkret, ob RunLog natürlich, ovulationsunterdrückt oder unsicher modelliert und was das für Gate, Beobachtung und Vorschläge bedeutet.</li>
+<li><strong>„Alles neu berechnen":</strong> nach der Strava-Erstanreicherung erscheint der Neuberechnen-Schritt sichtbar, damit die nachgezogenen Details/Streams (NGP/NP) auch in die TSS einfließen.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Kausal-Scoring:</strong> Marathon-Pace wurde durch einen Buchstaben-Regex fälschlich als hartes Intervall gezählt; der Informationsgewinn (CI-Überlappung) ist jetzt korrekt der Nutzen- statt der Datenlage-Dimension zugeordnet.</li>
+<li><strong>Trainingstypen-Pace:</strong> Marathon-Pace und Repetitions rendern nicht mehr versehentlich als lockerer Dauerlauf.</li>
+<li><strong>Geplante km je Zone:</strong> fehlende <code>zone_alloc.byKm</code> werden serverseitig aus <code>byMin</code> ergänzt; Plan-Erfüllung arbeitet direkt mit <code>byMin</code>, ohne dass Einheiten manuell neu gespeichert werden müssen.</li>
+</ul>
+<h5 class="cat-chg">Geändert / Robustheit</h5>
+<ul>
+<li><strong>Strava-Backups begrenzt:</strong> die Backfill-Backups behalten nur die letzten drei — kein unbegrenztes Plattenwachstum mehr.</li>
+<li><strong>Tracking-Performance:</strong> Zyklus-Symptome werden je Woche gebündelt geladen statt pro Tag.</li>
+<li><strong>Tutorial-Demo robuster:</strong> „Mara" wird über einen stabilen Marker statt über den Profilnamen erkannt — echte Profile können nie als Demo behandelt werden.</li>
+<li><strong>Testbasis erweitert:</strong> 14 Kern-Tests, u.a. Kausal-Scoring, Zyklus-Backfill, flexibler Plan-Tag und die Pace-Zonen für Marathon-Pace/Repetitions.</li>
+<li><strong>Architektur-/Stabilitäts-Audit:</strong> der gesamte Zuwachs wurde gegen die bestehenden Muster geprüft (additive Migrationen, unveränderte Export-Signaturen, Transaktions- und Settings-Konventionen).</li>
+<li><strong>Doku/Version:</strong> README, Changelog, Handoff, Footer-Stand und Paketversion auf v2.3.0 synchronisiert.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-2-1" data-version="2.2.1" data-era="2" data-date="2026-07-02">
+  <summary><span class="v">v2.2.1</span><span class="d">2026-07-02</span><span class="t">Stabiler Coach-Kern + Research-Lab</span></summary>
+  <div class="rel-body">
+<p>Stabilisierungs- und Forschungs-Inkrement nach v2.2.0: Plan-Erfüllung wird robuster, Strava-Erstanreicherung ist kontrolliert fortsetzbar, Langzeit-Charts werden analytischer und die Methodik-Seite ist als Research-Lab strukturiert. Keine destruktiven Migrationen.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Testbasis:</strong> <code>npm test</code> via <code>node --import tsx --test</code>, erste Kern-Tests für Load/PMC, Analyse, Planbuilder, Pacing, Laktat und ML-Feature-Backbone.</li>
+<li><strong>Bewusste Nicht-Zuordnung:</strong> <code>activities.match_ignore</code> + Match-API <code>ignore</code>. Aktivitäten zählen weiter zur realen Last, aber nicht zur Plan-Erfüllung.</li>
+<li><strong>Trainings-Taxonomie:</strong> kanonische Typen <code>MarathonPace</code> und <code>Repetitions</code> inkl. ML-sicherer Kanal-/Zonen-Mappings.</li>
+<li><strong>Strava-Erstanreicherung:</strong> resumierbare Queue mit Status/Start/Step/Cancel, Backup vor Start, Rate-Limit-Schutz und Fortschritt in den Einstellungen.</li>
+<li><strong>Langzeit-Charts:</strong> Pace-vs-HF, Effizienz-Faktor, aerobe Entkopplung und effective VO2max mit Trendlinie, Monatsmittel und Streuband.</li>
+<li><strong>Research-Lab:</strong> Methodik-Tabs <code>Status</code>, <code>Was wirkt?</code>, <code>Experimente</code>, <code>Zyklus</code>; Trial-Vorschläge als Ranking nach Datenlage, Nutzen, Dauer, Risiko und Erklärbarkeit.</li>
+<li><strong>Tracking:</strong> optionales Zyklus/Symptom-Tagesmodul, nur nach aktivem Consent, lokal und nicht-diagnostisch.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>VDOT/VO2max-Saisonansicht:</strong> Future-Range-Punkte verwenden für das aktuelle Fitness-Signal kein künstlich in die Zukunft verschobenes 90-Tage-Fenster mehr. Dashboard, Langzeit und Bestzeiten bleiben konsistent.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Beobachtungs-ML klarer geframed:</strong> Dosis-Wirkung bleibt Hypothese/Korrelation; “geprüft” bleibt dem prospektiv-randomisierten N-of-1-Pfad vorbehalten.</li>
+<li><strong>Adversarial Audit verankert:</strong> Identifizierbarkeit, CV-Leakage, Priors/Shrinkage, Confounder-Sensitivität und Vorzeichen-Stabilität stehen sichtbar als Audit-Checkliste in der Dosis-Wirkungs-Karte.</li>
+<li><strong>Doku/Version:</strong> README, Changelog, Handoff, Footer-Stand und Paketversion auf v2.2.1 synchronisiert.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-2-0" data-version="2.2.0" data-era="2" data-date="2026-07-01">
+  <summary><span class="v">v2.2.0</span><span class="d">2026-07-01</span><span class="t">ML-Trainingssteuerung: Latente Fitness · Dosis-Wirkung · Kausal-Experiment · Zyklus-Tracking</span></summary>
+  <div class="rel-body">
+<p>Kern-Release der datengesteuerten Trainingssteuerungs-Engine (P0–P6): sieben Ausbaustufen vom einfachen Fitness-Modell bis zum prospektiv-randomisierten N-of-1-Kausalexperiment und zyklusbasierter Trainingsforschung. Alle Auswertungen lokal, keine Cloud-Abhängigkeit.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>P0 — Latente Fitness (<code>LatentFitnessCard</code>):</strong> Banister-Impuls-Antwort-Modell auf Basis der Trainingstagebuch-Daten. Langzeitreihe (CTL-Glättung als Proxy) + MCID-Schwelle (Minimal Clinically Important Difference, Default 1,0 VO2-Äquiv.). Karte auf Methodik-Seite.</li>
+<li><strong>P1 — Dosis-Wirkung / Forest-Plot (<code>DoseResponseCard</code>, <code>ForestPlot</code>):</strong> Kanal-Effekte aus <code>ml_channel_effects</code> (Reiz × Fitness-Delta), Forest-Plot mit Konfidenzintervallen, <code>ConfidenceBadge</code> (insufficient / exploratory / low / medium / high). Recompute-Button, Methodenwechsel gesperrt bis ausreichend Daten.</li>
+<li><strong>P2 — Readiness &amp; Gesundheits-Gate (<code>ReadinessHealthCard</code>, <code>ReadinessChart</code>):</strong> Wellness-Aggregat aus <code>daily_log_v2</code> (Schlaf, HRV, Ermüdung, Stimmung); Confounder-Tracking (Krankheit, hohe Last, schlechter Schlaf → Flag). Gesundheitsstatus-Ampel + Trend. Gate blockiert ML-Empfehlungen bei aktivem Confounder-Flag.</li>
+<li><strong>P3 — EMA-Feedback (<code>FeedbackPrompt</code>, <code>session_feedback_v2</code>):</strong> Nach jeder abgeschlossenen Einheit optionaler Micro-Survey (felt_vs_expected −2…+2, RPE 1–10, session_family, Notiz). Confounder-Flag (Krankheit, externe Stressfaktoren) explizit erfassbar. Server-seitiges Auto-Tagging mit Zyklus-Kontext wenn P6-Consent aktiv.</li>
+<li><strong>P4 — Feedback-Auswertung (<code>evaluateFeedback</code>, <code>methodInference</code>):</strong> Aggregiert <code>session_feedback_v2</code> nach <code>session_family</code>; identifiziert gut / schlecht tolerierte Reize; Konfidenz aus n; DoseResponse- Karte zeigt Recompute-Ergebnis.</li>
+<li><strong>P5 — Kausal-Experiment: Prospektiv-randomisierter N-of-1-Trial (<code>ProspectiveTrialCard</code>):</strong></li>
+<ul>
+<li>Counterbalanced AB/BA-Blockdesign, determinstischer Seed (FNV-Hash), exakter Within-Pair- Permutationstest (2^P Vorzeichenflips).</li>
+<li>Verdikt-Ampel: <code>geprueft</code> (p ≤ 0,031, ≥ 6 saubere Paare ≈ 1,5–2 Jahre), <code>hypothese</code>, <code>inconclusive</code>, <code>insufficient</code>.</li>
+<li><strong>Auto-Plan:</strong> Load-matched Blöcke per Button+Vorschau in <code>planned_sessions</code> schreiben (Wochenvolumen TSS bleibt phasen-/CTL-getrieben; nur Reiz-Mix kippt). Blöcke mit <code>experiment_id</code> getaggt — Abort löscht ausschließlich getaggte Zeilen, manuelle Einheiten bleiben unberührt (DB-sicher verifiziert).</li>
+<li>Hochgesundheits-Flag-Fenster werden als Blöcke ausgeschlossen, um Confounder-Bias zu verhindern.</li>
+</ul>
+<li><strong>P6 — Zyklus-Trainingssteuerung — Scaffold OFF (<code>CycleScaffoldCard</code>):</strong></li>
+<ul>
+<li><strong>Consent-Hard-Gate:</strong> alle Zyklus-Endpunkte liefern <code>403 {needsConsent:true}</code> ohne explizites Opt-in; Zyklus-Daten sind lokal und unverschlüsselt (offengelegt, bewusste Entscheidung; Verschlüsselung = Folge-Increment).</li>
+<li><strong>5 additive Tabellen:</strong> <code>cycle_training_settings</code>, <code>cycle_period_log_v2</code>, <code>cycle_symptoms_v2</code>, <code>cycle_stimulus_evidence_v2</code>, <code>cycle_stability_v2</code>.</li>
+<li><strong>Gate &amp; Beobachtungsmodus:</strong> natural + ≥ 3 stabile Zyklen → passed; suppressed (Pille / Implantat) → n/a; &lt; 3 Zyklen → Beobachtungsmodus; Amenorrhoe (&gt; 90 d) → Gesundheits-Flag.</li>
+<li><strong>Perioden-Log:</strong> Zyklusstart-Chips, löschen per Klick.</li>
+<li><strong>Symptom-Erfassung:</strong> Tages-Survey cramps / energy / sleep / mood / flow (1–5 + Notiz).</li>
+<li><strong>Phase × Reiz-Heatmap (<code>evaluatePhaseStimulus</code>):</strong> Standardisierter Effekt vs. Reiz-Baseline je Phase (Menstruation / Follikulär / Ovulation / Früh-Luteal / Spät-Luteal × Reiz-Familie); Confounder-Zeilen ausgeschlossen; Konfidenz n &lt; 3 → insufficient / 3–5 → exploratory / ≥ 10 → medium. CSS-Grid, divergierende Farben (grün/rot), insufficient-Zellen klar gemutet. Empfehlung immer <code>off · sammelt Daten</code> (Scaffold).</li>
+<li><strong>Zyklus-Phasen-Farbband-Overlay</strong> auf PMC-, Intensity-Ratio- und Wellness-Diagrammen (LongTerm + Dashboard): Band knapp über dem Trainingsphasen-Band (<code>plotBottom-13</code>, h = 4,5); 5-Farb-Palette (Menstruation #e0698a, Follikulär #2dd4bf, Ovulation #f0b429, Früh-Luteal #7c9cf0, Spät-Luteal #b47ccb). Rendert gar nicht ohne Consent → null Risiko für Nutzer ohne Zyklus-Daten.</li>
+<li><strong>1-Klick-Daten-Löschen + Consent-Widerruf</strong> (löscht alle cycle_*-Zeilen + setzt Consent zurück).</li>
+</ul>
+</ul>
+<h5 class="cat-etc">Technisch</h5>
+<ul>
+<li><strong>Neue Server-Dateien:</strong> <code>server/ml/prospective.ts</code> (Engine), <code>server/mlJobs.ts</code> (Lifecycle), <code>server/cycleTraining.ts</code> (pure Engine: Phase, Gate, Stabilität, Feedback-Auswertung).</li>
+<li><strong><code>server/db.ts</code>:</strong> additive Migration: 16 neue Spalten in <code>method_experiments</code>, <code>experiment_id</code> in <code>planned_sessions</code>, 5 neue Cycle-Tabellen.</li>
+<li><strong><code>server/index.ts</code>:</strong> <code>/api/ml/prospective</code> (6 Routen) + <code>/api/cycle-training</code> (12+ Routen, alle consent-gated).</li>
+<li><strong>Neue Client-Komponenten:</strong> <code>ProspectiveTrialCard</code>, <code>CycleScaffoldCard</code>, <code>LatentFitnessCard</code>, <code>DoseResponseCard</code>, <code>ReadinessHealthCard</code>, <code>FeedbackPrompt</code>.</li>
+<li><strong>Neue Client-Charts:</strong> <code>ForestPlot</code>, <code>LatentFitnessChart</code>, <code>ReadinessChart</code>.</li>
+<li><strong><code>client/src/charts/ChartDecor.tsx</code>:</strong> <code>cycleRuns</code>-Prop + Zyklus-Phasen-Band.</li>
+<li><strong><code>client/src/lib/markers.ts</code>:</strong> <code>cyclePhaseRunsByDate()</code>.</li>
+<li><strong><code>client/src/lib/api.ts</code>:</strong> vollständige Typen für P5 (<code>MlProspective<em></code>) + P6 (<code>Cycle</em></code>).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-1-0" data-version="2.1.0" data-era="2" data-date="2026-06-30">
+  <summary><span class="v">v2.1.0</span><span class="d">2026-06-30</span><span class="t">Distanzadaptive Trainingsplanung + Streak-Logik + Wochenbericht-Kacheln</span></summary>
+  <div class="rel-body">
+<p>Drei Vertiefungen am Trainingsmodell und an der Oberfläche: Wochenplanung und Blockplanung reagieren jetzt auf die Wettkampfdistanz (5k bis Marathon), die Streak-Karte zeigt die korrekte laufende Serie und Wochenbericht- Kategorien erscheinen als kompakte, nicht überdehnte Stat-Felder.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Distanzadaptiver Workout-Picker (4 Buckets):</strong> Neues <code>is10k</code>-Bucket (7–15 km) neben 5k, HM und Marathon. Specific-Phase für 10k: VO2-max + LT2-Mix (<code>long_fastfinish</code>, VO2-Pool, LT2/Race-Pace-Rotation, Strides). Build-Phase HM/M: zweiter Qualitätstag aus gefiltertem LT2-Pool (kein Duplikat mit Slot 1) + <code>long_mp_segments</code>. Basis-Phase Marathon: Hill Reps früher im Rotations-Pool.</li>
+<li><strong><code>phaseDistributionTarget</code> distanzabhängig:</strong> Akzeptiert jetzt <code>goalDistanceM</code>; 5k/10k → polarisierter (+Z3), HM/M → pyramidal (+Z2); fließende Abstufung zwischen den Buckets.</li>
+<li><strong>km-Alignment in <code>blockPlan</code>:</strong> Wenn <code>target_km</code> gesetzt, skaliert ein <code>factor</code> (0.7–1.4) die TSS der Easy/Long-Sessions so, dass die Gesamtwoche näher am Kilometerziel liegt; Quality-Sessions bleiben unberührt.</li>
+<li><strong>Wettkampfdistanz an alle Planungs-Endpunkte durchgereicht:</strong> <code>week-suggestion</code>, <code>block-suggestion</code> und <code>analyze-week</code> lesen die nächste Race-<code>distance_m</code> und übergeben sie als <code>goalDistanceM</code>.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Streak-Regel „Nur echtes Training":</strong> Eine Einheit mit <code>sport ≠ General</code> (kein Commute) verlängert die Serie; reiner Commute-Tag (nur <code>sport = General</code>) bricht die Serie; eingetragener Ruhetag (<code>type = Rest</code>) überbrückt; leerer Vergangenheitstag bricht. Heute bleibt offen (bricht nicht, sofern noch kein Real-Training).</li>
+<li><strong>Streak-Headline = laufende Serie:</strong> Große Zahl zeigt die aktuelle Serie bis heute; Nebenzeile zeigt aktive Tage diesen Monat und die längste Serie. Commute-only-Tage im Kalender: neutral/gestrichelt; Ruhetag: gepunktet.</li>
+<li><strong>Wochenbericht-Kategorien als 3 Stat-Kacheln:</strong> Ehemaliges einzelnes, überdehnendes <code>cat-lines</code>-EgItem durch drei kompakte Kacheln (<code>cat-run</code>, <code>cat-bike</code>, <code>cat-str</code>, je <code>defaultSpan={4}</code>, ~84 px Höhe) ersetzt. Jede Kachel zeigt Ist-Wert, geplanten Wert und eine farbige Completion-Bar (≥98 % grün, ≥70 % accent, sonst warn).</li>
+</ul>
+<h5 class="cat-etc">Technisch</h5>
+<ul>
+<li><code>server/workouts.ts</code>: 4-Bucket-Matrix + Build/Specific-Phase-Distanzmodulation.</li>
+<li><code>server/analysis.ts</code>: <code>phaseDistributionTarget(phase, overrides?, goalDistanceM?)</code>, <code>BlockWeekInput.target_km</code>, <code>renderUnit</code>-Closure + km-Alignment-Loop in <code>blockPlan</code>.</li>
+<li><code>server/index.ts</code>: Race-<code>distance_m</code>-Lookup in <code>week-suggestion</code>, <code>block-suggestion</code>, <code>analyze-week</code>.</li>
+<li><code>client/src/components/StreakCard.tsx</code>: <code>DayAgg.real</code>, <code>restLogged</code>-Set, neue Streak-Iteration, Kalender-Klassen.</li>
+<li><code>client/src/pages/WeekReport.tsx</code>: <code>CatStat</code>-Komponente, 3 separate EgItems.</li>
+<li><code>client/src/styles.css</code>: <code>.cat-stat</code>, <code>.cat-bar</code>, <code>.streak-cell.commute</code>, <code>.streak-cell.rest</code>.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v2-0-0" data-version="2.0.0" data-era="2" data-date="2026-06-29">
+  <summary><span class="v">v2.0.0</span><span class="d">2026-06-29</span><span class="t">Vollständig aktualisierte Anleitung (Anleitung v2.0) + Versionsmeilenstein</span></summary>
+  <div class="rel-body">
+<p>Versionsmeilenstein nach dem umfangreichen Funktionsausbau v1.10–v1.12.1: Premium-Politur (Dark Mode, Motion-System, Signature-Hero), vollständige N-of-1-Diagnostik, strukturierter Workout-Builder (Coros-Style), dynamische Einheiten mit TSB/Fitness-Anpassung. Die <strong>In-App-Anleitung</strong> (<code>client/public/usage.html</code>) wurde vollständig auf den aktuellen Stand gebracht (Anleitung Version 2.0) — alle Seiten, alle Funktionen.</p>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Anleitung v2.0:</strong> Dashboard (Form-Ribbon, Sparklines, Dark Mode), Wochenplanung (dynamische Einheiten mit von–bis, strukturierter Builder), Wochenbericht (Periodisierungs-Override), Methodik (Block-Inferenz, Sparklines), Profil (Laktat-Achse, Tutorial-Profil, Block-Präferenzen + Builder), Einstellungen (Theme, Animationen, Sparklines). Neue Seite „Was ist neu? v1.10–1.12" im Nav.</li>
+<li><code>package.json</code> → <strong>2.0.0</strong>.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-12-1" data-version="1.12.1" data-era="1" data-date="2026-06-29">
+  <summary><span class="v">v1.12.1</span><span class="d">2026-06-29</span><span class="t">Bugfixes: Eingabefokus-Verlust &amp; Dark-Mode-Kacheln</span></summary>
+  <div class="rel-body">
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Strukturierter Builder – Eingabefokus:</strong> In den Zahlenfeldern des verschachtelten Workout-Editors (Anzahl, Distanz, Dauer, Pausen, Pace-Offset) ging der Fokus nach jeder Ziffer verloren — man musste nach jeder Taste neu klicken. Ursache: <code>CountField</code> und <code>Row</code> waren als Funktionen <em>innerhalb</em> der <code>StructureEditor</code>-Komponente definiert und wurden bei jedem Re-render als neuer Typ erkannt → unmount/remount. Behoben durch Anheben auf Modul-Ebene mit Callbacks als Props.</li>
+<li><strong>Dark Mode — neutrale Einheits-Kacheln:</strong> Die Präferenz-Karte (Profil → Block-Präferenzen) zeigte nicht markierte Einheiten im Dark Mode auf weißem Hintergrund (<code>#fff</code> statt <code>var(--card)</code>).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li>Keine funktionalen Änderungen; Datensicherheit und Trainingsdaten unberührt.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-12-0" data-version="1.12.0" data-era="1" data-date="2026-06-28">
+  <summary><span class="v">v1.12.0</span><span class="d">2026-06-28</span><span class="t">Strukturierter Workout-Builder (Coros-Style) + Spielraum + Engine-Anpassung</span></summary>
+  <div class="rel-body">
+<p>Eigene Einheiten lassen sich jetzt <strong>frei verschachtelt</strong> anlegen (wie bei Coros) — mit <strong>Spielraum</strong> auf den Wiederholungen, eigenen Pausen und automatischer Anpassung an deine Form. Bibliothek <strong>und</strong> eigene Einheiten zeigen ihre volle Struktur in einer Tabelle. Additiv, keine Datenbank-Migration.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Verschachtelter Builder:</strong> Segmente und Gruppen in beliebiger Tiefe, z. B. <code>3×(1000-1000-600-200-200)</code>. Je Zeile Distanz <strong>oder</strong> Dauer, optionaler Pace-Offset zum Anker, eigene Pause; Gruppen mit eigener Satz-Anzahl und Satz-Pause. Reihenfolge per ▲▼, hinzufügen/löschen, beliebig schachteln. „Einfach"-Modus (N × Rep) bleibt für simple Einheiten.</li>
+<li><strong>Spielraum (von-bis) auf der Anzahl:</strong> je Segment/Satz per „±" ein Bereich (z. B. 5–6× oder Satz 3–4×). Die Engine wählt den <strong>Tageswert</strong> nach <strong>Phase · Form (TSB) · Fitness · VDOT</strong> (gleiche Mechanik wie die dynamischen Einheiten); Pace bleibt als Band sichtbar.</li>
+<li><strong>Volle Struktur in der Tabelle „Alle Einheiten":</strong> neue <strong>Struktur</strong>-Spalte (von-bis-Kurzfassung) + <strong>aufklappbare Detailzeile</strong> mit allen Segmenten/Pausen/Bändern, „heute"-Wert und dem Hinweis „so passt die Engine es an deine Form an" — für Bibliotheks- <strong>und</strong> eigene Einheiten, gerendert mit deinen echten Zonen.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Einheitliches Modell &amp; Engine:</strong> Bibliothek und eigene Einheiten teilen denselben Renderer; die TSS-/Dauer-Schätzung des Builders kommt aus genau diesem Renderer (eine Quelle der Wahrheit).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-11-1" data-version="1.11.1" data-era="1" data-date="2026-06-28">
+  <summary><span class="v">v1.11.1</span><span class="d">2026-06-28</span><span class="t">Bugfixes &amp; Klarstellungen</span></summary>
+  <div class="rel-body">
+<p>Kleine, sichere Folge-Politur nach v1.11.0 — keine neuen Features, kein Eingriff in Trainingslogik/Daten.</p>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Intervall-Trend – Legende:</strong> Ein-/Ausblenden je Kategorie funktioniert wieder (eine Regression aus dem Rolling-Mittel von v1.11.0). Ein Klick schaltet jetzt <strong>beide</strong> Serien der Kategorie gemeinsam — gedämpfte Rohpunkte <strong>und</strong> die 7-Tage-Mittel-Linie.</li>
+<li><strong>Layout-Modus – Höhe:</strong> Chart-Kacheln lassen sich nun auch <strong>in der Höhe</strong> anpassen (vorher nur Breite). Diagramme folgen generisch der Kachelhöhe.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Dark Mode (gezielt):</strong> Wochentag-Tabs im Tracking und die Power-Zonen-Pills bei „Lauf-Power" (Bestzeiten) sind jetzt sauber dunkel gethemt und lesbar; Hell-Modus unverändert, Druck bleibt hell.</li>
+<li><strong>Methodik – Klarheit:</strong> Ausklappbarer Hilfetext „Was bedeuten diese Werte?" + Tooltips erklären, warum „CS" an mehreren Stellen unterschiedliche Zahlen zeigt — <strong>Absolutwert</strong> (Marker, 14-Tage), <strong>Δ CS</strong> (Veränderung je Block) und <strong>vorher → nachher</strong> (Abschnitts-Auswertung) messen bewusst Verschiedenes.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-11-0" data-version="1.11.0" data-era="1" data-date="2026-06-28">
+  <summary><span class="v">v1.11.0</span><span class="d">2026-06-28</span><span class="t">Diagnostik, Methodik-Korrektheit, dynamische Einheiten &amp; Premium-Feinschliff</span></summary>
+  <div class="rel-body">
+<p>Großes Inhalts-Update nach der Premium-Politur: wissenschaftlich fundierte <strong>Laktat-Diagnostik</strong>, eine <strong>korrigierte und transparentere Methodik</strong> (N-of-1), <strong>dynamische Trainingseinheiten</strong> mit sichtbaren von-bis-Bändern sowie viel <strong>Chart-/Dark-Mode-Feinschliff</strong>. Alles datensicher (keine Migrationen nötig), barrierearm und druckfest.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Laktat-Diagnostik:</strong> ausführliche wissenschaftliche Begründung je Schwelle (FatMax, LT1, 2 mmol, LT2, 4 mmol/OBLA — Physiologie <strong>und</strong> Methode/Quelle, ausklappbar); x-Achse umschaltbar <strong>min/km ↔ km/h ↔ Watt</strong>; Watt-Eingabe für Rad-Tests; Marker-Beschriftung innerhalb des Plots.</li>
+<li><strong>Methodik – Marker-Verläufe:</strong> Mini-Sparklines für CS, VDOT, Schwelle, Entkopplung und eff. VO₂max (aus bestehenden Trend-Daten), global <strong>abschaltbar im Footer</strong>; zusätzlich CTL/ATL/TSB-Sparklines im Dashboard-Form-Überblick.</li>
+<li><strong>Methodik – Periodisierungs-Transparenz:</strong> Klartext, warum das Z1/Z2/Z3-Ziel aus der Saison-Phase folgt (Base/Belastung → pyramidal, Race-Specific → polarisiert, Taper → regenerativ) <strong>+ manueller Override pro Phase</strong>.</li>
+<li><strong>Wochenplanung – dynamische Einheiten:</strong> rohe Einheiten mit <strong>von-bis-Wiederholungen</strong> + empfohlenem Tageswert („heute: N") und <strong>Pace-Band</strong>; additive, gedeckelte Anpassung an <strong>Phase · TSB · Fitness · VDOT</strong> mit „angepasst"-Notiz.</li>
+<li><strong>Intro:</strong> animierter Läufer joggt entlang der Form-Kurve und endet im echten App-Icon (GSAP-gegated, skippbar).</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Methodik – Passive Inferenz (Rechenfehler):</strong> Auswertung auf <strong>zusammenhängende Regime-Blöcke</strong> umgestellt — korrekte Wochenzahl (+ Blockanzahl) und Δ-CS als Block-Start→Ende statt überlappender Wochenpaare (Behebung des „16-Wochen"/Δ-CS-Problems). Konfidenz folgt jetzt den unabhängigen Blöcken.</li>
+<li><strong>Charts im Dark Mode:</strong> Intensitäts-Verhältnis und Jahres-Marker sind sichtbar/theme-fähig; PB-Dreiecke nicht mehr am Rand abgeschnitten.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Dark Mode durchgängiger:</strong> Inputs, Modals, Tabellen und Popover über Tokens; <strong>A4-Druckvorschau im Dark Mode dunkel</strong> gethemt, echter Druck bleibt erzwungen hell.</li>
+<li><strong>Tabellen:</strong> globale, theme-fähige <code>.table</code>-Politur (Zebra, Sticky-Header, rechtsbündige Zahlen).</li>
+<li><strong>Schwellen-Trend:</strong> Legende ergänzt (lila = Critical Power) + Plot-Beschriftung; Jahres-Dreiecke ~30 % kleiner, PB-Dreiecke erklärt.</li>
+<li><strong>Y-Achsen:</strong> smartere „nice"-Skalierung mit etwas Polster; <strong>Intervall-Trend</strong> mit 7-Tage-Rolling-Mittel über gedämpften Rohwerten.</li>
+<li><strong>Wochenplanung:</strong> Kennzahlen zählen sanft hoch (Count-up).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-10-0" data-version="1.10.0" data-era="1" data-date="2026-06-28">
+  <summary><span class="v">v1.10.0</span><span class="d">2026-06-28</span><span class="t">Premium-Politur: Dark Mode, Motion, Signature-Hero, Chart-Veredelung &amp; Delight</span></summary>
+  <div class="rel-body">
+<p>Großes Veredelungs-Update der Oberfläche — aus dem soliden, analytischen RunLog wird ein <strong>premium, klinisch-edles</strong> Produkt, ohne den seriösen Charakter zu verlieren. Aufbauend auf dem neuen <strong>Design-Fundament</strong> (Tokens, gruppierte Navigation, Seiten-Hierarchie, einheitliche Chart-Grammatik) kommen ein <strong>Dark Mode</strong> („Performance-Lab"), ein zentral abschaltbares <strong>Motion-System</strong>, ein <strong>Signature-Hero</strong> am Dashboard, <strong>dezent veredelte Charts</strong> und ein paar geschmackvolle <strong>Delight-Momente</strong>. Alles barrierearm (<code>prefers-reduced-motion</code> + globaler Aus-Schalter); die Druck-Sicht (Wochenbericht) bleibt unberührt — immer hell und statisch.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>Design-Fundament</strong></p>
+<ul>
+<li><strong>Design-Tokens</strong> als einzige Quelle für Farben/Abstände, <strong>gruppierte Navigation</strong> (Heute · Planen · Tracken · Analysieren · Lernen + Einstellungen), klarere <strong>Seiten-Hierarchie</strong> und eine <strong>einheitliche Chart-Grammatik</strong> (gemeinsame Tooltip-/Achsen-/Gitter-Stile).</li>
+</ul>
+<p><strong>Dark Mode („Performance-Lab")</strong></p>
+<ul>
+<li><strong>Auto (System) · Hell · Dunkel</strong>, umschaltbar im Sidebar-Fuß; Wahl bleibt gespeichert.</li>
+<li><strong>Theme-fähige Charts:</strong> Tick-/Gitter-/Tooltip-/Serien-Farben kommen aus CSS-Variablen statt fixer Hex-Werte — Diagramme bleiben in beiden Modi gut lesbar. Druck wird stets hell erzwungen.</li>
+</ul>
+<p><strong>Motion-System</strong></p>
+<ul>
+<li><strong>Zentrale, gegatete Helfer</strong> (<code>useMotion</code>/<code>useCountUp</code>/<code>useReveal</code>/Draw-on): jede Bewegung läuft nur, wenn Animationen an sind <strong>und</strong> das System keine reduzierte Bewegung verlangt — sonst sofort der Endzustand.</li>
+<li><strong>Einstellungen:</strong> Schalter „Animationen" (an/aus) + „Theme"; Default lebendig, 60-fps-budgetiert (nur transform/opacity).</li>
+</ul>
+<p><strong>Micro-Motion</strong></p>
+<ul>
+<li><strong>Zahl-Tweens</strong> für KPIs (CTL/ATL/TSB/Ramp/VO₂max, Bestzeiten, Wochenbericht-Kopf), <strong>Draw-on</strong> für Linien/Flächen, <strong>gestaffeltes Einblenden</strong> von Karten beim Seitenwechsel, dezente <strong>Hover-/Press</strong>-Mikro-Interaktionen.</li>
+</ul>
+<p><strong>Signature-Hero — „Form-Ribbon"</strong></p>
+<ul>
+<li>Oben am Dashboard ein fließendes <strong>CTL/ATL/TSB-Band</strong> der letzten ~6 Wochen mit Draw-on und großen Live-Kennzahlen; reduced-motion → statisch.</li>
+</ul>
+<p><strong>Chart-Veredelung (dezent)</strong></p>
+<ul>
+<li>Sanfte <strong>Verläufe/Glow</strong> (PMC-Fläche, Schwellen-Trend, Wellness-Normalbereich-Bänder), <strong>feinere Achsen</strong> und <strong>PB-Marker</strong> auf der PMC-Zeitachse (dezente Wimpel mit Hover-Detail; Dashboard · Langzeit · Wochenbericht).</li>
+</ul>
+<p><strong>Delight — Celebrations, Intro &amp; Easter Eggs</strong></p>
+<ul>
+<li><strong>Celebrations</strong> bei echten Erfolgen — neue Bestzeit · geschlagene Wunschzeit · Konsistenz-Streak (4/8/12/26/52 Wochen) · abgeschlossener Trainingsblock — als dezenter, schließbarer Glanz-Moment (Queue, reduced-motion-treu).</li>
+<li><strong>Cineastischer Intro</strong> beim App-Start (Brand- + „Form"-Reveal), skippbar, reduced-motion → übersprungen.</li>
+<li><strong>Easter Eggs (subtil):</strong> Tageszeit-Begrüßung + „Lauf"-Akzent am Logo · <strong>Vier Jahreszeiten auf den Graphen</strong> (Winter: Schnee + Skifahrer auf der Form-Kurve · Frühling: Blüten · Sommer: Sonne &amp; Wellen · Herbst: Blätter) · <strong>Lab Mode</strong> (Konami-Code → Lifetime-Kennzahlen mit Erdumrundung/Everest) · <strong>Ghost-PB</strong> (Doppelklick im Prognose-Chart blendet die eigenen Bestzeiten als Benchmark ein).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li>Recharts-Diagramme beziehen ihre Farben durchgängig aus theme-fähigen CSS-Variablen (statt fester Hex-Werte).</li>
+<li>Wellness-Normalbereich-Bänder mit weichem Gradient statt flachem Fill; Theme-Umschalter zieht in den Sidebar-Fuß.</li>
+</ul>
+<h5 class="cat-etc">Technik</h5>
+<ul>
+<li>Neuer <strong>read-only</strong> Endpoint <code>GET /api/overview</code> (Lifetime-Summen je Profil für Lab Mode) — additiv, keine Datenbank-Änderung, keine Schreibvorgänge.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-9-0" data-version="1.9.0" data-era="1" data-date="2026-06-27">
+  <summary><span class="v">v1.9.0</span><span class="d">2026-06-27</span><span class="t">Plan rund ums Rennen, optimale Zonen, UI-Politur, Lern-Tutorial &amp; Erweiterbarkeit</span></summary>
+  <div class="rel-body">
+<p>Fünf-Phasen-Update aus der ToDo-Liste: der Trainingsplan wird <strong>um das Rennen herum vollständig</strong> (echtes Rennen am Renntag + adaptive Erholung danach), die <strong>Plan-Erfüllung ordnet Aktivität ↔ Einheit korrekt zu</strong>, das Training passt sich auf Wunsch an <strong>HRV/Schlaf</strong> an, <strong>optimale Zonen</strong> (Pace/HF/Watt) werden sportwissenschaftlich berechnet, die <strong>Oberfläche wirkt deutlich polierter</strong> (fixierte Hilfe-/Bearbeiten-Leiste, Wochen-Header mit Form), ein <strong>interaktives Lern-Tutorial + Glossar</strong> führt durch die echten Marker, und <strong>eigene Einheiten + ein Rad-Ziel</strong> machen den Plan erweiterbar.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>Trainingsplan rund ums Rennen</strong></p>
+<ul>
+<li><strong>Echtes Ziel-Rennen am Renntag:</strong> In der Race-Week steht statt einer generischen Einheit das tatsächliche Rennen (Distanz, Zielpace, geschätzte Renn-TSS) am korrekten Renntag.</li>
+<li><strong>Adaptive Erholung nach dem Rennen:</strong> Der Plan endet nicht am Renntag — es werden so lange Recovery-Wochen angehängt, bis die Form (TSB) wieder in einem sicheren Band ist. <strong>Distanzabhängig:</strong> Marathon → mehr/tiefere Erholung (≈ 3 Wochen), Halbmarathon ≈ 2, 5–10 km ≈ 1 Woche; PMC-gesteuert, damit der Wiedereinstieg nicht ins Verletzungsrisiko führt.</li>
+</ul>
+<p><strong>Plan-Erfüllung korrekt zugeordnet</strong></p>
+<ul>
+<li><strong>Robustes Auto-Matching</strong> Aktivität ↔ geplante Einheit (Datum + Typ/TSS/Dauer-Best-Match) — falsche Niedrig-Prozente (z. B. eine Recovery-Runde auf eine harte Einheit gerechnet) entfallen.</li>
+<li><strong>Manuelle Überschreibung</strong> je Aktivität im Tracking („Gehört zu geplanter Einheit") — die Auto-Zuordnung lässt sich pro Lauf gezielt korrigieren. Plan-% erscheinen jetzt auch für automatisch gematchte (Strava-)Aktivitäten.</li>
+</ul>
+<p><strong>Readiness-Anpassung (beratend)</strong></p>
+<ul>
+<li>Bei schwachen HRV-/Schlaf-Werten schlägt RunLog vor, die <strong>nächste harte Einheit</strong> (heute … +3 Tage) zu entschärfen bzw. eine Recovery-Einheit zu wählen — 1-Klick-Übernahme, nie automatisch. Eigene Karte in der Wochenplanung mit Readiness-Status + nächster harter Einheit.</li>
+</ul>
+<p><strong>Optimale Zonen (Pace/HF/Watt)</strong></p>
+<ul>
+<li><strong>Berechnung aus etablierten Modellen:</strong> Pace aus VDOT (Daniels) bzw. Critical Speed · HF aus LT1/LT2 (Laktattest bevorzugt, sonst %LTHR/Friel aus LTHR bzw. Max-HF) · Watt aus Critical Power (%CP).</li>
+<li><strong>Dashboard-Übersichtskarte</strong> (Pace · HF · Watt nebeneinander, mit Quelle je Achse) + Knopf „Als aktives Zonen-Set übernehmen" (Vorschlag-Modus, manuelle Zonen bleiben erhalten).</li>
+<li><strong>Langzeit-Schwellen-Trend:</strong> Schwellen-Pace und Critical Power über die Zeit als verschieb-/ausblendbare Kachel.</li>
+</ul>
+<p><strong>UI-/UX-Politur</strong></p>
+<ul>
+<li><strong>Fixierte Aktionsleiste:</strong> „Layout bearbeiten" + „Hilfe &amp; Tipps" teilen sich eine am Viewport-Boden klebende, nicht druckende Bande — kein Scrollen, auf jeder Seite gleich.</li>
+<li><strong>Wochen-Header mit Form:</strong> Fitness (CTL) · Ermüdung (ATL) · Form (TSB) + CTL-Ramp + Mini-CTL-Sparkline der Woche.</li>
+<li><strong>Wochenbericht-Kopf:</strong> aktuelle VO₂max (VDOT-basiert) prominent + darunter die Veränderung zur Vorwoche (Δ, grün ↗/rot ↘).</li>
+<li><strong>Präferenzen-Picker neu:</strong> Schwerpunkt als prominentes Segmented-Control; Lieblings/Vermeiden in einem aufgeräumten Panel mit Familie-Tabs + Suchfeld und klaren ♥/⊘-Toggles.</li>
+</ul>
+<p><strong>Lern-Tutorial &amp; Glossar</strong></p>
+<ul>
+<li><strong>Lern-/Glossar-Seite („🎓 Lernen"):</strong> alle Kennzahlen mit Bedeutung, <strong>Richtwerten</strong> (TSB-Bänder, CTL-Ramp, PI ≥ 2, Entkopplung &lt; 5 %, CP/W′ …) und ihrem Zusammenspiel — zum Nachschlagen.</li>
+<li><strong>Coachmark-Tour:</strong> seitenübergreifende geführte Tour, die echte Marker hervorhebt (PMC · optimale Zonen · Wochen-Form · Readiness · Lauf-Power · Schwellen-Trend · Methodik) und ihre Bedeutung erklärt. Auto-Start beim ersten Tutorial-Besuch, jederzeit per Knopf neu startbar; robuster Fallback, wenn ein Element fehlt.</li>
+<li><strong>Tutorial-Daten stimmig:</strong> geplante Einheiten mit km je Zone, Aktivitäten mit Zonen-km, Wochen-Checks der abgeschlossenen Wochen passend abgehakt, heutige Wellness für die Readiness.</li>
+</ul>
+<p><strong>Eigene Einheiten &amp; Rad</strong></p>
+<ul>
+<li><strong>Eigene Einheiten:</strong> Coach-Formular (Struktur eingeben) → die App schätzt <strong>Familie/Anstrengung/TSS</strong> vor → anlegen. Als ♥ markiert erscheinen sie im Wochen-Vorschlag; sie laufen durch denselben Renderer wie die Bibliothek (Intervalle, Pace-Bereich, HF, Zonen-km). Profil-scoped, überschreiben nie die Bibliothek.</li>
+<li><strong>Rad-km-Wochenziel:</strong> optionales Rad-km-Ziel je Woche (Saisonplan + Wochenplanung) inkl. Anzeige „Rad X / Ziel Y km".</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li>Die optimalen Pace-Zonen verankern die Endurance-Zone (Z2) an der Easy-Pace (statt Marathon-Pace) — praxisnähere, breitere Zonen.</li>
+<li>Die Seiten-Hilfe wandert von einzelnen Buttons je Seite in die gemeinsame fixierte Aktionsleiste.</li>
+</ul>
+<h5 class="cat-etc">Datenbank (additiv)</h5>
+<ul>
+<li><code>season_weeks_v2.target_km_bike</code> (Rad-km-Ziel) und neue Tabelle <code>custom_workouts</code> (eigene Einheiten je Profil). Beides additiv — Bestandsdaten unberührt.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-8-0" data-version="1.8.0" data-era="1" data-date="2026-06-27">
+  <summary><span class="v">v1.8.0</span><span class="d">2026-06-27</span><span class="t">Polish-Release: Aufgeräumte Analytik, Coach-Variation, Tutorial-Onboarding &amp; Watt-Analytik</span></summary>
+  <div class="rel-body">
+<p>Großes Polish-Update in vier Bausteinen: die Oberfläche wird aufgeräumt und entwirrt, der Trainings-Vorschlag bekommt deutlich mehr sportwissenschaftliche Abwechslung, ein vollständiges Tutorial-Profil + Seiten-Hilfe führen neue Nutzer ein, und die Lauf-Watt werden tiefer ausgewertet (Ökonomie + anaerobe Reserve).</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>UX-Rationalisierung &amp; Polish</strong></p>
+<ul>
+<li><strong>Klare Seiten-Rollen + Captions:</strong> Dashboard = Status heute · Langzeit = Jahres-Trends · Wochenbericht = diese Woche. Jede Seite trägt eine Rollen-Zeile; doppelte Darstellungen sind entwirrt.</li>
+<li><strong>Konfidenz-Pattern (<code>ConfidenceBadge</code> + <code>ExpertDetails</code>):</strong> unsichere/explorative Werte (eff. VO2max, N-of-1) stehen hinter „Experten-Details" mit Konfidenz-Badge — die Hauptansicht zeigt nur robuste Kennzahlen.</li>
+<li><strong>Bestzeiten modular:</strong> PB-Tabelle, VDOT/VO2max, Race-Prognose und Power sind verschieb-/ausblendbare Kacheln (wie das Dashboard, <code>EditableGrid</code>).</li>
+<li><strong>Profil aufgeräumt:</strong> Bereichs-Navigation (wie die Auswahllisten) — Athlet · Zonen &amp; Schwellen · Verfügbarkeit &amp; Block-Präferenzen · Leistungstests · Profile/Accounts.</li>
+</ul>
+<p><strong>Coach-Variation</strong></p>
+<ul>
+<li><strong>8 neue, sportwissenschaftlich kuratierte Einheiten:</strong> Fartlek (strukturiert + nach Gefühl), Schwellen-Ladder (2000-1000-600-400), Cut-down-1000er, Mixed 1000+400, gebrochener Tempolauf, lange Bergintervalle (3–4'), Renntempo-Float. Neues <strong>mehrsegmentiges Workout-Modell</strong> (gemischte Distanzen + progressiv schnellere Reps), TSS-neutral zum bestehenden Modell.</li>
+<li><strong>Coach-Matrix Distanz × Niveau:</strong> Einsteiger bekommen einfache gleiche Reps, Fortgeschrittene Ladder/ Cut-down/Mixed; die Auswahl ist distanzgerecht (5–10k VO2/Renntempo · HM/M Renntempo-Blöcke + Float).</li>
+<li><strong>Block-Präferenzen (Profil):</strong> Schwerpunkt (Schwelle/VO2/Berg/Norwegian/Fartlek) + Lieblings-/Vermeiden- Einheiten. Die Engine gewichtet <strong>beratend</strong> und <strong>phasengerecht</strong> — Periodisierung + Erholungsregeln bleiben verbindlich.</li>
+</ul>
+<p><strong>Tutorial &amp; Hilfe</strong></p>
+<ul>
+<li><strong>Tutorial-Profil:</strong> beim ersten Start wird ein eigenes Profil „Tutorial" mit einem kompletten, erfundenen Beispieljahr („Alex Demo", 10-km-Fokus) angelegt — Phasen, alle Einheitstypen, Wettkämpfe mit Splits, Wellness, Laktattest, Wunsch-Zielzeit. Zum gefahrlosen Ausprobieren aller Funktionen; idempotent, neu erzeugbar/löschbar im Profil; strikt auf eigenem <code>profile_id</code> (echte Daten unberührt).</li>
+<li><strong>Seiten-Hilfe:</strong> dezenter „!"-Button unten auf jeder Seite erklärt die Diagramme + verlinkt die Anleitung.</li>
+<li><strong>Methodik-Einführung:</strong> ausklappbare Intro-Karte + geführte Onboarding-Tour beim ersten Besuch.</li>
+</ul>
+<p><strong>Watt-Analytik (relativ zu deinen Coros-Watt)</strong></p>
+<ul>
+<li><strong>Running Effectiveness:</strong> Lauf-Ökonomie als Speed pro Watt (masseunabhängiger Trend) — wird die gleiche Pace mit weniger Watt erreicht?</li>
+<li><strong>W′-bal im Intervall (Skiba):</strong> Verlauf der anaeroben Reserve W′ über eine Einheit (Entleerung über CP, exponentielle Erholung darunter), aus der Intervall-Struktur + CP rekonstruiert — zeigt, ob die Pausen reichen.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Intensität entwirrt:</strong> der ATL/CTL-„Intensity-Trend" heißt jetzt <strong>„Last-Trend (ATL/CTL)"</strong> (klar als Last-Kennzahl, nicht Zonen-Intensität). Leit-Intensität ist die <strong>Zeit-in-Zone</strong> + Polarisierungs-Index; der Typ-Donut ist als ergänzende Sicht gekennzeichnet.</li>
+</ul>
+<h5 class="cat-etc">Datenbank</h5>
+<ul>
+<li><strong>Keine Schema-Änderung.</strong> Block-Präferenzen liegen im Availability-Setting (JSON); das Tutorial-Profil nutzt ausschließlich bestehende Tabellen auf einem eigenen <code>profile_id</code>.</li>
+</ul>
+<h5 class="cat-etc">Hinweise</h5>
+<ul>
+<li>Das <strong>Tutorial-Profil</strong> erscheint im Profil-Umschalter (zum Ansehen darauf wechseln). <strong>Watt-Analysen</strong> brauchen Watt-Daten (CP) — im Tutorial sofort, sonst nach dem Power-Backfill der Strava-Syncs.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-7-0" data-version="1.7.0" data-era="1" data-date="2026-06-26">
+  <summary><span class="v">v1.7.0</span><span class="d">2026-06-26</span><span class="t">Adaptive Pace-Progression, Zielzeit-Steuerung &amp; Lauf-Power</span></summary>
+  <div class="rel-body">
+<p>Großes Coach-Update in drei Bausteinen: Trainings-Paces wachsen mit deiner projizierten Fitness Richtung Wunsch-Zielzeit, das Scheduling schützt die Erholung, und Coros-Laufwatt werden Stryd-artig ausgewertet.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Wunsch-Zielzeit + Soll/Ist-Abgleich:</strong> Am Ziel-Rennen lässt sich eine Wunsch-Zielzeit eintragen (<code>races.goal_time_s</code>). Eine Gap-Karte in der Wochenplanung zeigt Prognose vs. Wunsch, die nötige Progression (VDOT/Woche) und eine Machbarkeits-Ampel (machbar / sehr ambitioniert mit realistischer End-Prognose).</li>
+<li><strong>Adaptive, projizierte Paces:</strong> Eine Fitness-Projektion (<code>projectVdot</code>, gedeckelt auf ~0,4 VDOT/Woche) interpoliert von heute Richtung Ziel-VDOT. Die Block-Einheiten ankern ihre Paces je Woche an der projizierten Fitness (Daniels-Paces E/M/T/I/R) — die Intervall-Tempi <strong>wachsen Woche für Woche</strong> Richtung Zielpace, statt auf der heutigen Prognose einzufrieren.</li>
+<li><strong>Live-Resolution gelockter Einheiten:</strong> Übernommene Block-Einheiten speichern ihre Intention (<code>planned_sessions.prescription</code>); beim Anzeigen werden Pace/HF aus aktueller + projizierter Fitness <strong>neu berechnet</strong> — eine in 8 Wochen geplante Einheit zeigt automatisch das dann passende (schnellere) Tempo. Manuelles Bearbeiten „pinnt" die Einheit (keine Live-Anpassung mehr).</li>
+<li><strong>Lauf-Power (Coros via Strava, Stryd-Stil):</strong> Laufwatt werden aus den Strava-Streams erfasst → Normalized Power je Lauf + Power-Duration-Kurve (<code>activities.run_np</code>, <code>power_curve</code>). Daraus <strong>Critical Power</strong> (2-Param CP/W′-Fit), <strong>%CP-Power-Zonen</strong> (Stryd-nah) und <strong>RSS</strong> (Running Stress Score) sowie eine Power-Sektion in der Bestzeiten-Seite (CP-Wert, Power-Kurve, CP-Trend, Zonen, RSS-Liste). Intervalle zeigen optional ein <strong>Watt-Ziel</strong> neben Pace/HF. Hinweis: Coros-Watt sind gerätespezifisch → Werte relativ zu deinen Coros-Watt.</li>
+<li><strong>Profil:</strong> Berglauf-Tag, Stabi/Core-Frequenz und bevorzugte Core-Tage in der Verfügbarkeit.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Scheduling — Erholung zuerst:</strong> Zwei harte Einheiten liegen <strong>nie</strong> an Folgetagen; passt nichts spacing- konform, wird eine Qualität automatisch zu Easy abgestuft (+ Begründung). <strong>Stabi/Core</strong> wird an Easy-Tage gehängt; der <strong>Berglauf-Tag</strong> wird bevorzugt belegt.</li>
+<li><strong>Doppel-Schwelle = zwei Einheiten:</strong> Norwegian-Doppeltage erscheinen jetzt als <strong>zwei</strong> Einheiten am selben Tag (AM 6'-Reps + PM 400er) statt einer kombinierten — je eigene Pausen; der Tag zählt als ein harter Tag.</li>
+<li><strong>Aerobe Entkopplung = GAP, nur gleichmäßige Läufe:</strong> Die Entkopplung nutzt jetzt die steigungs-adjustierte Geschwindigkeit (statt roher Pace) und wird nur für Easy/Long/Steady berechnet (Intervalle ausgeschlossen).</li>
+<li><strong>Einheiten füllen die Felder:</strong> Vorgeschlagene Einheiten schreiben ihre Werte (km je Zone + Intervalle) jetzt in die <strong>editierbaren Felder</strong> des „Einheit bearbeiten"-Dialogs, nicht nur in die Beschreibung (TSS-neutral).</li>
+<li><strong>Wochenphasen aus dem Block-Vorschlag:</strong> Beim Übernehmen wird die abgeleitete Phase mitgesetzt; ein Knopf „Phasen übernehmen" schreibt alle Phasen des Vorschlags (manuell gesetzte Phasen bleiben).</li>
+</ul>
+<h5 class="cat-etc">Datenbank (additiv)</h5>
+<ul>
+<li><code>races.goal_time_s</code>, <code>planned_sessions.prescription</code>, <code>activities.run_np</code>, <code>activities.power_curve</code>.</li>
+</ul>
+<h5 class="cat-etc">Hinweise</h5>
+<ul>
+<li><strong>Lauf-Power</strong> füllt sich erst über die Strava-Syncs — Watt-Streams werden budget-schonend nachgezogen (Läufe ≥ 10 min). <strong>Adaptive Paces</strong> brauchen eine Wunsch-Zielzeit am Ziel-Rennen + genug Bestzeiten für ein VDOT.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-6-2" data-version="1.6.2" data-era="1" data-date="2026-06-24">
+  <summary><span class="v">v1.6.2</span><span class="d">2026-06-24</span><span class="t">N-of-1-Inferenz-Performance &amp; Renntempo nach Zieldistanz</span></summary>
+  <div class="rel-body">
+<p>Zwei Folge-Fixes: der Wochen-/Block-Vorschlag lädt deutlich schneller, und das vorgeschlagene Renntempo richtet sich nach deiner Zieldistanz.</p>
+<h5 class="cat-etc">Geändert / Behoben</h5>
+<ul>
+<li><strong>N-of-1-Inferenz-Performance:</strong> <code>buildMethodInference</code> rechnete je Woche einen <strong>vollen</strong> Marker-Snapshot (überlappende 42-Tage-DB-Fenster, Laktat-Interpolation, EF, Decoupling, Physio-Zonen) — gebraucht wurden nur CS/VDOT. Jetzt: <strong>ein</strong> Daten-Load + leichte Rolling-CS (<code>rollingCsVdot</code>) + <strong>In-Memory-Cache</strong> (invalidiert bei jedem Schreibzugriff). Ergebnisse <strong>identisch</strong>, aber der Block-/Wochen-Vorschlag lädt um ein Vielfaches schneller (zweiter Aufruf aus dem Cache ~sofort).</li>
+<li><strong>Renntempo nach Zieldistanz (Daniels VDOT):</strong> Die Race-Specific-Einheiten ankern das Renntempo jetzt an der <strong>Zieldistanz des angesteuerten Rennens</strong> (<code>races.distance_m</code>) — via VDOT-Prognose individuell (5k schneller, Marathon langsamer). Neue Vorlagen <strong><code>race_pace_long</code></strong> (3–4×2–3 km für HM/Marathon) und <strong><code>long_mp_segments</code></strong> (Longrun mit Marathon-Pace-Blöcken). Die <strong>Race-Specific-Auswahl</strong> passt sich der Distanz an: ≤10k → VO2-lastig; HM → Schwelle + Renntempo-Blöcke; Marathon → Schwelle/MP-lastig mit MP-Longrun, VO2 reduziert. Ohne Renn-Eintrag bleibt das bisherige CS-Verhalten.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-6-1" data-version="1.6.1" data-era="1" data-date="2026-06-24">
+  <summary><span class="v">v1.6.1</span><span class="d">2026-06-24</span><span class="t">Trainings-Einheiten-Bibliothek (Variety-Engine), VO2max-Gate &amp; HTML-Cleanup</span></summary>
+  <div class="rel-body">
+<p>Der automatische Block-Vorschlag erzeugt jetzt <strong>echte Abwechslung</strong> statt immer „3×12' Threshold". Neue, sportwissenschaftlich fundierte Einheiten-Bibliothek (Daniels T/I/R · Bakken/Casado Norwegian-LGTIT · Seiler · Billat · neuromuskuläre Hügelläufe), aus der die Engine je Phase <strong>rotierende + progressive</strong>, <strong>fitness- skalierte</strong> Einheiten wählt — mit Pace-<strong>Bereich</strong> (verankert an LT1/LT2/CS) + HF-Spanne + Pausen-Empfehlung.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Einheiten-Bibliothek (<code>server/workouts.ts</code>, neu, pure):</strong> ~23 Vorlagen mit Metadaten (Familie, Phase, Anstrengung 1–5, Nutzen, Synergie, Quelle) — LT1 (kont./Reps), LT2 (Tempo, Cruise, 1000er, Norwegian 400er, Sub-T-6'-Reps, <strong>Doppel-Schwelle AM+PM</strong>), VO2max (3', 4–5', 1000er, 400er, Billat 30/30), Berg (Sprints, Hügel-Reps kurz/lang), Speed (R-Pace-Reps, Steigerungen), Renntempo, Easy/Long (inkl. Fast-Finish).</li>
+<li><strong><code>fitnessLevel()</code></strong> (CTL/CS → low/mid/high) skaliert die Wiederholungszahlen — z.B. <strong>20–25×400 nur bei hoher Fitness</strong>, weniger bei niedriger.</li>
+<li><strong><code>pickWeekWorkouts()</code></strong> komponiert die Woche je Phase + <strong>rotiert</strong> die Qualitäts-Slots Woche für Woche; <strong>Doppel-Schwellen-Tage</strong> in Build/Belastung, wenn das Verfügbarkeitsprofil Doubles erlaubt.</li>
+<li><strong><code>renderWorkout()</code></strong> rendert mit <strong>Pace-Bereich</strong> (Anker LT1/LT2/CS ± Fenster) + <strong>HF-Spanne</strong> (aus den Zonen) + <strong>Pausen</strong> (Dauer + Trab/Stehen) je Intervall. Berg = Aufwand + HF (keine Pace). Hybrid: Reps fitness-/progressionsbasiert, Easy/Long gleichen die Wochen-TSS-Differenz aus.</li>
+<li><strong>Block-Verdrahtung (<code>blockPlan</code>):</strong> Phasen-Progression über <code>phaseProgress</code>; Routen reichen aktuelle <strong>CS-Pace</strong> + <strong>HF-Zonen</strong> in die Zonen-Eingabe. <code>concretizeSession</code> bleibt als Fallback (Einzel-Vorschlag/Coach).</li>
+</ul>
+<h5 class="cat-etc">Geändert / Behoben</h5>
+<ul>
+<li><strong>Effective-VO2max-Gate:</strong> nur noch Läufe <strong>&gt; 30 min</strong> UND gleichmäßige Typen (Dauerläufe + kontinuierliche Tempo/Schwelle; <strong>Intervalle/VO2/Berg/Race raus</strong>) — die submaximale HF↔Pace-Schätzung gilt nur für stetige aerobe Läufe. Nach dem Update <strong>„TSS neu berechnen"</strong> drücken (Backfill).</li>
+<li><strong>HTML-Cleanup:</strong> veraltete <code>client/public/changelog.html</code> + <code>readme.html</code> (Stand v1.1.0, nur sich selbst verlinkt) entfernt + die Nav-Links in <code>usage.html</code>. Aktuell bleiben Root-<code>README.html</code>/<code>CHANGELOG.html</code> + <code>usage.html</code>.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-6-0" data-version="1.6.0" data-era="1" data-date="2026-06-24">
+  <summary><span class="v">v1.6.0</span><span class="d">2026-06-24</span><span class="t">Methoden-Findung (N-of-1), Periodisierung, Intervall-Pausen &amp; Fixes</span></summary>
+  <div class="rel-body">
+<p>Dritter Pfeiler der Meta-Studie: <strong>Methoden-Findung (N-of-1)</strong> — findet mit Koljas eigenen Daten heraus, welche Trainingsmethode den größten Benefit bringt (geführte Experimente + passive Inferenz). Plus echte Periodisierung im Block-Vorschlag, Intervall-Pausen-Tracking und vier Fixes. Alles additiv auf v1.5.0, Vorschlag-Modus, lokal, erklärbar; N-of-1-Grenzen (kleine n, Korrelation≠Kausalität) sichtbar gemacht. Evidenz: Bakken/Casado et al. 2023 (Norwegian/LGTIT), Casado 2022 (Periodisierung), Treff 2019 (PI).</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>Block N — Methoden-Findung (N-of-1, Flaggschiff)</strong></p>
+<ul>
+<li><strong>Marker-Batterie (<code>markerSnapshot</code>, <code>server/analysis.ts</code>):</strong> pure Funktion über ein Rückblick-Fenster (Default 14 Tage). Marker: Critical Speed (Primär), VDOT, Threshold-Pace/HF, aerobe Entkopplung, Submax-EF (neuer Helfer <code>efficiencyFactor</code> in <code>load.ts</code>), Effective VO2max, Laktat-an-Pace (aus Feldtests interpoliert), Polarisierungs-Index + Zeit-Verteilung. Maximal aus vorhandener Mathe wiederverwendet (<code>fitCriticalSpeed</code>/<code>vdot</code>/<code>effectiveVo2max</code>/<code>physioTimeZones</code>/<code>polarizationIndex</code>).</li>
+<li><strong>Vorher/Nachher-Vergleich (<code>compareMarkers</code>):</strong> Marker-Deltas + Verdikt aus dem Primär-Marker CS (besser/flach/schlechter gegen MCID-Rauschen) + Konfidenz (n + Konsistenz); kleine n als „explorativ".</li>
+<li><strong>Passive Inferenz (<code>methodInference</code> + <code>classifyWeekRegime</code>):</strong> bucketet Wochen nach Regime (polarisiert/pyramidal/threshold/<strong>Norwegian Double-Threshold</strong>, aus PI + Session-Struktur) und misst die vorwärtsgerichtete CS/VDOT-Reaktion über 2–4 Folgewochen. <strong>Strenge Confounder-Kontrolle:</strong> Krank/Taper/ Race-Wochen raus, nur Paare mit stabiler CTL (|ΔCTL| ≤ 8). Ranking der Regimes + advisory Note.</li>
+<li><strong>Engine-Kopplung (advisory):</strong> beste Methode nudgt das Verteilungsziel in <code>weekStructureRecommendation</code>/ <code>blockPlan</code> sanft Richtung favorisiertes Regime — nur ab Konfidenz ≥ mittel, nie erzwingend.</li>
+<li><strong>DB:</strong> neue additive Tabelle <code>method_experiments</code> (Methoden-Block-Zeiträume). Snapshots on-the-fly.</li>
+<li><strong>Endpoints:</strong> CRUD <code>/api/method-experiments</code>, <code>/api/method-experiments/:id/evaluation</code>, <code>/api/markers</code>, <code>/api/method-inference</code>. <code>block-/week-suggestion</code> liefern jetzt <code>methodPreference</code>.</li>
+<li><strong>UI:</strong> neue Seite <strong>„Methodik"</strong> (<code>pages/Methodik.tsx</code>, Nav) — aktuelle Marker, passive Inferenz-Karte, Experiment-Liste/Anlegen, Vorher/Nachher-Auswertung (Tabelle + <code>charts/MarkerDelta.tsx</code>).</li>
+</ul>
+<p><strong>Block P — Periodisierung des Block-Vorschlags</strong></p>
+<ul>
+<li><strong><code>derivePhaseSequence()</code>:</strong> leitet Phasen rückwärts vom Renntag ab (Base→Belastung→Race-Specific→Race Week) + automatische 3:1-Entlastung — <strong>füllt nur leere Wochen, manuelle Phasen übersteuern immer</strong> und der Vorschlag passt sich an. 3:1-<code>weekNo</code>-Deload aktiviert.</li>
+<li><strong>Evidenzbasierte Einheiten je Phase:</strong> Base = LT1-Volumen + lockere LT2; Belastung = 2 kontrollierte Sub-Threshold-Einheiten (Norwegian, Doppel-Schwellen-Tag) + Long; Race-Specific = VO2max + Renntempo, polarisiert; Taper = Steigerungen. Wochen-zu-Wochen-Variation der Schlüsseleinheiten.</li>
+</ul>
+<p><strong>Block I — Intervall-Pausen im Tracking</strong></p>
+<ul>
+<li><code>Effort</code> um <code>rest_s</code>/<code>rest_type</code> (Trab/Stehen)/<code>hr_recovery</code> erweitert (additiv im JSON). Eingabe im <code>EffortBuilder</code> (Spalten Pause/Art). Strava <code>extractWorkLaps</code> füllt Pause + HF-Erholung automatisch aus der folgenden Recovery-Runde.</li>
+</ul>
+<h5 class="cat-etc">Geändert / Behoben (Fixes)</h5>
+<ul>
+<li><strong>F1 Wochencheck-Ampeln:</strong> <code>--warn</code> → klares Gelb (passt nicht ganz), <code>--info</code>/<code>.flag.info</code> → neutrales Grau, <code>--ok</code> grün (gut), <code>--danger</code> rot (Warnung). TSS-Rec-Badge „unter" → neutral, Adherence-Mittelfeld → gelb.</li>
+<li><strong>F2 Zonen-Plausibilität:</strong> <code>ZoneSets</code> warnt, wenn HF/Power nicht je Zone steigen oder Pace nicht je Zone schneller wird (Z3 nicht schneller als Z4).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-5-0" data-version="1.5.0" data-era="1" data-date="2026-06-24">
+  <summary><span class="v">v1.5.0</span><span class="d">2026-06-24</span><span class="t">Effective VO2max, adaptiver Coach &amp; Anreicherungs-Fortschritt</span></summary>
+  <div class="rel-body">
+<p>Zweiter Pfeiler der Meta-Studie (Intelligenz &amp; Steuerung), Teil 1. Block V (tägliches, am Labor kalibrierbares Fitness-Signal) + Block S (Coach „Heute" passt die geplante Einheit aktiv an) + D1 (Anreicherungs-Fortschritt in den Einstellungen). Methoden-Findung (N-of-1) folgt als eigenes großes Update v1.6. Alle Änderungen additiv auf v1.4.0.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>Block V — Effective VO2max je Lauf</strong></p>
+<ul>
+<li><strong>Pro-Lauf-VO2max-Schätzung (V1):</strong> <code>effectiveVo2max()</code> in <code>server/load.ts</code> — submaximale HF↔Pace (Daniels-Laufkosten + %VO2R≈%HRR-Brücke, NGP-basiert). Gate auf stetig-aerobe Läufe (HF-Reserve-Band + aerobe Entkopplung). Aggregat-basiert aus gespeicherten Feldern → über die volle Historie backfillbar.</li>
+<li><strong>Labor-Kalibrierung (V2):</strong> neue additive Spalte <code>activities.eff_vo2max</code>; neue Tabelle <code>vo2max_lab</code> (mehrere Werte über Zeit). Backfill über „TSS neu berechnen". CRUD <code>GET/POST/PUT/DELETE /api/vo2max-lab</code>; Trend-Endpoint <code>GET /api/effective-vo2max-trend</code> (roh + linear zwischen Labortests interpolierte Eichung). Athlete-Feld <code>hr_rest</code> (Ruhe-HF) für die HF-Reserve.</li>
+<li><strong>UI (V3):</strong> Karte „Effective VO2max je Lauf" in Langzeit (Schätz-Trend + Labor-Punkte + geeichte Linie); Laborwert-Tabelle <code>Vo2maxLabCard</code> + Ruhe-HF-Feld in Profil.</li>
+</ul>
+<p><strong>Block S — Adaptiver Coach</strong></p>
+<ul>
+<li><strong><code>adjustTodaySession()</code> (S1)</strong> in <code>server/analysis.ts</code>: erklärbarer Decision-Tree aus Form (TSB/CTL-Ramp), Readiness und Überlastungsrisiko → passt die heutige Haupt-Einheit an (TSS skalieren / harte Einheit entschärfen) und re-konkretisiert über <code>concretizeSession</code> (Plan-TSS exakt). Vollständige Begründung + Konfidenz.</li>
+<li><strong>Integration (S2):</strong> <code>/api/today</code> liefert jetzt <code>adjustment</code>; Coach-„Heute"-Karte im Dashboard zeigt die Anpassung geschichtet mit Button „Anpassung übernehmen" (<code>POST /api/sessions/:id/apply-adjustment</code>, server-autoritative TSS). Konfigurierbarer Gate-Modus (Setting <code>readiness_gate_mode</code>, advisory|gate) in den Einstellungen.</li>
+</ul>
+<p><strong>Block D — Anreicherungs-Fortschritt</strong></p>
+<ul>
+<li><strong>Doughnut in den Einstellungen (D1):</strong> <code>GET /api/enrich-progress</code> (total / Details / Streams je aktivem Profil); zwei kompakte Ring-Statistiken „x / Σ" in der Strava-Karte, aktualisiert nach „Details/Splits nachziehen".</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><code>POST /api/recompute-tss</code> backfillt zusätzlich <code>eff_vo2max</code> aller Läufe (Antwort um <code>effVo2</code> erweitert).</li>
+<li><code>client/src/lib/api.ts</code>: Typen <code>Vo2maxLab</code>, <code>EffVo2maxPoint</code>, <code>EffVo2maxTrend</code>, <code>TodayResult.adjustment</code>; Methoden <code>vo2maxLabs/addVo2maxLab/updateVo2maxLab/deleteVo2maxLab</code>, <code>effVo2maxTrend</code>, <code>applyAdjustment</code>, <code>enrichProgress</code>.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li>Threshold-Plan-TSS-„Explosion" war eine versehentliche Pace-Zonen-Eingabe (Z4 0:03 statt 3:24) — kein Code-Fehler. Diagnose dokumentiert: eine Zonen-Pace nahe 0 lässt <code>IF²</code> in <code>rTssFromZones</code> explodieren.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-4-0" data-version="1.4.0" data-era="1" data-date="2026-06-23">
+  <summary><span class="v">v1.4.0</span><span class="d">2026-06-23</span><span class="t">Konkreter Mesoplaner, Race-Pacing &amp; tiefere Analytik</span></summary>
+  <div class="rel-body">
+<p>Block A (konkreter, tagesgebundener Trainingsplaner), Block B (Race-Pacing mit GAP/Höhenprofil), Block C (4 neue Analytik-Karten). Alle Änderungen additiv auf v1.3.0.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<p><strong>Block A — Konkreter Mesoplaner</strong></p>
+<ul>
+<li><strong>Verfügbarkeits-/Präferenz-Profil (A1):</strong> neues Formular auf der Profil-Seite (<code>AvailabilityCard</code>). 7 Felder Zeitbudget/Wochentag (0 = Ruhetag), Longrun-Tag, Qualitätstage, Doubles-Option, bevorzugte Double-Tage. Gespeichert als Setting-JSON <code>availability_&lt;pid&gt;</code> (additiv). Endpoints <code>GET/PUT /api/availability</code>.</li>
+<li><strong>Session-Konkretisierer (A2):</strong> <code>server/planbuilder.ts</code> <code>concretizeSession(type, targetTss, zones)</code> → konkrete Einheit mit <code>planned_min</code>, <code>zone_alloc.byMin</code>, <code>efforts</code>, <code>description</code>, <code>paceTarget</code>. Invertiert exakt die <code>rTssFromZones</code>-Mathe — Plan-TSS trifft Ziel auf die Nachkommastelle. Easy/Long: Z2-Dauerlauf; LT1: Z3 @ lt1_pace; Threshold: N×12' @ Z4; VO2: N×4' @ Z5; Hill: N×1' @ Z4.</li>
+<li><strong>Tages-Scheduler (A3):</strong> <code>scheduleWeek()</code> in <code>planbuilder.ts</code> verteilt Einheiten per Regel auf Wochentage: Longrun → <code>longRunDay</code>, Qualität → <code>hardDays</code> mit ≥48 h Abstand, Easy füllt Trainingstage, Doubles nur auf Easy-Tagen wenn erlaubt; Tagesbudget wird auf alle Einheiten aufgeteilt. Fallback ohne Profil = Round-Robin (keine Regression).</li>
+<li><strong>Mesozyklus-Planer bis Renntag (A4):</strong> <code>blockPlan()</code> in <code>analysis.ts</code> iteriert Wochen bis Renntag (aus <code>races</code>-Tabelle oder <code>goal_race</code>-Woche), wendet 3:1-Deload + Taper an, akkumuliert Plan-TSS in PMC-Vorwärtsprojektion für realistische Formschätzung je Woche. Endpoint <code>GET /api/plan/block-suggestion</code>.</li>
+<li><strong>Konkrete Engine-Karte &amp; Block-Vorschau (A5):</strong> <code>WeekPlan.tsx</code> Button „Wochen-Vorschlag" lädt jetzt VDOT <code>weekSuggestion</code> + <code>blockSuggestion</code> parallel. Engine-Karte zeigt konkrete Einheiten mit Wochentag · Dauer · Ziel-Pace · Beschreibung. „Übernehmen" schreibt <code>zone_alloc/efforts/planned_min</code> (nicht mehr nur type+tss). Neue <strong>Block-Vorschau</strong> zeigt alle Wochen bis Renntag mit selektivem „Woche übernehmen" — strikt additiv, bestehende <code>planned_sessions</code> unangetastet.</li>
+</ul>
+<p><strong>Block B — Race-Pacing</strong></p>
+<ul>
+<li><strong>Pacing-Core (B1):</strong> <code>server/pacing.ts</code> <code>pacingPlan()</code> verteilt Zielzeit auf km-Splits: höhenkorrigiert via Minetti-Gradient-Faktor (wie NGP), optionaler linearer Negativ-Split (+/–f). Garantie: <code>Σ(pace_i × dist_i) == Zielzeit</code> exakt. Endpoint <code>GET /api/races/:id/pacing</code>.</li>
+<li><strong>Pacing-UI (B2):</strong> Races-Seite: Button „Pacing" pro Wettkampf öffnet <code>PacingPanel</code> mit Zielzeit-Eingabe, Negativ-Split-Toggle, Split-Tabelle (km · Steigung · Soll-Pace · GAP · kumuliert) und Mini-BarChart (Pace je Split, Referenzlinie even_pace).</li>
+</ul>
+<p><strong>Block C — Tiefere Analytik</strong></p>
+<ul>
+<li><strong>Durability/Decoupling-Trend (C1):</strong> Zeitreihe der aeroben Entkopplung (Pa:HR-Drift) je Lauf ≥30 min. Endpoint <code>GET /api/decoupling-trend</code>. Neues EgItem „Aerobe Entkopplung" in Langzeit mit Referenzlinie bei 5 % (kritische Drift-Schwelle).</li>
+<li><strong>Überlastungs-Frühwarnung (C2):</strong> <code>injuryRiskFlag()</code> kombiniert ACWR + Monotonie/Strain + CTL-Ramp + Readiness-Level zu einem gewichteten Risiko-Score (ok/info/warn/danger). Erscheint in <code>/api/today</code>-Response; ausbaubar auf Dashboard/WeekReport.</li>
+<li><strong>Zonen-Histogramm (C3):</strong> Aggregierte Zeit in HF- und Pace-Zonen über den gewählten Zeitraum. Endpoint <code>GET /api/zone-histogram</code>. Neues EgItem „Zeit in HF- und Pace-Zonen" in Langzeit (horizontale BarCharts je Zone). Neues Chart-Modul <code>charts/ZoneHistogram.tsx</code>.</li>
+<li><strong>Fitness-Signale konsolidiert (C4):</strong> CTL (blau, täglich aus PMC) + VDOT (orange, wöchentlich aus fitness-trend) in einem <code>ComposedChart</code> mit zwei Y-Achsen. Neues EgItem „Fitness-Signale" in Langzeit.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><code>client/src/lib/api.ts</code>: neue Typen <code>Availability</code>, <code>BlockDay</code>, <code>BlockWeek</code>, <code>BlockPlan</code>, <code>PacingSplit</code>, <code>PacingResult</code>, <code>DecouplingPoint</code>, <code>ZoneBand</code>, <code>ZoneHistogramData</code>, <code>FitnessTrend</code> (Import); neue API-Methoden <code>availability</code>, <code>saveAvailability</code>, <code>blockSuggestion</code>, <code>racePacing</code>, <code>decouplingTrend</code>, <code>zoneHistogram</code>.</li>
+<li><code>WeekPlan.tsx</code> <code>applySuggestion</code>: verwendet jetzt <code>zone_alloc/efforts/planned_min</code> aus Block-Plan statt abstrakter Verteilung (Fallback auf alte Logik ohne Block-Plan).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-3-0" data-version="1.3.0" data-era="1" data-date="2026-06-23">
+  <summary><span class="v">v1.3.0</span><span class="d">2026-06-23</span><span class="t">Echte Intensitätsverteilung, Laktat-Diagnostik &amp; Wochen-Engine</span></summary>
+  <div class="rel-body">
+<p>Zweite Runde der sportwiss. Meta-Studie. G4→G3→Engine-Reihenfolge, alle Blöcke addierend auf v1.2.0.</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Echte Zeit-Intensitätsverteilung (G4):</strong> physiologisches 3-Zonen-Modell (Z1 &lt; LT1 / Z2 LT1–LT2 / Z3 &gt; LT2) aus <code>realZoneMin</code>, kalibrierbar über LT1/LT2-Grenzen. <strong>Polarisierungs-Index (Treff et al. 2019)</strong>: <code>PI = log10((Z1/Z2)×Z3)</code>, PI ≥ 2.0 = polarisiert. <strong>Phasen-Ziel</strong> (pyramidal/polarisiert/regenerativ) als Soll-Band. Neuer Flag <code>realPolarizationFlag</code> in „Bewertung der realen Woche" (WeekReport). Neue Spalten <code>zone_sets.lt1_hr/lt1_pace</code> (LT1-Anker, Default = Z2/Z3-Grenze, von G3 überschreibbar).</li>
+<li><strong>Laktat-/Feldtest-Diagnostik (G3, Profil-Seite):</strong> vollständige Stufentest-Eingabe (km/h + Pace + HF + Laktat + RPE), automatische Berechnung von <strong>LT1</strong> (Baseline + 0.4 mmol/L) und <strong>LT2</strong> (modifizierter Dmax, AIS) in s/km und bpm. <strong>Schwellen-Trend-Chart</strong> (min. 2 Tests). <strong>Zonen-Set-Vorschlag</strong> aus LT1/LT2 (verankert Z2-Top=LT1, Z4-Top=LT2) — Vorschlag-Modus, du bestätigst via <code>addZoneset</code>. Neuer Endpoint <code>/api/lactate-tests</code> (CRUD + Punkte) + <code>/api/lactate-tests/:id/propose-zoneset</code>. Neues Modul <code>server/lactate.ts</code> (pure, keine DB). Neue Tabellen <code>lactate_tests</code> / <code>lactate_points</code> (additiv).</li>
+<li><strong>Wochen-/Block-Empfehlungs-Engine (WeekPlan):</strong> regelbasierter Vorschlag für die Wochenstruktur aus Form (TSB/CTL), Saison-Phase, Readiness und Periodisierungs-Modell (Block ≥ traditionell bei Specific). Liefert Schlüsseleinheiten + TSS-Anteile + Verteilungs-Ziel + Begründung + Konfidenz. Button „In Wochenplanung übernehmen" fügt Einheiten additiv ein (Vorschlag-Modus). Endpoint <code>GET /api/plan/week-suggestion</code>. <code>weekStructureRecommendation()</code> in <code>analysis.ts</code>.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><code>server/zones.ts</code> / lokales <code>effectiveZoneSet</code> in <code>index.ts</code>: LT1-Felder hinzugefügt, Default aus Z2/Z3-Grenze.</li>
+<li><code>AnalyzeResult</code> (api.ts): <code>physioDist</code>, <code>polarizationIndex</code>, <code>phaseTarget</code>, <code>realPolarizationFlag</code> ergänzt.</li>
+</ul>
+<h5 class="cat-etc">Datenbank</h5>
+<ul>
+<li><code>zone_sets.lt1_hr</code> (REAL, additiv, NULL = Schätzwert aus Z2-Top).</li>
+<li><code>zone_sets.lt1_pace</code> (REAL, additiv, NULL = keine Pace-Schätzung).</li>
+<li><code>lactate_tests</code> (neue Tabelle, profilgefiltert).</li>
+<li><code>lactate_points</code> (neue Tabelle, FK auf test_id).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-2-0" data-version="1.2.0" data-era="1" data-date="2026-06-23">
+  <summary><span class="v">v1.2.0</span><span class="d">2026-06-23</span><span class="t">Coach „Heute", Readiness, aerobe Entkopplung &amp; Monotonie/Strain</span></summary>
+  <div class="rel-body">
+<p>Erste Runde der sportwissenschaftlichen Meta-Studie (Intelligenz- &amp; Analytik-Pfeiler). Alles regelbasiert/ lokal, erklärbar, Vorschlag-Modus (ändert nie ungefragt).</p>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Coach-Karte „Heute"</strong> (Dashboard, <code>GET /api/today</code>): regelbasierte Tages-Empfehlung aus Form (TSB/CTL-Ramp), Readiness, Saison-Phase und Wochen-TSS-Ziel — mit <strong>aufklappbarer Begründung</strong> und „In Wochenplanung öffnen". Decision-Tree in <code>dailyRecommendation()</code> (<code>analysis.ts</code>), voll erklärbar (keine LLM).</li>
+<li><strong>Readiness-Score (advisory):</strong> morgendliche <strong>HRV gegen rollende 7-Tage-Baseline</strong> (z-Score) als Kern, plus Recovery/Schlaf/Muskelkater als Modifikatoren → Score 0–100 + Ampel (grün/gelb/rot). Beeinflusst die Empfehlung als Hinweis, gated nicht zwingend (Evidenz: HRV-gesteuert ≥ feste Pläne). <code>readinessScore()</code>.</li>
+<li><strong>Aerobe Entkopplung (Pa:HR, Friel):</strong> je Lauf aus dem Velocity-/HF-Stream berechnet (Effizienz Speed/HF 2. vs. 1. Hälfte), Ampel &lt;5 %/5–10 %/&gt;10 %. Anzeige im Tracking &amp; Wochenbericht. Neue Spalte <code>activities.decoupling</code>; „Details/Splits nachziehen" füllt den Altbestand budgetiert nach (Läufe ≥ 20 min mit HF).</li>
+<li><strong>Trainings-Monotonie &amp; -Strain (Foster):</strong> <code>Monotonie = Ø/SD der Tageslast</code>, <code>Strain = Wochenlast × Monotonie</code> → Schild in der „Bewertung der realen Woche" (Infekt-/Übertrainings-Frühwarner). <code>trainingMonotonyStrain()</code>.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v1-1-0" data-version="1.1.0" data-era="1" data-date="2026-06-17">
+  <summary><span class="v">v1.1.0</span><span class="d">2026-06-17</span><span class="t">Editierbares Layout, WYSIWYG-Druck, Motion-System &amp; Auswahllisten-Redesign</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Editierbares Grid-Layout (EditableGrid):</strong> Wochenbericht und Langzeit nutzen jetzt <code>react-grid-layout</code> (v1.5.3) — Kacheln per Drag-and-Drop verschieben und an den Ecken skalieren, Kacheln ausblenden (Auge-Icon). Layout pro Seite + Profil in <code>settings</code> gespeichert (<code>GET/PUT /api/layout/:page</code>). Dashboard bleibt weiterhin im kontinuierlichen Modus (kein Paging).</li>
+<li><strong>WYSIWYG A4-Druck (T9):</strong> Wochenbericht und Langzeit rendern in einem festen A4-Canvas (794 px @ 96 dpi, CSS-<code>transform: scale</code> für Editor und <code>@media print</code>). Was im Editor zu sehen ist, entspricht exakt dem PDF. Textgröße einstellbar (60/70/85/100 % als Prozenttaste im Toolbar); pro Seite in <code>localStorage</code> gespeichert. Overlay-Toolbar (absolute Position) belegt keine Kachelhöhe → kein Clip im Druck.</li>
+<li><strong>Manuelle Bestzeiten editierbar:</strong> <code>pb_overrides</code>-Tabelle (additiv). Neue Taste „+ Manuell" und Inline- Bearbeitungszeile; manuelle PBs überschreiben Strava-PBs; löschbar mit ✕. Distanz-Zeit-Diagramm entfernt (war redundant neben Race-Prediction-Chart).</li>
+<li><strong>Intervall-Mini-Tabelle (EffortTable):</strong> Wochenbericht zeigt strukturierte Intervalle als Tabelle (Nr., Länge, Zeit, Pace, Ø-HF, max-HF); ab ≥ 6 Intervallen automatisch 2-spaltig nebeneinander.</li>
+<li><strong>Wellness-Sparklines einzeln verschiebbar (LongTerm):</strong> jede Wellness-Metrik ist ein eigenes EditableGrid- Tile → separat positionierbar, größenveränderbar und ausblendbar.</li>
+<li><strong>Motion-System (T11):</strong> globale CSS Motion-Tokens (<code>--dur-fast: 250 ms</code>, <code>--dur: 500 ms</code>, <code>--dur-slow: 1 s</code>, <code>--ease</code>, <code>--ease-out</code>) in <code>:root</code>. Animationen: Seiten-Eintritt Fade+Rise (<code>route-enter</code>), Modal Pop-In (<code>modal-pop</code>), Nav-Aktiv-Gleitstrich (<code>.nav a::before</code>), Button-Press (<code>:active translateY+scale</code>), Input-Border-Transition. <code>@media (prefers-reduced-motion)</code> schaltet alles ab; <code>@media print</code> deaktiviert Route-Animationen.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Auswahllisten — Master-Detail-Layout (T11):</strong> Statt 6 gestapelter immer offener Karten jetzt eine zweigeteilte Ansicht: <strong>links</strong> eine vertikale Kategorie-Navigation (mit Anzahl-Badge), <strong>rechts</strong> nur die aktive Liste mit Cross-Fade beim Kategorienwechsel. Filter-Feld erscheint ab &gt; 4 Einträgen. <strong>Sortierung</strong> per Drag-and-Drop (Anfasser ⠿) statt Sort-Zahlenfeld.</li>
+<li><strong>Plan-% aus SeasonProgress entfernt (T1):</strong> Adherence-Linie/Y-Achse aus dem Saison-Progressions-Chart entfernt; Plan-Erfüllung erscheint stattdessen als eigene Zeile „Plan-Erf. %" in der Langzeit-Heatmap.</li>
+<li><strong>Zwei Dots im Wochentag-Switcher (T2):</strong> Je Tag zwei übereinander — geplanter Dot (Typ-Farbe) und getrickter Dot (grün); sofortiger Überblick geplant vs. tatsächlich.</li>
+<li><strong>Wandern/Allgemein TSS ×0.6 (T3):</strong> Sport <code>General</code>/<code>Other</code> mit Bewegungszeit bekommen einen Dämpfungsfaktor 0.6 auf den berechneten TSS — Hiking ist kein Lauf-/Rad-Stress.</li>
+<li><strong>Typ-Dropdown nur bei Lauf/Rennrad (T4):</strong> SessionModal zeigt das Typ-Feld nur bei Sport <code>Run</code> oder <code>BikeRoad</code>; andere Sportarten brauchen keinen Einheitstyp.</li>
+<li><strong>Jahr in Chart-Tooltips (T5):</strong> <code>fmtDateY</code> (TT.MM.JJJJ) statt <code>fmtDate</code> (TT.MM.) in allen Recharts-Tooltips — kein versehentliches Jahres-Verwechseln mehr.</li>
+<li><strong>Tabellen-Overflow (T10):</strong> Alle Tabellen-Container haben <code>overflow-x: auto</code> → kein Layout-Bruch bei engen Kacheln.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-15-5" data-version="0.15.5" data-era="0" data-date="2026-06-16">
+  <summary><span class="v">v0.15.5</span><span class="d">2026-06-16</span><span class="t">Dashboard-Umbau, Schlaffenster-Chart &amp; Feinschliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Schlaffenster-Chart (Whoop-Stil):</strong> neues <code>SleepWindow.tsx</code> zeigt pro Tag einen Balken von <strong>Bettzeit → Aufwachzeit</strong> (Recharts Floating Bar <code>[lo, hi]</code>); Y-Achse als Uhrzeit (Anker 18:00, <code>reversed</code> → später = weiter unten), Tooltip mit Bett/Auf/Dauer. Ersetzt den alten Bettzeit-Abweichungs-Linienplot in Langzeit + Wochenbericht.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Dashboard-Layout umgebaut:</strong> Reihe 1 = <strong>PMC (2fr) | Aktuelle Woche (1fr)</strong> nebeneinander; Reihe 2 = <strong>Saison-Progression (1fr) | Intensity-Trend (1fr)</strong> auf gleicher Höhe. Vorher: PMC + Intensity-Trend full-width übereinander, Saison/Aktuelle Woche darunter.</li>
+<li><strong>Plan-Erfüllungs-Balkendiagramm entfernt</strong> aus dem Wochenbericht. Stattdessen inline: farbige %-Kachel je Tag in der Einheitentabelle (≥ 90 % grün / ≥ 70 % gold / sonst rot) + „Ø Woche …%" in der Überschrift.</li>
+<li><strong>Bettzeit-Y-Achse invertiert</strong> in Langzeit-Charts und Wochenbericht-Wellness (<code>reversed: true</code>): späteres Zubettgehen liegt nun unten (schlechter = tiefer — konsistent mit allen anderen Wellness-Trends).</li>
+<li><strong>VO2max-Sparkline-Hover:</strong> Tooltip zur Mini-Sparkline in <code>Vo2maxCard.tsx</code> zeigt Datum + VDOT-Wert.</li>
+<li><strong>Intensity-Trend Bänder kräftiger:</strong> <code>fillOpacity</code> 0.10 → 0.18; grüne gestrichelte <code>ReferenceLine</code> bei 80 % und 149 % (Optimal-Korridor); Tooltip zeigt Wert + Band-Bezeichnung.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-15-0" data-version="0.15.0" data-era="0" data-date="2026-06-15">
+  <summary><span class="v">v0.15.0</span><span class="d">2026-06-15</span><span class="t">VO2max-Kachel, Race-Prediction, Intensity-Trend, TSS-Empfehlung, Fahrrad-Zonen &amp; Bugfixes</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>VO2max-Kachel (Dashboard):</strong> VDOT-Schätzung nach Daniels-Gilbert aus den besten Lauf-Bestzeiten (Rolling-Window 90 Tage). Zeigt aktuelle VDOT-Zahl, Trend-Pfeil (↗/↘/→), farbiges Niveau-Badge (Elite/Exzellent/Sehr gut/Durchschnitt/Unter Ø nach ACSM-Normen je Alter+Geschlecht) und eine Mini-Sparkline über den Saisonverlauf. Geburtsjahr + Geschlecht im Athletenprofil (<code>Profile.tsx</code>, wird in <code>athlete</code>-Setting gespeichert).</li>
+<li><strong>Race-Prediction-Diagramm</strong> (<code>/bests</code>): 4 Prognoselinien (5k/10k/HM/Marathon) aus dem Critical-Speed-Modell über den Saisonverlauf; Y-Achse <code>reversed</code> (schneller = oben); Legende klickbar (Distanzen ein-/ausblenden).</li>
+<li><strong>Intensity-Trend (ATL/CTL-Verhältnis):</strong> neues <code>IntensityRatio.tsx</code> zeigt <code>ATL/CTL × 100 %</code> mit 5 farbigen COROS-Bändern (Decreasing/Resuming/Maintaining/Optimized/Excessive) im Dashboard und der Langzeit-Seite.</li>
+<li><strong>TSS-Wochenempfehlung:</strong> Ampel-Badge in der Wochenplanung (WeekPlan-Header) mit empfohlenem TSS-Korridor aus CTL-Start + Saisonplan-Phase (Aufbau / Erhalt / Entlastung / Race Week / Krank). Berechnet in <code>tssRecommendation()</code> (<code>analysis.ts</code>), über den <code>/api/analyze/week</code>-Endpoint geliefert.</li>
+<li><strong>Fahrrad-HF-Zonen</strong> (ZoneSets): separater Zonen-Set-Abschnitt „HF-Zonen Fahrrad" in den Einstellungen (Profil-Seite); „Von Lauf übernehmen"-Shortcut; DB-Spalte <code>zone_sets.hr_zones_bike</code> (additiv). Strava-Interval-Extraktion nutzt bei Bike-Aktivitäten automatisch die Fahrrad-Zonen.</li>
+<li><strong>Race aus WeekPlan:</strong> wird eine geplante Einheit als Typ „Wettkampf" gespeichert, legt die App automatisch einen verknüpften Race-Eintrag an (nutzt dieselbe <code>api.addRace</code>-Logik wie Tracking).</li>
+<li><strong>Wochentyp-Pill editierbar:</strong> Klick auf die Phase-Pille in der Wochenplanung öffnet ein Inline-<code>&lt;select&gt;</code>; Phase wird direkt gespeichert.</li>
+<li><strong>Intervall-Label-Dropdown:</strong> beim Bearbeiten von Efforts ist der Label (LT1/LT2/VO2max) über ein Dropdown wählbar statt Freitext.</li>
+<li><strong>VO2max-Konsolidierung:</strong> Einheitstypen „VO2short" und „VO2long" entfernt; Differenzierung jetzt über den Effort-Label (LT2/VO2max). Vorhandene Labels werden beim Start automatisch nachgelabelt.</li>
+<li><strong>Drag &amp; Copy in der Wochenplanung:</strong> geplante Einheiten lassen sich per Drag-and-Drop auf einen anderen Tag verschieben oder per ⊕-Button kopieren.</li>
+<li><strong>Einheits-Dots mit TSS-Größe:</strong> Punkte im Wochentag-Switcher (Tracking) skalieren mit dem TSS der Einheit.</li>
+<li><strong>8-Wochen-Mittel + Range:</strong> gestrichelte Referenzlinie und Bereich (± 1σ) der letzten 8 Wochen in den Wellness-Sparklines (LongTerm).</li>
+<li><strong>Auto-Split-Label:</strong> Läufe unter Z4-HF bekommen automatisch „GA1" als Label; Strava-Laps über der Z4-Grenze behalten den feineren Label (LT1/LT2/VO2max).</li>
+<li><strong>Schlaf in hh:mm:</strong> Schlaf-Zeitfelder (Bettzeit, Aufwachzeit) in den Tagesfaktoren zeigen das Eingabeformat <code>h:mm</code> statt rohe Minuten.</li>
+<li><strong>Intervall-Trend-Legende togglebar:</strong> Klick auf eine Kategorie (LT1/LT2/VO2) blendet die zugehörige Linie im IntervalTrend-Chart ein/aus.</li>
+<li><strong>PDF-Wasserzeichen:</strong> beim Drucken erscheint „RunLog – Kolja Hildenbrand 2026 ©" unten rechts auf jedem Ausdruck.</li>
+<li><strong>Neuer API-Endpoint <code>/api/fitness-trend</code>:</strong> liefert VDOT + CS-Prognosen (5k/10k/HM/M) je Wochenpunkt über einen wählbaren Zeitraum; wird von Vo2maxCard und Race-Prediction-Chart genutzt.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Strava-Interval-Overwrite-Schutz:</strong> neue Spalte <code>activities.efforts_locked</code> (additiv, DEFAULT 0). Jede manuelle Bearbeitung/Löschung von Intervallen setzt <code>efforts_locked=1</code>; Strava-Sync überschreibt diese Einheiten nicht mehr. Reset-Knopf „↻ Aus Strava neu laden" (nur Strava-Aktivitäten) setzt die Sperre zurück und zieht Laps beim nächsten Sync neu.</li>
+<li><strong>TSS-Farbkodierung (Wochenbericht):</strong> harte Einheitstypen (typeIntensity = „hard") weisen im Realen TSS-Donut ihre gesamte TSS dem „hart"-Bucket zu statt zonen-anteilig. Easy- und Moderate-Einheiten bleiben zonen-anteilig.</li>
+<li><strong>VDOT-Filter</strong> (Bestzeiten): nur Efforts mit distance_m ≥ 1500 und time_s ≥ 180 s fließen in die VDOT- Schätzung ein (verhindert Überabschätzung durch kurze Sprints).</li>
+<li><strong>Athletenprofil-Seite</strong> erweitert: <code>AthleteCard</code>-Komponente für Geburtsjahr, Geschlecht, Gewicht, Max-HF (gespeichert im <code>athlete</code>-Setting, kein Schema-Change).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-14-0" data-version="0.14.0" data-era="0" data-date="2026-06-15">
+  <summary><span class="v">v0.14.0</span><span class="d">2026-06-15</span><span class="t">Geräteneutral, Bestzeiten/Critical Speed, Plan-Erfüllung, Race-aus-Tracking &amp; Tracking-Redesign</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Bestzeiten-Menü</strong> (<code>/bests</code>, 🏅): persönliche Bestzeiten je Standarddistanz aus Stravas <code>best_efforts</code> (Distanz · Zeit · Ø-Pace · Datum) plus ein <strong>2-Parameter-Critical-Speed-Modell</strong> (CS-Pace, D′, R², Prognosen 5k/10k/HM/M) mit Distanz-Zeit-Diagramm. Füllt sich über die Strava-Syncs.</li>
+<li><strong>Plan-Erfüllung (%)</strong>: je getrackter Einheit, wie gut die geplante Einheit umgesetzt wurde — zusammengesetzt aus <strong>TSS-Treffer + Zeit in der Ziel-Pace-Zone</strong>. Anzeige je Einheit im Tracking, als Balken-Graph im Wochenbericht und als Wochenmittel-Trend im Langzeit.</li>
+<li><strong>Efficiency Factor je Wochentag</strong> (DL/Longruns) im Wochenbericht (NGP-Tempo ÷ Ø-HF) — mit Markierung, wenn am Vortag eine harte Einheit/ein Wettkampf war (Carry-over sichtbar).</li>
+<li><strong>Race aus Tracking</strong>: ein Lauf mit Typ „Wettkampf" legt automatisch einen verknüpften Race-Eintrag an; die <strong>km-Splits</strong> werden beim „Details/Splits nachziehen" aus den Strava-Streams berechnet.</li>
+<li><strong>Strava-Zonen-Import</strong>: HF-/Power-Zonen + FTP aus Strava als neues Zonen-Set ab wählbarem Datum (Profil → HF-Zonen → „Aus Strava holen"). Braucht einmaliges Neu-Verbinden (Scope <code>profile:read_all</code>).</li>
+<li><strong>Tracking-Redesign</strong>: Wochentag-Switcher oben (Farbpunkte je Tag: geplant in Typ-Farbe + grün wenn getrackt), Tag/Woche-Umschalter, getrackte Kacheln mit Typ-Farbbalken + „% Plan". „+ Zusätzliche Einheit" mit frei wählbarem Datum.</li>
+<li><strong>Ziel-km direkt in der Wochenplanung</strong> editierbar (gleiche Quelle wie Saisonplan).</li>
+<li><strong>Automatische Wochen</strong>: immer 2 Zukunftswochen vorhanden; ein neuer Wettkampf legt alle Wochen bis zum Renntag an (leeres Gerüst).</li>
+<li><strong>Strava-Extraktionszeitraum</strong> als Einstellung („Daten ab"-Datum) + ehrliche Rate-Limit-Meldung (unterscheidet 15-min- vs. Tageslimit) und Tages-Budget-Bremse (Sync/Enrich stoppen vor dem Tageslimit).</li>
+<li><strong>Dauer als <code>hh:mm:ss</code></strong> in Tracking und Wochenplanung.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>COROS-Training-Load entfernt</strong> → die App ist geräteneutral (Garmin/Polar/COROS …): TSS kommt aus NGP/NP bzw. Schätzung (manuell überschreibbar). Der COROS-Faktor + das Feld sind weg (DB-Spalte bleibt).</li>
+<li><strong>Wochenbericht</strong>: PMC + Saison-Progression enden jetzt <strong>an der Berichtswoche</strong> (nicht mehr bis heute+2); rechts neben dem PMC ein kompakter Block mit <strong>CTL/ATL/TSB + CTL-Ramp am Wochenende</strong>. Reale Bewertungs- Schilder stehen <strong>nebeneinander</strong> (gleich groß); <strong>Commutes je Tag zusammengelegt</strong> (spart Druckplatz).</li>
+<li><strong>Race-Week-Warnung</strong> bezieht sich jetzt auf die <strong>7 Tage vor dem Renntag</strong> (TSB am Renntag UND geplante 7-Tage-Last), nicht mehr auf die Kalenderwoche. Neue Schwelle „Race 7d-Last max %".</li>
+<li><strong>Race-Splits-Eingabe</strong>: Felder für km/Ø-HF/Max-HF verbreitert (3 Ziffern sichtbar).</li>
+<li><strong>Buttons</strong> app-weit einheitlicher (Hover/Fokus/disabled-Zustände), rein kosmetisch.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-13-0" data-version="0.13.0" data-era="0" data-date="2026-06-14">
+  <summary><span class="v">v0.13.0</span><span class="d">2026-06-14</span><span class="t">Planungs-Feinschliff, Daily-Kategorien &amp; Strava-Details</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Vor/Zurück-Pfeile</strong> (← →) neben dem Wochen-Dropdown in Planung, Tracking und Wochenbericht.</li>
+<li><strong>Tagesfaktoren in Kategorien</strong> (Morgens, Schlaf, Subjektiv, Sonstiges) — als aufklappbare Sektionen im Tracking; die Kategorien selbst sind in „Auswahllisten → Tagesfaktor-Kategorien" editierbar, die Zuordnung je Feld in „Tagesfaktoren".</li>
+<li><strong>Strava „Details/Splits nachziehen"</strong>-Knopf in den Einstellungen: holt nur Details, Streams (Zonen/NGP) und Intervalle (aus den Laps) für bestehende Aktivitäten — ohne neue zu importieren (budgetiert).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Geplante km/Einheiten</strong> in Planung &amp; Analyse werden über den <strong>Datumsbereich</strong> der Woche geladen (statt <code>week_no</code>) → die „Geplante Woche" stimmt jetzt immer mit dem Tag-Raster überein; alte fehlgeleitete Einheiten (falsches <code>week_no</code>) verfälschen die Summe nicht mehr.</li>
+<li><strong>Trainingsplanung</strong>: im Intervall-/Set-Builder werden Ø-HF und Max-HF ausgeblendet (kennt man beim Planen noch nicht — Zone reicht). Im Tracking bleiben sie.</li>
+<li><strong>Profil-Reset</strong> löscht jetzt auch geplante Einheiten, Saisonplan (Ziel-km) und Wettkämpfe — nur die HF-Zonen/Schwellen bleiben (mit DB-Backup).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-12-0" data-version="0.12.0" data-era="0" data-date="2026-06-14">
+  <summary><span class="v">v0.12.0</span><span class="d">2026-06-14</span><span class="t">KW-Saisonplan, Sets, Strava-Intervalle, Profil-Menü &amp; konfigurierbare Felder</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Trainingsplanung mit Wiederholungs-Gruppen</strong>: Intervalle als Sets wie <strong>3×(1000+200)</strong> statt jede Wiederholung einzeln (Coros-Stil) — im EffortBuilder „+ Wiederholungs-Gruppe".</li>
+<li><strong>Automatische Intervall-Extraktion aus Strava</strong>: beim Sync werden die <strong>Work-Laps</strong> (schneller als Z3 bzw. Ø-HF ≥ Z4) als Efforts unter die Einheit geschrieben (nur in leere Effort-Felder, budgetiert).</li>
+<li><strong>Profil-Seite</strong> (<code>/profil</code>): Profile umbenennen/löschen + <strong>Profil zurücksetzen</strong> (löscht alle Trainings- &amp; Plandaten: Aktivitäten, Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan/Ziel-km und Wettkämpfe — nur die HF-Zonen/Schwellen bleiben; mit DB-Backup) + HF-Zonen/Schwellen je Profil.</li>
+<li><strong>Konfigurierbare Tagesfaktoren</strong>: in „Auswahllisten" (Rubrik „Tagesfaktoren") mit Feldtyp (Zahl/Zeit/Text/Haken/Skala); feste Basis-Felder. Eigene Felder landen in einer JSON-Spalte.</li>
+<li><strong>Heatmap-Bewertung</strong>: Wochen-Score gold/grün/gelb/orange/rot (% erfüllter Checks); Kategorie-Namen bleiben beim Horizontal-Scrollen fixiert.</li>
+<li><strong>Phasenname im Chart-Tooltip</strong> bei Zonen-Effizienz &amp; Wellness-Verläufen; Jahresmarken erscheinen dort jetzt auch ohne Jahres-Wechsel.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Saisonplan KW-gesteuert</strong>: nur die <strong>KW</strong> (+ Jahr) ist editierbar, das Datum (Mo–So) wird automatisch berechnet und read-only angezeigt. „Beispiel-Saison importieren" entfernt (verhindert Geister-Wochen).</li>
+<li><strong>Wochenbericht-Layout</strong>: Zonen-Balken und TSS-Donuts je eigene Karte, darunter eine breite Karte mit den realen Analyse-Schildern.</li>
+<li><strong>Tracking-Layout</strong> in logische Blöcke (oben nur Sport/Typ/Name, dann Leistung, dann Körper/Last).</li>
+<li><strong>HF-Zonen-Eingabe</strong> wie bei Pace: nur die Obergrenze je Zone, die Untergrenze ergibt sich automatisch.</li>
+<li><strong>OptionsConfig</strong>: Eingabefelder in der Reihenfolge Label → Wert (wie die Zeilen darüber).</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li>Gelöschte Wochen verschwinden im Saisonplan jetzt sofort (nicht erst nach Reload); beim Löschen einer Woche werden ihre geplanten Einheiten mitentfernt, verwaiste Plan-Einheiten werden beim Laden bereinigt.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-11-0" data-version="0.11.0" data-era="0" data-date="2026-06-14">
+  <summary><span class="v">v0.11.0</span><span class="d">2026-06-14</span><span class="t">Chart-Decor, geplant/real-Schilder, Wochen-Checks &amp; Wander-TSS</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Jahres-Dreieck + Phasen-Farbband</strong> jetzt auch in den <strong>Langzeit-Charts</strong> (Wellness-Verläufe + Zonen-Effizienz) — einheitliche Zeit-Orientierung wie bei PMC/Saison-Progression.</li>
+<li><strong>Klickbare Effizienz-Legende</strong>: Ø-Pace und Ø-HF lassen sich im „Ø-Pace vs. Ø-HF"-Chart einzeln ein-/ausblenden (wie in der PMC-Legende).</li>
+<li><strong>Einheitstyp beim Tracking</strong> (Dropdown LT1, LT2, VO2max kurz/lang, Longrun …): überschreibt für den <strong>Real-Donut</strong> den gematchten Plan-Typ und schärft den Intervall-Trend. Neue Spalte <code>activities.type</code>.</li>
+<li><strong>Konfigurierbare Wochen-Checks</strong>: in „Auswahllisten" (neue Liste „Wochen-Checks") frei definierbar; im Wochenbericht abhakbar und in der <strong>Langzeit-Heatmap</strong> (Wochen × Checks) über die Saison getrackt.</li>
+<li><strong>GAP + Höhenmeter im Tracking-Formular</strong>: GAP neben der Ø-Pace, editierbares Höhenmeter-Feld.</li>
+<li><strong>Sprung-Icon Wochenbericht ↔ Tracking</strong> (gleiche Woche, beide Richtungen) am Wochen-Selector.</li>
+<li><strong>Wochenauswahl + Saisonplan als Jahres-Akkordeon</strong>: Wochen pro Jahr (2019…2026) auf-/zuklappbar mit sanfter Animation; aktuelles Jahr automatisch offen.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Wochen-Schilder geplant vs. real getrennt</strong>: Wochenplanung zeigt die Last- &amp; km-Polarisierungs-Schilder aus den <strong>geplanten</strong> Werten, der Wochenbericht aus den <strong>realen</strong> (Bericht behält beide TSS-Donuts).</li>
+<li><strong>TSS für Wanderungen/Sonstiges</strong> (Sport „Allgemein"/„Sonstiges") jetzt <strong>HR-Zonen-basiert</strong> statt der Rad-IF-Schätzung (vorher stark überschätzt); ohne HF niedriger Fixwert-IF, mit Leistung weiter Power-TSS. → einmal <strong>„TSS neu berechnen"</strong> drücken, um Altbestand rückwirkend zu korrigieren.</li>
+<li><strong>Wochentags-Chart</strong>: neue Farb-Semantik (Distanz kühl, Belastung warm) + gruppierte Legende.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-10-0" data-version="0.10.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.10.0</span><span class="d">2026-06-13</span><span class="t">Rad-TSS (NP), Bericht-Charts &amp; Anzeige-Feinschliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Rad-/Rollen-/Commute-TSS nach TrainingPeaks</strong>: <code>(s·NP·IF)/(FTP·3600)·100</code> mit <strong>Normalized Power</strong> aus dem Strava-Power-Stream (30s-normalisiert). Ohne Powermeter: Dauer×IF-Schätzung nach Typ. COROS-Load nur noch informativ. „TSS neu berechnen"-Button deckt jetzt <strong>Lauf + Rad</strong> ab (mit Backup).</li>
+<li><strong>Wochentags-Chart im Wochenbericht</strong> (links, 1/3) neben der Saison-Progression (2/3): pro Tag km (Lauf + Rad×0.25) und rTSS.</li>
+<li><strong>Höhenmeter + grade-adjusted Pace (GAP)</strong> bei den Einheiten — in Tracking und Wochenbericht (GAP nur Lauf, links neben der Ø-Pace; Höhenmeter Lauf + Rad).</li>
+<li><strong>Zonenverteilung</strong>: Balken füllen die Kachelhöhe + Farb-Legende (Z1–Z6).</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Krank-Markierung in der Zonen-Effizienz</strong> erscheint jetzt auch für trainingsfreie Krank-Wochen (vorher fehlte mangels Datenpunkt der Anker).</li>
+</ul>
+<h5 class="cat-etc">Hinweis</h5>
+<ul>
+<li>NP/min-Zone/km-Zone fürs Rad kommen wie bei den Läufen erst beim Strava-Sync herein (budgetiert, ggf. mehrere Syncs) → danach „TSS neu berechnen" drücken. Bis dahin Ø-Power-Näherung bzw. Schätzung.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-9-0" data-version="0.9.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.9.0</span><span class="d">2026-06-13</span><span class="t">PMC nach TrainingPeaks &amp; running-TSS (rTSS/NGP)</span></summary>
+  <div class="rel-body">
+<h5 class="cat-etc">Behoben / Geändert (PMC)</h5>
+<ul>
+<li><strong>Form (TSB)</strong> jetzt TrainingPeaks-konform: <strong>gestrige Fitness − gestrige Fatigue</strong> (vorher heutige Werte).</li>
+<li><strong>CTL/ATL aus der vollen Historie geseedet</strong> — Fitness/Fatigue am Anfang jedes Zeitraums sind korrekt (vorher startete jede Ansicht bei 0).</li>
+<li><strong>CTL-Ramp</strong> wird am „heute"-Punkt gemessen (vorher am Ende des in die Zukunft reichenden Zeitraums).</li>
+</ul>
+<h5 class="cat-etc">Hinzugefügt (running-TSS)</h5>
+<ul>
+<li><strong>rTSS</strong> ist jetzt die primäre Lauf-TSS (TrainingPeaks-Formel, COROS-/Garmin-unabhängig). Geplante Läufe: per-Zone aus Pace vs. Schwellen-Pace; Aktivitäten: aus NGP, sonst Ø-Pace. COROS-Load bleibt informativ.</li>
+<li><strong>Strava-Streams für Läufe</strong> beim Import: Minuten/Zone (HF-Stream gegen deine Zonen), km/Zone (Strecke je Zone) und <strong>NGP</strong> (Normalized Graded Pace; Minetti-Grade-Korrektur + 30s-Normalisierung) — füllt leere Zonen-Felder automatisch (manuelle Werte bleiben), berechnet daraus die genaue rTSS. Budgetiert (Rate-Limit).</li>
+<li><strong>„Lauf-TSS (rTSS) neu berechnen"</strong> in den Einstellungen (mit automatischem DB-Backup) — rechnet alle Läufe + geplanten Lauf-TSS neu; nach Syncs (mehr NGP-Daten) erneut auslösbar.</li>
+</ul>
+<h5 class="cat-etc">Hinweis</h5>
+<ul>
+<li>Skala ändert sich ggü. COROS×0.6 → CTL-Zahlen verschieben sich (gewollt). Bis die Streams für den Altbestand nachgeladen sind, nutzen alte Läufe Ø-Pace (NGP folgt mit den nächsten Syncs).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-8-0" data-version="0.8.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.8.0</span><span class="d">2026-06-13</span><span class="t">Geplant-vs-real-Donuts, Commute &amp; Chart-Feinschliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Wochenbericht-Intensität:</strong> zwei TSS-Donuts nebeneinander — <strong>Geplant vs. Real</strong> — je mit der TSS-Zahl in der Mitte und der Auflistung (easy/moderat/hart). Reale Intensität <strong>hybrid</strong>: zonen-anteilig wo Zonen-Daten vorliegen, sonst nach dem Typ der gematchten geplanten Einheit. Der alte km-„Real (Zonen)"-Donut entfällt.</li>
+<li><strong>Commute-Schalter</strong> im Aktivitäts-Formular (bei Radfahrten): setzt Sportart auf „Allgemein/Commute", Name auf „Commute", löscht &amp; sperrt die Notizen — kurze Pendelfahrten verstopfen den Wochenbericht nicht mehr (zählen aber weiter als Rad-km). Strava-Sync füllt die Notiz nicht wieder (<code>desc_fetched</code>).</li>
+<li><strong>Krank-Hinterlegung</strong> jetzt auch in den Zonen-Effizienz-Charts (Langzeit).</li>
+<li><strong>Races:</strong> Höhenmeter <strong>pro Split</strong>; das Distanz-km-Feld doppelt so breit.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Zonenverteilung</strong> (Bericht): dickere Balken (weniger Weißfläche) + X-Achse in 20 %-Schritten.</li>
+<li><strong>Jahresmarke</strong> in Saison-Progression/Wochenkm sitzt jetzt <strong>vor KW1</strong> (zwischen KW52 und KW1).</li>
+<li><strong>„Diese Woche"</strong> in der Saison-Progression als dezente <strong>Wochen-Markierung</strong> statt gestrichelter Linie.</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Geister-Race-Marker:</strong> goldene Marker kommen nur noch aus der <strong>Races-Tabelle</strong> (nicht mehr aus geplanten „Race"-Einheiten/<code>goal_race</code>) — ein in Races gelöschter Wettkampf verschwindet zuverlässig.</li>
+</ul>
+<h5 class="cat-etc">Zurückgestellt</h5>
+<ul>
+<li>running-TSS nach TrainingPeaks-Formel (COROS-/Garmin-unabhängig) · TrainingPeaks-Artikel auswerten.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-7-0" data-version="0.7.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.7.0</span><span class="d">2026-06-13</span><span class="t">TSS-Bewertung korrigiert &amp; Layout-Welle</span></summary>
+  <div class="rel-body">
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>TSS-Donut fachlich korrekt:</strong> Die Intensität einer Einheit kommt jetzt aus dem <strong>Einheitstyp</strong> (easy/moderat/hart), nicht mehr aus der TSS-Größe. Vorher wurde ein langer ruhiger Dauerlauf wegen hoher TSS als „hart" eingestuft und eine kurze VO2-Einheit als „moderat" — genau verkehrt. TSS ist nun nur noch das Gewicht (Anteil der Last je Intensität).</li>
+<li><strong>Wochen-Last adaptiv:</strong> Vergleich konsistent — in der Planung geplant↔Ø geplant, im abgeschlossenen Wochenbericht real↔Ø real (vorher geplant diese Woche ↔ real letzte 4 Wochen, also Äpfel mit Birnen).</li>
+<li><strong>Races:</strong> Split-Zeiten lassen sich wieder eintippen (vorher setzte das Parsen bei jedem Tastendruck zurück).</li>
+</ul>
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Intensität je Einheitstyp</strong> in „Auswahllisten" einstellbar (easy/moderat/hart); neuer Typ <strong>„Steady / Tempo"</strong> (moderat). Defaults: Easy/Long = easy, Threshold/VO2/Hill/Race = hart.</li>
+<li><strong>Races:</strong> Ø-HF je Wettkampf und <strong>Max-HF je Split</strong> (Ø-HF vor Max-HF in Tabelle &amp; Bericht).</li>
+<li><strong>Wellness-Langzeitbericht:</strong> Krank-Wochen rot hinterlegt (wie in den anderen Charts).</li>
+<li><strong>Persönliche Daten in <code>data/</code></strong> ausgelagert — beim Update nur diesen Ordner kopieren. Bestehende <code>training.db</code> wird einmalig sicher übernommen (Original bleibt als <code>training.db.bak</code>).</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Polarisierung</strong> nur noch über <strong>km-in-Zone</strong> (die Zeit-in-Zone-Polarisierungs-Hinweise sind raus).</li>
+<li><strong>Layout:</strong> Dashboard Wochenkm 2/3 + aktuelle Woche 1/3; Wochenbericht PMC + Saison-Progression über volle Breite; PMC &amp; Wochenkm-Charts ~20 % höher; Race-Labels im Vordergrund; Jahreslinie kräftiger; Phasenname auch im Wochenkm-Chart + mehr Abstand; Legende näher am Graph; Races-Toggle in die Legende.</li>
+</ul>
+<h5 class="cat-etc">Zurückgestellt</h5>
+<ul>
+<li>km/Zone aus Strava-Sekunden · Intervalldaten für harte Einheiten aus Strava (eigene Strava-Stream-Runde).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-6-0" data-version="0.6.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.6.0</span><span class="d">2026-06-13</span><span class="t">Panel-Konsolidierung &amp; Detail-Schliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Phasenname unten links im PMC</strong> (in Phasenfarbe) — folgt dem Hover und zeigt die Phase des Tages unter dem Cursor.</li>
+<li><strong>Races:</strong> Max-HF &amp; Höhenmeter je Wettkampf; <strong>Auto-Import</strong> der Wettkämpfe aus dem Saisonplan (<code>goal_race</code>, Datum = Wochen-Enddatum) — manuelles Hinzufügen weiterhin möglich, gelöschte Auto-Races bleiben gelöscht.</li>
+<li><strong>Wochen-Check:</strong> Wochen-TSS-Last und km-Polarisierung erscheinen jetzt als Hinweise im Check.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Intensitäts-Panel</strong> entschlackt: nur noch <strong>ein TSS-Donut</strong> + der bestehende %-km-Balken je Zone. Die doppelten Prozent-Zeilen und die zwei Bewertungs-Boxen sind raus (Bewertungen → Wochen-Check).</li>
+<li><strong>Phasen-Farbband</strong> liegt jetzt <strong>über</strong> den TSS-Balken (wurde vorher verdeckt) und ist etwas kräftiger.</li>
+<li><strong>Race-Marker</strong> in PMC &amp; Saison-Progression als <strong>vertikales Label</strong> an der Markierung.</li>
+<li><strong>Jahresmarke</strong> schwarz, kürzer (kein Strich quer durch den Graphen), Jahreszahl tiefer; im Wochenbericht ausgeblendet (beginnt ohnehin am 1.1.).</li>
+</ul>
+<h5 class="cat-fix">Behoben</h5>
+<ul>
+<li><strong>Jahresmarke in den Wochen-Charts</strong> war bei „1 J / Saison" unzuverlässig (doppelte KW-Labels über Jahresgrenzen) — jetzt positionsbasiert (Band-Index), konsistent und sitzt zwischen KW1 und KW2.</li>
+<li><strong>Strava-Notizen:</strong> Geänderte/gelöschte Notizen werden beim erneuten Sync <strong>nicht mehr überschrieben</strong> (neuer <code>desc_fetched</code>-Marker trennt den Beschreibungs-Abruf von den Notizen).</li>
+</ul>
+<h5 class="cat-etc">Zurückgestellt</h5>
+<ul>
+<li>km-je-Zone aus Strava-Zeit-in-Zone (braucht eigene, ratenlimitierte Zonen-Abrufe + Zonen-Mapping).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-5-0" data-version="0.5.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.5.0</span><span class="d">2026-06-13</span><span class="t">Chart-Politur &amp; Races</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Races als eigene Seite</strong> (🏁): Wettkämpfe mit Endzeit, Distanz, Platzierung, <strong>manuellen Splits</strong> (km/Zeit/Pace/Ø-HF) und Notizen. Erscheinen als goldene Marker in den Charts und <strong>einzeln im Wochenbericht</strong>.</li>
+<li><strong>Phasen-Farbband</strong> unter der x-Achse von PMC &amp; Saison-Progression (Hover = Phasenname) — verbindendes Orientierungselement.</li>
+<li><strong>PMC-Klick → Tracking</strong>: Hover zeigt oben links die Einheit des Tages, Klick springt zur passenden Tracking-Woche.</li>
+<li><strong>Race-Marker an/aus</strong> (Toggle) in beiden Charts.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>PMC:</strong> Wochen-TSS als echte Wochen-Summe (statt akkumuliertem Sägezahn); TSS-Tagesbalken größer (höchster Balken reicht bis oben, eigene Achse).</li>
+<li><strong>Jahresmarke</strong> dezenter: halbhoher Strich + Jahreszahl unter der Achse (PMC + Saison-Progression).</li>
+<li><strong>Intensitäts-Panel</strong> verständlicher: Donut = TSS-Anteile mit eigener Legende &amp; neutraler Mitte; rechts km-Anteil je Zone; zwei Bewertungen (Last vs. Ø-Wochen <strong>und</strong> Polarisierung).</li>
+<li>Beim Laufen durchgängig <strong>km je Zone</strong> (Zonenverteilung km-basiert).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-4-0" data-version="0.4.0" data-era="0" data-date="2026-06-13">
+  <summary><span class="v">v0.4.0</span><span class="d">2026-06-13</span><span class="t">Visualisierung &amp; Accounts</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>PMC deutlich überarbeitet:</strong> TSS-Balken auf eigener Achse → die Fitness-Kurve nutzt die volle Höhe; Prognose-Linien (Fitness/Fatigue/Form) rechts von „heute" <strong>gestrichelt</strong>; zusätzliche Linie <strong>kumulierter Wochen-TSS</strong> (Sägezahn); <strong>klickbare Legende</strong> (Serien an/aus, ausgeblendet = transparent).</li>
+<li><strong>Wettkämpfe</strong> als goldener Strich + Beschriftung und <strong>Krank-Wochen</strong> rot hinterlegt — in PMC und Saison-Progression.</li>
+<li><strong>Saison-Progression:</strong> dicker Strich + Jahreszahl am Jahreswechsel.</li>
+<li><strong>Intensität neu (TSS-basiert):</strong> Donut = TSS-Anteile (Mitte = % hart), rechts km-Anteile je Zonen-Gruppe, darunter eine <strong>Wochen-Bewertung</strong> (Wochen-TSS vs. Ø der letzten Wochen). Schwellen + Referenz-Fenster in den Einstellungen konfigurierbar.</li>
+<li><strong>Langzeit-Seite:</strong> Summen-Kacheln (Lauf / Rad / Kraft) für den gewählten Zeitraum.</li>
+<li><strong>Editierbare Einheit-Notizen</strong> im Tracking (Strava-Beschreibung wird vorbefüllt, frei änderbar).</li>
+<li><strong>Saisonplan als eigene Seite</strong> (eigener Menüpunkt) — entrümpelt die Einstellungen.</li>
+<li><strong>Profile umbenennen &amp; löschen</strong> in den Einstellungen, abgesichert mit Bestätigungscode.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li>Wochenbericht: PMC &amp; Saison-Progression bauen sich <strong>ab 1.1. des Jahres</strong> auf (PMC mit 2 Wochen Prognose).</li>
+<li>Achsen-Ticks durchgehend über Mindestabstand (saubere Beschriftung bei langen Zeiträumen).</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-3-0" data-version="0.3.0" data-era="0" data-date="2026-06-12">
+  <summary><span class="v">v0.3.0</span><span class="d">2026-06-12</span><span class="t">Profile, Strava &amp; Feinschliff</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Profile/Accounts</strong> (lokal, ohne Passwort): Profil-Wechsler in der Sidebar, getrennte Daten je Person (z. B. Kolja/Isabel). Verlustfreie <code>*_v2</code>-Tabellen mit zusammengesetztem Schlüssel (<code>profile_id</code>), Originaltabellen bleiben als Backup. Profil 1 = Bestandsdaten („Kolja").</li>
+<li><strong>Strava-Anbindung</strong> (optional): OAuth-Verbindung + Sync, „Ganzes Jahr importieren" → PMC fürs ganze Jahr. COROS-Training-Load aus der Aktivitätsbeschreibung → TSS (sonst hrTSS aus Ø-Puls), Sport-Mapping, Matching zu geplanten Einheiten. Manuell eingetragene/bearbeitete Einheiten werden nie überschrieben.</li>
+<li><strong>Drucken/PDF auf der Langzeit-Seite</strong> (druckt den aktuell eingestellten Zeitraum).</li>
+<li>PMC + Saison-Progression jetzt auch oben auf der Langzeit-Seite (zeitraumgesteuert).</li>
+<li>PMC-Zeitraum-Preset <strong>„3 Wochen"</strong> (2 zurück + kommende) als Dashboard-Default.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Wochen sortieren sich automatisch nach Datum</strong> und werden lückenlos ab <code>0</code> neu nummeriert (erste Woche = #0); verknüpfte Einheiten/Wochen-Logs ziehen mit um.</li>
+<li>Wochenbericht-Notizen lesbarer unter der Einheit (Einzug, Trennlinie, kursiv, mehr Zeilenabstand; Einheiten-Name nur bei mehreren Einheiten/Tag).</li>
+<li>README + HANDOFF aktualisiert.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-2-0" data-version="0.2.0" data-era="0" data-date="2026-06-12">
+  <summary><span class="v">v0.2.0</span><span class="d">2026-06-12</span><span class="t">Auswertung, Eingabe &amp; Konfigurierbarkeit</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li><strong>Intervall-Builder</strong> (à la Strava/Coros): Zeit · Distanz · Pace · Ø-HF · Max-HF je Belastung mit Auto-Durchschnitt — für Plan- und Ist-Einheiten.</li>
+<li><strong>Intervall-Trend</strong> nach Kategorie (LT1 · LT2 · VO2 kurz/lang) + Endpoint <code>/api/intervals/trend</code>.</li>
+<li><strong>km/Minuten je Zone</strong> beim Eintragen, mit Anzeige der aktuellen HF-/Pace-Bereiche neben den Zonen.</li>
+<li><strong>Pace-Zonen</strong> (Lauf) und <strong>Speed-/Power-Zonen</strong> (Rad) aus der Leistungsdiagnostik.</li>
+<li><strong>kcal je Einheit</strong>, <strong>Commute-/Allgemein-Schnellerfassung</strong>.</li>
+<li>Feld <strong>„Sleep Performance"</strong> bei den Tagesfaktoren.</li>
+<li>Konfigurierbare Auswahllisten + neue Seite <strong>„Auswahllisten"</strong> (Phasen/Sportarten/Einheitstypen ohne Code-Änderung).</li>
+<li>Neue <strong>Langzeit-Seite</strong> (Wellness-Verläufe, Zonen-Effizienz, Intervall-Trend).</li>
+<li><strong>Zeitraum-Umschalter</strong> (1J / 6M / 1M / eigener) für die großen Charts.</li>
+<li>Reale Zeit-in-Zone (<code>realZoneMin</code>) + Kategorie-Summen (Lauf/Rad/Kraft) in der Wochen-Analyse.</li>
+<li>Footer/Impressum + Anleitung (<code>usage.html</code>).</li>
+<li>DB-Spalten (additiv): <code>kcal</code>, <code>efforts</code>, <code>zone_min</code>, <code>zone_km</code>, <code>speed_zones</code>, <code>power_zones</code>, <code>sleep_performance</code>.</li>
+</ul>
+<h5 class="cat-chg">Geändert</h5>
+<ul>
+<li><strong>Bike-TSS-Bug behoben</strong>: Rad-TSS jetzt Watt-/IF-basiert statt HF-Schätzung (keine überhöhten Werte mehr).</li>
+<li>Einheiten kontextabhängig: Lauf = <strong>min/km</strong>, Rad/Rolle = <strong>km/h</strong>.</li>
+<li>Wochenbericht: PMC + Saison-Progression ergänzt, Doppelung entfernt; <strong>2-seitiges Druck-Layout</strong> (S.1 Einheiten/Charts/Wellness/Checks, S.2 Tagesfaktoren-Tabelle + Reflexion); Doughnut-Styling.</li>
+<li>Default-Einheitsname aus der Planung übernommen.</li>
+<li>Tracking-Formular entzerrt &amp; in Abschnitte gruppiert.</li>
+<li>Phasen-Liste gestrafft (Base, Belastung, Entlastung, Race Week, Krank, Race Specific) + „Trainingslager"/„Urlaub".</li>
+<li>Wochen-Anzeige als <strong>Kalenderwochen</strong> (KW9 statt Woche 0) inkl. Jahreszahlen.</li>
+</ul>
+  </div>
+</details>
+
+<details class="release" id="v0-1-0" data-version="0.1.0" data-era="0" data-date="2026-06-11">
+  <summary><span class="v">v0.1.0</span><span class="d">2026-06-11</span><span class="t">Erste Version (MVP)</span></summary>
+  <div class="rel-body">
+<h5 class="cat-add">Hinzugefügt</h5>
+<ul>
+<li>Lokale, offline laufende Web-App (Vite+React+TS Client, Express + <code>node:sqlite</code> Server).</li>
+<li>Wochenplanung mit km-je-Zone und regelbasierter Prüf-Engine („passt die Woche zur Phase?").</li>
+<li><strong>TrainingPeaks-Modell</strong>: TSS, CTL (Fitness), ATL (Fatigue), TSB (Form) + PMC mit Forward-Projection.</li>
+<li>Tracking (Wellness-Tagesfaktoren + manuelle Aktivitäten), druckbarer Wochenbericht.</li>
+<li>Zonen-Sets mit Gültig-ab-Datum (neue Leistungsdiagnostik = neues Set).</li>
+<li>Seed-Import des bestehenden <code>.docx</code>-Saisonplans; Import der 14 handschriftlich ausgefüllten Wochen-Scans.</li>
+</ul>
+<p>[0.5.0]: #050--2026-06-13--chart-politur--races [0.4.0]: #040--2026-06-13--visualisierung--accounts [0.3.0]: #030--2026-06-12--profile-strava--feinschliff [0.2.0]: #020--2026-06-12--auswertung-eingabe--konfigurierbarkeit [0.1.0]: #010--2026-06-11--erste-version-mvp</p>
+  </div>
+</details>
+
+    </section>
+
+    <footer class="doc-footer">
+      <span>RunLog · Changelog</span>
+      <a href="#top">↑ Nach oben</a>
+      <a href="/usage.html">Anleitung</a>
+      <a href="/">Zur App</a>
+    </footer>
+
+  </main>
+</div>
+
+</body>
+</html>

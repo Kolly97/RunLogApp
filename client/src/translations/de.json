@@ -81,6 +81,7 @@
   "flag.week_load_low": "Wochen-Last niedrig: {{w}} TSS vs. Ø {{a}} (letzte 4 Wo).",
   "flag.week_load_ok": "Wochen-Last moderat: {{w}} TSS vs. Ø {{a}} (letzte 4 Wo).",
   "footer.guide": "Anleitung",
+  "footer.changelog": "Was ist neu?",
   "lt.block.adh.hint": "Wie konsequent die geplanten Einheiten umgesetzt wurden (gematchte Einheiten je Woche).",
   "lt.block.adh.sub": "TSS-Treffer + Zeit in Ziel-Pace-Zone, je Woche",
   "lt.block.adh.title": "Plan-Erfüllung (Wochenmittel)",

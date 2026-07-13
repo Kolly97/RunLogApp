@@ -164,6 +164,7 @@ export default function App() {
         <footer className="footer no-print">
           Erstellt von Kolja Hildenbrand mit Claude (Fable 5) · v{pkg.version} · Stand {BUILD_DATE} ·{" "}
           <a href="/usage.html" target="_blank" rel="noreferrer"><T k="footer.guide">Anleitung</T></a> ·{" "}
+          <a href="/changelog.html" target="_blank" rel="noreferrer"><T k="footer.changelog">Was ist neu?</T></a> ·{" "}
           <SparkToggle /> ·{" "}
           <VertToggle />
         </footer>

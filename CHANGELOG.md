@@ -6,6 +6,29 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Anleitung (usage.html) komplett neu — inhaltlich auf v3.0.0, visuell als eigenes Doku-Design-System:**
+  Die In-App-Anleitung war inhaltlich auf Stand v1.12 (Coach-Cockpit, Methodik/ML, Nerd-Seite, Zyklus,
+  Banister-Taper, Wettkampf-Prognose, Chart-Kino und Isabel-Tutorial fehlten komplett). Jetzt 18 Kapitel —
+  eines je App-Seite plus Überblick, Erste Schritte, Strava und Glossar — jeweils mit „So liest du das"-
+  Deutungshilfen je Chart, handgebauten SVG-Mockups und aufklappbaren „Die Mathematik dahinter"-Blöcken
+  (echte Formeln: rTSS/NGP, PMC, CS/VDOT, Kalman, Ridge/Bayes, Permutationstest, Banister, MCID). Die
+  **9 Daten-Kino-3D-Szenen sind direkt in die Anleitung eingebettet** (schlanker framework-freier Host über
+  dieselben Szenen-Module wie das Tutorial; lazy per Poster-Klick, eine Szene aktiv, sauberes Dispose) plus
+  Isabel-Hero-3D. Technisch ist die Anleitung jetzt ein eigener **Vite-Entry** (`client/usage.html` +
+  `client/src/docs/`) statt statischer Datei — three/gsap aus npm, URL `/usage.html` unverändert.
+  Dual-Theme hell/dunkel (Umschalter + System-Default), gebündelte Fonts (Inter/Fraunces/JetBrains Mono,
+  offline), TOC-Scrollspy + „/“-Schnellfilter, `prefers-reduced-motion` respektiert.
+- **Changelog als eigene Seite in der App (`/changelog.html`, Footer-Link „Was ist neu?"):** Stats-Hero
+  (44 Versionen · 32 Tage · Einträge, Count-up), **interaktive Ären-Timeline** (klickbare Versions-Punkte,
+  4 Ären-Bänder), kuratierter Story-Layer je Ära (0.x Fundament → 1.x Coach → 2.x Trainingslabor →
+  3.x Isabel/Kino) und darunter der **komplette Volltext aller 44 Versionen** aus der CHANGELOG.md,
+  je Version aufklappbar mit Kategorie-Farbcodes. Gleiches Doku-Design-System wie die Anleitung; die
+  Root-`CHANGELOG.html` entfällt (Pflege: je Release von Hand nachziehen, CHANGELOG.md bleibt die Quelle).
+- **README.html neu (Repo-Root, englisch, self-contained):** Hybrid aus Showcase (Hero, Feature-Tour mit
+  SVG-Mockups, Evidenz-Prinzip) und Technik-Teil (Architektur-Diagramm Electron/Express/SQLite/Python-
+  Sidecar, Stack-Tabelle, Setup-Befehle). Eine Datei ohne Build, Fonts als base64 eingebettet, Dual-Theme.
+
 ### Behoben
 - **Auswahllisten kamen nach einem Neustart (z. B. frischer Electron-Build) teilweise zurück, obwohl sie
   gelöscht waren — z. B. „REM (h)"/„Tief (h)" bei den Tagesfaktoren (Beta-Befund):** Die idempotenten
