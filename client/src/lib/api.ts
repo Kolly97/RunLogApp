@@ -58,11 +58,12 @@ export interface VerdictTrialSuggestion { axis: string; key: string; label: stri
 // Verankerte Praxisschwellen (MCID): latent = Δ latente Fitness (VO2-äquiv., Trials) · cs = s/km · dosePerSd = per-SD-Gate.
 export interface AnchoredMcid { latent: number; cs: number; dosePerSd: number; source: "anchored" | "default"; basisSd: number | null; }
 export interface TrainingVerdict { headline: string; axes: VerdictAxis[]; trialSuggestions: VerdictTrialSuggestion[]; overallConfidence: string; note: string; mcid?: AnchoredMcid; builtAt?: string; }
-export interface MethodBayesAxis { engine: string; findings: VerdictFinding[]; }
-export interface MethodBayesResult { regime?: MethodBayesAxis; emphasis?: MethodBayesAxis; }
+// v3.1.0: `builtAt`/`stale` kommen aus dem persistenten Methodik-Cache (Ergebnis überlebt den Seitenwechsel).
+export interface MethodBayesAxis { engine: string; findings: VerdictFinding[]; builtAt?: string | null; stale?: boolean; }
+export interface MethodBayesResult { regime?: MethodBayesAxis | null; emphasis?: MethodBayesAxis | null; }
 // F3: Regime/Schwerpunkt-Dosis-Wirkung auf die latente Fitness (höher β = baut mehr Fitness)
 export interface RegimeLatentCell { label: string; beta: number; ci_low: number | null; ci_high: number | null; p_positive: number | null; }
-export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; labels?: string[]; X?: number[][]; total?: number[]; y?: number[]; dates?: string[]; }
+export interface RegimeLatentResult { engine: string; nWeeks?: number; models: { mediator: RegimeLatentCell[]; composition: RegimeLatentCell[] } | null; labels?: string[]; X?: number[][]; total?: number[]; y?: number[]; dates?: string[]; builtAt?: string | null; stale?: boolean; }
 export type MlKindName = "latent_fitness" | "dose_response" | "readiness" | "banister" | "research_shap";
 export interface MlReadinessPoint { date: string; value: number; sd: number; }
 export interface MlHealthFlag { date: string; kind: string; severity: string; message: string; }
@@ -196,6 +197,35 @@ export interface OptimalZones {
   sources: { pace: string; hr: string; power: string | null };
 }
 export interface OptimalZonesResult { zones: OptimalZones | null; vdot: number | null; today: string }
+// v3.1.0 — Block-Wizard: gebündelte Engine-Vorschläge (Ziel · Zwischenziele · Umfang · Zeit · Zonen · Schwerpunkt).
+export interface BlockDefaults {
+  today: string;
+  race: { id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null } | null;
+  tuneups: { id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null }[];
+  weeksToRace: number | null;
+  distanceConcept: DistanceConcept | null;
+  forecast: { curVdot: number; nowTimeS: number | null; goalTimeS: number | null; projEndTimeS: number | null; projEndVdot: number | null; feasible: boolean | null } | null;
+  volume: { startKm: number | null; maxKm: number | null; chronicKm: number | null; acwr: number | null; kmByTime: number | null; reason: string };
+  availability: Availability | null;
+  zones: { optimal: OptimalZones | null; current: { pace_zones: Record<number, number> | null; hr_zones: unknown; threshold_pace: number | null; lt1_pace: number | null }; vdot: number | null };
+  emphasis: { suggested: string | null; label: string | null; tier: "beobachtet" | "geprüft" | null; confidence: string | null; rationale: string; current: string | null };
+  healthCap: { loadFactor: number; dropTopIntensity: boolean; reason?: string | null } | null;
+}
+export interface BlockSetupBody {
+  availability?: Availability | null;
+  startKm?: number | null; maxKm?: number | null;
+  emphasis?: string | null; emphasisMode?: "auto" | "manual";
+  fromWeek?: number | null;
+  applyPhases?: boolean;   // abgeleitete Phasen (3:1 + Taper) in den Saisonplan schreiben
+}
+/** Vorschau: dieselben Felder wie das Setup — nur wird nichts gespeichert. */
+export interface BlockPreviewBody {
+  week?: number | null;
+  availability?: Availability | null;
+  startKm?: number | null; maxKm?: number | null;
+  emphasis?: string | null; emphasisMode?: "auto" | "manual";
+  derivePhases?: boolean;
+}
 export interface ThresholdTrend { points: { date: string; thrPace: number | null; cp: number | null }[] }
 export interface RunEffectiveness { window: number; mass: number; n: number; points: { date: string; re: number }[]; early: number | null; late: number | null; deltaPct: number | null }
 export interface WPrimeLatest {
@@ -756,6 +786,12 @@ export const api = {
   // v1.4.0 (A1) — Verfügbarkeits-/Präferenz-Profil
   availability: () => j<Availability | null>("/api/availability"),
   saveAvailability: (b: Availability) => j<{ ok: boolean }>("/api/availability", { method: "PUT", body: JSON.stringify(b) }),
+  // v3.1.0 — Block-Wizard: gebündelte Engine-Vorschläge + Live-Vorschau + Abschluss (schreibt nur Bestätigtes).
+  blockDefaults: () => j<BlockDefaults>("/api/coach/block-defaults"),
+  blockSetup: (b: BlockSetupBody) => j<{ ok: boolean; written: string[]; kmWeeks: number; phaseWeeks: number }>("/api/coach/block-setup", { method: "POST", body: JSON.stringify(b) }),
+  // Vorschau: derselbe echte Blockplan, aber mit den noch NICHT gespeicherten Wizard-Eingaben. Schreibt nichts.
+  blockPreview: (b: BlockPreviewBody, signal?: AbortSignal) =>
+    j<BlockPlan>("/api/coach/block-preview", { method: "POST", body: JSON.stringify(b), signal }),
   workouts: () => j<WorkoutInfo[]>("/api/workouts"), // v1.8.0 Bibliothek für Block-Präferenzen
   customWorkouts: () => j<CustomWorkout[]>("/api/custom-workouts"), // v1.9.0 Z14
   estimateCustomWorkout: (b: CustomInput) => j<CustomEstimate>("/api/custom-workouts/estimate", { method: "POST", body: JSON.stringify(b) }),
@@ -794,8 +830,11 @@ export const api = {
   mlBanister: () => j<MlBanister>("/api/ml/banister"),
   mlResearchShap: () => j<MlResearchShap>("/api/ml/research-shap"),
   mlTrainingVerdict: () => j<TrainingVerdict>("/api/ml/training-verdict"),
-  mlMethodBayes: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`, { method: "POST" }),
+  // v3.1.0: GET = gespeichertes Ergebnis laden (rechnet nie) · Run = neu rechnen + speichern.
+  mlMethodBayes: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`),
+  mlMethodBayesRun: (axis: "regime" | "emphasis") => j<MethodBayesResult>(`/api/ml/method-bayes?axis=${axis}`, { method: "POST" }),
   mlRegimeLatent: (axis: "regime" | "emphasis") => j<RegimeLatentResult>(`/api/ml/regime-latent?axis=${axis}`),
+  mlRegimeLatentRun: (axis: "regime" | "emphasis") => j<RegimeLatentResult>(`/api/ml/regime-latent?axis=${axis}`, { method: "POST" }),
   mlReadiness: () => j<MlReadiness>("/api/ml/readiness"),
   mlAdversarialAudit: () => j<MlAdversarialAudit>("/api/ml/audit", { method: "POST" }),
   mlGetFeedback: (activityId: number) => j<MlFeedback | null>(`/api/ml/feedback?activityId=${activityId}`),

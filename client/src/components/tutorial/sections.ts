@@ -322,6 +322,15 @@ export const SECTIONS: TutSection[] = [
       },
       { kind: "chart3d", chart: "dose", title: "Daten-Kino: der Forest-Plot" },
       {
+        kind: "task",
+        title: "Aufgabe: Schalte auf „Volumen-bereinigt“",
+        route: "/methodik?tab=effects",
+        text: "Die Karte hat zwei Sichten — probier sie beide. „Absolut“ fragt: Was bringt MEHR von diesem Reiz, oben drauf? Da steckt der Umfang mit drin: Wochen mit viel Schwelle sind meist auch Wochen mit vielen Kilometern. „Volumen-bereinigt“ fragt: Was bringt dieser Reiz BEI GLEICHEM Umfang? — also der Mix statt der Menge. Klick auf „Volumen-bereinigt“ und schau, welche Balken springen. Bei mir klettert LT1/Marathon von +0,25 auf +0,75: Nicht die Kilometer machen mich schneller, sondern DIESE Kilometer.",
+        check: { test: async () => !!document.querySelector("[data-tour='dose-view-switch'] [data-model='composition'][data-active='1']") },
+        skippable: true,
+        skipNote: "Merk dir die Faustregel: Absolut plant dein VOLUMEN, volumen-bereinigt plant deinen MIX. Und ein negatives „Easy“ heißt nie „Easy schadet“ — es heißt: Bei gleichem Umfang ersetzen Easy-Minuten keine Qualitäts-Minuten.",
+      },
+      {
         kind: "quiz",
         question: "Das Dosis-Modell zeigt: „+1 SD Schwellen-Minuten → +0,4 latente Fitness, Konfidenz mittel.“ Was weißt du jetzt?",
         options: [
@@ -346,9 +355,16 @@ export const SECTIONS: TutSection[] = [
       },
       {
         kind: "say",
+        title: "So sieht ein BEWEIS aus",
+        route: "/methodik?tab=experiments",
+        selector: "[data-tour='trial']",
+        text: "Und jetzt das Beste: Ein Experiment habe ich schon hinter mir — scroll zu meinem abgeschlossenen Trial „Schwelle/HM-Pace vs. VO2max“. Über 60 Wochen liefen 12 randomisierte Blöcke (6 Paare, dazwischen Washout-Wochen). Der Zufall entschied, welcher Block welcher Arm wird — deshalb kann kein Störfaktor das Ergebnis systematisch erzeugen. Ergebnis: In ALLEN sechs Paaren gewann die Schwelle. Der exakte Permutationstest sagt p = 0,031 — von 64 möglichen Zufalls-Anordnungen ist meine eine der zwei extremsten. Effekt θ ≈ +0,5 latente Fitness, über meiner Praxisschwelle. Verdikt: geprüft. Das ist der einzige Satz in der ganzen App, der „bewiesen“ sagen darf.",
+      },
+      {
+        kind: "say",
         title: "So legst du selbst eins an",
         route: "/methodik?tab=experiments",
-        text: "Du musst dir kein Experiment ausdenken: Sieht das Verdikt ein starkes beobachtetes Signal ohne Kausal-Beleg, schlägt es dir unter „Kausal absichern?“ das passende Experiment vor. Annehmen randomisiert die Blöcke und schreibt sie in deinen Plan — abbrechen geht jederzeit, die Blöcke bleiben archiviert. Mein Tipp: Starte erst, wenn ein paar Monate Grunddaten da sind, sonst fehlt dem Test die Kraft.",
+        text: "Du musst dir kein Experiment ausdenken: Sieht das Verdikt ein starkes beobachtetes Signal ohne Kausal-Beleg, schlägt es dir unter „Kausal absichern?“ das passende Experiment vor. Annehmen randomisiert die Blöcke und schreibt sie in deinen Plan — abbrechen geht jederzeit, die Blöcke bleiben archiviert. Ehrlich zur Dauer: Für ein „geprüft“ braucht es 6 saubere Blockpaare — bei mir waren das über 60 Wochen. Deshalb: früh anfangen, geduldig bleiben, und in der Zwischenzeit den beobachteten Hinweisen folgen.",
       },
       {
         kind: "say",
@@ -398,8 +414,8 @@ export const SECTIONS: TutSection[] = [
     nr: 4,
     icon: "🧭",
     title: "Coach — mit Plan zum Renntag",
-    tagline: "Mein Weg zum Halbmarathon: Block, Timeline, Peak, Taper.",
-    minutes: 13,
+    tagline: "Mein Weg zum Halbmarathon: Block einrichten, Timeline, Peak, Taper.",
+    minutes: 17,
     available: true,
     steps: [
       {
@@ -430,26 +446,51 @@ export const SECTIONS: TutSection[] = [
       },
       {
         kind: "task",
-        title: "Aufgabe: Lade meinen Wettkampf-Block",
+        title: "Aufgabe: Öffne „🧭 Block einrichten“",
         route: "/coach",
-        text: "Klicke in der Karte „Wettkampf-Block“ auf „▶ Block-Vorschlag laden“. Der Coach baut den kompletten Mesozyklus von der gewählten Woche bis zum Renntag — Phasen, Entlastungswochen, Taper, und jede Woche mit konkreten Einheiten.",
-        check: { test: domHas("[data-tour='block-timeline']") },
+        text: "Klick in der Karte „Wettkampf-Block“ auf „🧭 Block einrichten“. Es öffnet sich ein Fenster, das dich durch die sechs Stellschrauben führt — und rechts daneben rechnet die App live den echten Plan mit, den deine Eingaben erzeugen. Genau darum geht es: Du sollst nicht einen Plan bekommen, sondern verstehen, woraus er entsteht.",
+        check: { test: domHas(".bw-grid") },
         skippable: true,
-        skipNote: "Wenn hier nichts lädt (auf deinem Profil braucht es Saisonplan + Rennen), überspringe — auf meinem Profil siehst du das Vollbild.",
+        skipNote: "Der Wizard braucht ein Zielrennen und einen Saisonplan. Fehlt beides, schau die nächsten Schritte einfach an — den schnellen Weg (▶ Block-Vorschlag laden) gibt es weiterhin.",
+      },
+      {
+        kind: "say",
+        title: "Umfang: der Motor — und seine Bremse",
+        route: "/coach",
+        text: "Schritt 3 ist der wichtigste. „Start“ ist, wo du heute wirklich stehst (bei mir der Schnitt der letzten vier Wochen), „Maximum“ ist die Obergrenze, die in der verbleibenden Zeit sicher aufzubauen ist — rund 6 % Zuwachs je Aufbauwoche, mit Entlastungswoche in jeder vierten. Klingt langsam? Ist es. Aber Sehnen und Knochen brauchen Monate, wo das Herz Wochen braucht — und eine Zerrung kostet dich mehr Fitness, als drei mutige Wochen dir bringen. Dreh ruhig mal am Maximum und schau rechts zu: Die Wochensäulen und der Peak wandern mit.",
+      },
+      {
+        kind: "say",
+        title: "Zeit ist eine Obergrenze, kein Soll",
+        route: "/coach",
+        text: "In Schritt 4 trägst du ein, wie viel Zeit du je Tag hast — nicht, wie viel du trainieren willst. Der Unterschied ist entscheidend: Der Coach plant so viel, wie dein Ziel physiologisch verlangt, und kürzt nur, wenn die Zeit nicht reicht. Hast du sonntags drei Stunden, wird daraus trotzdem kein 30-km-Longrun, wenn du auf 10 km zielst — der Longrun bleibt ein Anteil deines Wochenumfangs, nicht eine Füllmenge für freie Zeit. Übrige Zeit bleibt einfach übrig; die App sagt dir das sogar.",
+      },
+      {
+        kind: "say",
+        title: "Zonen und Schwerpunkt — und dann: erstellen",
+        route: "/coach",
+        text: "Schritt 5 fragt, ob du die berechneten optimalen Zonen für den Block übernehmen willst — sind deine Zonen veraltet, trainierst du sauber gerechnet am falschen Anker. Schritt 6 setzt den Schwerpunkt: den Vorschlag aus deiner Evidenz (bei mir die Schwelle — mein geprüftes Experiment aus Abschnitt 3) oder deine eigene Wahl. Mit „Block erstellen“ schreibt die App genau das, was du bestätigt hast: Verfügbarkeit, die Ziel-km je Woche und die Phasen. Danach steht der Plan.",
       },
       {
         kind: "say",
         title: "Die Timeline lesen",
         route: "/coach",
         selector: "[data-tour='block-timeline']",
-        text: "Jede Säule eine Woche: Farbe = Phase (Build, Specific, Taper), Höhe = Last. Darüber die Readiness-Kurve — so soll deine Form (TSB) zum Renntag ins Plus drehen — und der Zielvermerk „bereit für ~…“. Ein Klick auf eine Woche öffnet die Details: jede Einheit mit Tag, Dauer, TSS, Beschreibung — und bei Qualitätstagen ihrem „Warum“ aus dem Schwerpunkt.",
+        text: "Jede Säule eine Woche: Farbe = Phase (Build, Specific, Taper), Höhe = Last. Darüber die Readiness-Kurve — so soll deine Form (TSB) zum Renntag ins Plus drehen — und der Zielvermerk „bereit für ~…“. Ein Klick auf eine Woche öffnet die Details: jede Einheit mit Tag, Dauer, TSS, Beschreibung — und bei Qualitätstagen ihrem „Warum“ aus dem Schwerpunkt. Übrigens: Denselben Plan bekommst du auch ohne Wizard über „▶ Block-Vorschlag laden“ — das ist der schnelle Weg, wenn deine Einstellungen schon stehen.",
       },
       {
         kind: "say",
         title: "Das Coaching-Verdikt — deine Evidenz steuert mit",
         route: "/coach",
         selector: "[data-tour='coaching-verdict']",
-        text: "Erinnerst du dich an Abschnitt 3? Hier schließt sich der Kreis: Der Block-Schwerpunkt kommt aus deiner Evidenz — ehrlich etikettiert (beobachtet vs. geprüft) und mit Begründung. Gesundheits-Signale können die Last deckeln (Health-Cap). Das letzte Wort hast du: „Auto (Evidenz)“ oder manuell pinnen. Und „→ Belege in Methodik“ springt direkt zur Beweislage.",
+        text: "Erinnerst du dich an Abschnitt 3? Hier schließt sich der Kreis: Der Block-Schwerpunkt kommt aus deiner Evidenz — ehrlich etikettiert (beobachtet vs. geprüft) und mit Begründung. Das letzte Wort hast du: „Auto (Evidenz)“ oder manuell pinnen; „→ Belege in Methodik“ springt direkt zur Beweislage.",
+      },
+      {
+        kind: "say",
+        title: "Und wenn dein Körper Nein sagt?",
+        route: "/coach",
+        selector: "[data-tour='coaching-verdict']",
+        text: "Schau genau hin: Bei mir steht gerade ein Gesundheits-Hinweis — meine HRV liegt seit Tagen unter meiner Baseline, mein Ruhepuls leicht darüber. Nichts Dramatisches, sondern die normale Quittung harter Aufbauwochen. Trotzdem greift der Coach ein und hält die Wochenlast 10 % konservativer. Das ist die wichtigste Rangfolge der ganzen App: Gesundheit steht ÜBER Periodisierung, über der Evidenz, über deinem Wunschplan. Bei starken Signalen (chronischer Übertrainings-Verdacht) streicht er zusätzlich die Spitzen-Intensität und macht Erholung zur Headline — dann ist Pause keine Schwäche, sondern der Plan.",
       },
       {
         kind: "task",

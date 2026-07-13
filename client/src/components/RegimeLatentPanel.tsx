@@ -1,24 +1,31 @@
 // F3: primäre Auswertung von Passive Inferenz (Regime) & Methoden-Schwerpunkt auf der LATENTEN FITNESS.
 // „Δ latente Fitness je +1 SD Zeit-im-Regime" (höher = baut mehr Fitness), Mediator (absolut) + Komposition
 // (bei gleichem Umfang). Komplexe Python-Engine (gewichtete Ridge + Moving-Block-Bootstrap, L2-gewichtet), TS-Fallback.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type RegimeLatentResult, type RegimeLatentCell } from "../lib/api.ts";
-import { useComputeStamp, stampLabel, type ComputeStamp } from "../lib/computeStamp.ts";
+import { useComputeStamp, stampLabel, agoLabel, type ComputeStamp } from "../lib/computeStamp.ts";
 
-const engineLabel = (e?: string) => (e === "numpy-ridge-boot" ? "Python (Ridge + Block-Bootstrap)" : e === "ts" ? "TS (Punktschätzer, ohne CI)" : e === "insufficient" ? "zu wenig Daten" : e ?? "");
+const engineLabel = (e?: string) => (e === "numpy-ridge-boot" ? "Python (Ridge + Block-Bootstrap)" : e === "ts" ? "TS (Punktschätzer, ohne CI)" : e === "insufficient" ? "zu wenig Daten" : e === "none" ? "noch nicht berechnet" : e ?? "");
 
+// v3.1.0: Ergebnis persistiert serverseitig (ml_method_cache). Mount lädt nur (GET, rechnet nie — sonst würde
+// allein das Öffnen der Seite einen bis zu 120 s langen Sidecar-Lauf starten); „neu berechnen" postet.
 export function useRegimeLatent(axis: "regime" | "emphasis") {
   const [data, setData] = useState<RegimeLatentResult | null>(null);
   const [busy, setBusy] = useState(false);
   const { stamp, runTimed } = useComputeStamp(`regime-latent:${axis}`);
-  const run = async () => { setBusy(true); try { setData(await runTimed(() => api.mlRegimeLatent(axis))); } catch { setData(null); } finally { setBusy(false); } };
+  useEffect(() => {
+    let alive = true;
+    api.mlRegimeLatent(axis).then((r) => { if (alive) setData(r); }).catch(() => { /* kein Cache → Karte bleibt leer */ });
+    return () => { alive = false; };
+  }, [axis]);
+  const run = async () => { setBusy(true); try { setData(await runTimed(() => api.mlRegimeLatentRun(axis))); } catch { setData(null); } finally { setBusy(false); } };
   return { data, busy, run, stamp };
 }
 
 /** Header-Button + Engine-Pille + „zuletzt berechnet"-Markierung — oben rechts platzieren. */
 export function RegimeLatentButton({ busy, onClick, data, stamp }: { busy: boolean; onClick: () => void; data: RegimeLatentResult | null; stamp?: ComputeStamp | null }) {
   const computed = !!data?.models;
-  const col = computed ? "var(--ok)" : "var(--muted)";
+  const col = !computed ? "var(--muted)" : data!.stale ? "var(--warn)" : "var(--ok)";
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -29,7 +36,9 @@ export function RegimeLatentButton({ busy, onClick, data, stamp }: { busy: boole
         )}
         <button className="btn btn-ghost" disabled={busy} onClick={onClick}>{busy ? "rechnet… (bis ~15 s)" : "neu berechnen"}</button>
       </div>
-      {stamp && <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>{stampLabel(stamp)}</span>}
+      {computed && data!.builtAt
+        ? <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>berechnet {agoLabel(data!.builtAt)}{data!.stale ? " · veraltet (neue Daten)" : " · aktuell"}</span>
+        : stamp && <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>{stampLabel(stamp)}</span>}
     </div>
   );
 }

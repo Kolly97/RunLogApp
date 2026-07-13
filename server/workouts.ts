@@ -166,6 +166,9 @@ const rot = <T,>(arr: T[], i: number): T => arr[((i % arr.length) + arr.length) 
 export interface BlockPrefs {
   emphasis?: string | null; favoriteWorkouts?: string[]; avoidWorkouts?: string[];
   ctlProgress?: number; // v2.8.0 (Item 1b): steuert die LT1-Struktur-Progression (kontinuierlich→Reps→im Longrun)
+  // v3.1.0: Wie stark darf die Evidenz drehen? „beobachtet" = nur der freie Qualitäts-Slot;
+  // „geprüft" (randomisierter N-of-1-Trial) darf zusätzlich EINEN Pflichtreiz der Zieldistanz verschieben.
+  emphasisTier?: "beobachtet" | "geprüft" | null;
 }
 
 // v2.8.0 (Item 1b): LT1-Struktur-Progression (Daniels „Cruise Intervals" / Pfitzinger „medium-long run" / Canova).
@@ -214,7 +217,10 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     lt1: ["lt1_long_reps", "lt1_continuous"], // LT1-Vorlagen sind phases:[base,belast] → in Specific leerer Pool = kein Swap (korrekt: LT1 = Base/Build-Reiz)
     berg: ["hill_reps_xlong", "hill_reps_short", "hill_reps_long"],
     fartlek: ["fartlek_structured", "fartlek_free"],
-    vo2: ["vo2_long", "vo2_45", "vo2_1000s"],
+    // v3.1.0: `vo2_400s` ergänzt — die langen VO2-Intervalle (3–5') sind bewusst `phases:["specific"]`, dadurch
+    // hatte der VO2-Schwerpunkt im BUILD gar keinen legalen Kandidaten und die Evidenz verpuffte still.
+    // Der Phasen-Filter unten wählt: Build → 400er (build-legaler VO2-Reiz), Specific → die langen Intervalle.
+    vo2: ["vo2_long", "vo2_45", "vo2_1000s", "vo2_400s"],
     schwelle: ["lt2_cruise", "lt2_ladder", "lt2_mixed", "lt2_1000s", "lt2_broken_tempo"],
     norwegian: ["norw_400s", "norw_short_reps"],
   };
@@ -249,14 +255,30 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
       if (picks[repIdx].emph) return picks;
       const marked = [...picks]; marked[repIdx] = { ...marked[repIdx], emph: true }; return marked;
     }
-    const idx = picks.map((p, i) => ({ p, i })).reverse().find(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides")?.i;
-    if (idx == null) return picks;
+    // v3.1.0 (Evidenz-Gating): Der ERSTE harte Qualitäts-Slot einer Phase trägt den Pflichtreiz der Zieldistanz
+    // (Marathon → Schwelle/MP · 10k → VO2 · HM → Schwelle …). Beobachtete Evidenz darf nur einen FREIEN Slot
+    // drehen; ein kausal geprüfter N-of-1-Trial darf zusätzlich diesen Pflichtreiz verschieben (max. einen).
+    const hardQ = picks.map((p, i) => ({ p, i }))
+      .filter(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides" && (p.tpl.effort ?? 0) >= HARD_EFFORT)
+      .map(({ i }) => i);
+    const freeIdx = hardQ.slice(1);                                   // alles außer dem Pflichtreiz-Slot
+    const proven = prefs?.emphasisTier === "geprüft";
+    const idx = freeIdx.length ? freeIdx[freeIdx.length - 1]
+      : proven && hardQ.length ? hardQ[0]                             // nur „geprüft" darf den Pflichtreiz drehen
+        : picks.map((p, i) => ({ p, i })).reverse().find(({ p }) => p.role === "quality" && !p.pair && p.tpl.id !== "strides" && (p.tpl.effort ?? 0) < HARD_EFFORT)?.i;
+    if (idx == null) return picks;                                    // kein freier Slot + nur beobachtet → Pflichtreiz bleibt
     const next = [...picks];
     next[idx] = { tpl: wk(rot(pool, weekInPhase)), role: "quality", emph: true };
     return next;
   };
 
-  return applyLt1Progression([...emphasize(pickPhase()), ...core], prefs?.ctlProgress ?? 0);
+  // Reihenfolge (v3.1.0): erst die Dichte (wie viele harte Einheiten verträgt die Woche?), dann die Evidenz
+  // (welcher der überlebenden Slots wird gedreht?) — sonst könnte der Dichte-Trim den Pflichtreiz entfernen
+  // und die beobachtete Evidenz als einzige harte Einheit stehen lassen.
+  return applyLt1Progression(
+    [...emphasize(applyQualityDensity(pickPhase(), { phase, fitness, ctlProgress: prefs?.ctlProgress ?? 0, allowDoubles })), ...core],
+    prefs?.ctlProgress ?? 0,
+  );
 
   function pickPhase(): WorkoutPick[] {
   const p = (phase || "").toLowerCase();
@@ -470,6 +492,7 @@ export interface RenderCtx {
   taperFactor?: number;  // Baustein 2.4: <1 reduziert das Qualitäts-VOLUMEN (Reps) im Taper/Deload — Pace/Intensität bleibt
   volumeFactor?: number; // Baustein B1: RPE/Completion-Loop je Einheiten-Typ — <1 (zuletzt zu hart) / >1 (zu leicht), bidirektional
   goalDistanceM?: number | null;             // Item 3: Zieldistanz → Long-Run-Dauer-Deckel
+  weekKm?: number | null;                    // v3.1.0: Wochenumfang → Longrun als ANTEIL davon (strengste Grenze gewinnt)
   ctlProgress?: number;  // v2.8.0 (Item 1): kontinuierlicher CTL-Fortschritts-Score (0..1) für Reps/Sets/Dauer —
   //                        ersetzt das phasen-lokale (sägezahnende) `progress` für Progression; `progress ?? ctlProgress`
   //                        via `ctx.ctlProgress ?? ctx.progress` an den Call-Sites, Fallback für Kontexte ohne Season-Baseline.
@@ -477,13 +500,102 @@ export interface RenderCtx {
 
 // Item 3 (Frage 5): Long-Run-Maxdauer (min) nach Zieldistanz — 5k braucht keinen Marathon-Long-Run.
 // Quelle: distanzspezifische Aufbau-Praxis (Daniels/Canova) — Long-Run skaliert mit der Wettkampfdauer.
+// v3.1.0: OHNE Zielrennen gilt jetzt der HM-Default (120') statt „kein Deckel" (150') — ein Longrun ohne Ziel
+// ist keine Einladung, 2,5 h zu laufen.
 export function longRunCap(goalDistanceM: number | null | undefined): number {
   const d = goalDistanceM ?? 0;
-  if (d <= 0) return 150;       // kein Ziel → kein zusätzlicher Deckel
-  if (d <= 6000) return 75;     // 5k: kurzer Long-Run
-  if (d <= 12000) return 95;    // 10k
+  if (d <= 0) return 120;       // kein Ziel → HM-Default (nicht: unbegrenzt)
+  if (d <= 6000) return 90;     // 5k
+  if (d <= 12000) return 100;   // 10k
   if (d <= 25000) return 120;   // Halbmarathon
   return 165;                   // Marathon
+}
+
+// v3.1.0 (Coach-Umbau) — grobe Phasen-Familie; eine Wahrheitsquelle für Longrun-Anteil und Qualitätsdichte.
+export type PhaseKind = "base" | "build" | "specific" | "deload" | "raceweek" | "recovery" | "sick";
+export function phaseKind(phase: string | null | undefined): PhaseKind {
+  const p = (phase || "").toLowerCase();
+  if (p.includes("krank")) return "sick";
+  if (p.includes("recovery") || p.includes("erholung")) return "recovery";
+  if (p.includes("race week") || p.includes("raceweek") || p.includes("race-week")) return "raceweek";
+  if (p.includes("entlast") || p.includes("deload")) return "deload";
+  if (p.includes("specific") || p.includes("spec")) return "specific";
+  if (p.includes("belast") || p.includes("build") || p.includes("aufbau")) return "build";
+  return "base";
+}
+
+// v3.1.0: Der Longrun ist ein ANTEIL des Wochenumfangs — keine Füllmenge für freie Zeit. Klassische
+// Trainingslehre (Daniels/Pfitzinger): 25–30 % des Wochenvolumens, im Renn-Anlauf eher weniger.
+const LONGRUN_SHARE: Record<PhaseKind, number> = {
+  base: 0.30, build: 0.28, specific: 0.25, deload: 0.25, raceweek: 0.20, recovery: 0.20, sick: 0.20,
+};
+/** Longrun-Anteil am Wochenumfang für diese Phase (eine Wahrheitsquelle — auch der Planer rechnet damit). */
+export const longRunShare = (phase: string | null | undefined): number => LONGRUN_SHARE[phaseKind(phase)];
+
+// ---------------- Qualitätsdichte (v3.1.0) ----------------
+// Wie viele HARTE Einheiten verträgt eine Woche? Phase × Fitness/CTL — nicht „so viele, wie Zeit da ist".
+// Ein Longrun mit Renntempo-/MP-Anteil (effort ≥ 4) zählt als HALBER harter Tag: bei HM/Marathon ist er ein
+// echter Reiz und darf nicht zusätzlich zu zwei Qualitäten stehen (klassischer Überlastungs-Pfad).
+const HARD_EFFORT = 4;
+const hardWeight = (p: WorkoutPick): number =>
+  (p.tpl.effort ?? 0) < HARD_EFFORT ? 0 : p.role === "long" ? 0.5 : 1;
+
+/** Harte-Einheiten-Budget der Woche (Kolja-Entscheid: Phase × Distanz × Fitness/CTL). */
+export function qualityBudget(o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress?: number; allowDoubles?: boolean }): number {
+  const k = phaseKind(o.phase);
+  if (k === "sick" || k === "recovery") return 0;
+  if (k === "raceweek" || k === "deload") return 1;
+  if (k === "base") return 1;                                   // Base: EIN Qualitätsreiz (Strides/Ökonomie zählen nicht)
+  if (o.fitness === "low") return 1;                            // niedrige CTL: auch im Build nur eine harte Einheit
+  if (k === "specific") return 2;                               // Specific: 2, davon 1 renn-spezifisch
+  const strong = o.fitness === "high" && (o.ctlProgress ?? 0) >= 0.5;
+  return o.allowDoubles && strong ? 3 : 2;                      // Build: 2 — erfahren + hohe CTL + Doubles → 3 (norwegisch)
+}
+
+/** Überzählige harte Einheiten → lockerer Dauerlauf. Opfer-Reihenfolge: von hinten (Abwechslungs-Slots zuerst),
+ *  der ERSTE harte Slot (= Pflichtreiz der Zieldistanz) fällt zuletzt. Doppel-Tage werden nie halbiert. */
+function applyQualityDensity(picks: WorkoutPick[], o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress: number; allowDoubles: boolean }): WorkoutPick[] {
+  const budget = qualityBudget(o);
+  let weight = picks.reduce((a, p) => a + hardWeight(p), 0);
+  if (weight <= budget) return picks;
+  const out = [...picks];
+  const hardIdx = out.map((p, i) => ({ p, i }))
+    .filter((x) => x.p.role === "quality" && hardWeight(x.p) >= 1 && !x.p.pair)
+    .map((x) => x.i);
+  const victims = [...hardIdx.slice(1).reverse(), ...hardIdx.slice(0, 1)]; // Pflichtreiz-Slot ganz zuletzt
+  for (const i of victims) {
+    if (weight <= budget) break;
+    out[i] = { tpl: wk("easy_ga1"), role: "easy" };
+    weight -= 1;
+  }
+  return out;
+}
+
+/**
+ * v3.1.0 — Longrun-Grenze: die STRENGSTE der drei Regeln gewinnt.
+ *  (1) Anteil am Wochenumfang (Phase), (2) distanz-typischer Deckel, (3) Zeitbudget des Tages.
+ * Beispiel (Kolja): 10-km-Ziel · 45 km/Woche · 3 h frei → Anteil 0,28·45 = 12,6 km ≈ 76' gewinnt gegen den
+ * 10k-Deckel (100') und die 180' Budget — vorher wurden daraus 30 km, weil nur die Zeit begrenzte.
+ */
+export function longRunLimit(o: {
+  goalDistanceM?: number | null;
+  phase?: string | null;
+  weekKm?: number | null;      // Ziel-/erwarteter Wochenumfang in km
+  longPaceSec?: number | null; // Longrun-Tempo in s/km (Zonen-Pace)
+  budgetMin?: number | null;   // Zeitbudget des Longrun-Tages
+}): { maxMin: number; reason: string } {
+  const distMin = longRunCap(o.goalDistanceM);
+  const cands: { min: number; reason: string }[] = [{ min: distMin, reason: `distanz-typischer Deckel (${distMin} min)` }];
+
+  const share = LONGRUN_SHARE[phaseKind(o.phase)];
+  if (o.weekKm && o.weekKm > 0 && o.longPaceSec && o.longPaceSec > 0) {
+    const shareKm = o.weekKm * share;
+    cands.push({ min: (shareKm * o.longPaceSec) / 60, reason: `${Math.round(share * 100)} % des Wochenumfangs (${Math.round(shareKm * 10) / 10} km)` });
+  }
+  if (o.budgetMin && o.budgetMin > 0) cands.push({ min: o.budgetMin, reason: `Zeitbudget (${o.budgetMin} min)` });
+
+  const best = cands.reduce((a, b) => (b.min < a.min ? b : a));
+  return { maxMin: Math.max(20, Math.round(best.min)), reason: best.reason };
 }
 
 // Item 3 (Frage 7): „Sportwissenschaft sichtbar machen" — distanzspezifisches Trainingskonzept (Stoffwechselwege +
@@ -624,8 +736,17 @@ export function renderWorkout(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSes
 function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSession {
   const { zones, fitness, progress } = ctx;
   let maxMin = ctx.maxMin && ctx.maxMin > 0 ? ctx.maxMin : Infinity;
-  // Item 3 (5): Long-Run-Dauer nach Zieldistanz deckeln (Distanz = Rahmen).
-  if (tpl.family === "Long" && ctx.goalDistanceM) maxMin = Math.min(maxMin, longRunCap(ctx.goalDistanceM));
+  // v3.1.0: Longrun-Grenze = strengste aus Wochenanteil · Distanz-Deckel · Zeitbudget (vorher: nur Zeit/Distanz,
+  // und ohne Zielrennen gar kein Deckel → 30-km-Longrun beim 10-km-Ziel).
+  let longNote: string | null = null;
+  if (tpl.family === "Long") {
+    const lim = longRunLimit({
+      goalDistanceM: ctx.goalDistanceM, phase: ctx.phaseLabel, weekKm: ctx.weekKm,
+      longPaceSec: paceOf(tpl.workZone, zones), budgetMin: ctx.maxMin && ctx.maxMin > 0 ? ctx.maxMin : null,
+    });
+    if (lim.maxMin < maxMin) longNote = lim.reason;
+    maxMin = Math.min(maxMin, lim.maxMin);
+  }
 
   if (tpl.kind === "core") {
     // Stabi/Core: feste kurze Einheit, trägt keine Lauf-TSS (leere zone_alloc → Server-TSS = 0).
@@ -660,11 +781,16 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
       : tpl.id === "long_mp_segments" ? ` · 2–3×15–20' @ Marathon-Pace${racePace ? ` (~${paceStr(racePace)}/km)` : ""}`
       : tpl.id === "long_lt1_segments" ? ` · 2–3×15–20' @ LT1-Pace${center ? ` (~${paceStr(center)}/km)` : ""}`
       : "";
+    // v3.1.0: Wenn die Longrun-Grenze gebunden hat, steht der Grund an der Einheit (nichts passiert stumm).
+    // Nur melden, wenn sie WIRKLICH bindet — also unter die normale Dauer-Klammer des Templates drückt.
+    const note = buildAdaptNote(ctx);
+    const longAdd = tpl.family === "Long" && longNote && maxMin < hi ? `Longrun begrenzt: ${longNote}` : null;
     return {
       type: tpl.sessionType, planned_min: min, zone_alloc: { byKm: byMinToByKm({ [z]: min }, zones) },
       efforts: null, paceTarget: center ?? paceOf(z, zones),
       description: `${min} min ${tpl.name} @ ${paceTxt}${hr ? ` (${hr})` : ""} (Z${z})${extra}`,
-      planned_tss: r1(min * tpm), adaptNote: buildAdaptNote(ctx),
+      planned_tss: r1(min * tpm),
+      adaptNote: [note, longAdd].filter(Boolean).join(" · ") || null,
     };
   }
 

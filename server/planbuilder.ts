@@ -241,13 +241,26 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   const hardDayPref = [...qualityDaySet].filter((d) => (budget[d] || 0) > 0).sort((a, b) => a - b);
   const placedHard = new Set<number>();
   const spacingOk = (d: number) => !used.has(d) && (budget[d] || 0) > 0 && !placedHard.has(d - 1) && !placedHard.has(d + 1);
+  // v3.1.0 (Zeitmangel-Priorisierung): Intensität schützen, Volumen kürzen — aber eine Qualität braucht ein Minimum
+  // an Zeit (Ein-/Auslaufen + Kern-Reps). Deshalb zuerst einen Qualitätstag MIT Luft suchen und erst danach einen
+  // engen Tag nehmen (dort greift dann die Reps-Kürzung im Renderer, die Pace bleibt).
+  const QUALITY_MIN_MIN = 50;
+  const roomy = (d: number) => (budget[d] || 0) >= QUALITY_MIN_MIN;
+  const pickHardDay = (wish: number | null): number | undefined => {
+    if (wish != null && spacingOk(wish) && roomy(wish)) return wish;
+    if (wish != null && spacingOk(wish)) return wish;
+    return hardDayPref.filter(roomy).find(spacingOk)
+      ?? hardDayPref.find(spacingOk)
+      ?? trainingDays.filter(roomy).find(spacingOk)
+      ?? trainingDays.find(spacingOk);
+  };
 
   // 2a) Doppel-Schwellen-Tage (v1.7.0): gepaarte Einheiten teilen EINEN harten Tag (AM + PM); zählt als ein harter Tag.
   const pairGroups = new Map<string, PlannedUnit[]>();
   const soloHards: PlannedUnit[] = [];
   for (const u of hards) { if (u.pair) { const g = pairGroups.get(u.pair) ?? []; g.push(u); pairGroups.set(u.pair, g); } else soloHards.push(u); }
   for (const group of pairGroups.values()) {
-    const idx = hardDayPref.find(spacingOk) ?? trainingDays.find(spacingOk);
+    const idx = pickHardDay(null);
     if (idx != null) {
       used.add(idx); placedHard.add(idx);
       group.forEach((u, i) => out.push(mk(idx, u, i > 0)));        // 2. Hälfte = isSecond (PM)
@@ -262,10 +275,7 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   soloHards.sort((a, b) => Number(isHillUnit(b.type)) - Number(isHillUnit(a.type)));
   for (const u of soloHards) {
     const wish = isHillUnit(u.type) && availability.hillDay != null ? availability.hillDay : null;
-    let idx: number | undefined;
-    if (wish != null && spacingOk(wish)) idx = wish;
-    if (idx == null) idx = hardDayPref.find(spacingOk);
-    if (idx == null) idx = trainingDays.find(spacingOk);
+    const idx = pickHardDay(wish);
     if (idx != null) { used.add(idx); placedHard.add(idx); out.push(mk(idx, u)); }
     else {
       // Kein Tag ohne harten Nachbarn frei → Erholung schützen: als Easy abstufen.

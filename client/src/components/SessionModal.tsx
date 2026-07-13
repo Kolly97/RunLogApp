@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { api, type PlannedSession, type SessionTemplate, type ZoneSet } from "../lib/api.ts";
 import { num, clockToSec, secToClock, typeColor, typeLabel } from "../lib/util.ts";
 import { useOptions } from "../lib/options.ts";
@@ -60,14 +60,44 @@ export default function SessionModal({
   };
   const zoneSum = Object.values(km).reduce((a, b) => a + (b || 0), 0);
 
+  // v3.1.0: Schutz vor Datenverlust — versehentliches Klicken neben das Fenster (oder Escape/✕) hat bislang
+  // alle Eingaben verworfen. Bei ungespeicherten Änderungen kommt jetzt eine Nachfrage; ohne Änderung schließt
+  // das Fenster wie bisher sofort.
+  const initial = useRef(JSON.stringify(session));
+  const dirty = JSON.stringify(s) !== initial.current;
+  const [confirmClose, setConfirmClose] = useState(false);
+  const requestClose = () => (dirty ? setConfirmClose(true) : onClose());
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      if (confirmClose) { setConfirmClose(false); return; }  // erst die Nachfrage schließen
+      if (saving) return;                                    // Vorlagen-Namensfeld hat ein eigenes Escape
+      requestClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <OverlayPortal>
-    <div onClick={onClose} style={overlay} className="modal-overlay">
+    <div onClick={requestClose} style={overlay} className="modal-overlay">
       <div onClick={(e) => e.stopPropagation()} style={modal} className="card modal-pop">
         <div className="spread mb">
           <h2><T k={s.id ? "modal.session.editTitle" : "modal.session.newTitle"}>{s.id ? "Einheit bearbeiten" : "Neue Einheit"}</T></h2>
-          <button className="ghost" onClick={onClose}>✕</button>
+          <button className="ghost" onClick={requestClose}>✕</button>
         </div>
+
+        {confirmClose && (
+          <div className="flag warn" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ flex: 1, minWidth: 220 }}>
+              <T k="modal.session.unsaved">Ungespeicherte Änderungen — verwerfen?</T>
+            </span>
+            <button className="sm primary" onClick={() => onSave(s)}><T k="modal.session.btn.save">Speichern</T></button>
+            <button className="sm ghost" onClick={onClose}><T k="modal.session.btn.discard">Verwerfen</T></button>
+            <button className="sm ghost" onClick={() => setConfirmClose(false)}><T k="modal.session.btn.back">Zurück</T></button>
+          </div>
+        )}
 
         {!s.id && templates.length > 0 && (
           <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10, alignItems: "center" }}>
@@ -172,7 +202,7 @@ export default function SessionModal({
             </button>
           )}
           <div className="row" style={{ justifyContent: "flex-end", gap: 8, width: "auto" }}>
-            <button className="ghost" onClick={onClose}><T k="modal.session.btn.cancel">Abbrechen</T></button>
+            <button className="ghost" onClick={requestClose}><T k="modal.session.btn.cancel">Abbrechen</T></button>
             <button className="primary" onClick={() => onSave(s)}><T k="modal.session.btn.save">Speichern</T></button>
           </div>
         </div>

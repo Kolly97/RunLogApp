@@ -2,32 +2,47 @@
 // (Partial Pooling) über die komplexe Python-Engine (Sidecar), sonst analytischer EB-Fallback. Rein beratend.
 // Als Hook + Ergebnis-Komponente + Header-Button (gleicher Stil wie „Was wirkt bei dir?"). Ersetzt beim
 // Neuberechnen die Roh-Liste durch EIN geschrumpftes Bayes-Ergebnis (kein Doppel-Block).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type MethodBayesAxis } from "../lib/api.ts";
+import { agoLabel } from "../lib/computeStamp.ts";
 
 const DIR: Record<string, string> = { hilft: "var(--ok)", kostet: "var(--danger)", neutral: "var(--muted)" };
 const engineLabel = (e?: string) => (e === "pymc-hier" ? "PyMC" : e === "eb" ? "analytisch" : e ?? "");
 
+// v3.1.0: Das Ergebnis liegt jetzt serverseitig (ml_method_cache) — beim Mount wird es geladen (ohne zu rechnen),
+// „neu berechnen" stößt den teuren Lauf an. Vorher lebte es nur im State und war nach jedem Seitenwechsel weg.
 export function useMethodBayes(axis: "regime" | "emphasis") {
   const [data, setData] = useState<MethodBayesAxis | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api.mlMethodBayes(axis).then((r) => { if (alive) setData(r[axis] ?? null); }).catch(() => { /* kein Cache → TS-Basis */ });
+    return () => { alive = false; };
+  }, [axis]);
   const run = async () => {
     setBusy(true);
-    try { const r = await api.mlMethodBayes(axis); setData(r[axis] ?? null); } catch { setData(null); } finally { setBusy(false); }
+    try { const r = await api.mlMethodBayesRun(axis); setData(r[axis] ?? null); } catch { setData(null); } finally { setBusy(false); }
   };
   return { data, busy, run };
 }
 
 /** Header-Button (+Status-Pille) im gleichen Stil wie die „Was wirkt bei dir?"-Karte — oben rechts platzieren. */
 export function BayesRecomputeButton({ busy, onClick, data }: { busy: boolean; onClick: () => void; data: MethodBayesAxis | null }) {
-  const bayes = !!data; // vor Neuberechnung = TS-Basis, danach = Bayes
-  const col = bayes ? "var(--ok)" : "var(--muted)";
+  const bayes = !!data; // ohne gespeichertes Ergebnis = TS-Basis, sonst = Bayes
+  const col = !bayes ? "var(--muted)" : data!.stale ? "var(--warn)" : "var(--ok)";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span title="mit welcher Engine gerechnet wurde" style={{ fontSize: 10.5, fontWeight: 600, color: col, border: `1px solid ${col}`, borderRadius: 999, padding: "0 8px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
-        ● Engine: {bayes ? `Bayes ${engineLabel(data!.engine)}` : "TS (Basis)"}
-      </span>
-      <button className="btn btn-ghost" disabled={busy} onClick={onClick}>{busy ? "rechnet…" : "neu berechnen"}</button>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span title="mit welcher Engine gerechnet wurde" style={{ fontSize: 10.5, fontWeight: 600, color: col, border: `1px solid ${col}`, borderRadius: 999, padding: "0 8px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
+          ● Engine: {bayes ? `Bayes ${engineLabel(data!.engine)}` : "TS (Basis)"}
+        </span>
+        <button className="btn btn-ghost" disabled={busy} onClick={onClick}>{busy ? "rechnet…" : "neu berechnen"}</button>
+      </div>
+      {bayes && data!.builtAt && (
+        <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>
+          berechnet {agoLabel(data!.builtAt)}{data!.stale ? " · veraltet (neue Daten)" : " · aktuell"}
+        </span>
+      )}
     </div>
   );
 }

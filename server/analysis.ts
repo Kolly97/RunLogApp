@@ -1,7 +1,7 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
 import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, fitCriticalSpeed, vdot, efficiencyFactor, danielsPaces, predictFromVdot, type HrZone } from "./load.ts";
 import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort, type ConcreteSession } from "./planbuilder.ts";
-import { pickWeekWorkouts, renderWorkout, fitnessLevel, workoutById, type WorkoutTemplate } from "./workouts.ts";
+import { pickWeekWorkouts, renderWorkout, fitnessLevel, workoutById, longRunShare, phaseKind, type WorkoutTemplate } from "./workouts.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
 const DEFAULT_BIKE_KMH = 25;
@@ -1597,6 +1597,10 @@ const TAPER_HARD_EFFORT = 4;     // effort ≥ 4 = harte Qualität (LT2/VO2/Renn
 // über der Erhaltung von CTL×7).
 const CTL_RAMP_WARN = 6;         // Grund „ramp_high" ab dieser Wochen-Ramp (vorher 8) — „eher so 6"
 const RAMP_HARD_CAP = 8;         // projizierte Wochen-Ramp NIE über 8 CTL/Woche
+// v3.1.0: Spielraum des km-Angleichs (Easy/Long an das Wochen-km-Ziel). Vorher 0.7…1.4 — zu eng: ein bewusst
+// gesetztes km-Ziel (Wizard/Saisonplan) konnte den Plan nicht wirklich steuern. Qualität bleibt unskaliert.
+const KM_ALIGN_MIN = 0.55;
+const KM_ALIGN_MAX = 1.45;
 const RAMP_TSS_PER_POINT = 45;   // Wochen-TSS je zusätzlichem Ramp-Punkt über CTL×7 (aus der 42-Tage-EWMA)
 // v2.7.0 (Kolja): produktive Aufbauwochen (Nicht-Deload) zielen an den oberen sicheren ACWR-Rand, damit die
 // CTL-Ramp über MEHR VOLUMEN so hoch wie sicher möglich wird (Wunsch „Ramp Richtung 4"). Physik: Ramp 4 bräuchte
@@ -1651,6 +1655,7 @@ export function blockPlan(args: {
   readinessLevel: ReadinessLevel | null;
   methodPreference?: { regime: Regime; confidence: "hoch" | "mittel" | "niedrig" } | null; // N-of-1 advisory
   emphasisPreference?: string | null; // Coach ToDo 35: evidenz-/manuell-aufgelöster Schwerpunkt → pickWeekWorkouts
+  emphasisTier?: "beobachtet" | "geprüft" | null; // v3.1.0: nur „geprüft" darf einen Distanz-Pflichtreiz verschieben
   healthCap?: { loadFactor: number; dropTopIntensity: boolean } | null; // Coach ToDo 35: hartes Gesundheits-Veto (nur nächste Woche)
   goalDistanceM?: number | null; // v1.6.2: Zieldistanz → distanzgerechte Race-Specific-Auswahl
   curVdot?: number | null;       // v1.7.0: aktuelles VDOT (Start der Projektion)
@@ -1805,7 +1810,7 @@ export function blockPlan(args: {
     // Zyklus-Typ-Tilt der Woche gewinnt über den Block-Schwerpunkt (Reihenfolge: Health-Cap > Periodisierung > Zyklus > Block).
     const effEmphasis = cyc?.emphasis ?? args.emphasisPreference ?? args.availability?.emphasis ?? null;
     let picks = pickWeekWorkouts(phase, weekInPhase, fitness, !!args.availability?.allowDoubles, args.goalDistanceM ?? null, args.availability?.corePerWeek ?? 0,
-      { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts, ctlProgress });
+      { emphasis: effEmphasis, favoriteWorkouts: args.availability?.favoriteWorkouts, avoidWorkouts: args.availability?.avoidWorkouts, ctlProgress, emphasisTier: args.emphasisTier ?? null });
     // Gesundheits-Cap (nur nächste Woche): höchste Intensität raus — VO2-Qualitäten entfernen (Easy/Long füllen die Last).
     if (wi === 0 && args.healthCap?.dropTopIntensity) picks = picks.filter((pk) => !(pk.role === "quality" && pk.tpl.family === "VO2"));
 
@@ -1860,24 +1865,41 @@ export function blockPlan(args: {
     let tssActual = 0, downgraded = false;
 
     // Render-Closure (eine Quelle für Erst-Render + km-Angleichung): Einheit → konkrete Session bei gegebener Ziel-TSS.
+    // v3.1.0: `weekKm` steuert die Longrun-Anteilsregel (25–30 % des Wochenumfangs, strengste Grenze gewinnt).
+    let weekKmForLong: number | null = w.target_km ?? null;
     const renderUnit = (su: typeof scheduled[number], tss: number): ConcreteSession => {
       const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number } | undefined;
       const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
+      const base = { zones: weekZones, fitness, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, goalDistanceM: args.goalDistanceM ?? null, weekKm: weekKmForLong };
       // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
-      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { zones: weekZones, fitness, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
-      if (ref?.tpl) return renderWorkout(ref.tpl, { zones: weekZones, fitness, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(ref?.tpl), goalDistanceM: args.goalDistanceM ?? null });
+      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
+      if (ref?.tpl) return renderWorkout(ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
       return concretizeSession(su.type, tss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
     };
     const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
 
     // Erst-Render je Einheit; Easy/Long-Familien markieren (Frage A: deren Volumen an target_km angleichen).
     type Rendered = { su: typeof scheduled[number]; c: ConcreteSession; baseTss: number; scalable: boolean };
-    const rendered: Rendered[] = scheduled.map((su) => {
+    const renderAll = (): Rendered[] => scheduled.map((su) => {
       const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
       const baseTss = su.downgrade ? (Math.round(easyShare) || 50) : (ref?.targetTss ?? su.targetTss);
       const fam = su.downgrade ? "Easy" : ref?.tpl.family;
       return { su, c: renderUnit(su, baseTss), baseTss, scalable: fam === "Easy" || fam === "Long" };
     });
+    let rendered: Rendered[] = renderAll();
+    // Ohne gepflegtes target_km ist der Wochenumfang erst NACH dem Rendern bekannt (Henne/Ei). Geschlossene Form:
+    // Longrun ≤ share · Woche  ⟺  Longrun ≤ share/(1−share) · (Rest der Woche) — einmal nachrendern genügt,
+    // die Regel wird im Renderer selbst (longRunLimit) durchgesetzt.
+    if (weekKmForLong == null) {
+      const isLong = (r: Rendered) => (r.su.ref as { tpl?: WorkoutTemplate } | undefined)?.tpl?.family === "Long" && !r.su.downgrade;
+      const otherKm = rendered.filter((r) => !isLong(r)).reduce((a, r) => a + kmOf(r.c), 0);
+      const longKm = rendered.filter(isLong).reduce((a, r) => a + kmOf(r.c), 0);
+      if (otherKm > 0 && longKm > 0) {
+        const share = longRunShare(phase);
+        weekKmForLong = Math.round((otherKm / (1 - share)) * 10) / 10; // Woche, in der der Longrun genau `share` ausmacht
+        rendered = renderAll();
+      }
+    }
     if (scheduled.some((su) => su.downgrade)) downgraded = true;
 
     // Frage A: Easy/Long-Dauer so skalieren, dass Wochen-km ≈ target_km (harte Einheiten unangetastet); gedeckelt
@@ -1895,13 +1917,31 @@ export function blockPlan(args: {
       const otherKm = rendered.filter((r) => !r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
       if (elKm > 0) {
         const desiredEl = Math.max(targetKm * 0.4, targetKm - otherKm); // Easy/Long tragen nie unter 40% des Ziels
-        const factor = Math.max(0.7, Math.min(1.4, desiredEl / elKm));
+        // v3.1.0: Das Wochen-km-Ziel ist die Steuergröße des Nutzers (Wizard/Saisonplan) — der Angleich darf
+        // deshalb weiter greifen als bisher (±45 % statt −30/+40 %). Die Grenzen bleiben: Qualität wird nie
+        // skaliert, Easy/Long tragen mindestens 40 % des Ziels, und die Plan-TSS wird konsistent mitgeführt.
+        const factor = Math.max(KM_ALIGN_MIN, Math.min(KM_ALIGN_MAX, desiredEl / elKm));
         // Skaliert die TATSÄCHLICH gerenderte Dauer (über die gerenderte TSS) — nicht die Ziel-TSS-Shares,
         // die bei qualitäts-gesättigten Wochen 0 sind (dann rendern Easy/Long über ihre Default-Dauer).
         if (Math.abs(factor - 1) > 0.05) for (const r of rendered) if (r.scalable && r.c.planned_tss > 0) {
           r.baseTss = Math.max(20, Math.round(r.c.planned_tss * factor));
           r.c = renderUnit(r.su, r.baseTss);
         }
+      }
+      // Ehrlichkeit statt stiller Abweichung: Bleibt der Plan trotz Angleich deutlich neben dem km-Ziel, wird
+      // gesagt WARUM — sonst wundert man sich im Wizard, warum aus „41 km" ein 54-km-Plan wird. Die untere Grenze
+      // ist strukturell: Läufe haben sportwissenschaftliche Mindestdauern; unter das Ziel kommt man nur mit
+      // WENIGER Einheiten, nicht mit noch kürzeren.
+      const gotKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
+      const gotTss = Math.round(rendered.reduce((a, r) => a + (r.c.planned_tss || 0), 0));
+      const miss = (gotKm - targetKm) / targetKm;
+      if (Math.abs(miss) > 0.12) {
+        rec.reasons.push({
+          code: "km_target_missed",
+          text: miss > 0
+            ? `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Weniger Volumen ginge nur mit WENIGER Einheiten — die geplanten Läufe stehen bereits an ihrer sinnvollen Mindestdauer. Die Wochenlast landet dadurch bei ${gotTss} statt ${Math.round(target)} TSS (Phasenziel).`
+            : `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Mehr Volumen bräuchte zusätzliche Einheiten oder mehr Zeit je Tag — dein Zeitbudget deckelt hier.`,
+        });
       }
     }
 
@@ -2032,6 +2072,16 @@ export function blockPlan(args: {
 
     if (rec.confidence === "niedrig") lowConf = true;
     if (cyc?.reason) rec.reasons.push({ code: "cycle", text: cyc.reason }); // 4. Steuer-Input transparent im Verdikt
+    // v3.1.0: Verfügbarkeit ist eine OBERGRENZE, kein Soll — übrige Zeit bleibt bewusst übrig. Damit das nicht wie
+    // ein Planungsfehler aussieht, wird die Reserve ehrlich ausgewiesen (statt sie mit Volumen aufzufüllen).
+    const budgetMinWeek = (args.availability?.minutesByWeekday ?? []).reduce((a, b) => a + (b || 0), 0);
+    if (budgetMinWeek > 0) {
+      const plannedMinWeek = days.reduce((a, d) => a + (d.planned_min ?? 0), 0);
+      const reserve = Math.round(budgetMinWeek - plannedMinWeek);
+      if (reserve >= 60 && reserve / budgetMinWeek >= 0.2) {
+        rec.reasons.push({ code: "time_reserve", text: `Zeit-Reserve ${reserve} min: dein Zeitbudget ist eine Obergrenze, kein Soll — die Woche braucht physiologisch nicht mehr Volumen (mehr Umfang gibt es über das Wochen-km-Ziel, nicht über freie Zeit).` });
+      }
+    }
     const pl = (rec.headline || "").toLowerCase();
     const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
     outWeeks.push({
@@ -2227,6 +2277,27 @@ export function zoneKmIntensityOf(
 
 /** Eine Belastungs-Zeile einer Aktivität (Vertrag mit client/src/lib/api.ts: Effort).
  *  v0.12.0: kann auch eine eine-Ebene-Gruppe sein (`group`/`reps`/`children`). */
+// v3.1.0 (Block-Wizard): Wochen-km-Rampe von Start-km zum Block-Maximum — pur, damit sie runner-testbar bleibt.
+// Prinzip: Aufbauwochen wachsen moderat (≤ +8 %/Woche, ACWR-verträglich), Entlastungswochen fallen auf ~75 %,
+// Race-Specific hält das Niveau (die Intensität wird spezifischer, nicht das Volumen größer), Renn-Anlauf/Race-Week
+// tapern. Das Maximum wird nie überschritten — es ist eine Obergrenze, kein Ziel.
+export function rampWeeklyKm(o: { startKm: number; maxKm: number; phases: (string | null)[] }): number[] {
+  const start = Math.max(1, o.startKm);
+  const max = Math.max(start, o.maxKm || start);
+  const out: number[] = [];
+  let level = start; // aktuelles Aufbau-Niveau (Deloads/Taper senken die Woche, nicht das Niveau)
+  o.phases.forEach((ph, i) => {
+    const k = phaseKind(ph);
+    if (k === "sick" || k === "recovery") { out.push(Math.round(level * 0.5)); return; }
+    if (k === "raceweek") { out.push(Math.round(level * 0.5)); return; }
+    if (k === "deload") { out.push(Math.round(level * 0.75)); return; }
+    if (k === "specific") { out.push(Math.round(Math.min(level, max))); return; } // halten, nicht wachsen
+    if (i > 0) level = Math.min(max, level * 1.06);                               // Base/Build: moderat wachsen (~6 %/Wo)
+    out.push(Math.round(Math.min(level, max)));
+  });
+  return out;
+}
+
 export interface EffortLine {
   reps?: number | null;
   sec?: number | null;

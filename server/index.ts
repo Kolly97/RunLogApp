@@ -81,6 +81,8 @@ import {
   type MarkerLactateTest,
   type WeekRegimeInput,
   type CycleWeekBias,
+  rampWeeklyKm,
+  derivePhaseSequence,
 } from "./analysis.ts";
 import type { Availability } from "./planbuilder.ts";
 import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
@@ -774,13 +776,29 @@ app.get("/api/plan/week-suggestion", (req, res) => {
 // Mesozyklus-/Block-Vorschlag bis Renntag (v1.4.0, A4) — Vorschlag-Modus, schreibt nichts.
 // Coach ToDo 35: adaptiv & faktenbasiert — die „Was hilft dir?"-Synthese steuert Schwerpunkt/Verteilung (gestuft),
 // Health-Flags kappen hart, alles erklärt. Deshalb async (Verdikt nutzt den Sidecar).
-app.get("/api/plan/block-suggestion", async (req, res) => {
+//
+// v3.1.0: Der Handler ist in `buildBlockPlanFor()` ausgelagert — EINE Wahrheitsquelle für den echten
+// Block-Vorschlag UND die Live-Vorschau des Wizards. Die Vorschau reicht die noch nicht gespeicherten Werte
+// (Verfügbarkeit, Start-/Max-km, Schwerpunkt, abgeleitete Phasen) als Overrides herein; geschrieben wird nichts.
+interface BlockPlanOverrides {
+  week?: number | null;
+  taper?: number | null;
+  taperDays?: number | null;
+  availability?: Availability | null;          // statt des gespeicherten Profils
+  startKm?: number | null;                     // → In-Memory-Rampe der Wochen-Ziel-km
+  maxKm?: number | null;
+  emphasis?: string | null;                    // Schwerpunkt-Override (nur dieser Aufruf)
+  emphasisMode?: "auto" | "manual" | null;
+  derivePhases?: boolean;                      // Phasen aus derivePhaseSequence statt roher Saisonplan-Phasen
+}
+
+async function buildBlockPlanFor(o: BlockPlanOverrides = {}): Promise<Record<string, unknown>> {
   const today = todayIso();
   // Startwoche: ?week= oder die Woche, die heute enthält (erste mit end_date>=heute).
-  const startWk = req.query.week != null
-    ? db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(pid(), Number(req.query.week)) as any
+  const startWk = o.week != null
+    ? db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(pid(), Number(o.week)) as any
     : db.prepare("SELECT * FROM season_weeks_v2 WHERE profile_id=? AND end_date>=? ORDER BY start_date LIMIT 1").get(pid(), today) as any;
-  if (!startWk) return res.json({ weeks: [], raceDate: null, reasons: [{ code: "no_weeks", text: "Kein Saisonplan vorhanden." }], confidence: "niedrig" });
+  if (!startWk) return { weeks: [], raceDate: null, reasons: [{ code: "no_weeks", text: "Kein Saisonplan vorhanden." }], confidence: "niedrig" };
 
   // Nächster Renntag ab Startwoche — das HAUPT-Rennen (Test-/Aufbauwettkämpfe ausgenommen, sonst würde voll
   // dorthin getapert). Races-Tabelle bevorzugt, sonst goal_race-Woche.
@@ -804,10 +822,21 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
     : db.prepare("SELECT date, distance_m, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=1 AND date>=? ORDER BY date").all(pid(), startWk.start_date)) as { date: string; distance_m: number | null; goal_time_s: number | null }[];
   const tuneupArgs = tuneups.map((r) => ({ date: r.date, distanceM: r.distance_m && r.distance_m > 0 ? Number(r.distance_m) : null, goalTimeS: r.goal_time_s ? Number(r.goal_time_s) : null }));
 
-  const weeks: BlockWeekInput[] = weeksRaw.map((w) => ({
-    week_no: w.week_no, phase: w.phase ?? null, start_date: w.start_date,
-    dates: Array.from({ length: 7 }, (_, i) => addDaysIso(w.start_date, i)),
-    target_km: w.target_km ?? null, // Frage A: Saison-Wochenziel → Easy/Long-Volumen angleichen
+  // v3.1.0 (Wizard): Phasen ableiten (3:1 + distanzgerechter Taper, gepinnte bleiben) — die km-Rampe braucht
+  // echte Entlastungswochen; ohne gepflegte Phasen wüchse sie sonst gleichmäßig durch.
+  const taperWeeksOpt = o.taper != null ? Math.max(1, Math.min(3, Number(o.taper) || 2)) : undefined;
+  const phaseSeq = o.derivePhases
+    ? derivePhaseSequence(weeksRaw.map((w) => ({ week_no: w.week_no, start_date: w.start_date, phase: w.phase ?? null })), raceDate, taperWeeksOpt ?? 2)
+    : null;
+  // v3.1.0 (Wizard): Wochen-Ziel-km aus Start/Max in-memory rampen — NICHT in season_weeks_v2 geschrieben.
+  const kmRamp = o.startKm && o.startKm > 0 && o.maxKm && o.maxKm > 0
+    ? rampWeeklyKm({ startKm: o.startKm, maxKm: o.maxKm, phases: weeksRaw.map((w, i) => phaseSeq?.[i] ?? w.phase ?? null) })
+    : null;
+
+  const weeks: BlockWeekInput[] = weeksRaw.map((w, i) => ({
+    week_no: w.week_no, phase: phaseSeq?.[i] ?? w.phase ?? null, start_date: w.start_date,
+    dates: Array.from({ length: 7 }, (_, i2) => addDaysIso(w.start_date, i2)),
+    target_km: kmRamp?.[i] ?? w.target_km ?? null, // Frage A: Saison-Wochenziel → Easy/Long-Volumen angleichen
   }));
 
   const from = minIso(earliestDataDate() ?? today, today);
@@ -830,7 +859,12 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
   };
 
   // Verfügbarkeits-/Präferenz-Profil (A1) — wenn (noch) nicht gepflegt → null → Gleichverteilung.
-  const availability = getSetting<Availability | null>(`availability_${pid()}`, null);
+  // v3.1.0: Die Wizard-Vorschau reicht ihre (noch ungespeicherte) Verfügbarkeit direkt herein.
+  const availabilityStored = getSetting<Availability | null>(`availability_${pid()}`, null);
+  const availabilityBase = o.availability ?? availabilityStored;
+  const availability: Availability | null = availabilityBase
+    ? { ...availabilityBase, emphasis: o.emphasis ?? availabilityBase.emphasis ?? null }
+    : null;
 
   // Readiness (heute) — identisch mit week-suggestion.
   const baseHrv = (db.prepare("SELECT hrv FROM daily_log_v2 WHERE profile_id=? AND date<? AND hrv IS NOT NULL ORDER BY date DESC LIMIT 7").all(pid(), today) as { hrv: number }[]).map(r => r.hrv);
@@ -846,7 +880,7 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
   // Coach ToDo 35: Verdikt (dieselbe Engine wie „Was hilft dir?") → Planer-Prefs. Evidenz steuert automatisch, wenn
   // belastbar (gestuft), sonst Default; manueller Schwerpunkt bleibt Override; Health-Flags kappen hart.
   const verdict = await buildTrainingVerdict(pid());
-  const emphasisMode = getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto";
+  const emphasisMode = (o.emphasisMode ?? (getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto")) === "manual" ? "manual" : "auto";
   const coaching: CoachingPrefs = deriveCoachingPrefs(verdict, {
     healthFlags: mlGetReadiness(pid()).flags,
     readinessLevel: readiness?.level ?? null,
@@ -858,8 +892,8 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
     ? { regime: coaching.regime.regime as Regime, confidence: coaching.regime.confidence }
     : (inf.best && inf.confidence !== "niedrig" ? { regime: inf.best, confidence: inf.confidence } : null);
 
-  const taperWeeks = req.query.taper != null ? Math.max(1, Math.min(3, Number(req.query.taper) || 2)) : undefined; // Baustein 2.4: Peak-Ausrichtung
-  const taperDays = req.query.taperDays != null ? Math.max(1, Math.min(28, Number(req.query.taperDays) || 0)) || undefined : undefined; // Banister: renntag-genaue Tages-Rampe
+  const taperWeeks = taperWeeksOpt; // Baustein 2.4: Peak-Ausrichtung
+  const taperDays = o.taperDays != null ? Math.max(1, Math.min(28, Number(o.taperDays) || 0)) || undefined : undefined; // Banister: renntag-genaue Tages-Rampe
   // Baustein A1: verletzungssicheres km-Ceiling aus der eigenen Lauf-Historie (ACWR, letzte 28 Tage).
   const runKm28 = db.prepare("SELECT date, distance_m FROM activities WHERE profile_id=? AND sport='Run' AND date>=? AND date<=?").all(pid(), addDaysIso(today, -28), today) as { date: string; distance_m: number | null }[];
   const kmCeil = kmCeiling(runKm28, today, 1.45); // v2.7.0: Volumen darf bis ACWR 1.45 wachsen (an den TSS-Cap angeglichen) → Ramp über MEHR Volumen möglich
@@ -886,14 +920,200 @@ app.get("/api/plan/block-suggestion", async (req, res) => {
       cycleByWeek!.set(w.week_no, { phase: ph, emphasis: bias.emphasis, loadFactor: bias.loadFactor, qualityVolFactor: bias.qualityVolFactor, tier: bias.tier, soften: bias.soften, reason: bias.reason });
     });
   }
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, taperDays, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, emphasisTier: coaching.emphasisSource === "evidence" ? coaching.emphasis?.tier ?? null : null, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, taperDays, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
   for (const n of vol.notes) plan.reasons.push({ code: "rpe_loop", text: n });
   // Baustein 2.3: individuelle Fitness-Prognose (IR-Faltung) additiv je Woche, wenn ein Dose-Response-Run vorliegt.
   const doseEff = mlGetEffects(pid());
   const irCount = (doseEff.meta as { activeCount?: number } | null)?.activeCount ?? 0;
   const irFit = doseEff.mediator.length && irCount ? blockIrFitness(plan.weeks, doseEff.mediator, irCount) : [];
   if (irFit.length === plan.weeks.length) plan.weeks.forEach((w, i) => { w.irFitness = irFit[i]; });
-  res.json({ ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS, distanceConcept: distanceConcept(goalDistanceM), coaching, freshness: mlFreshness(pid(), "dose_response").state });
+  return { ...plan, methodPreference, goalDistanceM, goalPace, goalTimeS, distanceConcept: distanceConcept(goalDistanceM), coaching, freshness: mlFreshness(pid(), "dose_response").state };
+}
+
+app.get("/api/plan/block-suggestion", async (req, res) => {
+  res.json(await buildBlockPlanFor({
+    week: req.query.week != null ? Number(req.query.week) : null,
+    taper: req.query.taper != null ? Number(req.query.taper) : null,
+    taperDays: req.query.taperDays != null ? Number(req.query.taperDays) : null,
+  }));
+});
+
+// v3.1.0 — Live-Vorschau des Block-Wizards: derselbe echte Blockplan, aber mit den noch NICHT gespeicherten
+// Eingaben (Verfügbarkeit, Start-/Max-km, Schwerpunkt) und abgeleiteten Phasen. Schreibt nichts.
+app.post("/api/coach/block-preview", async (req, res) => {
+  const b = (req.body ?? {}) as BlockPlanOverrides;
+  res.json(await buildBlockPlanFor({
+    week: b.week ?? null,
+    availability: b.availability ?? null,
+    startKm: b.startKm ?? null,
+    maxKm: b.maxKm ?? null,
+    emphasis: b.emphasis ?? null,
+    emphasisMode: b.emphasisMode ?? null,
+    derivePhases: b.derivePhases !== false, // Default: an (der Wizard plant den Block, nicht die Alt-Phasen)
+  }));
+});
+
+// v3.1.0 — Block-Wizard: alle Engine-Vorschläge für die geführte Blockplan-Erstellung an EINER Stelle.
+// Rechnet nichts Neues, sondern bündelt die vorhandenen Quellen (Rennen/Tune-ups, km-Historie + ACWR-Ceiling,
+// Verfügbarkeit, optimale Zonen, Verdikt-Schwerpunkt, VDOT-Prognose) — der Wizard schlägt vor, Kolja entscheidet.
+app.get("/api/coach/block-defaults", async (_req, res) => {
+  const p = pid();
+  const today = todayIso();
+  const runs = loadProfileRuns();
+  const cur = rollingCsVdot(runs, today, 90);
+
+  // --- Ziel + Zwischenziele ---
+  const race = db.prepare("SELECT id, name, date, distance_m, goal_time_s FROM races WHERE profile_id=? AND date>=? AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(p, today) as { id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null } | undefined;
+  const tuneups = db.prepare("SELECT id, name, date, distance_m, goal_time_s FROM races WHERE profile_id=? AND COALESCE(is_tuneup,0)=1 AND date>=? ORDER BY date").all(p, today) as { id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null }[];
+  const goalDistanceM = race?.distance_m && race.distance_m > 0 ? Number(race.distance_m) : null;
+  const weeksToRace = race ? Math.max(0, Math.round((Date.parse(race.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / (7 * 86_400_000))) : null;
+
+  // --- Prognose: was ist heute drin, was wäre am Renntag realistisch? ---
+  let forecast: Record<string, unknown> | null = null;
+  if (goalDistanceM && cur.vdot) {
+    const now = predictFromVdot(cur.vdot, [goalDistanceM]);
+    const goalTimeS = race?.goal_time_s && race.goal_time_s > 0 ? Number(race.goal_time_s) : null;
+    const goalV = goalTimeS ? vdot(goalDistanceM, goalTimeS) : null;
+    const vp = goalV != null && weeksToRace ? projectVdot(cur.vdot, goalV, weeksToRace) : null;
+    const projVdot = vp ? Math.round((vp.perWeek[vp.perWeek.length - 1] ?? cur.vdot) * 10) / 10 : null;
+    const projTime = projVdot ? predictFromVdot(projVdot, [goalDistanceM]) : [];
+    forecast = {
+      curVdot: Math.round(cur.vdot * 10) / 10,
+      nowTimeS: now.length ? Math.round(now[0].time_s) : null,
+      goalTimeS,
+      projEndTimeS: projTime.length ? Math.round(projTime[0].time_s) : null,
+      projEndVdot: projVdot,
+      feasible: vp ? !vp.infeasible : null,
+    };
+  }
+
+  // --- Umfang: Start-km (Ø letzte 4 Wochen real) + sicheres Maximum im Block ---
+  const km28 = db.prepare("SELECT date, distance_m FROM activities WHERE profile_id=? AND sport='Run' AND date>=? AND date<=?").all(p, addDaysIso(today, -28), today) as { date: string; distance_m: number | null }[];
+  const ceil = kmCeiling(km28, today, 1.45);
+  const startKm = ceil.chronicKm || Math.round(km28.reduce((a, r) => a + (r.distance_m ?? 0) / 1000, 0) / 4);
+  const availability = getSetting<Availability | null>(`availability_${p}`, null);
+  const budgetMinWeek = (availability?.minutesByWeekday ?? []).reduce((a, b) => a + (b || 0), 0);
+  // Zeit-Deckel: Wochenminuten / Easy-Pace ≈ maximal mögliche km (Verfügbarkeit ist Obergrenze, kein Soll).
+  const zsNow = effectiveZoneSet(today);
+  const easyPace = zsNow.pace_zones?.[2] ?? zsNow.pace_zones?.[1] ?? 330;
+  const kmByTime = budgetMinWeek > 0 && easyPace > 0 ? Math.floor((budgetMinWeek * 60) / easyPace) : null;
+  // Sicheres Block-Maximum = kompoundierte Steigerung der CHRONISCHEN Last, nicht das (akute) ACWR-Ceiling
+  // hochgerechnet — das würde die Akut-Spitze (×1.45) mit dem Wochenwachstum multiplizieren und absurde Ziele
+  // liefern (41 km/Woche → „118 km"). Realistisch: ~6 %/Woche, aber nur in den Aufbauwochen (3:1-Rhythmus →
+  // ~75 % der Wochen), zusätzlich hart auf das Doppelte des Starts und das Zeitbudget gedeckelt.
+  const blockWeeks = Math.max(0, Math.min(20, weeksToRace ?? 8));
+  const growthWeeks = blockWeeks * 0.75;
+  const maxBySafety = startKm > 0 ? Math.round(Math.min(startKm * Math.pow(1.06, growthWeeks), startKm * 2)) : null;
+  const maxKm = maxBySafety != null && kmByTime != null ? Math.min(maxBySafety, kmByTime) : maxBySafety ?? kmByTime;
+
+  // --- Schwerpunkt aus der Evidenz (dieselbe Synthese wie der Coach-Block) ---
+  const verdict = await buildTrainingVerdict(p);
+  const coaching = deriveCoachingPrefs(verdict, {
+    healthFlags: mlGetReadiness(p).flags,
+    availabilityEmphasis: availability?.emphasis ?? null,
+    emphasisMode: getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto",
+  });
+
+  // --- Zonen-Vorschlag (optimale Zonen, wie in der Coach-Karte) ---
+  const athlete = getProfileSetting("athlete", { max_hr: null }) as { max_hr?: number | null };
+  const lac = db.prepare("SELECT lt1_hr, lt2_hr, lt1_pace, lt2_pace FROM lactate_tests WHERE profile_id=? ORDER BY date DESC LIMIT 1").get(p) as { lt1_hr: number | null; lt2_hr: number | null; lt1_pace: number | null; lt2_pace: number | null } | undefined;
+  const optimal = computeOptimalZones({
+    vdot: cur.vdot, csPaceS: cur.csPace,
+    maxHr: athlete.max_hr ?? null, lthr: zsNow.lthr ?? null,
+    lactate: lac ? { lt1Hr: lac.lt1_hr, lt2Hr: lac.lt2_hr, lt1Pace: lac.lt1_pace, lt2Pace: lac.lt2_pace } : null,
+    cp: currentCp(), hrLabels: DEFAULT_HR_ZONES,
+  });
+
+  res.json({
+    today,
+    race: race ?? null,
+    tuneups,
+    weeksToRace,
+    distanceConcept: distanceConcept(goalDistanceM),
+    forecast,
+    volume: {
+      startKm: startKm || null,
+      maxKm: maxKm ?? null,
+      chronicKm: ceil.chronicKm || null,
+      acwr: ceil.acwr,
+      kmByTime,
+      // Ehrlich: woher die Zahlen kommen (der Wizard zeigt das als Begründung an).
+      reason: `Start = Ø der letzten 4 Wochen (${ceil.chronicKm || 0} km). Maximum = was in ${blockWeeks} Wochen sicher aufzubauen ist (≈ +6 % je Aufbauwoche, 3:1-Rhythmus)${kmByTime != null && maxBySafety != null && kmByTime < maxBySafety ? ` — hier durch dein Zeitbudget gedeckelt (~${kmByTime} km)` : ""}.`,
+    },
+    availability,
+    zones: { optimal, current: { pace_zones: zsNow.pace_zones, hr_zones: zsNow.hr_zones, threshold_pace: zsNow.threshold_pace, lt1_pace: zsNow.lt1_pace }, vdot: cur.vdot ? Math.round(cur.vdot * 10) / 10 : null },
+    emphasis: {
+      suggested: coaching.emphasis?.emphasis ?? null,
+      label: coaching.emphasis?.label ?? null,
+      tier: coaching.emphasis?.tier ?? null,
+      confidence: coaching.emphasis?.confidence ?? null,
+      rationale: coaching.emphasis?.rationale ?? "Noch keine belastbare individuelle Evidenz — der Block folgt dem sportwissenschaftlichen Standard deiner Zieldistanz.",
+      current: availability?.emphasis ?? null,
+    },
+    healthCap: coaching.healthCap,
+  });
+});
+
+// v3.1.0 — Block-Wizard: Abschluss. Schreibt NUR, was der Nutzer im Wizard bestätigt hat — additiv und gezielt
+// (Verfügbarkeit · Ziel-km je Woche · optional Schwerpunkt-Modus · optional Zonen-Set). Phasen/Einheiten bleiben
+// unangetastet: der eigentliche Blockplan wird danach wie gehabt über /api/plan/block-suggestion geladen.
+app.post("/api/coach/block-setup", (req, res) => {
+  const p = pid();
+  const b = (req.body ?? {}) as {
+    availability?: Availability | null;
+    startKm?: number | null; maxKm?: number | null;
+    emphasis?: string | null; emphasisMode?: "auto" | "manual";
+    fromWeek?: number | null;
+    applyPhases?: boolean;   // v3.1.0: abgeleitete Phasen (3:1 + Taper) in den Saisonplan schreiben
+  };
+  // Zonen-Sets legt der Wizard über den bestehenden `POST /api/zonesets` an (eine Wahrheitsquelle) — nicht hier.
+  const written: string[] = [];
+
+  if (b.availability) {
+    const av: Availability = { ...b.availability, emphasis: b.emphasis ?? b.availability.emphasis ?? null };
+    setSetting(`availability_${p}`, av);
+    written.push("Verfügbarkeit");
+  }
+  if (b.emphasisMode) { setSetting("coach_emphasis_mode", b.emphasisMode); written.push(`Schwerpunkt-Modus (${b.emphasisMode})`); }
+
+  // Phasen + Ziel-km je Woche. Wichtig (v3.1.0): Die Rampe rechnet gegen die ABGELEITETEN Phasen
+  // (3:1-Rhythmus + distanzgerechter Taper, rückwärts vom Renntag) — sonst wüchse sie ohne Entlastungswochen
+  // durch, wenn im Saisonplan (noch) keine Phasen stehen. Geschrieben wird gezielt: `phase` nur bei applyPhases
+  // (und nur dort, wo die Ableitung eine Phase setzt), `target_km` immer — Datum/Notizen bleiben unangetastet.
+  let kmWeeks = 0, phaseWeeks = 0;
+  const today = todayIso();
+  const startWk = b.fromWeek != null
+    ? db.prepare("SELECT week_no FROM season_weeks_v2 WHERE profile_id=? AND week_no=?").get(p, b.fromWeek) as { week_no: number } | undefined
+    : db.prepare("SELECT week_no FROM season_weeks_v2 WHERE profile_id=? AND end_date>=? ORDER BY start_date LIMIT 1").get(p, today) as { week_no: number } | undefined;
+  if (startWk) {
+    const race = db.prepare("SELECT date FROM races WHERE profile_id=? AND date>=? AND COALESCE(is_tuneup,0)=0 ORDER BY date LIMIT 1").get(p, today) as { date: string } | undefined;
+    const rows = (race
+      ? db.prepare("SELECT week_no, phase, start_date FROM season_weeks_v2 WHERE profile_id=? AND week_no>=? AND start_date<=? ORDER BY start_date").all(p, startWk.week_no, race.date)
+      : db.prepare("SELECT week_no, phase, start_date FROM season_weeks_v2 WHERE profile_id=? AND week_no>=? ORDER BY start_date LIMIT 16").all(p, startWk.week_no)) as { week_no: number; phase: string | null; start_date: string }[];
+
+    const phases = derivePhaseSequence(rows.map((r) => ({ week_no: r.week_no, start_date: r.start_date, phase: r.phase })), race?.date ?? null);
+
+    if (b.applyPhases !== false && rows.length) {
+      const updPh = db.prepare("UPDATE season_weeks_v2 SET phase=? WHERE profile_id=? AND week_no=?");
+      rows.forEach((r, i) => {
+        const ph = phases[i];
+        if (!ph || ph === r.phase) return;
+        updPh.run(ph, p, r.week_no);
+        phaseWeeks++;
+      });
+      if (phaseWeeks) written.push(`Phasen für ${phaseWeeks} Wochen (3:1-Rhythmus + Taper)`);
+    }
+
+    if (b.startKm && b.startKm > 0 && b.maxKm && b.maxKm > 0 && rows.length) {
+      const km = rampWeeklyKm({ startKm: b.startKm, maxKm: b.maxKm, phases: rows.map((r, i) => phases[i] ?? r.phase) });
+      const upd = db.prepare("UPDATE season_weeks_v2 SET target_km=? WHERE profile_id=? AND week_no=?");
+      rows.forEach((r, i) => upd.run(km[i], p, r.week_no));
+      kmWeeks = rows.length;
+      written.push(`Ziel-km für ${kmWeeks} Wochen (${km[0]} → ${Math.max(...km)} km)`);
+    }
+  }
+
+  res.json({ ok: true, written, kmWeeks, phaseWeeks });
 });
 
 // v1.7.0: Soll/Ist-Abgleich zum Ziel-Rennen — Prognose vs. Wunsch-Zielzeit + nötige Progression + Machbarkeit.
@@ -2045,7 +2265,10 @@ app.put("/api/activities/:id", (req, res) => {
   db.prepare(
     // Commute (sport=General): desc_fetched=1 setzen, damit der Strava-Sync die geleerte Notiz nicht neu füllt (ToDo Z.14).
     // efforts_locked=1 (v0.15.5 O6): manuell bearbeitete/gelöschte Intervalle werden vom Re-Sync nicht mehr angefasst.
-    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, matched_session_id=?, match_ignore=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?), efforts_locked=1 WHERE id=?`,
+    // v3.1.0: `matched_session_id`/`match_ignore` werden hier BEWUSST NICHT geschrieben — die Plan-Zuordnung hat
+    // mit `POST /api/activities/:id/match` eine eigene Wahrheitsquelle. Vorher überschrieb das Speichern der
+    // Einheiten-Zeile die Zuordnung mit dem (veralteten) Formular-Stand → „nicht zuordnen" sprang zurück.
+    `UPDATE activities SET date=?, sport=?, type=?, source=?, name=?, distance_m=?, moving_s=?, elapsed_s=?, avg_hr=?, max_hr=?, avg_power=?, elevation=?, avg_cadence=?, training_load=?, tss=?, kcal=?, zones=?, zone_min=?, zone_km=?, efforts=?, overrides=?, notes=?, desc_fetched=MAX(COALESCE(desc_fetched,0), ?), efforts_locked=1 WHERE id=?`,
   ).run(
     b.date,
     b.sport || "Run",
@@ -2068,8 +2291,6 @@ app.put("/api/activities/:id", (req, res) => {
     JSON.stringify(b.zone_km || null),
     JSON.stringify(b.efforts || null),
     JSON.stringify(b.overrides || []),
-    b.match_ignore ? null : b.matched_session_id ?? null,
-    b.match_ignore ? 1 : 0,
     b.notes || "",
     b.sport === "General" ? 1 : 0,
     req.params.id,
@@ -2929,8 +3150,51 @@ async function buildTrainingVerdict(p: number, opts: { fresh?: boolean } = {}): 
 app.get("/api/ml/training-verdict", async (req, res) => {
   res.json(await buildTrainingVerdict(pid(), { fresh: req.query.fresh != null }));
 });
+// v3.1.0 — Methodik-Ergebnis-Cache (Passive Inferenz + Methoden-Schwerpunkt + Regime-Latent).
+// Bisher lebte das teure Sidecar-Ergebnis nur im React-State: Seitenwechsel = weg, Karte fiel auf die billige
+// TS-Basis zurück. Jetzt persistiert je (Profil, Karte). `fingerprint` beschreibt die Inputs — ändert sich die
+// Datenlage, wird das gespeicherte Ergebnis als „veraltet" ausgewiesen, aber NIE stillschweigend neu gerechnet
+// (Kolja-Entscheid: kein ungefragter Sidecar-Start, Rechnen nur auf Klick).
+type MethodCacheHit<T> = { result: T; builtAt: string; stale: boolean };
+function methodCacheGet<T>(p: number, key: string, fp: string): MethodCacheHit<T> | null {
+  const row = db.prepare("SELECT fingerprint, result_json, built_at FROM ml_method_cache WHERE profile_id=? AND key=?")
+    .get(p, key) as { fingerprint: string; result_json: string; built_at: string } | undefined;
+  if (!row) return null;
+  try {
+    return { result: JSON.parse(row.result_json) as T, builtAt: row.built_at, stale: row.fingerprint !== fp };
+  } catch { return null; } // korrupt → wie „kein Cache"
+}
+function methodCachePut(p: number, key: string, fp: string, result: unknown): string {
+  const builtAt = new Date().toISOString();
+  db.prepare(
+    "INSERT INTO ml_method_cache(profile_id, key, fingerprint, result_json, built_at) VALUES(?,?,?,?,?) " +
+    "ON CONFLICT(profile_id, key) DO UPDATE SET fingerprint=excluded.fingerprint, result_json=excluded.result_json, built_at=excluded.built_at",
+  ).run(p, key, fp, JSON.stringify(result), builtAt);
+  return builtAt;
+}
+/** Fingerprint der Bayes-Karten: die Block-Deltas selbst (= das Modell-Input) + bewertete Trials + MCID-Anker. */
+function methodBayesFingerprint(p: number, kind: "regime" | "emphasis", weeks: ReturnType<typeof buildWeekRegimeInput>): string {
+  const blocks = blockDeltas(weeks, kind).map((b) => `${b.group}:${b.cs ?? ""}`).join("|");
+  const trials = (db.prepare("SELECT id, verdict FROM method_experiments WHERE profile_id=? AND state='evaluated' AND verdict IS NOT NULL ORDER BY id").all(p) as { id: number; verdict: string }[])
+    .map((t) => `${t.id}:${t.verdict}`).join(",");
+  return fnvHex(`${blocks}#${trials}#${getAnchoredMcid(p).cs}`);
+}
+
 // „Neu berechnen" für Passive Inferenz (Regime) + Methoden-Schwerpunkt — hierarchisch (Partial Pooling), optional
 // über die komplexe Python-Engine (Sidecar `blocks_bayes`, PyMC), sonst analytischer EB-Fallback (identisches Modell).
+// GET = gespeichertes Ergebnis zeigen (rechnet nie) · POST = neu rechnen + speichern.
+app.get("/api/ml/method-bayes", (req, res) => {
+  const p = pid();
+  const axes: ("regime" | "emphasis")[] = req.query.axis === "regime" || req.query.axis === "emphasis"
+    ? [String(req.query.axis) as "regime" | "emphasis"] : ["regime", "emphasis"];
+  const weeks = buildWeekRegimeInput({ withDeclaredEmphasis: true });
+  const out: Record<string, unknown> = {};
+  for (const a of axes) {
+    const hit = methodCacheGet<{ engine: string; findings: unknown[] }>(p, `method_bayes:${a}`, methodBayesFingerprint(p, a, weeks));
+    out[a] = hit ? { ...hit.result, builtAt: hit.builtAt, stale: hit.stale } : null;
+  }
+  res.json(out);
+});
 app.post("/api/ml/method-bayes", async (req, res) => {
   const p = pid();
   const only = req.query.axis === "regime" || req.query.axis === "emphasis" ? String(req.query.axis) : null;
@@ -2952,8 +3216,12 @@ app.post("/api/ml/method-bayes", async (req, res) => {
     return { engine: r.result.method, findings: ebFindings(posts, (k) => labelMap[k] ?? k, trials, getAnchoredMcid(p).cs) };
   }
   const out: Record<string, unknown> = {};
-  if (!only || only === "regime") out.regime = await axis("regime", REGIME_LABEL);
-  if (!only || only === "emphasis") out.emphasis = await axis("emphasis", EMPHASIS_LABEL);
+  for (const [kind, labels] of [["regime", REGIME_LABEL], ["emphasis", EMPHASIS_LABEL]] as const) {
+    if (only && only !== kind) continue;
+    const r = await axis(kind, labels);
+    const builtAt = methodCachePut(p, `method_bayes:${kind}`, methodBayesFingerprint(p, kind, weeks), r);
+    out[kind] = { ...r, builtAt, stale: false };
+  }
   res.json(out);
 });
 // F3: Regime/Schwerpunkt-Dosis-Wirkung auf die LATENTE FITNESS (komplexe Python-Engine `exposure_dose`,
@@ -3020,7 +3288,22 @@ function buildExposureDesign(p: number, axis: "regime" | "emphasis"): ExposureDe
   if (rows.length < labelSet.length + 4) return null;
   return { labels: labelSet, X: rows.map((r) => labelSet.map((l) => r.e.exposure[l] ?? 0)), total: rows.map((r) => r.e.total), y: rows.map((r) => r.lat.v), ysd: rows.map((r) => r.lat.sd), nWeeks: rows.length, dates: rows.map((r) => r.e.date) };
 }
-app.get("/api/ml/regime-latent", async (req, res) => {
+/** Fingerprint der Regime-Latent-Karte: das Design selbst (Labels + Expositions-Matrix + latente Fitness). */
+const exposureFingerprint = (d: ExposureDesign): string =>
+  fnvHex(`${d.labels.join(",")}#${d.nWeeks}#${d.X.map((r) => r.map((v) => v.toFixed(3)).join(",")).join(";")}#${d.y.map((v) => v.toFixed(3)).join(",")}`);
+
+// GET = gespeichertes Ergebnis (rechnet nie — sonst startet allein das Öffnen der Seite einen 120-s-Sidecar-Lauf).
+app.get("/api/ml/regime-latent", (req, res) => {
+  const p = pid();
+  const axis = req.query.axis === "emphasis" ? "emphasis" : "regime";
+  const d = buildExposureDesign(p, axis);
+  if (!d) return res.json({ engine: "insufficient", models: null });
+  const hit = methodCacheGet<Record<string, unknown>>(p, `regime_latent:${axis}`, exposureFingerprint(d));
+  if (!hit) return res.json({ engine: "none", models: null, nWeeks: d.nWeeks, labels: d.labels, X: d.X, total: d.total, y: d.y, dates: d.dates });
+  res.json({ ...hit.result, builtAt: hit.builtAt, stale: hit.stale });
+});
+// POST = neu rechnen (komplexe Python-Engine `exposure_dose`, TS-Fallback als Punktschätzer) + speichern.
+app.post("/api/ml/regime-latent", async (req, res) => {
   const p = pid();
   const axis = req.query.axis === "emphasis" ? "emphasis" : "regime";
   const d = buildExposureDesign(p, axis);
@@ -3029,7 +3312,9 @@ app.get("/api/ml/regime-latent", async (req, res) => {
   const r = await sidecarRunWithFallback<{ method: string; models: unknown } | null>({ kind: "exposure_dose", payload }, () => ridgeFallback(d.labels, d.X, d.total, d.y, d.ysd), { timeoutMs: 120_000 });
   // v2.8.0 (Item 4, Nerd-Seite Panel F3): rohe EWMA-Design-Matrix war schon lokal berechnet (ging in den Sidecar-
   // Payload), wurde aber nie zurückgegeben — reine Sichtbarkeit, keine neue Berechnung.
-  res.json({ engine: r.result?.method ?? "ts", models: (r.result as { models?: unknown })?.models ?? null, nWeeks: d.nWeeks, labels: d.labels, X: d.X, total: d.total, y: d.y, dates: d.dates });
+  const out = { engine: r.result?.method ?? "ts", models: (r.result as { models?: unknown })?.models ?? null, nWeeks: d.nWeeks, labels: d.labels, X: d.X, total: d.total, y: d.y, dates: d.dates };
+  const builtAt = methodCachePut(p, `regime_latent:${axis}`, exposureFingerprint(d), out);
+  res.json({ ...out, builtAt, stale: false });
 });
 // v2.8.0 (Item 4, Nerd-Seite Panel L2): rohe Komposit-Indikatoren vor der Kalman-Fusion — read-only, kein Fit.
 app.get("/api/ml/latent-fitness/sources", (_req, res) => res.json(mlGetLatentFitnessSources(pid())));

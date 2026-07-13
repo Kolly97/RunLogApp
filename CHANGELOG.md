@@ -6,7 +6,134 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [3.1.0] Coach Wizard Window, Tutorial für Coach Einrichtung, Trainingsblocksteuerung verbessert
+
+### Hinzugefügt (Coach — Wizard, Teil 2)
+- **Live-Vorschau im Block-Wizard:** Rechts neben den Schritten rechnet die App bei jeder Eingabe den **echten
+  Blockplan** mit — nicht eine Näherung: Block-Timeline (Wochensäulen, Phasen, Readiness-Kurve mit Peak-Marker),
+  Renntag-Kennzahlen (Form/TSB, „Peak trifft den Renntag ✓", Wunschzeit), die ersten Wochen als Tabelle
+  (km · harte Einheiten · Longrun) und die Stellen, an denen die Sicherheitslogik eingreift (km-Ceiling,
+  Health-Cap, Zeit-Reserve). Entprellt (600 ms), überholte Anfragen werden abgebrochen; ~50–100 ms je Rechnung,
+  weil das Verdikt gecacht ist. Neu: `POST /api/coach/block-preview` — dieselbe Pipeline wie der echte
+  Block-Vorschlag, aber mit den noch **nicht gespeicherten** Eingaben als Overrides; **schreibt nichts**.
+  Der Block-Suggestion-Handler wurde dafür in `buildBlockPlanFor()` ausgelagert (eine Wahrheitsquelle).
+  (`server/index.ts`, `client/src/components/coach/BlockPreview.tsx`)
+- **Wizard setzt jetzt auch die Phasen** (abwählbar): Aufbau, Entlastungswochen (3:1) und der distanzgerechte
+  Taper werden über die vorhandene `derivePhaseSequence()` rückwärts vom Renntag abgeleitet — manuell gepinnte
+  Phasen bleiben. **Wichtig, weil die km-Rampe Phasen braucht:** Ohne gepflegte Phasen wuchs sie bisher
+  gleichmäßig durch, ganz ohne Entlastungswochen.
+
+### Geändert (Trainingslogik)
+- **Das Wochen-km-Ziel steuert jetzt wirklich.** Der km-Angleich (Easy/Long an `target_km`) durfte bisher nur
+  ±30/40 % korrigieren — ein bewusst gesetztes km-Ziel (Wizard/Saisonplan) konnte den Plan damit gar nicht führen.
+  Jetzt ±45 % (Qualität bleibt weiterhin unangetastet). **Und wenn das Ziel strukturell nicht erreichbar ist, sagt
+  die App es offen** statt still danebenzuplanen: „Ziel 41 km, geplant 54 km — weniger ginge nur mit *weniger
+  Einheiten*; die Läufe stehen bereits an ihrer sinnvollen Mindestdauer (Wochenlast dadurch 285 statt 511 TSS)."
+  (`server/analysis.ts` `KM_ALIGN_MIN/MAX`, Grund `km_target_missed`)
+
+### Hinzugefügt (Tutorial)
+- **Isabel führt jetzt durch den Wizard** (Abschnitt 4): neue Aufgabe „🧭 Block einrichten öffnen" plus drei
+  Erklär-Schritte (Umfang = Motor und Bremse · Zeit ist eine Obergrenze, kein Soll · Zonen und Schwerpunkt).
+  Der Direktpfad bleibt als Nebensatz. Abschnitts-Dauer ehrlich auf ~17 min angehoben.
+- **Gesundheit steht über allem — jetzt am Demo-Profil sichtbar:** Isabels letzte Tage tragen eine **milde**
+  Erholungs-Signatur (HRV leicht unter, Ruhepuls leicht über der Baseline — die normale Quittung harter
+  Aufbauwochen). Die Flag-Engine erkennt sie selbst als **warn**, der Coach hält die Wochenlast 10 % konservativer,
+  und ein neuer Tutorial-Schritt erklärt die Rangfolge (Gesundheit > Periodisierung > Evidenz > Wunschplan).
+  Bewusst **kein** „high"-Flag: Das würde die Spitzen-Intensität streichen und ihre Wettkampf-Story zerlegen.
+  Dafür rechnet der Seed jetzt Readiness + Flags synchron mit (`computeReadinessSync`) — vorher existierten im
+  Demo-Profil gar keine Flags, der Health-Cap war unsichtbar.
+- **Demo-Trial ist jetzt reproduzierbar:** Der Randomisierungs-Seed hing an `nowIso()` — die Arm-Reihenfolge (und
+  damit das Verdikt!) war bei jeder Regenerierung eine andere; der Trial landete zufällig mal auf „geprüft", mal auf
+  „inconclusive". Jetzt fixer Einwilligungs-Zeitpunkt → echte Randomisierung, aber deterministisch:
+  **6/6 Paare für die Schwelle, p = 0,031, θ = 0,51 (MCID 0,32) → „geprüft"**, bei jeder Neuerzeugung gleich.
+
+### Hinzugefügt (Coach)
+- **Geführte Block-Einrichtung („🧭 Block einrichten"):** Neuer Wizard im Coach — sechs Schritte mit
+  Engine-Vorschlag **und Begründung** je Schritt, übernehmen oder überschreiben: **Ziel** (Rennen/Distanz/
+  Wunschzeit + ehrlicher Prognose-Abgleich) · **Zwischenziele** (Test-Wettkämpfe) · **Umfang** (Start-km aus den
+  letzten 4 Wochen, Block-Maximum aus dem, was in N Wochen *sicher* aufzubauen ist: ≈ +6 %/Aufbauwoche im
+  3:1-Rhythmus, gedeckelt durch das Zeitbudget) · **Zeit** (Minuten je Tag, Longrun-Tag, harte Tage) ·
+  **Zonen** (optimale Zonen für den Block übernehmen) · **Schwerpunkt** (Evidenz-Vorschlag mit Etikett).
+  Der Abschluss schreibt **nur Bestätigtes** und additiv (Verfügbarkeit, Ziel-km je Woche als sichere Rampe,
+  Schwerpunkt-Modus, optional ein Zonen-Set); Phasen und Einheiten bleiben unberührt. Der Direktpfad
+  „▶ Block-Vorschlag laden" bleibt erhalten. Neu: `GET /api/coach/block-defaults`, `POST /api/coach/block-setup`,
+  `analysis.ts rampWeeklyKm`, `client/src/components/coach/BlockWizard.tsx`.
+
+### Behoben (Wissenschaft)
+- **Kausal-Gate war faktisch tot: Ein N-of-1-Experiment konnte praktisch nie „geprüft" werden.** Die
+  Praxisschwelle (MCID) der **latenten** Achse wurde am Test-Retest-Minimum einer **einzelnen** eff-VO2max-Messung
+  gefloort (1,0 VO2-Äquiv.) — eine Einheiten-Verwechslung mit harter Konsequenz: Die latente Fitness ist kein
+  Einzelmesswert, sondern ein aus vielen Quellen fusionierter, Kalman-geglätteter Zustand (typisches sd ≈ 0,15),
+  dessen Dynamik (Prozessrauschen ≈ 0,08/Woche) es gar nicht zulässt, dass sich das Niveau in einem 4-Wochen-Block
+  um ≥ 1,0 bewegt. Ergebnis: Trials landeten auch bei klarem Testergebnis auf „inconclusive". Die latente Achse hat
+  jetzt einen eigenen, physiologisch begründeten Floor (0,3 VO2-Äquiv. bzw. 2× das eigene Schätzrauschen); die
+  **Marker-Achsen (Critical Speed) bleiben unverändert** an ihrer Test-Retest-Grenze. Verifiziert an Isabels
+  Demo-Trial: p = 0,031 (signifikant), θ ≈ 0,50 → Verdikt **geprüft** (vorher: inconclusive trotz p = 0,031).
+  (`server/ml/mcidAnchor.ts` `LATENT_MCID_FLOOR`)
+
+### Hinzugefügt (Tutorial)
+- **Abgeschlossenes N-of-1-Experiment in Isabels Historie — „so sieht ein Beweis aus":** Neben dem laufenden Trial
+  trägt das Demo-Profil jetzt einen **fertig ausgewerteten randomisierten Trial „Schwelle/HM-Pace vs. VO2max"**
+  (6 Paare × 4-Wochen-Blöcke + Washout, 60 Wochen). Er ist **nicht mit Wunsch-Zahlen befüllt**: Die zugeloste
+  Arm-Reihenfolge steuert Isabels geseedete Trainingsinhalte *und* ihre Fitness-Antwort (sie ist Schwellen-
+  Responderin: das Fitness-Niveau wächst in Schwellen-Blöcken schneller — kumulativ, mit Nachwirkung über den
+  Washout), und die **echte Engine** wertet aus: 6/6 Paare für die Schwelle, exakter Permutationstest p = 0,031,
+  θ ≈ +0,50 → Verdikt „geprüft". Neuer Tutorial-Schritt liest den Trial in der App.
+  (`server/tutorial.ts`, `server/mlJobs.ts` `computeLatentFitnessSync`)
+- **Forest-Plot: Absolut ↔ Volumen-bereinigt begreifbar gemacht.** Das Daten-Kino zeigt beide Sichten als zwei
+  Ebenen (2 neue Beats: „hier steckt der Umfang mit drin" vs. „bei gleichem Umfang" — LT1/Marathon springt von
+  +0,25 auf +0,75), und ein neuer Aufgaben-Schritt lässt dich den Umschalter in der echten Karte drücken
+  (Prüfung am Schalter-Zustand). (`cinema/scenes/dose.ts`, `sections.ts`, `DoseResponseCard.tsx`)
+
+### Geändert (Trainingslogik — Coach-Umbau)
+- **Der Longrun ist jetzt ein ANTEIL des Wochenumfangs, keine Füllmenge für freie Zeit (Kolja-Befund: „30-km-Longrun
+  beim 10-km-Ziel"):** Es gewinnt die **strengste** von drei Grenzen — (1) Anteil am Wochenumfang (Base 30 % ·
+  Build 28 % · Specific 25 % · Taper/Race 20 %), (2) distanz-typischer Deckel (5k ≤ 90′ · 10k ≤ 100′ · HM ≤ 120′ ·
+  M ≤ 165′), (3) Zeitbudget des Tages. **Ohne Zielrennen** gilt jetzt der HM-Default (120′) statt „kein Deckel" (150′) —
+  genau diese Lücke erzeugte den 30-km-Longrun. Verifiziert: 10k-Ziel · 45 km/Woche · 3 h frei → **12,7 km statt 30 km**;
+  Marathon · 90 km/Woche → 25 km. Die bindende Regel steht als Begründung an der Einheit („Longrun begrenzt: 28 % des
+  Wochenumfangs"). Wirkt in beiden Planer-Pfaden (Wochenplanung + Coach-Block), auch beim km-Ausgleich.
+  (`server/workouts.ts` `longRunLimit`/`longRunShare`/`phaseKind`, `server/analysis.ts` `blockPlan`)
+- **Verfügbarkeit ist eine Obergrenze, kein Soll:** Übrige Zeit wird bewusst nicht mit Volumen aufgefüllt und als
+  **Zeit-Reserve** in der Wochenbegründung ausgewiesen („dein Zeitbudget ist eine Obergrenze — mehr Umfang gibt es
+  über das Wochen-km-Ziel, nicht über freie Zeit").
+- **Qualitätsdichte an Phase × Distanz × Fitness/CTL gekoppelt:** Base 1 harte Einheit (+ Strides) · Build 2 ·
+  Specific 2 · Deload/Race-Week 1 · Recovery 0 — bei **niedriger CTL auch im Build nur 1**, bei hoher CTL + erlaubten
+  Doppeleinheiten bis 3 (norwegisches Doppel). Ein Longrun mit MP-/Renntempo-Anteil zählt als **halber harter Tag**
+  (Marathon-Specific hatte vorher faktisch 3 harte Reize pro Woche). Überzählige Qualität wird zum lockeren Dauerlauf —
+  der Pflichtreiz der Zieldistanz fällt zuletzt. (`server/workouts.ts` `qualityBudget`/`applyQualityDensity`)
+- **Evidenz-Gating gestuft (Distanz-Pflichtreize bleiben):** Der erste harte Slot einer Phase trägt den Pflichtreiz der
+  Zieldistanz (Marathon → Schwelle/MP · 10k → VO2 · HM → Schwelle). **Beobachtete** Evidenz dreht nur einen freien
+  Qualitäts-Slot; ein **kausal geprüfter** N-of-1-Trial darf zusätzlich genau **einen** Pflichtreiz verschieben.
+  Beispiel: Marathon + „VO2 hilft dir" → beobachtet: MP-Longrun + Schwelle bleiben; geprüft: der Schwellen-Slot wird VO2,
+  der MP-Longrun bleibt. Nebenbefund behoben: Der VO2-Schwerpunkt hatte im **Build** gar keinen legalen Kandidaten
+  (die langen VO2-Intervalle sind `phases:["specific"]`) und verpuffte still — jetzt greift dort der build-legale
+  400er-Reiz. (`server/workouts.ts` `emphasize`, `server/analysis.ts`/`index.ts` `emphasisTier`)
+- **Zeitmangel: Intensität schützen, Volumen kürzen.** Der Scheduler sucht für eine Qualität zuerst einen Tag mit
+  genug Zeit (≥ 50 min) und nimmt erst dann einen engen Tag — dort greift die bestehende Reps-Kürzung (Pace bleibt).
+  (`server/planbuilder.ts` `scheduleWeek`)
+
+### Behoben
+- **Methodik: „Passive Inferenz" und „Methoden-Schwerpunkt" waren nach jedem Seitenwechsel wieder leer** (Kolja-Befund) —
+  das teure Python/Sidecar-Ergebnis lebte nur im React-State und wurde nie gespeichert, die Karte fiel auf die billige
+  TS-Basis zurück. Neue additive Tabelle `ml_method_cache` (Muster: `ml_verdict_cache`): Das Ergebnis wird je Profil und
+  Karte persistiert, beim Öffnen sofort angezeigt („berechnet vor 3 Tagen · aktuell/veraltet") und **nur auf Klick** neu
+  gerechnet — kein ungefragter Sidecar-Start. Nebenwirkung behoben: Allein das Öffnen der **Nerd-Seite** startete bisher
+  einen bis zu 120 s langen `exposure_dose`-Lauf (obwohl sie sich als read-only bezeichnet); sie zeigt jetzt das
+  gespeicherte Ergebnis. (`server/db.ts`, `server/index.ts` `/api/ml/method-bayes` + `/api/ml/regime-latent` als
+  GET=laden/POST=rechnen, `MethodBayesPanel.tsx`, `RegimeLatentPanel.tsx`, `NerdPage.tsx`)
+- **Tracking: „nicht zuordnen" sprang immer wieder zurück** (Kolja-Befund, trotz des v3.0.0-Fixes) — das Dropdown
+  speicherte korrekt, aber das **Speichern der Einheiten-Zeile** schickte die ganze Aktivität inkl. eines *veralteten*
+  `match_ignore`/`matched_session_id` aus dem Formular-State mit, und der Full-Update überschrieb die Zuordnung wieder.
+  Der Activity-`PUT` fasst die Match-Spalten jetzt gar nicht mehr an (eine Wahrheitsquelle: `POST …/match`).
+  (`server/index.ts`, `client/src/pages/WeekTrack.tsx`)
+- **Wochenplan-Modal: Klick daneben verwarf alle Eingaben.** Bei ungespeicherten Änderungen kommt jetzt eine Nachfrage
+  (Speichern · Verwerfen · Zurück) — bei Klick außerhalb, Escape und ✕. Ohne Änderung schließt es wie bisher sofort.
+  (`SessionModal.tsx`)
+
 ### Hinzugefügt
+- **Anleitung + „Was ist neu?" in der fixierten Fußleiste** (vorher nur ganz unten im gescrollten Seiten-Footer) —
+  auf jeder Seite erreichbar. (`PageActionsBar.tsx`)
 - **Anleitung (usage.html) komplett neu — inhaltlich auf v3.0.0, visuell als eigenes Doku-Design-System:**
   Die In-App-Anleitung war inhaltlich auf Stand v1.12 (Coach-Cockpit, Methodik/ML, Nerd-Seite, Zyklus,
   Banister-Taper, Wettkampf-Prognose, Chart-Kino und Isabel-Tutorial fehlten komplett). Jetzt 18 Kapitel —

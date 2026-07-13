@@ -527,6 +527,18 @@ function migrate(): void {
       verdict_json TEXT NOT NULL,
       built_at     TEXT NOT NULL
     );
+    -- v3.1.0: dieselbe Idee für die teuren Methodik-Karten (Passive Inferenz + Methoden-Schwerpunkt).
+    -- Vorher lebte das Sidecar-Ergebnis NUR im React-State → beim Seitenwechsel war es weg und die Karte fiel
+    -- auf die billige TS-Basis zurück. Jetzt persistiert je (Profil, Karte); der Fingerprint beschreibt die Inputs,
+    -- damit ein veraltetes Ergebnis ehrlich als „veraltet" angezeigt (aber nicht stillschweigend neu gerechnet) wird.
+    CREATE TABLE IF NOT EXISTS ml_method_cache (
+      profile_id   INTEGER NOT NULL,
+      key          TEXT NOT NULL,   -- z.B. "method_bayes:regime" | "regime_latent:emphasis"
+      fingerprint  TEXT NOT NULL,
+      result_json  TEXT NOT NULL,
+      built_at     TEXT NOT NULL,
+      PRIMARY KEY (profile_id, key)
+    );
   `);
   // Kanal-Effekte je Lauf (Forest-Plot-Daten): Reiz-Kanal × Zielgröße mit CI + Konfidenz.
   db.exec(`

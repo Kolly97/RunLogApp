@@ -374,6 +374,60 @@ function researchRunReusable(settingsJson: string | null): boolean {
   } catch { return false; }
 }
 
+/**
+ * v3.1.0 (Tutorial-Seed): latente Fitness SYNCHRON rechnen + persistieren.
+ * Der abgeschlossene N-of-1-Trial im Demo-Profil soll vom ECHTEN Permutationstest ausgewertet werden — dafür
+ * braucht er eine echte L2-Kurve. Reine TS-Engine (Kalman/RTS), Millisekunden, kein Sidecar.
+ * Nur für Seed-/Wartungspfade gedacht; die App startet ihre Läufe weiterhin über `startRun`.
+ */
+export function computeLatentFitnessSync(profileId: number): number {
+  const { inds } = loadIndicators(profileId);
+  const fit = fitLatentFitness(inds);
+  const points = fit ? fit.points : [];
+  const info = db
+    .prepare("INSERT INTO ml_runs(profile_id, kind, status, engine, model_version, seed, input_hash, progress, started_at, finished_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run(profileId, "latent_fitness", "done", "ts", MODEL_VERSION, SEED, runHash("latent_fitness", profileId), 1, nowIso(), nowIso(), nowIso());
+  persistLatent(profileId, Number(info.lastInsertRowid), points);
+  return points.length;
+}
+
+/**
+ * v3.1.0 (Tutorial-Seed): Readiness + Gesundheits-Flags SYNCHRON rechnen und persistieren.
+ * Ohne einen Readiness-Lauf existieren keine `ml_health_flags` — der Health-Cap des Coaches und das
+ * Gesundheits-Gate des Verdikts wären im Demo-Profil unsichtbar, obwohl die Daten die Signatur hergeben.
+ * Reine TS-Engine (keine Sidecar-Abhängigkeit), Millisekunden.
+ */
+export function computeReadinessSync(profileId: number): { points: number; flags: number } {
+  const info = db
+    .prepare("INSERT INTO ml_runs(profile_id, kind, status, engine, model_version, seed, input_hash, progress, started_at, finished_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run(profileId, "readiness", "done", "ts", MODEL_VERSION, SEED, runHash("readiness", profileId), 1, nowIso(), nowIso(), nowIso());
+  const runId = Number(info.lastInsertRowid);
+
+  const daily = loadDailyWellness(profileId);
+  const pmc = buildPmc(profileId);
+  const latent = getLatentFitness(profileId).map((p) => ({ date: p.date, value: p.value }));
+  const today = new Date().toISOString().slice(0, 10);
+  const rd = computeReadiness(daily);
+  const ath = getProfileSetting("athlete", {} as { height?: number | null; weight?: number | null }, profileId);
+  const hf = computeHealthFlags(daily, pmc, latent, today, { heightCm: ath?.height ?? null, fallbackWeightKg: ath?.weight ?? null });
+
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM ml_readiness WHERE profile_id=?").run(profileId);
+    const insR = db.prepare("INSERT INTO ml_readiness(profile_id, date, value, sd) VALUES(?,?,?,?)");
+    for (const p of rd.points) insR.run(profileId, p.date, p.value, p.sd);
+    db.prepare("DELETE FROM ml_health_flags WHERE profile_id=?").run(profileId);
+    const insF = db.prepare("INSERT INTO ml_health_flags(profile_id, date, kind, severity, message, created_at) VALUES(?,?,?,?,?,?)");
+    for (const f of hf.flags) insF.run(profileId, f.since, f.kind, f.severity, f.message, nowIso());
+    db.prepare("UPDATE ml_runs SET settings_json=? WHERE id=?").run(JSON.stringify({ insufficient: rd.insufficient, nDays: rd.nDays, drivers: rd.drivers, disclaimer: hf.disclaimer, bmi: hf.bmi }), runId);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+  return { points: rd.points.length, flags: hf.flags.length };
+}
+
 export function startRun(kind: MlKind, profileId: number): { runId: number; reused?: boolean } {
   reapStaleRuns(profileId);
   const hash = runHash(kind, profileId);

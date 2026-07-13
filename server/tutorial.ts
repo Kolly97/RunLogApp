@@ -11,7 +11,7 @@ import {
   type ContraceptionStatus,
   type Period,
 } from "./cycleTraining.ts";
-import { createProspectiveTrial } from "./mlJobs.ts";
+import { createProspectiveTrial, evaluateProspectiveTrial, computeLatentFitnessSync, computeReadinessSync, getAnchoredMcid } from "./mlJobs.ts";
 
 const TUT = "Tutorial: Isabel";
 // Legacy-Namen früherer Tutorial-Generationen (Alex → Mara → Isabel): nur für die einmalige Migration.
@@ -394,6 +394,44 @@ function seedActiveTrial(profileId: number, today: string, nowIso: string): void
   });
 }
 
+// v3.1.0 — abgeschlossener N-of-1-Trial in Isabels Vergangenheit (Tutorial: „so sieht ein Beweis aus").
+// 6 Paare × (3 Wochen Block + 1 Woche Washout) = 48 Wochen; Lag 1 Woche (Messung fällt in den Washout).
+// Sechs saubere Paare sind die Mindestgröße für ein „geprüft" — der exakte Vorzeichen-Permutationstest kann
+// bei 6 Paaren höchstens p = 2/2⁶ = 0,031 erreichen. Der Trial wird NICHT mit erfundenen Ergebnissen befüllt:
+// Isabels geseedete Trainingsinhalte + ihre Fitness-Antwort erzeugen die Daten, die echte Engine wertet aus.
+// 4-Wochen-Blöcke (echter Mesozyklus, die Fitness braucht Zeit zum Antworten) + 1 Woche Washout
+// → 6 Paare × 2 × 5 Wochen = 60 Wochen, passt in Isabels 78-Wochen-Historie.
+const TRIAL_PAIRS = 6, TRIAL_BLOCK_WEEKS = 4, TRIAL_WASHOUT_WEEKS = 1, TRIAL_LAG_WEEKS = 1;
+// Der Randomisierungs-Seed der Engine leitet sich aus (proposalHash | consentedAt | nPairs) ab. Mit `nowIso()`
+// als Einwilligungs-Zeitpunkt wäre die Arm-Reihenfolge bei JEDER Regenerierung eine andere — das Demo-Ergebnis
+// (und damit das Verdikt!) würde zufällig schwanken. Für die Demo ist der Einwilligungs-Zeitpunkt deshalb fix:
+// die Zuteilung bleibt echt randomisiert, aber reproduzierbar. (Bei echten Trials ist es weiterhin der Ist-Zeitpunkt.)
+const TRIAL_CONSENT_AT = "2025-01-06T08:00:00.000Z";
+export interface TrialBlockSeed { startWeek: number; endWeek: number; arm: string }
+
+/** Legt den abgeschlossenen Trial an und gibt seine Blöcke als WOCHEN-Index zurück (für die Seed-Modulation). */
+function seedCompletedTrial(profileId: number, week0: string, todayWeekIndex: number, nowIso: string): { id: number; blocks: TrialBlockSeed[] } {
+  // Ende ~10 Wochen vor heute (alle Blöcke + Lag sind fällig → die Engine kann auswerten).
+  const spanWeeks = TRIAL_PAIRS * 2 * (TRIAL_BLOCK_WEEKS + TRIAL_WASHOUT_WEEKS);
+  const startWeekIdx = Math.max(2, todayWeekIndex - 10 - spanWeeks);
+  const { id } = createProspectiveTrial(profileId, {
+    kind: "channel",
+    armA: { value: "threshold", label: "Schwelle/HM-Pace-Fokus" },
+    armB: { value: "vo2", label: "VO2max-Fokus" },
+    nPairsPlanned: TRIAL_PAIRS,
+    blockWeeks: TRIAL_BLOCK_WEEKS,
+    washoutWeeks: TRIAL_WASHOUT_WEEKS,
+    lagWeeks: TRIAL_LAG_WEEKS,
+    consentedAt: TRIAL_CONSENT_AT,   // fixer Seed → reproduzierbare Zuteilung (siehe oben)
+    proposalHash: "tutorial-isabel-completed-threshold-vs-vo2",
+    startDate: addDays(week0, startWeekIdx * 7),
+  });
+  const row = db.prepare("SELECT blocks_json FROM method_experiments WHERE id=?").get(id) as { blocks_json: string | null } | undefined;
+  const raw = row?.blocks_json ? (JSON.parse(row.blocks_json) as { arm: string; startDate: string; endDate: string }[]) : [];
+  const weekOf = (iso: string) => Math.round((Date.parse(iso + "T00:00:00Z") - Date.parse(week0 + "T00:00:00Z")) / (7 * 86_400_000));
+  return { id, blocks: raw.map((b) => ({ startWeek: weekOf(b.startDate), endWeek: weekOf(b.endDate), arm: b.arm })) };
+}
+
 function generateTutorial(today: string): number {
   _seed = 22446688;
   const nowIso = new Date().toISOString();
@@ -460,6 +498,34 @@ function generateTutorial(today: string): number {
 
     const periods = generateCycleData(pid, week0, today, nowIso);
 
+    // v3.1.0: abgeschlossener N-of-1-Trial (Schwelle vs. VO2max) — die App randomisiert die Arme, Isabels
+    // Trainingsinhalte und ihre Fitness-Antwort folgen dieser Zuteilung. So entsteht ein ECHTES Ergebnis.
+    const completed = seedCompletedTrial(pid, week0, todayWeekIndex, nowIso);
+    const armForWeek = (w: number): string | null => {
+      const b = completed.blocks.find((x) => w >= x.startWeek && w <= x.endWeek);
+      if (b) return b.arm;
+      // Washout-Woche direkt nach einem Block: die physiologische Nachwirkung trägt noch (dort misst der Lag).
+      const prev = completed.blocks.find((x) => w === x.endWeek + 1);
+      return prev ? prev.arm : null;
+    };
+    // Trainingsantwort AKKUMULIERT (sie oszilliert nicht): In Schwellen-Blöcken steigt Isabels Fitness-Niveau
+    // schneller als im Mittel, in VO2-Blöcken langsamer. Modelliert als Abweichung vom Karriere-Trend
+    // (±0,225/Woche) — sie hält über den Washout an (dort misst der Lag) und hebt sich über die gleich vielen
+    // Blöcke beider Arme wieder auf, sodass der 78-Wochen-Trend (+4,7) unverändert bleibt.
+    // Ein transienter Ausschlag wäre hier falsch: Der Kalman-Filter würde ihn (zu Recht) als Rauschen glätten.
+    // 0.38/Woche: über einen 4-Wochen-Block ≈ ±1,5 VO2-Äquiv. Abweichung vom Trend — eine deutliche, aber für eine
+    // ausgeprägte Responderin plausible Antwort. Nach der Kalman-Glättung bleibt θ ≈ 0,45 und damit klar über
+    // Isabels Praxisschwelle (MCID 0,3): Das Demo-Verdikt „geprüft" ist damit robust, nicht knapp erschlichen.
+    const TRIAL_WEEK_DEV = 0.38;
+    const trialDev = (w: number): number => {
+      let dev = 0;
+      for (let u = 0; u <= w; u++) {
+        const b = completed.blocks.find((x) => u >= x.startWeek && u <= x.endWeek);
+        if (b) dev += b.arm === "threshold" ? TRIAL_WEEK_DEV : -TRIAL_WEEK_DEV;
+      }
+      return dev;
+    };
+
     const insAct = db.prepare(`INSERT INTO activities(profile_id, date, sport, source, name, type, distance_m, moving_s, elapsed_s, avg_hr, max_hr, avg_power, elevation, avg_cadence, tss, zones, zone_min, zone_km, pace_zone_min, ngp, decoupling, eff_vo2max, run_np, power_curve, best_efforts, efforts, notes, match_ignore) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     const insWeek = db.prepare("INSERT INTO season_weeks_v2(profile_id, week_no, label, phase, start_date, end_date, target_km, goal_race, notes) VALUES(?,?,?,?,?,?,?,?,?)");
     const insPlan = db.prepare("INSERT INTO planned_sessions(profile_id, date, week_no, sport, type, planned_km, planned_min, zone_alloc, description, efforts, planned_tss, sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
@@ -475,30 +541,46 @@ function generateTutorial(today: string): number {
       const thresholdPace = 262 - 18 * progress;
       const hmPotentialS = 94 * 60 - 7 * 60 * progress;
       const hmPace = hmPotentialS / 21.0975;
-      const effBase = 48.4 + 4.7 * progress + Math.sin(w / 9) * 0.35;
+      // Isabel ist Schwellen-Responderin (das lehrt der Trial): ihr Fitness-NIVEAU wächst in Schwellen-Blöcken
+      // schneller, in VO2-Blöcken langsamer — kumulativ, mit Nachwirkung über den Washout.
+      const arm = armForWeek(w);
+      const effBase = 48.4 + 4.7 * progress + Math.sin(w / 9) * 0.35 + trialDev(w);
       const targetKm = targetKmFor(phase, progress, deload);
       const phaseNote = phase === "Base" ? "Aerobe Kontinuitaet und ruhige Longruns."
         : phase === "HM-Build" ? "Longruns wachsen, erste stabile Schwellenarbeit."
           : phase === "Threshold/HM-Pace" ? "Haupttreiber: Schwelle und HM-Pace, VO2 dosiert."
             : phase === "Specific" ? "Spezifischer HM-Block mit Race-Pace-Anteilen."
               : "Taper: Last runter, Schaerfe erhalten.";
-      insWeek.run(pid, w + 1, `Isabel W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote);
+      const trialNote = arm ? ` N-of-1-Block: ${arm === "threshold" ? "Schwellen-Arm" : "VO2max-Arm"}.` : "";
+      insWeek.run(pid, w + 1, `Isabel W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote + trialNote);
 
-      const keys = weekKeys(phase, w, deload);
+      // Im Trial-Block bestimmt der zugeloste ARM die Qualitätseinheiten — sonst passten Etikett und Training
+      // nicht zusammen (und die Auswertung wäre eine Farce). Washout-Wochen laufen im normalen Phasen-Muster.
+      const inBlock = completed.blocks.some((x) => w >= x.startWeek && w <= x.endWeek);
+      const keys = inBlock && !deload
+        ? (arm === "threshold"
+          ? { 0: "easy", 1: "threshold", 2: "easy", 3: "marathon", 4: "recovery", 6: "long" } as Record<number, Key>
+          : { 0: "easy", 1: "vo2", 2: "easy", 3: "reps", 4: "recovery", 6: "long" } as Record<number, Key>)
+        : weekKeys(phase, w, deload);
       let weekKm = 0;
       let weekTss = 0;
       for (let d = 0; d < 7; d++) {
         const date = addDays(start, d);
         const k = keys[d];
         const disturb = disturbanceFor(date, anchors);
-        const recentLow = date >= addDays(today, -5) && date <= today;
+        // v3.1.0: Isabels letzte 7 Tage tragen eine MILDE Erholungs-Signatur (harte Build-Wochen kurz vor dem
+        // Taper — physiologisch normal): HRV etwas unter, Ruhepuls etwas über der Baseline. Bewusst so kalibriert,
+        // dass die Flag-Engine „warn" erkennt (Coach dämpft die Last um 10 %, Verdikt wird umrahmt) und NICHT
+        // „high" — ein high-Flag würde die Spitzen-Intensität streichen und ihre Wettkampf-Story zerlegen.
+        // Die Grenzen der Engine: warn ab HRV < Median−1·MAD bzw. RHR > Median+max(4,1·MAD); high erst bei 2·MAD.
+        const recentLow = date >= addDays(today, -7) && date <= today;
         if (date <= today) {
           const sick = disturb === "illness" ? 1 : 0;
           const travel = disturb === "travel" ? 1 : 0;
           const pain = disturb === "niggle" ? clamp(Math.round(jit(3, 1)), 1, 5) : clamp(Math.round(jit(0.5, 0.8)), 0, 2);
-          const sleep = round1(jit(recentLow ? 6.45 : disturb ? 6.4 : 7.45, recentLow ? 0.35 : 0.65));
-          const hrv = Math.round(jit(recentLow ? 55 : sick ? 50 : 62, recentLow ? 3 : 5));
-          const rhr = Math.round(jit(recentLow ? 49 : sick ? 53 : 45, recentLow ? 1.5 : 2.2));
+          const sleep = round1(jit(recentLow ? 6.6 : disturb ? 6.4 : 7.45, recentLow ? 0.3 : 0.65)); // > 6 h → kein Schlaf-Flag
+          const hrv = Math.round(jit(recentLow ? 57 : sick ? 50 : 62, recentLow ? 2 : 5));
+          const rhr = Math.round(jit(recentLow ? 50 : sick ? 53 : 45, recentLow ? 1.2 : 2.2));
           const recovery = clamp(Math.round(jit(recentLow ? 54 : sick ? 42 : 72, recentLow ? 8 : 12)), 20, 95);
           insLog.run(pid, date, round1(jit(MASS, 0.35)), rhr, hrv, recovery, round1(jit(k ? SESS[k].if * 12 : 2.2, 1.4)), sleep,
             clamp(Math.round(jit(disturb === "niggle" ? 5 : 2, 1.2)), 0, 8), clamp(Math.round(jit(recentLow ? 6 : 7.5, 1.5)), 1, 10),
@@ -587,6 +669,27 @@ function generateTutorial(today: string): number {
     seedActiveTrial(pid, today, nowIso);
 
     db.exec("COMMIT");
+
+    // Nach dem Commit (die ML-Engines schreiben in eigenen Transaktionen): latente Fitness rechnen und den
+    // abgeschlossenen Trial von der ECHTEN Engine auswerten — Verdikt, θ und der exakte Permutations-p-Wert
+    // kommen aus Isabels Daten, nicht aus fest eingetragenen Zahlen.
+    computeLatentFitnessSync(pid);
+    // Readiness + Gesundheits-Flags: ohne einen Lauf gäbe es keine Flags — der Health-Cap im Coach und das
+    // Gesundheits-Gate des Verdikts wären im Demo-Profil unsichtbar, obwohl Isabels Daten die Signatur hergeben.
+    computeReadinessSync(pid);
+    // Praxisschwelle (MCID) an Isabels ECHTE Messgenauigkeit verankern. Beim Anlegen des Trials existierte die
+    // latente Kurve noch nicht (Seed-Reihenfolge), sodass der Default (1,0) griff. In der Realität hat die
+    // Athletin ihre Daten VOR dem Trial-Design — genau das bildet dieses Nachziehen ab (Prä-Registrierung bleibt:
+    // die Schwelle steht fest, BEVOR das Ergebnis ausgewertet wird).
+    const anchored = getAnchoredMcid(pid);
+    const cfgRow = db.prepare("SELECT config_json FROM method_experiments WHERE id=?").get(completed.id) as { config_json: string | null } | undefined;
+    if (cfgRow?.config_json) {
+      const cfg = JSON.parse(cfgRow.config_json) as Record<string, unknown>;
+      cfg.mcid = anchored.latent;
+      cfg.mcid_source = "anchored";
+      db.prepare("UPDATE method_experiments SET config_json=? WHERE id=?").run(JSON.stringify(cfg), completed.id);
+    }
+    evaluateProspectiveTrial(completed.id);
     return pid;
   } catch (e) {
     try { db.exec("ROLLBACK"); } catch { /* ignore */ }

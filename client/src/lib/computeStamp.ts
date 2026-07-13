@@ -22,6 +22,18 @@ export function useComputeStamp(key: string) {
   return { stamp, runTimed, mark };
 }
 
+/** v3.1.0: „vor X" aus einem Server-Zeitstempel (Methodik-Cache `builtAt`) — überlebt Seitenwechsel/Neustart. */
+export function agoLabel(iso?: string | null): string {
+  if (!iso) return "";
+  const secs = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (!Number.isFinite(secs)) return "";
+  return secs < 45 ? "gerade eben"
+    : secs < 3600 ? `vor ${Math.round(secs / 60)} min`
+      : secs < 86_400 ? `vor ${Math.round(secs / 3600)} h`
+        : secs < 7 * 86_400 ? `vor ${Math.round(secs / 86_400)} Tagen`
+          : new Date(iso).toLocaleDateString();
+}
+
 export function stampLabel(s: ComputeStamp | null): string {
   if (!s) return "";
   const secs = Math.max(0, Math.round((Date.now() - s.ts) / 1000));

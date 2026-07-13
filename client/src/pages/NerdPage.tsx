@@ -364,7 +364,11 @@ export default function NerdPage() {
       </Panel>
 
       <Panel n={4} title="F3 — Exposure-EWMA (Regime/Schwerpunkt-Dosis)" subtitle="β je Regime auf die latente Fitness, plus die rohe wöchentliche Exposure-Serie, die reingeht (sonst nur intern, wird verworfen).">
-        {!regime?.models ? <p className="tiny muted">Kein Regime-Latent-Lauf vorhanden.</p> : (
+        {!regime?.models ? (
+          // v3.1.0: Die Nerd-Seite rechnet grundsätzlich nichts (read-only) — sie zeigt das GESPEICHERTE Ergebnis.
+          // Vorher stieß allein das Öffnen dieser Seite einen bis zu 120 s langen Sidecar-Lauf an.
+          <p className="tiny muted">Kein gespeicherter Regime-Latent-Lauf — auf der Methodik-Seite („Passive Inferenz" → neu berechnen) einmal rechnen lassen.</p>
+        ) : (
           <>
             <MiniForest rows={regimeCells.map((c) => ({ label: c.label, value: c.beta, lo: c.ci_low ?? c.beta, hi: c.ci_high ?? c.beta }))} />
             {regime.labels && regime.X && regime.y && regime.dates && (

@@ -14,11 +14,11 @@
       } catch (e) { /* Default: CSS-Fallback */ }
     })();
   </script>
-  <script type="module" crossorigin src="/assets/usage-Bn5trTbh.js"></script>
+  <script type="module" crossorigin src="/assets/usage-CTLvQ-VQ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-ckwbz45p.js">
-  <link rel="modulepreload" crossorigin href="/assets/theme-Cp-0CTdL.js">
-  <link rel="stylesheet" crossorigin href="/assets/theme-B2oCPHuk.css">
+  <link rel="modulepreload" crossorigin href="/assets/theme-B7O2PIKs.js">
+  <link rel="stylesheet" crossorigin href="/assets/theme-Btrs335q.css">
 </head>
 <body>
 
@@ -485,6 +485,59 @@ Tageswert  = round( lo + Position · (hi − lo) ),  |Δ zur Vorwoche| ≤ 0.15 
         Zahl arbeitet überall: Sie treibt die Pace-Progression der Einheiten, den Soll/Ist-Abgleich der
         Test-Wettkämpfe und die Prognose bis zum Renntag.</p>
 
+      <h3>🧭 Block einrichten — der geführte Weg</h3>
+      <p>Statt „der Plan erscheint einfach" führt dich der Wizard in sechs Schritten durch alle Stellschrauben —
+        jeweils mit einem Engine-Vorschlag <em>und der Begründung dahinter</em>, den du übernehmen oder
+        überschreiben kannst:</p>
+      <ol>
+        <li><strong>Ziel</strong> — Rennen, Distanz, Wunschzeit; sofort mit ehrlichem Prognose-Abgleich
+          („heute bereit für ~1:19 · am Renntag realistisch 1:18 · dein Ziel ist sehr ambitioniert").</li>
+        <li><strong>Zwischenziele</strong> — Test-Wettkämpfe: die ehrlichste Standortbestimmung; sie füttern
+          VDOT und Critical Speed und bekommen automatisch einen Mini-Taper.</li>
+        <li><strong>Umfang</strong> — Start-km (Ø deiner letzten 4 Wochen) und das Block-Maximum (was in N
+          Wochen <em>sicher</em> aufzubauen ist: ≈ +6 % je Aufbauwoche im 3:1-Rhythmus, gedeckelt durch dein
+          Zeitbudget). Die Engine rampt dazwischen und schreibt die Ziel-km in den Saisonplan.</li>
+        <li><strong>Zeit</strong> — Minuten je Wochentag, Longrun-Tag, harte Tage.</li>
+        <li><strong>Zonen</strong> — die berechneten optimalen Zonen für den Block übernehmen (oder deine
+          behalten). Veraltete Zonen heißen: Der Plan rechnet sauber, aber am falschen Anker.</li>
+        <li><strong>Schwerpunkt</strong> — der Vorschlag aus deiner Evidenz (mit Etikett beobachtet/geprüft)
+          oder deine manuelle Wahl.</li>
+      </ol>
+      <div class="deuten">
+        <span class="tag">So liest du das · die Live-Vorschau</span>
+        <p>Rechts im Wizard rechnet die App bei jeder Eingabe den <strong>echten Blockplan</strong> mit — nicht
+          eine Schätzung: Wochensäulen mit Phasen, die Readiness-Kurve mit Peak-Marker, die ersten Wochen als
+          Tabelle (km · harte Einheiten · Longrun) und die Stellen, an denen die Sicherheitslogik eingreift
+          („km-Ceiling", „Gesundheits-Cap", „Zeit-Reserve"). So siehst du sofort, ob deine Zahl den Plan
+          besser macht — statt es hinterher zu merken.</p>
+      </div>
+      <div class="note">Der Wizard schreibt <b>nur, was du bestätigt hast</b>: Verfügbarkeit, Ziel-km je Woche,
+        Schwerpunkt, optional ein Zonen-Set — und die <b>Phasen</b> (Aufbau, Entlastungswochen im 3:1-Rhythmus,
+        distanzgerechter Taper), wenn der Haken gesetzt ist. Manuell gepinnte Phasen bleiben erhalten; einzelne
+        Einheiten werden nie überschrieben. Der Direktpfad „▶ Block-Vorschlag laden" (ohne Wizard) bleibt.</div>
+
+      <h3>Wie der Coach den Umfang bemisst</h3>
+      <div class="deuten">
+        <span class="tag">So liest du das · drei Regeln, die dich schützen</span>
+        <ul>
+          <li><strong>Der Longrun ist ein Anteil des Wochenumfangs</strong>, keine Füllmenge für freie Zeit. Es
+            gewinnt die strengste von drei Grenzen: Anteil (Base 30 % · Build 28 % · Specific 25 %),
+            distanz-typischer Deckel (5k ≤ 90′ · 10k ≤ 100′ · HM ≤ 120′ · M ≤ 165′) und dein Zeitbudget.
+            Beispiel: 10-km-Ziel, 45 km/Woche, sonntags 3 h frei → <span class="num">≈ 12–13 km</span>, nicht 30.
+            Die bindende Regel steht als Begründung an der Einheit.</li>
+          <li><strong>Dein Zeitbudget ist eine Obergrenze, kein Soll.</strong> Übrige Zeit bleibt bewusst übrig
+            („Zeit-Reserve") — mehr Umfang kommt über das Wochen-km-Ziel, nicht über freie Stunden.</li>
+          <li><strong>Das Wochen-km-Ziel steuert wirklich</strong> — die Engine skaliert Easy- und Longrun-Volumen
+            darauf hin (Qualität bleibt unangetastet). Es gibt aber eine harte Untergrenze: Läufe haben sinnvolle
+            Mindestdauern. Passt dein Ziel nicht mehr hinein, sagt die App es offen („Ziel 41 km, geplant 54 km:
+            weniger ginge nur mit <em>weniger Einheiten</em>") statt still danebenzuplanen.</li>
+          <li><strong>Harte Einheiten sind gedeckelt</strong>: Base 1 (+ Steigerungen) · Build 2 · Specific 2 ·
+            Taper 1 → 0. Bei niedriger Fitness/CTL auch im Build nur 1; bei hoher CTL und erlaubten
+            Doppeleinheiten bis 3 (norwegisches Modell). Ein Longrun mit Renntempo-/MP-Anteil zählt als
+            <em>halber</em> harter Tag — er ist ein echter Reiz.</li>
+        </ul>
+      </div>
+
       <h3>Fortschritts-Check &amp; Wettkampf-Prognose</h3>
       <p>Oben im Coach: dein letzter Test-Wettkampf gegen die Erwartung, daraus die Hauptrennen-Prognose
         („am Renntag bereit für ~X:XX vs. Ziel Y:YY — auf Kurs?"). Die zugrunde liegende
@@ -552,11 +605,21 @@ Tageswert  = round( lo + Position · (hi − lo) ),  |Δ zur Vorwoche| ≤ 0.15 
 
       <h3>Das Coaching-Verdikt: deine Evidenz steuert mit</h3>
       <p>Der Block-Schwerpunkt (LT1 · LT2/Threshold · VO2 · Berg · Norwegian · Fartlek) kommt — wenn belastbar —
-        aus deiner Evidenz der <a href="#methodik">Methodik</a>: <strong>gestuft</strong> (kausal geprüfte
-        N-of-1-Trials steuern stark, beobachtete Effekte sanft, Hypothesen nur zur Anzeige) und ehrlich
-        etikettiert. Der Schwerpunkt wirkt in <em>jeder</em> Blockwoche — auch in Base, dort über base-legale
-        Vorstufen (Schwelle → LT1-Volumen, VO2 → Fartlek/Bergsprints). Das letzte Wort hast du:
-        „Auto (Evidenz)" oder manuell pinnen; „→ Belege in Methodik" springt zur Beweislage.</p>
+        aus deiner Evidenz der <a href="#methodik">Methodik</a>: <strong>gestuft</strong> und ehrlich etikettiert.
+        Der Schwerpunkt wirkt in <em>jeder</em> Blockwoche — auch in Base, dort über base-legale Vorstufen
+        (Schwelle → LT1-Volumen, VO2 → Fartlek/Bergsprints). Das letzte Wort hast du: „Auto (Evidenz)" oder
+        manuell pinnen; „→ Belege in Methodik" springt zur Beweislage.</p>
+      <div class="deuten">
+        <span class="tag">So liest du das · was die Evidenz darf (und was nicht)</span>
+        <p>Jede Zieldistanz hat <strong>Pflichtreize</strong>, die nicht wegoptimierbar sind: Marathon →
+          Schwelle/MP-Volumen + langer Lauf · HM → Schwelle · 10k → VO2max + Schwelle · 5k → VO2max + Speed.
+          Diese besetzen den ersten harten Slot der Woche. <strong>Beobachtete</strong> Evidenz darf nur den
+          <em>freien</em> Qualitäts-Slot drehen (und die Dosierung). Ein <strong>kausal geprüfter</strong>
+          N-of-1-Trial darf zusätzlich <em>einen</em> Pflichtreiz verschieben — mehr nicht.
+          Beispiel: Du trainierst auf einen Marathon, deine Daten sagen „VO2max hilft dir". Beobachtet: Der
+          MP-Longrun und die Schwelle bleiben, VO2 bekommt den freien Slot. Geprüft: Der Schwellen-Slot darf VO2
+          werden — der MP-Longrun bleibt trotzdem. Gesundheits-Flags übersteuern alles.</p>
+      </div>
 
       <h3>Adaptive Regler: der Block passt sich dir an</h3>
       <table>
@@ -887,6 +950,40 @@ VO₂max ≈ 3.5 + (VO₂ − 3.5) / %HRR</div>
         Beide werden bei jedem Sync automatisch neu berechnet. Die Analyse ist geräteneutral
         („relativ zu Geräte-Watt").</p>
 
+      <h3>W′-bal — die Batterie im Intervall</h3>
+      <p>Während CP dein <em>nachhaltiges</em> Niveau beschreibt, ist <strong>W′</strong> der begrenzte Vorrat
+        <em>darüber</em> — eine anaerobe Batterie (in Kilojoule). Jede Belastung über CP entlädt sie, jede Erholung
+        unter CP lädt sie wieder auf. <strong>W′-bal</strong> ist der Ladestand über die Zeit: der Sägezahn, den du
+        in der Karte siehst. Er entsteht Sekunde für Sekunde aus deinem Power-Stream.</p>
+      <div class="deuten">
+        <span class="tag">So liest du das · W′-bal</span>
+        <ul>
+          <li><strong>Der Sägezahn</strong> in einer Intervall-Einheit: Jede Wiederholung zieht die Batterie
+            runter, jede Pause lädt sie teilweise nach. Fällt sie über die Serie hinweg immer tiefer, waren die
+            Pausen für die gewählte Intensität zu kurz.</li>
+          <li><strong>Der tiefste Stand (Minimum in %)</strong> ist die eigentliche Aussage. Grobe Orientierung:
+            Bleibt er über ~30 %, war die Einheit kontrolliert (typisch für Schwellenarbeit — genau das Ziel des
+            norwegischen Sub-Threshold-Modells). Fällt er unter ~10 %, warst du am Anschlag: ein legitimer
+            VO2max-/Wettkampf-Reiz, aber kein Schwellentraining mehr.</li>
+          <li><strong>Erholt sich die Batterie zwischen den Reps nicht mehr</strong> (der Sägezahn „rutscht" ab),
+            hast du entweder zu schnell begonnen oder zu viele Wiederholungen angesetzt — die nächste Einheit
+            gehört eine Stufe kürzer, nicht langsamer.</li>
+          <li><strong>Ehrlich einordnen:</strong> W′-bal hängt an den Geräte-Watt deiner Uhr. Der <em>Verlauf</em>
+            ist aussagekräftig, der Absolutwert nur so gut wie dein Powermeter.</li>
+        </ul>
+      </div>
+      <details class="math">
+        <summary>Die Mathematik dahinter — W′-bal</summary>
+        <div class="math-body">
+          <div class="formula">Entladung (P &gt; CP):  W′bal(t) = W′ − ∫ (P(s) − CP) ds
+Ladung   (P &lt; CP):  W′bal(t) = W′ − (W′ − W′bal) · e^(−(t−u)/τ)
+τ = f(D_CP)            <b>Erholungs-Zeitkonstante; je tiefer unter CP, desto schneller lädt sie</b></div>
+          <p>Ein exponentielles Nachladen (Skiba) statt linearer Erholung — das entspricht der Messung: Die
+            ersten Sekunden der Pause bringen am meisten zurück. Deshalb ist eine kurze, <b>lockere</b> Trabpause
+            oft wertvoller als eine längere, in der du zu schnell bleibst.</p>
+        </div>
+      </details>
+
       <div class="kino" data-chart="power">
         <div class="kino-poster" role="button" tabindex="0">
           <div class="k-art"><svg viewBox="0 0 720 300" preserveAspectRatio="xMidYMid slice">
@@ -1059,9 +1156,15 @@ VDOT       = VO₂(v_Rennen) / %VO₂max(t_Rennen)</div>
         <span class="tag">So liest du das · „praktisch relevant" (MCID)</span>
         <p>Ein Effekt zählt erst, wenn er größer ist als deine eigene <strong>Messgenauigkeit</strong> — die
           Praxisschwelle (MCID) ist keine Magic-Number, sondern wird aus deinem latenten Messrauschen
-          abgeleitet (verrauschte Daten heben die Schwelle, präzise senken sie — nie unter das physiologische
-          Test-Retest-Minimum). Der Block „Deine Praxisschwelle" in der Karte zeigt Wert und Quelle.
-          „Berechnet, aber kein eindeutiges Ergebnis" heißt: statistisch klar, aber unterhalb dieser Schwelle.</p>
+          abgeleitet: verrauschte Daten heben die Schwelle, präzise senken sie. Der Block „Deine Praxisschwelle"
+          in der Karte zeigt Wert und Quelle. „Berechnet, aber kein eindeutiges Ergebnis" heißt: statistisch
+          klar, aber unterhalb dieser Schwelle.</p>
+        <p>Zwei Schwellen, zwei Einheiten — der Unterschied ist wichtig: Für <strong>Marker</strong> (z. B.
+          Critical Speed) gilt die physiologische Test-Retest-Grenze einer Einzelmessung. Für die
+          <strong>latente Fitness</strong> gilt eine eigene, kleinere Grenze — sie ist kein Einzelmesswert,
+          sondern ein aus vielen Quellen geglätteter Zustand und entsprechend präziser. (Bis v3.0 wurde hier
+          fälschlich die Einzelmess-Grenze angesetzt; dadurch konnte ein N-of-1-Experiment praktisch nie
+          „geprüft" werden, obwohl der Test signifikant war.)</p>
       </div>
 
       <h3>Regime-Inferenz — welche Wochen-Verteilung?</h3>

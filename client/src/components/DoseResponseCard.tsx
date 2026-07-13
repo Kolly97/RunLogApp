@@ -162,12 +162,14 @@ export default function DoseResponseCard({ onRecomputed }: { onRecomputed?: () =
         <em> geprüfte</em> Verdikt liefern erst die geplanten randomisierten Blöcke.
       </p>
 
-      {/* Modell-Umschalter (Sensitivität, Frage 11) */}
-      <div style={{ display: "flex", gap: 6, margin: "8px 0 4px" }}>
+      {/* Modell-Umschalter (Sensitivität, Frage 11) — data-model/data-active: Anker für die Tutorial-Aufgabe (v3.1.0) */}
+      <div style={{ display: "flex", gap: 6, margin: "8px 0 4px" }} data-tour="dose-view-switch">
         {(["mediator", "composition"] as const).map((m) => (
           <button
             key={m}
             className="btn btn-ghost"
+            data-model={m}
+            data-active={model === m ? "1" : "0"}
             onClick={() => setModel(m)}
             style={{ fontSize: 12, padding: "2px 10px", borderColor: model === m ? "var(--accent, #0ea5e9)" : undefined, color: model === m ? "var(--ink)" : "var(--muted)", fontWeight: model === m ? 700 : 400 }}
           >

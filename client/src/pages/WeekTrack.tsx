@@ -420,7 +420,11 @@ function ActivityRow({ a, zs, adh, matchBy, planned, onChange, isNew, dateEditab
     setSaving(true);
     try {
       const tss = e.tss ?? null;
-      const body = { ...e, tss };
+      // v3.1.0: Die Plan-Zuordnung wird NICHT mitgeschickt — sie hat mit dem Match-Dropdown
+      // (POST …/match) ihre eigene Wahrheitsquelle. Vorher trug das Formular einen veralteten
+      // Stand mit und setzte „nicht zuordnen" beim Speichern zurück.
+      const { matched_session_id: _mid, match_ignore: _mig, ...rest } = e;
+      const body = { ...rest, tss } as Activity;
       if (e.id) await api.updateActivity(e.id, body);
       else await api.addActivity(body);
       setOpen(false); // immer zuverlässig einklappen — auch im Re-Edit-Fall (#76)

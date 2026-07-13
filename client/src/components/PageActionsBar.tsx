@@ -23,7 +23,8 @@ export function PageActionsBar() {
   const loc = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
   const help = HELP[PATH_HELP[loc.pathname] ?? ""] ?? null;
-  if (!edit && !help) return null;
+  // v3.1.0: Anleitung + Changelog sind jetzt IMMER aus der fixierten Leiste erreichbar (vorher nur ganz unten
+  // im gescrollten Seiten-Footer) — die Leiste rendert deshalb auf jeder Seite, auch ohne Layout-/Hilfe-Aktion.
   return (
     <div className="page-actions-bar no-print">
       {helpOpen && help && (
@@ -41,8 +42,12 @@ export function PageActionsBar() {
               <button className="sm primary" onClick={edit.toggle}>✓ Fertig</button>
             </>
           : <button className="sm ghost" onClick={edit.toggle}>✎ Layout bearbeiten</button>)}
+        <span className="pab-links">
+          <a className="tiny" href="/usage.html" target="_blank" rel="noreferrer">Anleitung</a>
+          <a className="tiny" href="/changelog.html" target="_blank" rel="noreferrer">Was ist neu?</a>
+        </span>
         {help && (
-          <button className="sm ghost" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setHelpOpen((o) => !o)}>
+          <button className="sm ghost" style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setHelpOpen((o) => !o)}>
             <span className="ph-badge">!</span>{helpOpen ? "Hilfe schließen" : "Hilfe & Tipps"}
           </button>
         )}

@@ -13,6 +13,7 @@ import OptimalZonesCard from "../charts/OptimalZonesCard.tsx";
 import BlockTimeline, { phaseColor } from "../charts/BlockTimeline.tsx";
 import BanisterTaperCard from "../components/BanisterTaperCard.tsx";
 import EmphasisSelector from "../components/EmphasisSelector.tsx";
+import BlockWizard from "../components/coach/BlockWizard.tsx";
 import { blockReadiness } from "../lib/blockReadiness.ts";
 import T from "../components/T.tsx";
 
@@ -137,6 +138,7 @@ export default function Coach() {
   const [blockPlan, setBlockPlan] = useState<BlockPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [wizard, setWizard] = useState(false); // v3.1.0: geführte Block-Einrichtung
   const [emphasisMode, setEmphasisMode] = useState<"auto" | "manual">("auto");
   useEffect(() => { api.settings().then((s) => setEmphasisMode(s?.coach_emphasis_mode === "manual" ? "manual" : "auto")).catch(() => {}); }, []);
   const [tp, setTp] = useState<TuneupProgress | null>(null); // Ziel-Prognose für die Readiness-Kopplung (Baustein 2.2)
@@ -250,6 +252,16 @@ export default function Coach() {
         <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo} />
       </div>
 
+      {/* v3.1.0: geführte Block-Einrichtung — schreibt Verfügbarkeit/Ziel-km/Schwerpunkt (+ optional Zonen)
+          und lädt danach den Blockplan. */}
+      {wizard && (
+        <BlockWizard
+          weekNo={weekNo}
+          onClose={() => setWizard(false)}
+          onDone={async () => { setWizard(false); await reloadSeason(); await loadBlock(); }}
+        />
+      )}
+
       <TuneupProgressCard />
 
       {/* Coach ToDo 35: adaptives, faktenbasiertes Verdikt (steuert den Block-Plan, ehrlich geschichtet). */}
@@ -266,7 +278,11 @@ export default function Coach() {
         <div className="spread">
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>Wettkampf-Block</h2>
-            <button className="sm ghost" onClick={loadBlock} disabled={busy} title="Mesozyklus-Vorschau ab der gewählten Woche bis zum Renntag">
+            {/* v3.1.0: geführte Einrichtung (Ziel → Umfang → Zeit → Zonen → Schwerpunkt) statt „Plan erscheint einfach". */}
+            <button className="sm" onClick={() => setWizard(true)} disabled={busy} title="Geführt alle Parameter einstellen: Ziel & Zwischenziele, Wochenumfang (Start/Maximum), Zeitbudget, Zonen und Schwerpunkt — mit Vorschlag und Begründung je Schritt.">
+              🧭 Block einrichten
+            </button>
+            <button className="sm ghost" onClick={loadBlock} disabled={busy} title="Mesozyklus-Vorschau ab der gewählten Woche bis zum Renntag — ohne Wizard, mit den aktuellen Einstellungen">
               {busy ? "…" : blockPlan ? "↻ neu laden" : "▶ Block-Vorschlag laden"}
             </button>
             {blockPlan && blockPlan.weeks.length > 0 && blockPlan.raceDate && (
