@@ -23,6 +23,8 @@ export default function ProfilePage() {
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [renameDraft, setRenameDraft] = useState<{ id: number; name: string; code: string } | null>(null);
+  const [deleteDraft, setDeleteDraft] = useState<{ id: number; code: string } | null>(null);
+  const [resetDraft, setResetDraft] = useState<{ id: number; code: string } | null>(null);
   const t = useT();
   const reload = () => api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
   useEffect(() => { reload(); }, []);
@@ -70,19 +72,27 @@ export default function ProfilePage() {
   }
   async function remove(p: Profile) {
     if (p.id === active) { alert("Das aktive Profil kann nicht gelöscht werden — erst wechseln."); return; }
+    if (!deleteDraft || deleteDraft.id !== p.id) return;
+    if (deleteDraft.code !== CONFIRM_CODE) { alert("Falscher Code."); return; }
     if (!window.confirm(`Profil „${p.name}" mit ALLEN Daten unwiderruflich löschen?`)) return;
-    if (window.prompt(`Zum endgültigen Löschen Code eingeben:`) !== CONFIRM_CODE) { alert("Falscher Code."); return; }
-    try { await api.deleteProfile(p.id); reload(); }
+    try {
+      await api.deleteProfile(p.id);
+      setDeleteDraft(null);
+      setMsg(`Profil „${p.name}" gelöscht.`);
+      await reload();
+      notifyProfilesChanged();
+    }
     catch { alert("Löschen nicht möglich (geschütztes/aktives Profil)."); }
   }
   async function reset(p: Profile) {
+    if (!resetDraft || resetDraft.id !== p.id) return;
+    if (resetDraft.code !== CONFIRM_CODE) { alert("Falscher Code."); return; }
     if (!window.confirm(`Profil „${p.name}" zurücksetzen?\n\nLöscht ALLE Trainings- & Plandaten: Aktivitäten, Tagesfaktoren, Wochenlogs, geplante Einheiten, Saisonplan (geplante km) und Wettkämpfe.\nNur die HF-Zonen/Schwellen bleiben erhalten. (DB-Backup wird angelegt.)`)) return;
-    const code = window.prompt(`Zum Zurücksetzen Code eingeben:`);
-    if (code !== CONFIRM_CODE) { alert("Falscher Code."); return; }
     try {
-      const r = await api.resetProfile(p.id, code);
+      const r = await api.resetProfile(p.id, resetDraft.code);
+      setResetDraft(null);
       setMsg(`„${p.name}" zurückgesetzt: ${r.activities} Aktivitäten, ${r.daily} Tagesfaktoren, ${r.weeklogs} Wochenlogs, ${r.sessions} geplante Einheiten, ${r.weeks} Saison-Wochen, ${r.races} Wettkämpfe gelöscht. Backup angelegt.`);
-      reload();
+      await reload();
     } catch { alert("Zurücksetzen fehlgeschlagen."); }
   }
 
@@ -161,14 +171,48 @@ export default function ProfilePage() {
                             <button type="button" className="sm" onClick={() => rename(p)}><T k="common.save">Speichern</T></button>
                             <button type="button" className="sm ghost" onClick={() => setRenameDraft(null)}><T k="common.cancel">Abbrechen</T></button>
                           </div>
+                        ) : resetDraft?.id === p.id ? (
+                          <div className="row" style={{ gap: 8 }}>
+                            <span>{p.name}</span>
+                            <input
+                              type="password"
+                              value={resetDraft.code}
+                              onChange={(e) => setResetDraft({ ...resetDraft, code: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") reset(p); }}
+                              placeholder={t("profile.reset.code", "Code")}
+                              aria-label={t("profile.reset.code", "Code")}
+                              style={{ maxWidth: 90 }}
+                            />
+                            <button type="button" className="sm danger" onClick={() => reset(p)}><T k="profile.btn.reset.final">Zurücksetzen</T></button>
+                            <button type="button" className="sm ghost" onClick={() => setResetDraft(null)}><T k="common.cancel">Abbrechen</T></button>
+                          </div>
+                        ) : deleteDraft?.id === p.id ? (
+                          <div className="row" style={{ gap: 8 }}>
+                            <span>{p.name}</span>
+                            <input
+                              type="password"
+                              value={deleteDraft.code}
+                              onChange={(e) => setDeleteDraft({ ...deleteDraft, code: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") remove(p); }}
+                              placeholder={t("profile.delete.code", "Code")}
+                              aria-label={t("profile.delete.code", "Code")}
+                              style={{ maxWidth: 90 }}
+                            />
+                            <button type="button" className="sm danger" onClick={() => remove(p)}><T k="profile.btn.delete.final">Endgültig löschen</T></button>
+                            <button type="button" className="sm ghost" onClick={() => setDeleteDraft(null)}><T k="common.cancel">Abbrechen</T></button>
+                          </div>
                         ) : (
                           <>{p.name}{p.id === active ? ` · ${t("profile.active", "aktiv")}` : ""}{p.id === 1 ? ` · ${t("profile.legacy", "Bestandsdaten")}` : ""}</>
                         )}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <button type="button" className="sm ghost" onClick={() => setRenameDraft({ id: p.id, name: p.name, code: "" })}><T k="profile.btn.rename">Umbenennen</T></button>
-                        <button className="sm ghost danger" onClick={() => reset(p)} title={t("profile.btn.reset.title", "Alle Trainings- & Plandaten löschen (Aktivitäten, Einheiten, Saisonplan, Races), nur Zonen behalten")}><T k="profile.btn.reset">Zurücksetzen</T></button>
-                        {p.id !== 1 && <button className="sm ghost danger" onClick={() => remove(p)}><T k="profile.btn.delete">Löschen</T></button>}
+                        {deleteDraft?.id !== p.id && resetDraft?.id !== p.id && (
+                          <>
+                            <button type="button" className="sm ghost" onClick={() => { setDeleteDraft(null); setResetDraft(null); setRenameDraft({ id: p.id, name: p.name, code: "" }); }}><T k="profile.btn.rename">Umbenennen</T></button>
+                            <button className="sm ghost danger" onClick={() => { setRenameDraft(null); setDeleteDraft(null); setResetDraft({ id: p.id, code: "" }); }} title={t("profile.btn.reset.title", "Alle Trainings- & Plandaten löschen (Aktivitäten, Einheiten, Saisonplan, Races), nur Zonen behalten")}><T k="profile.btn.reset">Zurücksetzen</T></button>
+                            {p.id !== 1 && <button className="sm ghost danger" onClick={() => { setRenameDraft(null); setResetDraft(null); setDeleteDraft({ id: p.id, code: "" }); }}><T k="profile.btn.delete">Löschen</T></button>}
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -6,12 +6,20 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [3.2.1] – 2026-07-14 — Account-Reset-Fix
+
+### Behoben (Profile / Accounts)
+- **Profil-Zurücksetzen nutzt jetzt ebenfalls ein Inline-Codefeld.** Damit hängt auch dieser Schutzschritt in der
+  Electron-App nicht mehr an einem Browser-Popup; die zusätzliche endgültige Bestätigung bleibt erhalten.
+  (`client/src/pages/Profile.tsx`)
+
 ## [3.2.0] – 2026-07-14 — Engine-Ehrlichkeit, Isabel-Zeitfix, Account-Fix
 
 ### Behoben (Profile / Accounts)
-- **Accounts lassen sich wieder anlegen und umbenennen.** Der Sidebar-„+“-Eintrag öffnet jetzt den Account-Bereich
-  im Profil, und Anlegen/Umbenennen laufen dort über kleine Eingabefelder statt über Browser-Dialoge, die in der
-  Desktop-App nicht zuverlässig erschienen. (`client/src/App.tsx`, `client/src/pages/Profile.tsx`)
+- **Accounts lassen sich wieder anlegen, umbenennen und löschen.** Der Sidebar-„+“-Eintrag öffnet jetzt den
+  Account-Bereich im Profil; Anlegen, Umbenennen und die Lösch-Codeeingabe laufen dort über kleine Eingabefelder
+  statt über Browser-Dialoge, die in der Desktop-App nicht zuverlässig erschienen. (`client/src/App.tsx`,
+  `client/src/pages/Profile.tsx`)
 
 ### Behoben (Coach — die Zahlen sind wieder in sich schlüssig)
 - **Das Zeitbudget ist jetzt eine echte Grenze, keine Deko.** Vorher folgte die Wochenlast dem CTL-Band und dem
