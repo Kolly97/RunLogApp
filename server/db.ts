@@ -422,6 +422,10 @@ function migrate(): void {
   addColumn("races", "goal_time_s", "INTEGER");
   // v1.10.0: Test-/Aufbauwettkampf-Flag — der Block plant mit Mini-Taper (kein voller Taper) drumherum.
   addColumn("races", "is_tuneup", "INTEGER DEFAULT 0");
+  // v3.1.0: „Für die Planung ignorieren" — Volkslauf/Spaßrennen, das im Kalender steht, aber den Block nicht
+  // steuern soll. Ohne dieses Flag würde ein solches Rennen (erstes künftiges Nicht-Tuneup) zum Hauptrennen
+  // und der ganze Block dorthin tapern. Rein additiv, Default 0 = bisheriges Verhalten.
+  addColumn("races", "excluded_from_plan", "INTEGER NOT NULL DEFAULT 0");
   // v1.7.0: Live-Resolution — gespeicherte Einheit hält ihre Intention (Workout-Template + Progression),
   // damit Pace/HF bei Fitness-Änderung neu berechnet werden können. JSON {templateId, progress, raceId}.
   addColumn("planned_sessions", "prescription", "TEXT");
@@ -768,6 +772,27 @@ function migrate(): void {
   if (!getSetting("migrated_dedupe_sessiontypes_v3", false)) {
     db.prepare("UPDATE options SET active=0 WHERE kind='sessionType' AND value IN ('Rep','VO2short','VO2long')").run();
     setSetting("migrated_dedupe_sessiontypes_v3", true);
+  }
+
+  // v3.1.0: Coach-übernommene Einheiten wurden ohne `planned_km` gespeichert (der Coach schickt die
+  // Zonen-km in `zone_alloc.byKm`, aber kein Gesamt-km) → sie fehlten in allen km-Auswertungen, bis man sie
+  // manuell öffnete und speicherte. Die Ursache ist gefixt (enrichZoneAllocKm leitet planned_km ab); dieser
+  // einmalige Backfill repariert den Bestand. Rein additiv: schreibt NUR dort, wo planned_km fehlt/0 ist und
+  // belastbare byKm existieren — keine bestehenden km werden überschrieben.
+  if (!getSetting("migrated_planned_km_from_zonealloc_v31", false)) {
+    const rows = db.prepare(
+      "SELECT id, zone_alloc FROM planned_sessions WHERE (planned_km IS NULL OR planned_km <= 0) AND zone_alloc IS NOT NULL AND sport='Run'",
+    ).all() as { id: number; zone_alloc: string }[];
+    const upd = db.prepare("UPDATE planned_sessions SET planned_km=? WHERE id=?");
+    let fixed = 0;
+    for (const r of rows) {
+      let alloc: { byKm?: Record<string, number> } | null = null;
+      try { alloc = JSON.parse(r.zone_alloc); } catch { continue; }
+      const km = Object.values(alloc?.byKm || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+      if (km > 0) { upd.run(Math.round(km * 100) / 100, r.id); fixed++; }
+    }
+    if (fixed > 0) console.log(`[migrate] planned_km aus zone_alloc.byKm nachgetragen: ${fixed} Einheiten`);
+    setSetting("migrated_planned_km_from_zonealloc_v31", true);
   }
 
   flushSeedLedger();

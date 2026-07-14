@@ -2,16 +2,18 @@
 // Abschnitt 3 Analyse + 4 Coach; das Nerd-Add-on folgt als Etappe C). Texte: Isabel = warm-kompetente
 // Trainingspartnerin, duzt, wissenschaftlich ehrlich (beobachtet ≠ kausal), kein Fitness-Toy-Sprech.
 import { api } from "../../lib/api.ts";
+import { addDays, todayIso } from "../../lib/util.ts";
 import type { TutSection } from "./types.ts";
 
+// v3.2.0: Alle Zeitfenster hängen am „heute" der APP (util.todayIso) — im Demo-Profil ist das Isabels
+// eingefrorenes Datum. Mit der Systemuhr gerechnet, lägen die Aufgaben-Prüfungen (z. B. „Woche übernommen?")
+// Jahre neben Isabels Daten und wären nie erfüllbar.
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 function currentWeekRange(): { from: string; to: string } {
-  const now = new Date();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
-  return { from: iso(mon), to: iso(sun) };
+  const today = todayIso();
+  const wd = (new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7; // 0 = Montag
+  const mon = addDays(today, -wd);
+  return { from: mon, to: addDays(mon, 6) };
 }
 
 type AthleteSetting = { birth_year?: number | string; sex?: string; weight?: number | string; max_hr?: number | string };
@@ -27,9 +29,7 @@ async function onIsabelProfile(): Promise<boolean> {
 const domHas = (selector: string) => async () => !!document.querySelector(selector);
 /** Geplante Einheiten im weiten Fenster (heute−7 … +180 Tage) — Basis für „Woche übernehmen"-Erkennung. */
 async function plannedSessionCount(): Promise<number> {
-  const from = new Date(); from.setDate(from.getDate() - 7);
-  const to = new Date(); to.setDate(to.getDate() + 180);
-  return (await api.sessions({ from: iso(from), to: iso(to) })).length;
+  return (await api.sessions({ from: addDays(todayIso(), -7), to: addDays(todayIso(), 180) })).length;
 }
 
 export const SECTIONS: TutSection[] = [
@@ -85,8 +85,8 @@ export const SECTIONS: TutSection[] = [
         kind: "say",
         title: "Optimale Zonen — berechnet, du bestätigst",
         route: "/coach",
-        selector: "[data-tour='optimal-zones']",
-        text: "Hier berechnet RunLog deine optimalen Zonen: Pace aus VDOT/Critical Speed, HF aus Laktat bzw. LTHR, Watt aus Critical Power — mit Quelle je Achse. Mit „Als aktives Zonen-Set übernehmen“ werden sie verbindlich. Wichtig: RunLog schlägt vor, DU entscheidest — das gilt in der ganzen App.",
+        selector: "[data-tour='block']",
+        text: "Deine Zonen berechnet RunLog selbst: Pace aus VDOT/Critical Speed, HF aus Laktat bzw. LTHR, Watt aus Critical Power — mit Quelle je Achse. Du siehst sie im Block-Wizard („🧭 Block einrichten“, Schritt 5) und machst sie dort mit einem Haken verbindlich. Wichtig: RunLog schlägt vor, DU entscheidest — das gilt in der ganzen App.",
       },
       {
         kind: "task",
@@ -95,9 +95,7 @@ export const SECTIONS: TutSection[] = [
         text: "In den Einstellungen verbindest du Strava (einmalig anmelden), dann „Ganzes Jahr importieren“. Ehrlich vorweg: Strava erlaubt nur ~100 Abrufe pro 15 Minuten — bei viel Historie braucht es mehrere Sync-Runden, RunLog macht automatisch da weiter, wo es aufgehört hat. Danach einmal „TSS neu berechnen“ drücken, damit die nachgeladenen Details (NGP) in die Belastung einfließen. Ohne Strava? Überspringen — Aktivitäten gehen auch manuell im Tracking.",
         check: {
           count: async () => {
-            const y = new Date();
-            y.setFullYear(y.getFullYear() - 1);
-            return (await api.activities({ from: iso(y) })).length;
+            return (await api.activities({ from: addDays(todayIso(), -365) })).length;
           },
         },
         skippable: true,
@@ -106,8 +104,8 @@ export const SECTIONS: TutSection[] = [
       {
         kind: "task",
         title: "Aufgabe: Sag der App, wann du trainieren kannst",
-        route: "/profile",
-        text: "Unter „Verfügbarkeit“ trägst du dein Zeitbudget je Wochentag ein, deinen Longrun-Tag und deine Qualitätstage (die harten Tage, z. B. Di/Do). Der Coach legt harte Einheiten später NUR auf diese Tage und hält ≥48 h Abstand dazwischen — so bleibt die Erholung geschützt. Bei mir: Longrun Sonntag, hart Di + Do.",
+        route: "/coach",
+        text: "Im Coach öffnest du „🧭 Block einrichten“ und gehst zu Schritt 4 („Deine Zeit“): Zeitbudget je Wochentag, Longrun-Tag, Qualitätstage (die harten, z. B. Di/Do). Wichtig: Trag ein, wie viel Zeit du HAST — nicht, wie viel du trainieren willst; der Coach nutzt das als Obergrenze. Harte Einheiten legt er nur auf deine harten Tage und hält ≥48 h Abstand. Bei mir: Longrun Sonntag, hart Di + Do. Später reicht die Zeile „Deine Einrichtung · ✎ Ändern“, um schnell etwas anzupassen.",
         check: {
           test: async () => {
             const av = await api.availability();
@@ -204,9 +202,7 @@ export const SECTIONS: TutSection[] = [
         text: "Trag im Tracking eine Aktivität ein — dein letzter Lauf reicht völlig (mit Strava kommt das künftig automatisch). Schau dir danach die „% Plan“-Zahl an: Sie misst, wie gut die Aktivität zur geplanten Einheit passt (TSS-Treffer + Zeit in der Ziel-Pace-Zone). Die Auto-Zuordnung kannst du pro Aktivität manuell übersteuern.",
         check: {
           count: async () => {
-            const y = new Date();
-            y.setDate(y.getDate() - 60);
-            return (await api.activities({ from: iso(y) })).length;
+            return (await api.activities({ from: addDays(todayIso(), -60) })).length;
           },
         },
         skippable: true,
@@ -360,6 +356,7 @@ export const SECTIONS: TutSection[] = [
         selector: "[data-tour='trial']",
         text: "Und jetzt das Beste: Ein Experiment habe ich schon hinter mir — scroll zu meinem abgeschlossenen Trial „Schwelle/HM-Pace vs. VO2max“. Über 60 Wochen liefen 12 randomisierte Blöcke (6 Paare, dazwischen Washout-Wochen). Der Zufall entschied, welcher Block welcher Arm wird — deshalb kann kein Störfaktor das Ergebnis systematisch erzeugen. Ergebnis: In ALLEN sechs Paaren gewann die Schwelle. Der exakte Permutationstest sagt p = 0,031 — von 64 möglichen Zufalls-Anordnungen ist meine eine der zwei extremsten. Effekt θ ≈ +0,5 latente Fitness, über meiner Praxisschwelle. Verdikt: geprüft. Das ist der einzige Satz in der ganzen App, der „bewiesen“ sagen darf.",
       },
+      { kind: "chart3d", chart: "nof1", title: "Daten-Kino: der Beweis in 3D" },
       {
         kind: "say",
         title: "So legst du selbst eins an",

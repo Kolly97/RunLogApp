@@ -1,6 +1,7 @@
 // Profil-Menü (v0.12.0, ToDo 6): Profile verwalten (umbenennen/löschen/zurücksetzen) + HF-Zonen/Schwellen.
 // Angelehnt an TrainingPeaks/Strava-Profilseiten: alles Profil-Bezogene an einem Ort.
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api, type Profile } from "../lib/api.ts";
 import ZoneSets from "../components/ZoneSets.tsx";
 import LactateTests from "../components/LactateTests.tsx";
@@ -11,22 +12,61 @@ import T from "../components/T.tsx";
 import { useT } from "../lib/i18n.tsx";
 
 const CONFIRM_CODE = "4397"; // Bestätigungscode für Umbenennen/Löschen/Zurücksetzen.
+const notifyProfilesChanged = () => window.dispatchEvent(new Event("runlog:profiles-updated"));
 
 export default function ProfilePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [active, setActive] = useState(1);
   const [msg, setMsg] = useState("");
-  const [section, setSection] = useState("athlete"); // v1.8.0: opt-nav-Bereich
+  const location = useLocation();
+  const [section, setSection] = useState(() => new URLSearchParams(location.search).get("section") === "accounts" ? "accounts" : "athlete"); // v1.8.0: opt-nav-Bereich
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [renameDraft, setRenameDraft] = useState<{ id: number; name: string; code: string } | null>(null);
   const t = useT();
   const reload = () => api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
   useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    if (q.get("section") === "accounts") setSection("accounts");
+    if (q.get("new") === "1") setAddOpen(true);
+  }, [location.search]);
+  useEffect(() => {
+    const openAdd = () => { setSection("accounts"); setAddOpen(true); };
+    window.addEventListener("runlog:profile-add-requested", openAdd);
+    return () => window.removeEventListener("runlog:profile-add-requested", openAdd);
+  }, []);
+
+  async function addProfile() {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const r = await api.addProfile(name);
+      await api.setActiveProfile(r.id);
+      setNewName("");
+      setAddOpen(false);
+      setMsg(`Profil „${name}" angelegt und aktiviert.`);
+      await reload();
+      notifyProfilesChanged();
+    } catch {
+      alert("Profil konnte nicht angelegt werden.");
+    }
+  }
 
   async function rename(p: Profile) {
-    const name = window.prompt(`Profil „${p.name}" umbenennen in:`, p.name)?.trim();
-    if (!name || name === p.name) return;
-    if (window.prompt(`Zum Bestätigen Code eingeben:`) !== CONFIRM_CODE) { alert("Falscher Code."); return; }
-    await api.renameProfile(p.id, name);
-    reload();
+    if (!renameDraft || renameDraft.id !== p.id) return;
+    const name = renameDraft.name.trim();
+    if (!name || name === p.name) { setRenameDraft(null); return; }
+    if (renameDraft.code !== CONFIRM_CODE) { alert("Falscher Code."); return; }
+    try {
+      await api.renameProfile(p.id, name);
+      setRenameDraft(null);
+      setMsg(`Profil „${p.name}" in „${name}" umbenannt.`);
+      await reload();
+      notifyProfilesChanged();
+    } catch {
+      alert("Umbenennen fehlgeschlagen.");
+    }
   }
   async function remove(p: Profile) {
     if (p.id === active) { alert("Das aktive Profil kann nicht gelöscht werden — erst wechseln."); return; }
@@ -78,16 +118,55 @@ export default function ProfilePage() {
           {section === "cycle" && <CycleActivationCard />}
           {section === "accounts" && (
             <div className="card">
-              <h2><T k="profile.accounts.title">Profile / Accounts</T></h2>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <h2 style={{ marginBottom: 0 }}><T k="profile.accounts.title">Profile / Accounts</T></h2>
+                <button type="button" className="sm" onClick={() => setAddOpen(true)}>+ <T k="profile.btn.add">Account</T></button>
+              </div>
               <p className="tiny muted"><T k="profile.accounts.hint">Wechseln oben in der Seitenleiste. Umbenennen, Löschen und Zurücksetzen erfordern den Bestätigungscode. „Kolja" (Bestandsdaten) ist vor dem Löschen geschützt.</T></p>
+              {addOpen && (
+                <div className="row" style={{ gap: 8, margin: "10px 0 12px" }}>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addProfile(); }}
+                    placeholder={t("profile.add.placeholder", "Neuer Accountname")}
+                  />
+                  <button type="button" className="sm" onClick={addProfile}><T k="profile.btn.create">Anlegen</T></button>
+                  <button type="button" className="sm ghost" onClick={() => { setAddOpen(false); setNewName(""); }}><T k="common.cancel">Abbrechen</T></button>
+                </div>
+              )}
               <table>
                 <thead><tr><th><T k="profile.table.col">Profil</T></th><th></th></tr></thead>
                 <tbody>
                   {profiles.map((p) => (
                     <tr key={p.id}>
-                      <td>{p.name}{p.id === active ? ` · ${t("profile.active", "aktiv")}` : ""}{p.id === 1 ? ` · ${t("profile.legacy", "Bestandsdaten")}` : ""}</td>
+                      <td>
+                        {renameDraft?.id === p.id ? (
+                          <div className="row" style={{ gap: 8 }}>
+                            <input
+                              value={renameDraft.name}
+                              onChange={(e) => setRenameDraft({ ...renameDraft, name: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") rename(p); }}
+                              aria-label={t("profile.rename.name", "Neuer Profilname")}
+                            />
+                            <input
+                              type="password"
+                              value={renameDraft.code}
+                              onChange={(e) => setRenameDraft({ ...renameDraft, code: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") rename(p); }}
+                              placeholder={t("profile.rename.code", "Code")}
+                              aria-label={t("profile.rename.code", "Code")}
+                              style={{ maxWidth: 90 }}
+                            />
+                            <button type="button" className="sm" onClick={() => rename(p)}><T k="common.save">Speichern</T></button>
+                            <button type="button" className="sm ghost" onClick={() => setRenameDraft(null)}><T k="common.cancel">Abbrechen</T></button>
+                          </div>
+                        ) : (
+                          <>{p.name}{p.id === active ? ` · ${t("profile.active", "aktiv")}` : ""}{p.id === 1 ? ` · ${t("profile.legacy", "Bestandsdaten")}` : ""}</>
+                        )}
+                      </td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="sm ghost" onClick={() => rename(p)}><T k="profile.btn.rename">Umbenennen</T></button>
+                        <button type="button" className="sm ghost" onClick={() => setRenameDraft({ id: p.id, name: p.name, code: "" })}><T k="profile.btn.rename">Umbenennen</T></button>
                         <button className="sm ghost danger" onClick={() => reset(p)} title={t("profile.btn.reset.title", "Alle Trainings- & Plandaten löschen (Aktivitäten, Einheiten, Saisonplan, Races), nur Zonen behalten")}><T k="profile.btn.reset">Zurücksetzen</T></button>
                         {p.id !== 1 && <button className="sm ghost danger" onClick={() => remove(p)}><T k="profile.btn.delete">Löschen</T></button>}
                       </td>

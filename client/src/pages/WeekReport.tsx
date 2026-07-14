@@ -10,7 +10,7 @@ import {
 import { useSeason } from "../lib/hooks.ts";
 import {
   DAY_NAMES, daysOfWeek, fmtDate, fmtDateY, typeLabel, typeColor, sportLabel, paceStr, paceOrSpeed,
-  fmtDur, weekLabel, phaseLabel, addDays, pbMarkers, VERT_WEEK_HM,
+  fmtDur, weekLabel, phaseLabel, addDays, pbMarkers, VERT_WEEK_HM, todayIso,
 } from "../lib/util.ts";
 import Sparkline from "../components/Sparkline.tsx";
 import { raceMarkersByDate, raceMarkersByWeek, sickRangesByDate, sickWeekLabels, phaseRunsByDate } from "../lib/markers.ts";
@@ -89,7 +89,7 @@ export default function WeekReport() {
   const [bests, setBests] = useState<BestsResult | null>(null); // M5: PB-Marker im PMC
   useEffect(() => { api.bests().then(setBests).catch(() => setBests(null)); }, []);
   const vertPrefOn = useVertPref(); // v2.11.0: vor den Early-Returns (Hooks-Regel) — Footer-Toggle fürs Vert-Load-Modul
-  const yearStart = `${new Date().getUTCFullYear()}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8)
+  const yearStart = `${todayIso().slice(0, 4)}-01-01`; // Bericht-Charts ab 1.1. (ToDo #8) — App-„heute"
 
   async function reload() {
     if (!week) return;

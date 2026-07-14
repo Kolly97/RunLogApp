@@ -42,7 +42,7 @@ export default function WeekSelector({
   const go = (delta: number) => { const t = season[idx + delta]; if (t) setWeekNo(t.week_no); };
 
   return (
-    <span className="row" style={{ width: "auto", gap: 6, alignItems: "center" }}>
+    <span className="row" style={{ width: "auto", gap: 6, alignItems: "center", flexWrap: "nowrap", whiteSpace: "nowrap" }}>
       <button type="button" className="sm ghost" disabled={idx <= 0} onClick={() => go(-1)} title="Vorige Woche" style={{ padding: "4px 8px" }}>←</button>
       <div className="week-select" ref={ref}>
         <button type="button" className="week-select-trigger" onClick={() => setOpen((o) => !o)} aria-expanded={open}>

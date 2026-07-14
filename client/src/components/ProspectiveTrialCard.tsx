@@ -3,10 +3,9 @@
 // exakter Within-Pair-Permutationstest. Ehrlich: ein „geprüft"-Verdikt braucht ≥6 saubere Paare (≈1,5–2 Jahre).
 import { useEffect, useState } from "react";
 import { api, type MlProspectiveState, type MlProspectiveProposal, type MlProspectiveTrial, type MlProspectiveBlock, type MlTrialBlockGen } from "../lib/api.ts";
-import { fmtDate } from "../lib/util.ts";
+import { fmtDate, todayIso } from "../lib/util.ts";
 import ExpertDetails from "./ExpertDetails.tsx";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
 const parseBlocks = (t: MlProspectiveTrial): MlProspectiveBlock[] => {
   try { return t.blocks_json ? (JSON.parse(t.blocks_json) as MlProspectiveBlock[]) : []; } catch { return []; }
 };

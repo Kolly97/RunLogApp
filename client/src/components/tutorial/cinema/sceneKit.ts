@@ -22,6 +22,7 @@ export type Beat = {
   highlight?: string;   // Objektname in der Szenen-Gruppe → pulsiert
   exclaim?: string;     // kurzer Ausruf als Blase an Isabels Kopf
   sandbox?: boolean;    // zeigt den Was-wäre-wenn-Slider (nur PMC)
+  toggle?: boolean;     // zeigt den Sicht-Umschalter der Szene (nur dose: absolut ↔ volumen-bereinigt)
 };
 
 export type Hotspot = { pos: Vec3; beat: number; label: string };
@@ -34,6 +35,13 @@ export type CinemaScene = {
   runPath?: Vec3[];     // Pfad für den Landschafts-Beat (Isabel läuft die Kurve)
   /** Was-wäre-wenn (0..1) — baut die dynamischen Teile um und liefert den Kommentar zur Reaktion. */
   applySandbox?(group: THREE.Group, value01: number): string;
+  /** Sicht-Umschalter (v3.1.0, dose): EIN Balkensatz, der zwischen zwei Wertesätzen MORPHT. Der Host animiert
+   *  `u` (0 = Zustand A … 1 = Zustand B) über ~0.8 s und ruft das hier je Frame — bei reduced-motion springt er
+   *  direkt auf 1. `toggle` beschriftet den Schalter in der HUD. */
+  toggle?: { label: string; off: string; on: string };
+  applyToggle?(group: THREE.Group, u: number): void;
+  /** Kommentar zur Umschaltung (einmal je Klick, nicht je Frame). */
+  toggleNote?(on: boolean): string;
 };
 
 // Holodeck-Palette — bewusst die Farben der echten Recharts (Wiedererkennung).

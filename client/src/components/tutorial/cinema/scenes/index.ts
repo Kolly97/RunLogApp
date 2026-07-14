@@ -1,4 +1,4 @@
-// Chart-Kino: Szenen-Registry — alle 9 Szenen (K1: PMC · K2: der Rest).
+// Chart-Kino: Szenen-Registry — alle 10 Szenen (K1: PMC · K2: der Rest · v3.1.0: N-of-1-Experiment).
 import type { CinemaChartId } from "../../types.ts";
 import type { CinemaScene } from "../sceneKit.ts";
 import { pmcScene } from "./pmc.ts";
@@ -10,6 +10,7 @@ import { thresholdScene } from "./threshold.ts";
 import { powerScene } from "./power.ts";
 import { vo2Scene } from "./vo2.ts";
 import { cycleScene } from "./cycle.ts";
+import { nof1Scene } from "./nof1.ts";
 
 const FACTORIES: Partial<Record<CinemaChartId, () => CinemaScene>> = {
   pmc: pmcScene,
@@ -21,6 +22,7 @@ const FACTORIES: Partial<Record<CinemaChartId, () => CinemaScene>> = {
   power: powerScene,
   vo2: vo2Scene,
   cycle: cycleScene,
+  nof1: nof1Scene,
 };
 
 const cache = new Map<CinemaChartId, CinemaScene>();

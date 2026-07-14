@@ -29,6 +29,7 @@ type World = {
   highlightObj: THREE.Object3D | null;
   tween: Tween | null;
   reveal: Reveal | null;      // Aufbau-Animation: Clipping-Plane wandert links → rechts
+  morph: { from: number; to: number; t: number; dur: number } | null;  // Sicht-Umschalter (dose): Balken morphen
   activeUntil: number;        // adaptiver Loop: bis dahin volle Bildrate, danach ~30 fps
   autoLow: boolean;           // Auto-Detect hat auf Low geschaltet
   frame: number;
@@ -99,6 +100,9 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
   const [exclaim, setExclaim] = useState<string | null>(null);
   const [sandboxVal, setSandboxVal] = useState(0);
   const [sandboxNote, setSandboxNote] = useState("");
+  // Sicht-Umschalter der Szene (dose): EIN Balkensatz, zwei Wertesätze — der Morph ist die Lehre.
+  const [toggleOn, setToggleOn] = useState(false);
+  const [toggleNote, setToggleNote] = useState("");
   // Qualitäts-Preset (K3): Auto erkennt zähe GPUs selbst; ⚙ übersteuert manuell (persistiert).
   const [quality, setQualityState] = useState<Quality>(readQuality);
   const qualityRef = useRef<Quality>(quality);
@@ -207,7 +211,7 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
 
     const w: World = {
       renderer, scene3, cam, controls, actor: null, group, hotspots, halos, highlightObj: null,
-      tween: null, reveal, activeUntil: performance.now() / 1000 + 3, autoLow: false, frame: 0,
+      tween: null, reveal, morph: null, activeUntil: performance.now() / 1000 + 3, autoLow: false, frame: 0,
       clock: new THREE.Clock(), raf: 0, disposed: false,
     };
     world.current = w;
@@ -257,7 +261,7 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
       if (w.disposed) return;
       w.raf = requestAnimationFrame(loop);
       w.frame++;
-      const busy = !!w.tween || !!w.reveal || !!w.actor?.busy;
+      const busy = !!w.tween || !!w.reveal || !!w.morph || !!w.actor?.busy;
       const active = busy || performance.now() / 1000 < w.activeUntil;
       if (!active && w.frame % 2 === 1) return; // Ruhe-Modus: jeden 2. Frame (dt akkumuliert im Clock)
       const dt = Math.min(w.clock.getDelta(), 0.12);
@@ -281,6 +285,13 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
           renderer.localClippingEnabled = false;
           w.reveal = null;
         }
+      }
+      // Sicht-Umschalter: die Szene baut ihre Balken je Frame auf den interpolierten Wert um (0.8 s, ease).
+      if (w.morph) {
+        w.morph.t = Math.min(1, w.morph.t + (w.morph.dur > 0 ? dt / w.morph.dur : 1));
+        const u = w.morph.from + (w.morph.to - w.morph.from) * ease(w.morph.t);
+        scene.applyToggle?.(group, u);
+        if (w.morph.t >= 1) w.morph = null;
       }
       if (w.tween) {
         w.tween.t = Math.min(1, w.tween.t + (w.tween.dur > 0 ? dt / w.tween.dur : 1));
@@ -322,6 +333,10 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
         }
       });
       renderer.dispose();
+      // Der Browser gibt WebGL-Kontexte nur begrenzt her (~16). Der Analyse-Abschnitt öffnet sechs Szenen
+      // nacheinander, dazu Isabel-Szenen und Nerd-Visuals — ohne explizites Freigeben verliert der Browser
+      // irgendwann den ältesten Kontext, und die Bühne bleibt schwarz. `dispose()` allein reicht dafür nicht.
+      renderer.forceContextLoss();
       el.removeChild(renderer.domElement);
       world.current = null;
     };
@@ -332,7 +347,8 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
   useEffect(() => {
     const w = world.current;
     if (!w || !scene || status !== "ready") return;
-    const beat = scene.beats[beatIdx];
+    const beat = scene.beats[Math.max(0, Math.min(beatIdx, scene.beats.length - 1))];
+    if (!beat) return;
     const motion = motionEnabled();
     // Aktivitäts-Fenster für den adaptiven Loop (Kamerafahrt + Isabel-Weg abdecken)
     w.activeUntil = Math.max(w.activeUntil, performance.now() / 1000 + (beat.isabel?.kind === "path" ? beat.isabel.dur + 3 : 6));
@@ -371,8 +387,12 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
   }, [beatIdx, status]);
 
   if (!scene) return null;
-  const beat = scene.beats[beatIdx];
-  const last = beatIdx === scene.beats.length - 1;
+  // Defensiv: Der Beat-Index wird IMMER in die Szene geklemmt. Ein Index außerhalb (z. B. weil die Komponente mit
+  // einer anderen, kürzeren Szene weiterlebt) hätte sonst `beats[i] = undefined` geliefert und die ganze App
+  // mit einem React-Fehler in den schwarzen Bildschirm geschickt. Ein Diagramm ist das nicht wert.
+  const safeIdx = Math.max(0, Math.min(beatIdx, scene.beats.length - 1));
+  const beat = scene.beats[safeIdx];
+  const last = safeIdx === scene.beats.length - 1;
 
   return (
     <OverlayPortal>
@@ -407,7 +427,7 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
           <span className="row" style={{ gap: 5, marginTop: 4 }}>
             {scene.beats.map((_, i) => (
               <button key={i} onClick={() => setBeatIdx(i)} title={`Beat ${i + 1}`}
-                style={{ width: 9, height: 9, borderRadius: 999, border: "none", cursor: "pointer", padding: 0, background: i === beatIdx ? "var(--accent, #0ea5e9)" : i < beatIdx ? "#475569" : "var(--border, #e3e8ef)" }} />
+                style={{ width: 9, height: 9, borderRadius: 999, border: "none", cursor: "pointer", padding: 0, background: i === safeIdx ? "var(--accent, #0ea5e9)" : i < safeIdx ? "#475569" : "var(--border, #e3e8ef)" }} />
             ))}
           </span>
         </div>
@@ -432,13 +452,36 @@ export default function ChartCinema({ chart, stepInfo, onDone, onClose, doneLabe
             {sandboxNote && <p className="tiny muted" style={{ margin: "6px 0 0", lineHeight: 1.45 }}>{sandboxNote}</p>}
           </div>
         )}
+        {beat.toggle && scene.toggle && scene.applyToggle && (
+          <div style={{ margin: "0 0 10px", padding: "8px 10px", borderRadius: 8, background: "var(--surface2, rgba(148,163,184,0.1))" }}>
+            <div className="row tiny" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 700 }}>{scene.toggle.label}</span>
+              {[false, true].map((on) => (
+                <button key={String(on)} className={`sm ${toggleOn === on ? "" : "ghost"}`} style={{ padding: "3px 12px" }}
+                  onClick={() => {
+                    const w = world.current;
+                    if (!w || toggleOn === on) return;
+                    setToggleOn(on);
+                    setToggleNote(scene.toggleNote?.(on) ?? "");
+                    // reduced-motion: sofortiger Sprung statt Morph (Barrierefreiheit).
+                    const dur = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.8;
+                    w.morph = { from: toggleOn ? 1 : 0, to: on ? 1 : 0, t: 0, dur };
+                    w.activeUntil = Math.max(w.activeUntil, performance.now() / 1000 + dur + 0.5);
+                  }}>
+                  {on ? scene.toggle!.on : scene.toggle!.off}
+                </button>
+              ))}
+            </div>
+            {toggleNote && <p className="tiny muted" style={{ margin: "6px 0 0", lineHeight: 1.45 }}>{toggleNote}</p>}
+          </div>
+        )}
         <div className="spread">
           <button className="sm ghost" onClick={onClose}>{doneLabel ? "Schließen" : "Pause"}</button>
           <span className="row" style={{ gap: 6 }}>
-            {beatIdx > 0 && <button className="sm ghost" onClick={() => setBeatIdx(beatIdx - 1)}>Zurück</button>}
+            {safeIdx > 0 && <button className="sm ghost" onClick={() => setBeatIdx(safeIdx - 1)}>Zurück</button>}
             {last
               ? <button className="sm primary" onClick={onDone}>{doneLabel ?? "Szene abschließen ✓"}</button>
-              : <button className="sm primary" onClick={() => setBeatIdx(beatIdx + 1)} disabled={status !== "ready"}>Weiter</button>}
+              : <button className="sm primary" onClick={() => setBeatIdx(safeIdx + 1)} disabled={status !== "ready"}>Weiter</button>}
           </span>
         </div>
       </div>

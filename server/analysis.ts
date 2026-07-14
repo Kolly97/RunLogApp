@@ -1,6 +1,6 @@
 // Regelbasierte Prüf-Engine: bewertet eine geplante Woche gegen Phase + Verlauf.
 import { bikeTssEstimate, hrTssFromZones, rTssFromZones, powerZoneMidWatts, round1, DEFAULT_ZONE_PACE, computePmc, ctlRamp, fitCriticalSpeed, vdot, efficiencyFactor, danielsPaces, predictFromVdot, type HrZone } from "./load.ts";
-import { concretizeSession, scheduleWeek, type Availability, type ZonesInput, type PlannedUnit, type Effort, type ConcreteSession } from "./planbuilder.ts";
+import { composeWeek, concretizeSession, paceOf, QUALITY_HARD_MIN, scheduleWeek, tssPerKmMix, weeklyCapacity, type Availability, type ZonesInput, type PlannedUnit, type ScheduledUnit, type Effort, type ConcreteSession } from "./planbuilder.ts";
 import { pickWeekWorkouts, renderWorkout, fitnessLevel, workoutById, longRunShare, phaseKind, type WorkoutTemplate } from "./workouts.ts";
 
 // Grobe Durchschnittsgeschwindigkeit fürs Rad (km/h), nur für km->min wenn keine Minuten geplant.
@@ -1319,7 +1319,7 @@ export interface BlockDay {
   date: string; weekdayIdx: number; type: string; isSecond: boolean;
   planned_min: number; planned_tss: number; description: string;
   zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; paceTarget: number | null;
-  prescription?: { templateId: string; progress: number; ctlProgress?: number; targetTss: number } | null; // v1.7.0/v2.8.0: Intention für Live-Resolution
+  prescription?: { templateId: string; progress: number; ctlProgress?: number; targetTss: number; targetKm?: number | null } | null; // v1.7.0/v2.8.0: Intention für Live-Resolution; v3.2.0: km-Auftrag
   adaptNote?: string | null; // T7: „angepasst an: Phase · TSB · Fitness · VDOT"
   emphasisNote?: string | null; // „Warum diese Einheit" (tpl.purpose) + Schwerpunkt-Label am evidenz-getriebenen Tag
 }
@@ -1329,6 +1329,7 @@ export interface BlockWeek {
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: IR-Faltungs-Fitness je Woche (additiv im Endpoint gesetzt, wenn ein Dose-Run vorliegt)
+  tsbAvg?: number | null;    // v3.2.0: Ø-Form ÜBER die Woche (nicht der Montags-Stichtag) — Basis der Readiness
   projVdot?: number | null;  // T10 (v2.7.0): prognostizierte VDOT/VO2max-Äquivalent je Woche (Richtung Ziel-VDOT, gedeckelt) — nur Anzeige
   cyclePhase?: string | null; // Zyklus-Steuerung: (ggf. prognostizierte) Menstruationszyklus-Phase dieser Woche (nur Anzeige/Timeline)
   reasons: { code: string; text: string }[]; confidence: WeekStructureRec["confidence"];
@@ -1434,23 +1435,69 @@ export function realisticVdotReach(curVdot: number, weeks: number): number {
   return VDOT_ANNUAL_GAIN * vdotHeadroom(curVdot) * Math.min(Math.sqrt(years), 2); // √Jahre = Sättigung, Deckel 2 Jahre
 }
 
+// ---- v3.2.0: die Prognose hängt an der DOSIS, nicht nur am Kalender -------------------------------------------
+// Vorher interpolierte die Projektion allein von heutiger VDOT Richtung Ziel-VDOT über die Wochenzahl — die
+// geplante Last kam in der Formel NICHT vor. Ergebnis: 70 min/Woche und 750 min/Woche lieferten dieselbe
+// „prognostizierte VO2max". Das ist kein Prognosewert, sondern ein Wunsch. Jetzt gilt die Trainingslehre:
+//   Last ÜBER der Erhaltungsdosis  → Zuwachs (saturierend, je fitter desto knapper)
+//   Last AUF  der Erhaltungsdosis  → Erhalt
+//   Last UNTER der Erhaltungsdosis → Rückgang (Detraining ist echte Physiologie, kein Strafmechanismus)
+// `loadRatio` = geplante Wochenlast ÷ chronische Wochenlast (CTL × 7) — dieselbe Acute:Chronic-Familie, mit der
+// die Engine ohnehin deckelt. Ohne loadRatio bleibt die alte Kurve (Aufrufer ohne Plan-Kontext).
+// Voller Reiz ab ~15 % über der chronischen Last — kalibriert an dem, was die Engine SELBST als produktive Woche
+// plant (Aufbauwochen fahren acute:chronic ≈ 1.05–1.31, Entlastung ~0.8). Damit erreicht ein sauber gefahrener
+// Block den `realisticVdotReach` weitgehend; ein zu kleiner Block erreicht ihn nachvollziehbar nicht.
+const DOSE_FULL_STIMULUS = 1.15;
+// Erhaltungsband: Bis ~60 % der chronischen Last HÄLT die Fitness — reduziertes Volumen bei gehaltener Intensität
+// kostet keine VO2max (Hickson 1985; Mujika & Padilla 2000: Volumen −33…−66 % über Wochen ohne VO2max-Verlust).
+// Das ist genau der Sinn von Taper und Entlastungswoche: Ermüdung fällt, Fitness bleibt. Ohne dieses Band würde
+// die Projektion im Taper absacken — physiologisch falsch und für den Nutzer entmutigend.
+const DOSE_MAINTAIN_FLOOR = 0.6;
+const DETRAIN_VDOT_PER_WEEK = 0.8;  // maximaler Verlust je Woche bei ~null Last (≈ −6–8 % VO2max in 4 Wochen)
+const DETRAIN_FLOOR = 6;            // die Projektion fällt nie ins Bodenlose (bounded)
+const FEASIBLE_TOL = 0.15;          // Toleranz für „Ziel erreichbar?" (≈ 10 s auf den HM) — Modellrauschen, kein Wunschdenken
+
+/** Dosis-Faktor einer Woche: 1 = voller Reiz · 0 = Erhaltung (auch im Taper) · negativ = echtes Detraining. */
+export function doseFactor(loadRatio: number | null | undefined): number {
+  if (loadRatio == null || !Number.isFinite(loadRatio)) return 1;   // ohne Last-Info: alte Annahme (voller Reiz)
+  if (loadRatio >= 1) return Math.min(1, (loadRatio - 1) / (DOSE_FULL_STIMULUS - 1));
+  if (loadRatio >= DOSE_MAINTAIN_FLOOR) return 0;                   // Taper/Deload: hält, baut nicht ab
+  return Math.max(-1, (loadRatio - DOSE_MAINTAIN_FLOOR) / DOSE_MAINTAIN_FLOOR);
+}
+/** Sättigungs-Zeitkonstante der Projektion (Wochen) — skaliert mit dem Block. */
+export const vdotTau = (weeks: number): number => Math.max(6, Math.min(20, weeks / 3));
+/** VDOT-Änderung in Blockwoche `w` (1-basiert) bei gegebener Dosis. Negativ = Verlust. Eine Quelle für
+ *  `projectVdot` UND die wochenweise Projektion im Blockplan (die die echte Plan-Last kennt). */
+export function vdotWeekGain(reach: number, tau: number, w: number, loadRatio: number | null): number {
+  const inc = reach > 0 ? reach * (Math.exp(-(w - 1) / tau) - Math.exp(-w / tau)) : 0; // Wochen-Inkrement der Sättigungskurve
+  const f = doseFactor(loadRatio);
+  return f >= 0 ? inc * f : DETRAIN_VDOT_PER_WEEK * f;
+}
+
 /**
  * Wöchentliche VDOT-Projektion: Sättigungskurve (diminishing returns) von der heutigen Fitness Richtung Ziel,
- * gedeckelt auf einen **horizont-abhängigen, realistisch erreichbaren** Zuwachs (`realisticVdotReach`) — mehr Zeit
- * ⇒ mehr möglich, aber je fitter, desto knapper. `perWeek[w]` = projizierte VDOT in Woche w (0 = heute).
- * `infeasible` = Ziel liegt ÜBER dem realistisch Erreichbaren (ehrlich — die Prognose reicht dann nicht ans Ziel).
+ * gedeckelt auf einen **horizont-abhängigen, realistisch erreichbaren** Zuwachs (`realisticVdotReach`) und
+ * **skaliert mit der geplanten Dosis** (`loadRatio` je Woche). `perWeek[w]` = projizierte VDOT in Woche w (0 = heute).
+ * `infeasible` = die Prognose erreicht das Ziel nicht — mit Dosis also auch dann, wenn schlicht zu wenig trainiert wird.
  */
-export function projectVdot(curVdot: number, goalVdot: number, weeks: number): VdotProjection {
-  const need = goalVdot - curVdot;
+export function projectVdot(curVdot: number, goalVdot: number, weeks: number, loadRatio?: number[] | null): VdotProjection {
   const W = Math.max(0, Math.round(weeks));
-  const reach = need <= 0 ? 0 : Math.min(need, realisticVdotReach(curVdot, W)); // realistisch erreichbarer Zuwachs
-  const tau = Math.max(6, Math.min(20, W / 3)); // Sättigungs-Zeitkonstante (Wochen) — skaliert mit dem Block
-  const perWeek: number[] = [];
-  for (let w = 0; w <= W; w++) {
-    const gain = reach > 0 ? reach * (1 - Math.exp(-w / tau)) : 0; // abnehmender Grenzertrag, Plateau gegen reach
-    perWeek.push(Math.round((curVdot + gain) * 100) / 100);
+  // v3.2.0: Der erreichbare Zuwachs ist eine Eigenschaft von DIR und der ZEIT — nicht von deinem Wunsch. Vorher war
+  // er auf `goalVdot − curVdot` gedeckelt: Wer sein Ziel weicher setzte, bekam eine FLACHERE Fitness-Prognose,
+  // obwohl er dasselbe trainiert. Das Ziel entscheidet jetzt nur noch über „erreichbar?", nicht über die Physiologie.
+  const reach = realisticVdotReach(curVdot, W);
+  const tau = vdotTau(W);
+  const perWeek: number[] = [Math.round(curVdot * 100) / 100];
+  let v = curVdot;
+  for (let w = 1; w <= W; w++) {
+    const lr = loadRatio?.length ? (loadRatio[w - 1] ?? loadRatio[loadRatio.length - 1]) : null;
+    v = Math.max(curVdot - DETRAIN_FLOOR, Math.min(curVdot + reach, v + vdotWeekGain(reach, tau, w, lr)));
+    perWeek.push(Math.round(v * 100) / 100);
   }
-  return { perWeek, goalVdot, curVdot, infeasible: need > reach + 1e-9 };
+  // „Erreichbar?" mit ehrlicher Toleranz: Die Sättigungskurve nähert sich dem Ziel asymptotisch und verfehlt es
+  // sonst um Hundertstel-VDOT — also um Sekunden, die kein Modell dieser Welt auflöst. FEASIBLE_TOL ≈ 0,15 VDOT
+  // entspricht ~10 s auf den Halbmarathon: innerhalb des Modellrauschens, nicht innerhalb des Wunschdenkens.
+  return { perWeek, goalVdot, curVdot, infeasible: goalVdot > (perWeek[W] ?? curVdot) + FEASIBLE_TOL };
 }
 
 /**
@@ -1493,7 +1540,7 @@ export interface ResolveCtx {
  * bleibt Snapshot). Liefert null, wenn Template fehlt oder keine Fitness bekannt ist.
  */
 export function resolvePlannedSession(
-  presc: { templateId: string; progress: number; ctlProgress?: number; targetTss: number },
+  presc: { templateId: string; progress: number; ctlProgress?: number; targetTss: number; targetKm?: number | null },
   sessionDate: string,
   ctx: ResolveCtx,
 ): { planned_min: number; planned_km?: number | null; zone_alloc: { byKm?: Record<number, number>; byMin?: Record<number, number> }; efforts: Effort[] | null; description: string; paceTarget: number | null; adaptNote?: string | null } | null {
@@ -1508,7 +1555,9 @@ export function resolvePlannedSession(
   const tsb = weeksUntil <= 1 ? (ctx.curTsb ?? null) : null; // TSB nur für die nahe Einheit (Projektion sonst unsicher)
   // v2.8.0: persistiertes ctlProgress (aus dem Block-Bau) wieder mitgeben — resolvePlannedSession kennt selbst
   // keine Season-Baseline, kann ctlProgress also nicht neu herleiten, nur den gespeicherten Wert weiterreichen.
-  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, ctlProgress: presc.ctlProgress, targetTss: presc.targetTss, tsb, vdot: ctx.curVdot, goalDistanceM: ctx.goalDistanceM ?? null });
+  // v3.2.0: Wenn der Blockplan einen km-Auftrag hinterlegt hat, gilt DIESER — sonst rendert die Wochenplanung
+  // dieselbe Einheit mit einem anderen Volumen als der Block, aus dem sie stammt.
+  const c = renderWorkout(tpl, { zones, fitness, progress: presc.progress, ctlProgress: presc.ctlProgress, targetTss: presc.targetTss, targetKm: presc.targetKm ?? null, tsb, vdot: ctx.curVdot, goalDistanceM: ctx.goalDistanceM ?? null });
   return { planned_min: c.planned_min, planned_km: c.planned_km ?? null, zone_alloc: c.zone_alloc, efforts: c.efforts, description: c.description, paceTarget: c.paceTarget, adaptNote: c.adaptNote ?? null };
 }
 
@@ -1596,7 +1645,11 @@ const TAPER_HARD_EFFORT = 4;     // effort ≥ 4 = harte Qualität (LT2/VO2/Renn
 // Übertrainings-Grenze). Umrechnung Ramp→Wochen-TSS über die CTL-EWMA (7-Tage-Anteil ≈ 0.1545 → 45 TSS je Ramp-Punkt
 // über der Erhaltung von CTL×7).
 const CTL_RAMP_WARN = 6;         // Grund „ramp_high" ab dieser Wochen-Ramp (vorher 8) — „eher so 6"
-const RAMP_HARD_CAP = 8;         // projizierte Wochen-Ramp NIE über 8 CTL/Woche
+// v3.2.0 (Kolja-Entscheid): CTL-Rampe ≤ +5/Woche. Die Woche kann ihre Last jetzt wirklich tragen (km-first) — damit
+// wird dieser Deckel erstmals bindend statt theoretisch. Sehnen, Knochen und Bindegewebe adaptieren LANGSAMER als
+// das Herz-Kreislauf-System; eine Fitness, die schneller steigt als +5/Woche, ist mit hoher Wahrscheinlichkeit eine
+// Verletzung auf Raten.
+const RAMP_HARD_CAP = 5;         // projizierte Wochen-Ramp NIE über 5 CTL/Woche
 // v3.1.0: Spielraum des km-Angleichs (Easy/Long an das Wochen-km-Ziel). Vorher 0.7…1.4 — zu eng: ein bewusst
 // gesetztes km-Ziel (Wizard/Saisonplan) konnte den Plan nicht wirklich steuern. Qualität bleibt unskaliert.
 const KM_ALIGN_MIN = 0.55;
@@ -1606,8 +1659,16 @@ const RAMP_TSS_PER_POINT = 45;   // Wochen-TSS je zusätzlichem Ramp-Punkt über
 // CTL-Ramp über MEHR VOLUMEN so hoch wie sicher möglich wird (Wunsch „Ramp Richtung 4"). Physik: Ramp 4 bräuchte
 // ACWR ~1.52 (>1.45) bei CTL 50 — daher hier der Rand knapp unter dem Cap; die volle 4 erreicht die Ramp erst mit
 // steigender CTL (bei CTL ~60 = ACWR ~1.43). ACWR_WEEK_CAP + RAMP_HARD_CAP + Deloads + Health-Cap bleiben Sicherung.
-const PRODUCTIVE_ACWR_BASE = 1.30;  // Ziel-acute:chronic in Base-Wochen (Volumen-Grundlage, etwas moderater)
-const PRODUCTIVE_ACWR_BUILD = 1.42; // Ziel-acute:chronic in Belastungswochen (knapp unter dem Cap 1.45)
+// v3.2.0: Ziel-Band der produktiven Wochen — TSB ≈ −(ACWR−1) × CTL. Belastung 1.30 ⇒ bei CTL 40 landet die Form
+// bei ~−12: die klassische „produktive Ermüdung" (Coggan/Allen: −10…−25 im Aufbau). Base moderater (1.20 ⇒ ~−8),
+// weil die Grundlagenphase Volumen aufbaut, nicht Ermüdung. Vorher standen hier 1.30/1.42 — als ZIEL, das der
+// Renderer nie erreichte (real ~1.05 ⇒ TSB ~0 ⇒ kein Reiz). Jetzt sind es Werte, die der Plan wirklich fährt,
+// deshalb bewusst NICHT höher: 1.42 gefahren statt nur gewollt wäre ein anderes, deutlich riskanteres Training.
+const PRODUCTIVE_ACWR_BASE = 1.20;  // Ziel-acute:chronic in Base-Wochen
+const PRODUCTIVE_ACWR_BUILD = 1.30; // Ziel-acute:chronic in Belastungswochen (produktive Ermüdung, TSB ~−10…−20)
+// Harter Boden für die Form: Unter TSB −30 wird die Wochenlast gekappt (Kolja-Entscheid). Aus TSB ≈ CTL − Wochen-TSS/7
+// folgt geschlossen: Wochen-TSS ≤ 7 × (CTL + 30). Unabhängig von ACWR — die zweite, mathematisch entkoppelte Bremse.
+const TSB_FLOOR = -30;
 //                                     Base < Build erhält die Progression über den Mesozyklus; die Mesozyklus-weite
 //                                     Progression kommt zusätzlich aus der steigenden CTL (gleicher ACWR ⇒ mehr TSS).
 
@@ -1643,6 +1704,14 @@ function taperFloorDays(goalDistanceM: number | null): number {
 // Qualitäts-AUSWAHL (Intensität) bleibt, nur das VOLUMEN sinkt (klassischer Taper: Volumen runter, Intensität halten).
 const TAPER_START_RATIO = 0.92; // Wochenlast am Taper-Fensteranfang (acute:chronic)
 const TAPER_RACE_RATIO = 0.50;  // Wochenlast in der Renn-Woche (tiefster Punkt)
+
+/** v3.2.0: Fehlende Wochenminuten in einen konkreten Vorschlag übersetzen („2 Tage à 90 min") — der Nutzer soll
+ *  nicht raten müssen, WIE er die Lücke schließt. Blöcke à ≤ 90 min (mehr ist an einem Tag selten realistisch). */
+function suggestDays(missingMin: number): string {
+  const days = Math.max(1, Math.ceil(missingMin / 90));
+  const perDay = Math.max(15, Math.round(missingMin / days / 15) * 15);
+  return `${days} ${days === 1 ? "Tag" : "Tage"} à ${perDay} min`;
+}
 
 export function blockPlan(args: {
   weeks: BlockWeekInput[];
@@ -1711,12 +1780,23 @@ export function blockPlan(args: {
   }
   taperSpanWks = Math.max(1, taperSpanWks);
 
+  // v3.2.0: Wochen-Kapazität aus dem Zeitbudget (eine Quelle — dieselbe Funktion speist die Wizard-Anzeige).
+  // Ohne gepflegte Verfügbarkeit bleibt sie leer = kein Deckel (kein Verhaltenssprung für Altprofile).
+  const cap = weeklyCapacity(args.availability, args.zones);
+
   // v1.7.0: Fitness-Projektion heute → Wunsch-Zielzeit; je Woche progressierte Pace-Anker.
   const wkOffset = (d: string) => Math.max(0, Math.round((Date.parse(d + "T00:00:00Z") - Date.parse(args.today + "T00:00:00Z")) / (7 * 86400000)));
   const lastStart = args.weeks.length ? args.weeks[args.weeks.length - 1].start_date : args.today;
   const totalWeeks = Math.max(1, wkOffset(args.raceDate ?? lastStart));
   const goalVdot = args.curVdot && args.goalTimeS && args.goalDistanceM ? vdot(args.goalDistanceM, args.goalTimeS) : null;
-  const proj = args.curVdot && goalVdot ? projectVdot(args.curVdot, goalVdot, totalWeeks) : null;
+  // v3.2.0: Die Projektion läuft jetzt WOCHENWEISE mit der ECHTEN Plan-Last mit (statt einmal vorab gegen das Ziel
+  // interpoliert zu werden). Physiologisch richtig: Die Fitness zu Beginn einer Woche folgt aus der Last der Wochen
+  // DAVOR — deshalb ist keine Vorab-Runde nötig, ein einziger Durchlauf genügt.
+  const projActive = !!(args.curVdot && goalVdot);
+  // Erreichbar ist, was Zeit + heutige Fitness hergeben — NICHT, was man sich wünscht (s. projectVdot).
+  const projReach = projActive ? Math.max(0, realisticVdotReach(args.curVdot!, totalWeeks)) : 0;
+  const projTau = vdotTau(totalWeeks);
+  let projVdotRun: number | null = projActive ? args.curVdot! : null;
 
   args.weeks.forEach((w, wi) => {
     const phase = phases[wi] ?? w.phase;
@@ -1737,8 +1817,8 @@ export function blockPlan(args: {
     const taperFactor = taperRatio * (cyc?.qualityVolFactor ?? 1);
     // Baustein B1: Volumen-Faktor je Pick aus dem RPE/Completion-Loop (Familie des Templates).
     const volFor = (t?: WorkoutTemplate | null): number => (t ? (args.volumeByFamily?.[normFamily(t.family)] ?? 1) : 1);
-    // Projizierte Zonen dieser Woche (Paces wachsen Richtung Ziel); ohne Projektion = Basis-Zonen.
-    const projVdot = proj ? proj.perWeek[Math.min(wkOffset(w.start_date), proj.perWeek.length - 1)] : null;
+    // Projizierte Zonen dieser Woche: Fitness zu WOCHENBEGINN = Ergebnis der bisher geplanten Dosis (s. u.).
+    const projVdot = projVdotRun;
     const weekZones = projVdot ? zonesForWeek(args.zones, projVdot, args.goalDistanceM ?? null) : args.zones;
     // Form zu Beginn der Woche: PMC aus historischem + bisher generiertem Plan-TSS bis zum Vortag.
     const merged = new Map(args.historicalDailyTss);
@@ -1796,7 +1876,22 @@ export function blockPlan(args: {
     // T12: der oben berechnete taperRatio deckelt zusätzlich die Wochenlast (acute:chronic) im Renn-Anlauf → Easy/Long
     // sinken parallel zum Qualitäts-Volumen, TSB steigt in den Frische-Sweet-Spot, Peak fällt auf den Renntag.
     const taperCap = args.raceDate && inRaceTaper && ctl > 0 ? Math.round(taperRatio * ctl * 7) : Infinity;
-    const target = Math.min(rawTargetFloored, acwrCap, rampCap, taperCap);
+    // v3.2.0: Das ZEITBUDGET deckelt die Wochenlast genauso hart wie ACWR/Ramp/Taper. Vorher lief das Wochenziel
+    // frei am CTL-Band, und nur die einzelne Einheit wurde gekürzt → 70 min/Woche „ergaben" 36 km / 150 TSS.
+    // Kapazität ist Physik: mehr Last als Zeit × Intensität geht nicht.
+    const tssCap = cap.tssCap ?? Infinity;
+    // v3.2.0 — TSB-Hardstop (Kolja-Entscheid): Die Form darf nie unter TSB_FLOOR fallen. Aus TSB ≈ CTL − Wochen-TSS/7
+    // folgt geschlossen: Wochen-TSS ≤ 7 × (CTL − TSB_FLOOR). Das ist die zweite, von ACWR mathematisch ENTKOPPELTE
+    // Bremse (ACWR ist umstritten — Impellizzeri 2020: Zähler und Nenner teilen sich die Daten).
+    const tsbCap = ctl > 0 ? Math.round(7 * (ctl - TSB_FLOOR)) : Infinity;
+    // Die Last-DECKE (nicht das Ziel): So viel Last ist in dieser Woche maximal verantwortbar. Weil km jetzt die
+    // Steuergröße ist, muss diese Decke gleich mit in km übersetzt werden — sonst umginge ein hoch gestecktes
+    // km-Ziel ACWR-, Ramp- und TSB-Sicherung, und der „Umfang" würde zur Hintertür an der Gesundheit vorbei.
+    const loadCeiling = Math.min(acwrCap, rampCap, taperCap, tssCap, tsbCap);
+    const target = Math.min(rawTargetFloored, loadCeiling);
+    if (Number.isFinite(tsbCap) && target >= tsbCap && rawTargetFloored > tsbCap) {
+      rec.reasons.push({ code: "tsb_floor", text: `Form-Boden: Die Woche wird auf ${tsbCap} TSS gekappt — mehr würde die Form unter TSB ${TSB_FLOOR} drücken (Überlastungsbereich, nicht mehr produktive Ermüdung).` });
+    }
     if (progLift > 0 && target > rec.tssRange.target * 0.999) {
       rec.reasons.push({ code: "progressive_overload", text: `Progressive Überlast: Aufbau-Ziel +${Math.round(progLift * 100)}% über Erhalt → Fitness steigt kontinuierlich (ACWR-gedeckelt, Deloads bleiben)` });
     }
@@ -1829,118 +1924,180 @@ export function blockPlan(args: {
       if (taperRatio < 0.6) picks = picks.filter((p) => p.role !== "long"); // Race-Woche: kein Longrun
     }
 
-    // Quality-TSS schätzen → Easy/Long füllen die Restdifferenz zum Wochen-Ziel (Hybrid).
-    let qTss = 0;
-    for (const p of picks) if (p.role === "quality") qTss += renderWorkout(p.tpl, { zones: weekZones, fitness, progress, ctlProgress, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, volumeFactor: volFor(p.tpl), goalDistanceM: args.goalDistanceM ?? null }).planned_tss;
-    const remaining = Math.max(0, target - qTss);
-    const longs = picks.filter((p) => p.role === "long");
-    const easies = picks.filter((p) => p.role === "easy");
-    const longShare = longs.length ? (remaining * 0.45) / longs.length : 0;
-    const easyShare = easies.length ? (remaining * 0.55) / easies.length : 0;
-    const units: PlannedUnit[] = picks.map((p) => {
-      const tgt = p.role === "long" ? Math.round(longShare) : p.role === "easy" ? Math.round(easyShare) : 0;
-      return { type: p.tpl.sessionType, targetTss: tgt, role: p.role, ref: { tpl: p.tpl, progress, ctlProgress, targetTss: tgt, emph: p.emph }, pair: p.pair };
-    });
+    // ---- v3.2.0: km-FIRST. Der Wochenumfang ist die Steuergröße, die Last ergibt sich daraus. ----------------
+    // Vorher lief es umgekehrt (TSS-Ziel → Easy/Long-Shares), und das km-Ziel durfte hinterher nur noch ±45 %
+    // korrigieren. Das machte Start-/Max-km im Wizard weitgehend wirkungslos UND verhinderte, dass eine
+    // Aufbauwoche die Last überhaupt trägt, die die Periodisierung vorgibt (real ACWR ~1.05 statt 1.30 ⇒ TSB
+    // blieb positiv ⇒ kein Reiz, die Readiness konnte gar nicht einbrechen).
+    const kmCeil = args.kmCeilingBase != null && args.kmCeilingBase > 0 ? Math.round(args.kmCeilingBase * Math.pow(1.07, wi)) : null;
+    const kmUser = w.target_km != null && w.target_km > 0 ? w.target_km : null;
+    // Wie viele Läufe kann die Woche überhaupt tragen? Die Trainingstage des Nutzers sind die harte Grenze.
+    const trainingDays = (args.availability?.minutesByWeekday ?? []).filter((m) => (m || 0) > 0).length || 7;
 
-    // Auf Wochentage verteilen + je Einheit rendern.
-    const scheduled = scheduleWeek(units, args.availability, w.dates);
-    // T9a Taper-Guard: harte Qualität (effort ≥ 4) in den letzten RACE_HARD_CUTOFF_DAYS vor dem Rennen → locker
-    // (downgrade). Schützt die Renn-Frische; Steigerungen (effort 2) bleiben. Greift phasenübergreifend (auch wenn
-    // eine späte Race-Specific-Einheit datumsmäßig zu nah ans Rennen rutscht), nicht nur in der Race Week.
-    let taperGuarded = false;
-    if (args.raceDate) {
-      for (const su of scheduled) {
-        if (su.downgrade) continue;
-        const tpl = (su.ref as { tpl?: WorkoutTemplate } | undefined)?.tpl;
-        const hard = tpl ? (tpl.effort ?? 0) >= TAPER_HARD_EFFORT : /threshold|lt2|vo2|hill|race|renntempo/i.test(su.type);
-        if (!hard) continue;
-        const daysToRace = Math.round((Date.parse(args.raceDate + "T00:00:00Z") - Date.parse(su.date + "T00:00:00Z")) / 86_400_000);
-        if (daysToRace >= 0 && daysToRace <= RACE_HARD_CUTOFF_DAYS) { su.downgrade = true; taperGuarded = true; }
+    /** Alle Leitplanken in km-Sprache — inklusive der LAST-Decke (ACWR · Ramp · TSB · Zeit), damit ein hohes
+     *  km-Ziel nicht zur Hintertür an der Gesundheit vorbei wird. `perKm` = TSS je km dieser Woche. */
+    const kmLimit = (perKm: number): number => {
+      const caps: number[] = [];
+      if (kmCeil != null) caps.push(kmCeil);
+      if (cap.kmCap != null) caps.push(cap.kmCap);
+      if (Number.isFinite(loadCeiling) && perKm > 0) caps.push(loadCeiling / perKm);
+      return caps.length ? Math.min(...caps) : Infinity;
+    };
+    /** Gewünschter Umfang: der des Nutzers (Saisonplan/Wizard) — sonst der, den das Phasen-Last-Ziel braucht. */
+    const kmWish = (perKm: number): number => kmUser ?? (perKm > 0 ? target / perKm : 0);
+
+    let targetKm = Math.max(0, Math.min(kmWish(tssPerKmMix(args.zones)), kmLimit(tssPerKmMix(args.zones))));
+
+    const days: BlockDay[] = [];
+    let tssActual = 0, downgraded = false, taperGuarded = false;
+    const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
+    type Rendered = { su: ScheduledUnit; c: ConcreteSession; km: number | null; scalable: boolean };
+
+    /** Baut die Woche AUS einem km-Ziel: komponieren → auf Tage verteilen → rendern → Rest-Differenz ausgleichen. */
+    const buildWeek = (km: number): { comp: ReturnType<typeof composeWeek>; scheduled: ScheduledUnit[]; rendered: Rendered[] } => {
+      // Qualität (Pflichtreiz der Phase, ≤ ~20 % der km) → Longrun (Anteil) → Easy (der Rest, auf so viele Läufe
+      // verteilt, dass jeder ein echter Lauf ist). Zu kleiner Umfang ⇒ WENIGER Läufe statt Mini-Läufe.
+      const comp = composeWeek({
+        picks: picks.map((p) => ({ role: p.role })),
+        targetKm: km,
+        longShare: longRunShare(phase),
+        easyPaceSec: paceOf(2, weekZones),
+        trainingDays,
+      });
+      const units: PlannedUnit[] = picks
+        .map((p, i) => ({ p, km: comp.kmByPick[i], i }))
+        .filter((x) => !comp.dropped.includes(x.i))
+        .map(({ p, km: unitKm }) => ({
+          type: p.tpl.sessionType,
+          targetTss: 0,                     // die Last folgt aus dem km-Auftrag (Renderer), nicht umgekehrt
+          role: p.role,
+          ref: { tpl: p.tpl, progress, ctlProgress, targetKm: unitKm, emph: p.emph, fav: p.fav, avoided: p.avoided },
+          pair: p.pair,
+        }));
+      // Zusätzliche lockere Läufe, wenn der Umfang mehr Läufe braucht, als die Phasen-Auswahl vorsieht.
+      // (Sonst müsste EIN Easy-Lauf 3 Stunden tragen — das ist kein lockerer Lauf mehr, sondern ein zweiter Longrun.)
+      const easyTpl = workoutById("easy_ga1");
+      if (comp.extraEasy > 0 && easyTpl && comp.easyRuns > 0) {
+        const kmEach = comp.easyKm / comp.easyRuns;
+        for (let k = 0; k < comp.extraEasy; k++) {
+          units.push({
+            type: easyTpl.sessionType, targetTss: 0, role: "easy",
+            ref: { tpl: easyTpl, progress, ctlProgress, targetKm: kmEach },
+          });
+        }
+      }
+      const scheduled = scheduleWeek(units, args.availability, w.dates);
+
+      // T9a Taper-Guard: harte Qualität (effort ≥ 4) in den letzten RACE_HARD_CUTOFF_DAYS vor dem Rennen → locker.
+      if (args.raceDate) {
+        for (const su of scheduled) {
+          if (su.downgrade) continue;
+          const tpl = (su.ref as { tpl?: WorkoutTemplate } | undefined)?.tpl;
+          const hard = tpl ? (tpl.effort ?? 0) >= TAPER_HARD_EFFORT : /threshold|lt2|vo2|hill|race|renntempo/i.test(su.type);
+          if (!hard) continue;
+          const daysToRace = Math.round((Date.parse(args.raceDate + "T00:00:00Z") - Date.parse(su.date + "T00:00:00Z")) / 86_400_000);
+          if (daysToRace >= 0 && daysToRace <= RACE_HARD_CUTOFF_DAYS) { su.downgrade = true; taperGuarded = true; }
+        }
+      }
+
+      const renderUnit = (su: ScheduledUnit, unitKm: number | null): ConcreteSession => {
+        const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number } | undefined;
+        const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
+        const base = { zones: weekZones, fitness, targetKm: unitKm, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, goalDistanceM: args.goalDistanceM ?? null, weekKm: km };
+        // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
+        if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
+        if (ref?.tpl) return renderWorkout(ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
+        return concretizeSession(su.type, 50, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
+      };
+
+      const rendered: Rendered[] = scheduled.map((su) => {
+        const ref = su.ref as { tpl?: WorkoutTemplate; targetKm?: number | null } | undefined;
+        const fam = su.downgrade ? "Easy" : ref?.tpl?.family;
+        const unitKm = ref?.targetKm ?? null;
+        return { su, c: renderUnit(su, unitKm), km: unitKm, scalable: fam === "Easy" || fam === "Long" };
+      });
+
+      // Feinkorrektur: Die Qualität bringt die km mit, die ihre Struktur ergibt (Reps + WU/CD) — das weicht von der
+      // Schätzung in composeWeek ab. Die Differenz gleichen Easy/Long über ihren km-Auftrag aus. Grenzen setzt nur
+      // noch die Physik: Tagesbudget, Mindestdauer, Longrun-Anteil. Kein künstlicher ±45-%-Deckel mehr.
+      if (km > 0) {
+        for (let pass = 0; pass < 3; pass++) {
+          const elKm = rendered.filter((r) => r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
+          const otherKm = rendered.filter((r) => !r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
+          if (elKm <= 0) break;
+          const factor = Math.max(0, km - otherKm) / elKm;
+          if (!Number.isFinite(factor) || Math.abs(factor - 1) <= 0.03) break;
+          let changed = false;
+          for (const r of rendered) if (r.scalable && r.km && r.km > 0) {
+            const before = r.c.planned_min;
+            r.km = r.km * factor;
+            r.c = renderUnit(r.su, r.km);
+            if (r.c.planned_min !== before) changed = true;
+          }
+          if (!changed) break; // alle Läufe stehen an ihrer echten Grenze
+        }
+      }
+      return { comp, scheduled, rendered };
+    };
+
+    // Zwei Durchgänge: Die Umrechnung km → Last hängt vom tatsächlichen Zonen-Mix der Woche ab (Ein-/Auslaufen und
+    // Recovery-Läufe liegen in Z1, nicht in Z2). Eine Konstante trifft das nie genau. Also: einmal bauen, den
+    // ECHTEN TSS-je-km messen, das km-Ziel damit neu setzen (Wunsch UND Leitplanken) und einmal nachbauen.
+    let built = buildWeek(targetKm);
+    {
+      const km0 = built.rendered.reduce((a, r) => a + kmOf(r.c), 0);
+      const tss0 = built.rendered.reduce((a, r) => a + (r.c.planned_tss || 0), 0);
+      if (km0 > 0 && tss0 > 0) {
+        const perKm = tss0 / km0;
+        const next = Math.max(0, Math.min(kmWish(perKm), kmLimit(perKm)));
+        if (targetKm > 0 && Math.abs(next - targetKm) / targetKm > 0.03) {
+          targetKm = next;
+          taperGuarded = false;
+          built = buildWeek(targetKm);
+        }
       }
     }
+    const { comp, scheduled, rendered } = built;
+    if (comp.note) rec.reasons.push({ code: "week_structure", text: comp.note });
     if (taperGuarded) rec.reasons.push({ code: "taper_guard", text: `Taper-Schutz: harte Einheit < ${RACE_HARD_CUTOFF_DAYS} Tage vor dem Rennen → locker umgewandelt (Renn-Frische geht vor, keine späte VO2/Schwelle)` });
     // T12: transparenter Hinweis auf den fallenden Volumen-Taper (einmal, in der Renn-Woche).
     if (inRaceTaper && raceWkIdx === wi) rec.reasons.push({ code: "taper_volume", text: "Volumen-Taper: Last im Renn-Anlauf fallend heruntergefahren (Intensität gehalten, Anzahl harter Einheiten reduziert) → Form-Peak auf den Renntag legen" });
-    const days: BlockDay[] = [];
-    let tssActual = 0, downgraded = false;
-
-    // Render-Closure (eine Quelle für Erst-Render + km-Angleichung): Einheit → konkrete Session bei gegebener Ziel-TSS.
-    // v3.1.0: `weekKm` steuert die Longrun-Anteilsregel (25–30 % des Wochenumfangs, strengste Grenze gewinnt).
-    let weekKmForLong: number | null = w.target_km ?? null;
-    const renderUnit = (su: typeof scheduled[number], tss: number): ConcreteSession => {
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number } | undefined;
-      const maxMin = su.budgetMin > 0 ? su.budgetMin : undefined;
-      const base = { zones: weekZones, fitness, targetTss: tss, maxMin, vdot: args.curVdot ?? null, phaseLabel: phase, taperFactor, goalDistanceM: args.goalDistanceM ?? null, weekKm: weekKmForLong };
-      // Strikte Erholungsregel (v1.7.0): keine zwei harten Tage hintereinander → diese Qualität wird locker.
-      if (su.downgrade && ref?.tpl) return renderWorkout(workoutById("easy_ga1") ?? ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
-      if (ref?.tpl) return renderWorkout(ref.tpl, { ...base, progress: ref.progress, ctlProgress: ref.ctlProgress, volumeFactor: volFor(ref?.tpl) });
-      return concretizeSession(su.type, tss, weekZones, su.budgetMin > 0 ? { maxMin: su.budgetMin } : undefined);
-    };
-    const kmOf = (c: ConcreteSession): number => c.planned_km ?? Object.values(c.zone_alloc?.byKm ?? {}).reduce((a, b) => a + (b || 0), 0);
-
-    // Erst-Render je Einheit; Easy/Long-Familien markieren (Frage A: deren Volumen an target_km angleichen).
-    type Rendered = { su: typeof scheduled[number]; c: ConcreteSession; baseTss: number; scalable: boolean };
-    const renderAll = (): Rendered[] => scheduled.map((su) => {
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; targetTss: number } | undefined;
-      const baseTss = su.downgrade ? (Math.round(easyShare) || 50) : (ref?.targetTss ?? su.targetTss);
-      const fam = su.downgrade ? "Easy" : ref?.tpl.family;
-      return { su, c: renderUnit(su, baseTss), baseTss, scalable: fam === "Easy" || fam === "Long" };
-    });
-    let rendered: Rendered[] = renderAll();
-    // Ohne gepflegtes target_km ist der Wochenumfang erst NACH dem Rendern bekannt (Henne/Ei). Geschlossene Form:
-    // Longrun ≤ share · Woche  ⟺  Longrun ≤ share/(1−share) · (Rest der Woche) — einmal nachrendern genügt,
-    // die Regel wird im Renderer selbst (longRunLimit) durchgesetzt.
-    if (weekKmForLong == null) {
-      const isLong = (r: Rendered) => (r.su.ref as { tpl?: WorkoutTemplate } | undefined)?.tpl?.family === "Long" && !r.su.downgrade;
-      const otherKm = rendered.filter((r) => !isLong(r)).reduce((a, r) => a + kmOf(r.c), 0);
-      const longKm = rendered.filter(isLong).reduce((a, r) => a + kmOf(r.c), 0);
-      if (otherKm > 0 && longKm > 0) {
-        const share = longRunShare(phase);
-        weekKmForLong = Math.round((otherKm / (1 - share)) * 10) / 10; // Woche, in der der Longrun genau `share` ausmacht
-        rendered = renderAll();
-      }
-    }
     if (scheduled.some((su) => su.downgrade)) downgraded = true;
 
-    // Frage A: Easy/Long-Dauer so skalieren, dass Wochen-km ≈ target_km (harte Einheiten unangetastet); gedeckelt
-    // (×0.7..1.4) → PMC-Projektion bleibt selbstkonsistent, kein Runaway. Nur wenn target_km gepflegt ist.
-    // Baustein A1: km-Ceiling (ACWR) — progressiv (~+7%/Blockwoche, chronisches Niveau darf mitwachsen). Health-first-Deckel.
-    let targetKm = w.target_km ?? null;
-    const kmCeil = args.kmCeilingBase != null && args.kmCeilingBase > 0 ? Math.round(args.kmCeilingBase * Math.pow(1.07, wi)) : null;
-    if (kmCeil != null) {
-      const renderedKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
-      const wouldBe = targetKm != null ? targetKm : renderedKm;
-      if (wouldBe > kmCeil) { targetKm = kmCeil; rec.reasons.push({ code: "km_ceiling", text: `km-Ceiling ${kmCeil} km (verletzungssicher, ACWR ≤ 1.45) — Wochen-Volumen gedeckelt` }); }
-    }
-    if (targetKm && targetKm > 0) {
-      const elKm = rendered.filter((r) => r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
-      const otherKm = rendered.filter((r) => !r.scalable).reduce((a, r) => a + kmOf(r.c), 0);
-      if (elKm > 0) {
-        const desiredEl = Math.max(targetKm * 0.4, targetKm - otherKm); // Easy/Long tragen nie unter 40% des Ziels
-        // v3.1.0: Das Wochen-km-Ziel ist die Steuergröße des Nutzers (Wizard/Saisonplan) — der Angleich darf
-        // deshalb weiter greifen als bisher (±45 % statt −30/+40 %). Die Grenzen bleiben: Qualität wird nie
-        // skaliert, Easy/Long tragen mindestens 40 % des Ziels, und die Plan-TSS wird konsistent mitgeführt.
-        const factor = Math.max(KM_ALIGN_MIN, Math.min(KM_ALIGN_MAX, desiredEl / elKm));
-        // Skaliert die TATSÄCHLICH gerenderte Dauer (über die gerenderte TSS) — nicht die Ziel-TSS-Shares,
-        // die bei qualitäts-gesättigten Wochen 0 sind (dann rendern Easy/Long über ihre Default-Dauer).
-        if (Math.abs(factor - 1) > 0.05) for (const r of rendered) if (r.scalable && r.c.planned_tss > 0) {
-          r.baseTss = Math.max(20, Math.round(r.c.planned_tss * factor));
-          r.c = renderUnit(r.su, r.baseTss);
-        }
+    // Welche Leitplanke hat den Umfang gedeckelt? Das gehört gesagt — jeder Eingriff sichtbar, keiner still.
+    if (kmUser != null && targetKm < kmUser * 0.97) {
+      const perKmFinal = tssPerKmMix(args.zones);
+      const byLoad = Number.isFinite(loadCeiling) ? loadCeiling / perKmFinal : Infinity;
+      if (kmCeil != null && targetKm <= kmCeil + 0.5) {
+        rec.reasons.push({ code: "km_ceiling", text: `km-Ceiling ${kmCeil} km (verletzungssicher, ACWR ≤ 1.45) — dein Wochenziel (${Math.round(kmUser)} km) wurde gedeckelt.` });
+      } else if (cap.kmCap != null && targetKm <= cap.kmCap + 0.5) {
+        const missingMin = Math.round(((kmUser - cap.kmCap) * paceOf(2, args.zones)) / 60);
+        rec.reasons.push({ code: "time_cap", text: `Zeitbudget ${cap.budgetMin} min/Woche → höchstens ~${cap.kmCap} km. Für deine ${Math.round(kmUser)} km bräuchtest du ≈ +${missingMin} min je Woche (z. B. ${suggestDays(missingMin)}).` });
+      } else if (targetKm <= byLoad + 0.5) {
+        rec.reasons.push({ code: "load_cap", text: `Dein Wochenziel (${Math.round(kmUser)} km) wurde auf ${Math.round(targetKm)} km gekappt: Mehr würde die Last über den sicheren Bereich treiben (ACWR / CTL-Rampe / Form-Boden TSB ${TSB_FLOOR}).` });
       }
-      // Ehrlichkeit statt stiller Abweichung: Bleibt der Plan trotz Angleich deutlich neben dem km-Ziel, wird
-      // gesagt WARUM — sonst wundert man sich im Wizard, warum aus „41 km" ein 54-km-Plan wird. Die untere Grenze
-      // ist strukturell: Läufe haben sportwissenschaftliche Mindestdauern; unter das Ziel kommt man nur mit
-      // WENIGER Einheiten, nicht mit noch kürzeren.
-      const gotKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
-      const gotTss = Math.round(rendered.reduce((a, r) => a + (r.c.planned_tss || 0), 0));
+    }
+
+    // Ehrlichkeit statt stiller Abweichung: Bleibt der Plan neben dem km-Ziel, wird gesagt WARUM.
+    const gotKm = rendered.reduce((a, r) => a + kmOf(r.c), 0);
+    const gotTss = Math.round(rendered.reduce((a, r) => a + (r.c.planned_tss || 0), 0));
+    if (targetKm > 0) {
       const miss = (gotKm - targetKm) / targetKm;
       if (Math.abs(miss) > 0.12) {
         rec.reasons.push({
           code: "km_target_missed",
           text: miss > 0
-            ? `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Weniger Volumen ginge nur mit WENIGER Einheiten — die geplanten Läufe stehen bereits an ihrer sinnvollen Mindestdauer. Die Wochenlast landet dadurch bei ${gotTss} statt ${Math.round(target)} TSS (Phasenziel).`
-            : `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Mehr Volumen bräuchte zusätzliche Einheiten oder mehr Zeit je Tag — dein Zeitbudget deckelt hier.`,
+            ? `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Weniger ginge nur mit noch weniger Einheiten — die Läufe stehen an ihrer sinnvollen Mindestdauer.`
+            : `Wochen-km-Ziel ${Math.round(targetKm)} km, geplant ${Math.round(gotKm)} km: Mehr passt nicht in deine Tagesbudgets — für mehr Umfang brauchst du mehr Zeit je Tag (oder Doppeleinheiten).`,
+        });
+      }
+      // Der stillste und gefährlichste Widerspruch: Der Plan TRIFFT sein km-Ziel, aber dieses km-Ziel trägt viel
+      // weniger Last, als die Phase verlangt. Dann sinkt die Fitness im „Aufbau", ohne dass irgendwo etwas rot wird.
+      else if (isProductive && gotTss < target * 0.85 && cap.kmCap != null && targetKm < cap.kmCap * 0.9) {
+        const needKm = Math.round((targetKm * target) / Math.max(1, gotTss));
+        rec.reasons.push({
+          code: "km_target_low",
+          text: `Dein Wochen-km-Ziel (${Math.round(targetKm)} km) trägt nur ${gotTss} TSS — die Aufbauphase bräuchte ${Math.round(target)} TSS. So hältst du deine Form, du baust sie nicht auf. Für das Phasenziel wären ~${needKm} km/Woche nötig (dein Zeitbudget gäbe bis ${cap.kmCap} km her).`,
         });
       }
     }
@@ -1951,18 +2108,25 @@ export function blockPlan(args: {
     const EMPH_LABEL_DE: Record<string, string> = { lt1: "LT1", schwelle: "Schwelle (LT2)", vo2: "VO2max", berg: "Berg", norwegian: "Norwegian", fartlek: "Fartlek" };
     for (const r of rendered) {
       const { su, c } = r;
-      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number; emph?: boolean } | undefined;
+      const ref = su.ref as { tpl: WorkoutTemplate; progress: number; ctlProgress?: number; targetTss: number; emph?: boolean; fav?: boolean; avoided?: boolean } | undefined;
       // v1.7.0/v2.8.0: Intention (Template + Progression + ctlProgress + tatsächliche Ziel-TSS nach Angleich) für
       // Live-Resolution speichern — ctlProgress muss hier persistiert werden, da resolvePlannedSession() später
       // keine Season-Baseline kennt (nur die aktuelle CTL), also nicht selbst neu herleiten kann.
+      // v3.2.0: Der km-Auftrag ist die Intention (die TSS ergibt sich) — beides mitgeben, damit die Live-Resolution
+      // in der Wochenplanung dasselbe Volumen reproduziert wie der Blockplan.
       const prescription = ref?.tpl
-        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: r.baseTss }
+        ? { templateId: su.downgrade ? "easy_ga1" : ref.tpl.id, progress: ref.progress, ctlProgress: ref.ctlProgress, targetTss: Math.round(r.c.planned_tss), targetKm: r.km }
         : null;
       const eTpl = su.downgrade ? undefined : ref?.tpl;
+      // v3.2.0: Vorlieben werden Tag für Tag begründet — ♥ („deshalb steht sie hier") und ⊘ ohne Ersatz
+      // („warum sie trotzdem steht"). Ohne diese Zeile bleibt jede Bewertung für den Nutzer unsichtbar.
+      const prefNote = eTpl && ref?.fav ? " · ♥ deine Lieblingseinheit — unter gleichwertigen Reizen bevorzugt"
+        : eTpl && ref?.avoided ? " · ⊘ trotz „vermeiden“: für diesen Reiz deiner Zieldistanz gibt es keinen gleichwertigen Ersatz"
+          : "";
       const emphasisNote = eTpl && eTpl.family !== "Easy" && eTpl.id !== "strides" && eTpl.id !== "core_strength"
         ? (ref?.emph && effEmphasis && effEmphasis !== "ausgewogen"
-            ? `Schwerpunkt ${EMPH_LABEL_DE[effEmphasis] ?? effEmphasis}: ${eTpl.purpose}`
-            : eTpl.purpose)
+            ? `Schwerpunkt ${EMPH_LABEL_DE[effEmphasis] ?? effEmphasis}: ${eTpl.purpose}${prefNote}`
+            : `${eTpl.purpose}${prefNote}`)
         : null;
       days.push({
         date: su.date, weekdayIdx: su.weekdayIdx, type: c.type, isSecond: su.isSecond,
@@ -1973,7 +2137,15 @@ export function blockPlan(args: {
       projected.set(su.date, (projected.get(su.date) ?? 0) + c.planned_tss);
       tssActual += c.planned_tss;
     }
-    if (downgraded) rec.reasons.push({ code: "hard_spacing", text: "Erholung geschützt: eine Qualitätseinheit zu locker umgewandelt (kein harter Folgetag im Profil möglich)." });
+    if (downgraded) {
+      // v3.2.0: WARUM locker — Erholungsschutz (Spacing) oder schlicht zu wenig Zeit für eine echte Qualität.
+      if (scheduled.some((su) => su.downgrade && su.downgradeReason === "time")) {
+        rec.reasons.push({ code: "time_cap", text: `Zu wenig Zeit für eine echte Qualitätseinheit (unter ${QUALITY_HARD_MIN} min bleibt nach Ein-/Auslaufen kein Reiz übrig) → locker geplant. Für Intervalle brauchst du an einem Tag ≥ ${QUALITY_HARD_MIN} min.` });
+      }
+      if (scheduled.some((su) => su.downgrade && su.downgradeReason !== "time")) {
+        rec.reasons.push({ code: "hard_spacing", text: "Erholung geschützt: eine Qualitätseinheit zu locker umgewandelt (kein harter Folgetag im Profil möglich)." });
+      }
+    }
 
     // v1.9.0: in der Race-Week das ECHTE Ziel-Rennen am Renntag einsetzen (statt generischer Einheit).
     if (args.raceDate && w.dates.includes(args.raceDate)) {
@@ -2082,13 +2254,39 @@ export function blockPlan(args: {
         rec.reasons.push({ code: "time_reserve", text: `Zeit-Reserve ${reserve} min: dein Zeitbudget ist eine Obergrenze, kein Soll — die Woche braucht physiologisch nicht mehr Volumen (mehr Umfang gibt es über das Wochen-km-Ziel, nicht über freie Zeit).` });
       }
     }
+    // v3.2.0: Fitness in die nächste Woche fortschreiben — aus der TATSÄCHLICH geplanten Wochenlast (`tssActual`,
+    // nach Deckelung/Taper/Rennen), nicht aus dem Wunsch-Ziel. `loadRatio` = Wochenlast ÷ chronische Last (CTL×7):
+    // > 1 baut auf, = 1 hält, < 1 baut ab. Ohne CTL-Basis (Wiedereinstieg) zählt jede Last als voller Reiz.
+    if (projVdotRun != null && args.curVdot) {
+      const loadRatio = ctl > 0 ? tssActual / (ctl * 7) : null;
+      projVdotRun = Math.max(
+        args.curVdot - 6,
+        Math.min(args.curVdot + projReach, projVdotRun + vdotWeekGain(projReach, projTau, wi + 1, loadRatio)),
+      );
+    }
+
+    // v3.2.0 — die FORM DER WOCHE, nicht der Montags-Stichtag. `tsbStart` ist die Form am Wochenanfang; sie fällt
+    // regelmäßig auf einen Tag NACH dem Ruhetag, an dem die Ermüdung kurz abgeflossen ist. Gemessen: Eine
+    // Aufbauwoche liegt tagsüber bei TSB −11,7…−11,8 (produktive Ermüdung), ihr `tsbStart` meldet aber −4,5.
+    // Die Readiness-Kurve zeigte deshalb den FRISCHESTEN Moment der Woche — und blieb im Aufbau flach, obwohl der
+    // Athlet müde ist. Der Wochen-Durchschnitt ist das, was man tatsächlich mit sich herumträgt.
+    let tsbAvg: number | null = null;
+    {
+      const mergedW = new Map(args.historicalDailyTss);
+      for (const [d, t] of projected) mergedW.set(d, (mergedW.get(d) ?? 0) + t);
+      const pmcW = computePmc(mergedW, args.from, w.dates[w.dates.length - 1], args.today);
+      const byDate = new Map(pmcW.map((p) => [p.date, p.tsb]));
+      const vals = w.dates.map((d) => byDate.get(d)).filter((x): x is number => x != null);
+      if (vals.length) tsbAvg = round1(vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+
     const pl = (rec.headline || "").toLowerCase();
     const isDeload = pl.includes("entlast") || pl.includes("deload") || pl.includes("taper") || pl.includes("race week");
     outWeeks.push({
       week_no: w.week_no, start_date: w.start_date, phase,
       headline: rec.headline, periodizationModel: rec.periodizationModel,
       tssTarget: Math.round(target), tssActual: Math.round(tssActual),
-      ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null,
+      ctlStart: round1(ctl), tsbStart: tsb != null ? round1(tsb) : null, tsbAvg,
       isDeload, days, cyclePhase: cyc?.phase ?? null, projVdot: projVdot != null ? Math.round(projVdot * 10) / 10 : null,
       reasons: rec.reasons, confidence: rec.confidence,
     });
@@ -2200,13 +2398,27 @@ export function injuryRiskFlag(args: {
   return { level: "ok", code: "injury_risk_ok", message: "Belastung im grünen Bereich (ACWR/Monotonie/Ramp/Readiness unauffällig).", params };
 }
 
-/** Ergänzt geplante Lauf-km je Zone aus Minuten und Pace-Zonen, ohne vorhandene manuelle byKm zu überschreiben. */
+/** Summe der Zonen-km einer Allokation (0, wenn keine belastbaren Werte). */
+function sumByKm(byKm?: Record<number, number> | null): number {
+  if (!byKm) return 0;
+  const s = Object.values(byKm).reduce((a, b) => a + (Number(b) || 0), 0);
+  return s > 0 ? Math.round(s * 100) / 100 : 0;
+}
+
+/** Ergänzt geplante Lauf-km je Zone aus Minuten und Pace-Zonen, ohne vorhandene manuelle byKm zu überschreiben.
+ *  Leitet zusätzlich `planned_km` aus den Zonen-km ab, wenn es fehlt — die eine Stelle für alle Schreibwege
+ *  (Coach-Übernahme schickt byKm, aber kein planned_km; sonst fehlten die km in allen km-Auswertungen). */
 export function enrichZoneAllocKm<T extends PlannedSession>(session: T, paceZones?: number[]): T {
   if (session.sport !== "Run") return session;
   const alloc = session.zone_alloc;
   const byMin = alloc?.byMin;
+  const hasKm = !!alloc?.byKm && Object.values(alloc.byKm).some((v) => (Number(v) || 0) > 0);
+  if (hasKm) {
+    if (session.planned_km != null && session.planned_km > 0) return session;
+    const kmSum = sumByKm(alloc!.byKm);
+    return kmSum > 0 ? { ...session, planned_km: kmSum } : session;
+  }
   if (!byMin || !Object.values(byMin).some((v) => (Number(v) || 0) > 0)) return session;
-  if (alloc?.byKm && Object.values(alloc.byKm).some((v) => (Number(v) || 0) > 0)) return session;
 
   const raw: Record<number, number> = {};
   for (const [k, v] of Object.entries(byMin)) {
@@ -2223,10 +2435,11 @@ export function enrichZoneAllocKm<T extends PlannedSession>(session: T, paceZone
   const scale = targetKm > 0 ? targetKm / rawSum : 1;
   const byKm: Record<number, number> = {};
   for (const [k, v] of Object.entries(raw)) byKm[Number(k)] = Math.round(v * scale * 100) / 100;
-  const kmSum = Object.values(byKm).reduce((a, b) => a + b, 0);
+  const kmSum = sumByKm(byKm);
+  const hasPlanned = session.planned_km != null && session.planned_km > 0;
   return {
     ...session,
-    planned_km: session.planned_km ?? (kmSum > 0 ? Math.round(kmSum * 100) / 100 : session.planned_km),
+    planned_km: hasPlanned ? session.planned_km : (kmSum > 0 ? kmSum : session.planned_km),
     zone_alloc: { ...alloc, byKm },
   };
 }

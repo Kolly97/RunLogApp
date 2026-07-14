@@ -17,8 +17,17 @@ import { DEFAULT_PHASES } from "./options.ts";
 /** Alt-kompatibel: Phasen-Werte als String-Liste. Für Live-Listen useOptions().phases nutzen. */
 export const PHASES: string[] = DEFAULT_PHASES.map((p) => p.value);
 
+// v3.2.0 — Das „heute" der App kommt vom Server (siehe /api/app-time): Im Demo-Profil „Tutorial: Isabel" ist es
+// EINGEFROREN, damit die Demo nie veraltet. Würde der Browser hier weiter die Systemuhr lesen, zeigte die
+// Wochenauswahl das echte Jahr, während der Server in Isabels Zeit plant — jede Seite wäre in sich widersprüchlich.
+// Beim Start einmal gesetzt (vor dem ersten Render); ein Profilwechsel lädt die App neu, also bleibt es stimmig.
+let appToday: string | null = null;
+export function setAppToday(iso: string | null): void {
+  appToday = iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+}
+/** „Heute" aus Sicht der App (Demo-Profil: eingefroren) — Fallback ist die Systemuhr. */
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return appToday ?? new Date().toISOString().slice(0, 10);
 }
 
 /** YYYY-MM-DD um n Tage verschieben. */

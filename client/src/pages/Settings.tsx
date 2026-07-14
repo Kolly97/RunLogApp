@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type SeasonWeek, type StravaBackfillState } from "../lib/api.ts";
 import { useLang, useT } from "../lib/i18n.tsx";
 import T from "../components/T.tsx";
+import { todayIso } from "../lib/util.ts";
 
 export default function Settings() {
   const [season, setSeason] = useState<SeasonWeek[]>([]);
@@ -192,8 +193,8 @@ function StravaCard({ settings, season }: { settings: any; season: SeasonWeek[] 
     }
   }
 
-  const seasonStart = season[0]?.start_date || `${new Date().getFullYear()}-01-01`;
-  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const seasonStart = season[0]?.start_date || `${todayIso().slice(0, 4)}-01-01`;
+  const yearStart = `${todayIso().slice(0, 4)}-01-01`;
 
   return (
     <div className="card">

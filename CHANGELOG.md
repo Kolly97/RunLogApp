@@ -6,6 +6,163 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [3.2.0] – 2026-07-14 — Engine-Ehrlichkeit, Isabel-Zeitfix, Account-Fix
+
+### Behoben (Profile / Accounts)
+- **Accounts lassen sich wieder anlegen und umbenennen.** Der Sidebar-„+“-Eintrag öffnet jetzt den Account-Bereich
+  im Profil, und Anlegen/Umbenennen laufen dort über kleine Eingabefelder statt über Browser-Dialoge, die in der
+  Desktop-App nicht zuverlässig erschienen. (`client/src/App.tsx`, `client/src/pages/Profile.tsx`)
+
+### Behoben (Coach — die Zahlen sind wieder in sich schlüssig)
+- **Das Zeitbudget ist jetzt eine echte Grenze, keine Deko.** Vorher folgte die Wochenlast dem CTL-Band und dem
+  Saisonplan-km-Ziel; die Zeit deckelte nur die einzelne Einheit. Ergebnis: 7 × 10 min/Woche „ergaben" 36 km und
+  150 TSS. Jetzt deckelt die Wochen-Kapazität (`weeklyCapacity`) **km UND TSS** — und die Engine sagt konkret, was
+  zum Ziel fehlt („Zeitbudget 70 min/Woche → höchstens ~12 km und ~86 TSS. Der Plan wollte 60 km: dafür bräuchtest
+  du ≈ +264 min je Woche, z. B. 3 Tage à 90 min."). (`server/planbuilder.ts`, `server/analysis.ts`)
+- **„≈ 158 km möglich" bei 70 min/Woche ist weg.** Die Zahl im Wizard-Schritt „Zeit" kam aus der **gespeicherten**
+  Verfügbarkeit (dem alten 750-min-Plan) und wurde nie neu gerechnet. Sie stammt jetzt aus derselben Rechnung wie
+  der Plan daneben. (`server/index.ts`, `client/src/components/coach/BlockWizard.tsx`)
+- **Keine 10-Minuten-„Schwelleneinheiten" mehr.** Unterschreitet ein Tag 30 min, gibt es dort keine Qualität mehr
+  (nach Ein-/Auslaufen bliebe kein Reiz) — die Einheit wird ehrlich als lockerer Lauf geplant, mit Begründung.
+- **Stabi/Core stiehlt dem Lauf nicht mehr das halbe Tagesbudget.** Das Tagesbudget wurde stumpf durch die Anzahl
+  der Einheiten geteilt: Ein 20-Minuten-Core-Programm kürzte den Lauf an einem 70-min-Tag auf 35 min. Core bekommt
+  jetzt seine kurze Scheibe (≤ 25 min, nie mehr als ein Drittel des Tages), der Rest gehört dem Laufen.
+- **Wettkampf-Rollen wirken sofort in der Vorschau.** „Haupt ↔ Test ↔ ignorieren" ging vorher erst nach dem
+  Speichern in den Plan ein — die Vorschau plante still auf das alte Hauptrennen weiter. Die Rollen fahren jetzt
+  **virtuell** mit (die Vorschau schreibt weiterhin nichts).
+- **Der Plan verschweigt seinen eigenen Widerspruch nicht mehr.** Trifft er sein km-Ziel, trägt dieses km-Ziel aber
+  viel weniger Last als die Phase verlangt, sagt er es jetzt (`km_target_low`): „Dein Wochen-km-Ziel (77 km) trägt
+  nur 350 TSS — die Aufbauphase bräuchte 452 TSS. So hältst du deine Form, du baust sie nicht auf." Vorher fiel die
+  Fitness im „Aufbau", ohne dass irgendwo etwas rot wurde.
+
+### Geändert (Coach — die VO₂max-Prognose ist jetzt eine Prognose)
+- **Die VO₂max-Linie hängt an der geplanten Last, nicht mehr nur am Kalender.** `projectVdot()` interpolierte allein
+  von der heutigen VDOT Richtung Wunsch-VDOT über die Wochenzahl — die geplante Dosis kam in der Formel **nicht
+  vor**. Deshalb sah ein 70-min-Plan genauso aus wie ein 750-min-Plan. Jetzt gilt die Trainingslehre: Last über der
+  Erhaltungsdosis baut auf (saturierend, je fitter desto knapper), Last im Erhaltungsband (Taper/Entlastung) **hält**
+  (Hickson 1985; Mujika & Padilla 2000 — reduziertes Volumen bei gehaltener Intensität kostet keine VO₂max), Last
+  darunter baut ab. Gedeckelt bleibt alles vom realistisch Erreichbaren (`realisticVdotReach`). Die Linie heißt
+  jetzt ehrlich **„VO₂max (aus deiner Plan-Last)"**. (`server/analysis.ts`, `client/src/charts/BlockTimeline.tsx`)
+- **Deine Einheiten-Bewertungen (♥/⊘) wirken — und sagen, dass sie wirken.** ♥ hängte eine Einheit bisher nur an
+  einen Rotations-Pool an (und zwar an **jeden**, quer über die Familien: Ein ♥-VO2-Intervall konnte im
+  Schwellen-Slot landen). Jetzt sind Vorlieben ein **Tie-Break unter physiologisch gleichwertigen Einheiten**:
+  ♥ wird innerhalb desselben Pools doppelt gewichtet, ⊘ nie gewählt, solange es eine gleichwertige Alternative gibt.
+  Jeder Tag begründet es („♥ deine Lieblingseinheit — unter gleichwertigen Reizen bevorzugt"); steht eine
+  ⊘-Einheit trotzdem im Plan, sagt der Plan warum. (`server/workouts.ts`, `server/analysis.ts`)
+
+### Behoben (Anleitung — die Interaktionen im Doku-Kino)
+- **In der Anleitung (`usage.html`) fehlten Schieberegler und Schalter komplett.** Die Doku hat einen **eigenen**
+  Kino-Player (`client/src/docs/usage/kinoHost.ts`, ein Destillat des Tutorial-Kinos) — der rendert die Beat-Texte,
+  aber nie die Bedienelemente. Beat 8/9 der PMC-Szene forderte also zum Spielen auf („Der Regler unten…"), ohne dass
+  es einen Regler gab; dasselbe beim Forest-Plot-Schalter (absolut ↔ volumen-bereinigt). Beides ist jetzt da,
+  inklusive Morph-Animation und Kommentarzeile. (`kinoHost.ts`, `client/src/docs/docs.css`)
+
+### Behoben (Tutorial & Daten-Kino)
+- **Schwarzer Bildschirm nach „Szene abschließen" ist weg** — und die fehlenden Schieberegler/Schalter auch: beides
+  hatte **dieselbe** Ursache. Folgen im Tutorial zwei Kino-Szenen aufeinander (Analyse: latent 6 Beats → vo2
+  5 Beats), blieb der alte Beat-Index stehen. Die kürzere Szene griff dann auf einen Beat zu, den es nicht gibt →
+  React-Absturz → schwarzer Bildschirm; und wer eine Szene mittendrin startete, sah die frühen Beats nie, auf denen
+  PMC-Taper-Regler (Beat 8/9) und Forest-Plot-Schalter (Beat 4+5/8) sitzen. Das Kino wird pro Szene sauber neu
+  aufgebaut, der Beat-Index defensiv geklemmt. (`TutorialHost.tsx`, `cinema/ChartCinema.tsx`)
+- **WebGL-Kontexte werden freigegeben** (`forceContextLoss`) — der Analyse-Abschnitt öffnet sechs 3D-Szenen
+  nacheinander; der Browser gibt nur ~16 Kontexte her.
+- **Quiz-Antworten werden gemischt.** Die richtige Antwort stand in `sections.ts` immer an erster Stelle — man
+  konnte das Quiz durch Klicken statt durch Verstehen bestehen. (`TutorialHost.tsx`)
+
+### Geändert (Tutorial: Isabel lebt in eingefrorener Zeit)
+- **Isabels „heute" ist ein fixes Datum (24.05.2027)** — die Demo altert nicht mehr. Vorher wanderten ihre
+  Lehrbeispiele (Krankheitswoche, N-of-1-Trial, Taper) relativ zum echten Kalender, und ein Tutorial, das „noch
+  6 Wochen bis zum Renntag" sagt, wäre ein Jahr später sinnlos. Server (`todayIso()`) und Client (`util.todayIso()`)
+  liefern für dieses Profil dasselbe eingefrorene Datum; Strava-Limits, Zeitstempel und Backups bleiben auf der
+  echten Uhr. (`server/tutorial.ts`, `server/index.ts`, `client/src/lib/util.ts`, `client/src/main.tsx`)
+- **Isabels Saison ist jetzt ein 18-Wochen-Halbmarathon-Block** (Herbst-HM, Wunschzeit 1:25:30) mit einem
+  10-km-**Test-Wettkampf** 5 Wochen davor — der HM ist die in der Breite meistgelaufene Zieldistanz, und die
+  Konstellation lehrt zugleich die Renn-Rollen. 18 Monate lückenlose Historie. Ihre Zukunftswochen haben **keine**
+  Phase mehr: Genau der Zustand, in dem ein echter Nutzer startet — die Phasen schreibt der Coach.
+- **Isabels Historie ist ~15 % leichter** (≈ 54 statt 63 km/Woche, CTL ~40 statt 47). Grund: Vorher lief sie exakt
+  an ihrem Zeitbudget-Limit — ihre eigene Aufbauphase hätte dann 450 TSS je Woche verlangt (≈ 95 km), was in 590 min
+  nicht hineinpasst. Ihr Block hätte die Form nur **gehalten**, nie aufgebaut, und die (jetzt ehrliche) Prognose wäre
+  zu Recht flach geblieben. Mit CTL 40 ist der Block ein echter Reiz: CTL steigt 39 → 42, die Prognose landet bei
+  1:25:29 — das Ziel (1:25:30) ist erreichbar, und wer im Wizard die Zeit kürzt, sieht es wegrutschen. Pace,
+  Intensität und ihr N-of-1-Trial (Verdikt „geprüft", p = 0,031, θ = 0,47 > MCID 0,30) sind unberührt.
+- **„Ziel erreichbar?" bekommt eine Toleranz** (0,15 VDOT ≈ 10 s auf den HM): Die Sättigungskurve nähert sich dem
+  Ziel asymptotisch und verfehlte es sonst um Sekunden — das ist Modellrauschen, kein Befund.
+- **Der erreichbare Zuwachs hängt nicht mehr am Wunsch.** `projectVdot` deckelte ihn auf „Ziel − heute": Wer sein
+  Ziel WEICHER setzte, bekam eine FLACHERE Fitness-Prognose, obwohl er dasselbe trainiert. Erreichbar ist jetzt,
+  was Zeit und heutige Fitness hergeben (`realisticVdotReach`); das Ziel entscheidet nur noch über „erreichbar?".
+- **Wizard-Schritt 1 und die Timeline daneben sagen jetzt dasselbe.** Die Prognose in Schritt 1 unterstellte in
+  JEDER Woche eine volle Aufbaulast — ohne Entlastungs- und Taperwochen, und mit dem Periodisierungs-WUNSCH
+  (acute:chronic 1,2) statt der Last, die der fertige Plan wirklich trägt (~1,08). Ergebnis: Schritt 1 versprach
+  1:23, die Timeline zeigte 1:25. Jetzt: 1:24:24 hier, VDOT 54,8 dort.
+- **Isabels Zielrennen:** Wunschzeit **1:23:00** (Kolja-Entscheid) — sehr ambitioniert: Die Prognose ihres Blocks
+  landet bei 1:24:24, die App sagt also ehrlich „im Blockzeitraum nicht erreichbar" und plant so nah wie möglich
+  heran. Das **Phantom-Rennen** („Ziel-Halbmarathon 1:27:00" ohne Distanz) ist weg: Es entstand aus dem
+  `goal_race`-Text der Saisonwoche, aus dem der Saisonplan-Sync ein zweites, distanzloses Rennen anlegte.
+- **Die Demo aktualisiert sich jetzt selbst** (`TUTORIAL_SEED_VERSION`): Ein einmal erzeugtes Isabel-Profil blieb
+  sonst für immer auf seinem alten Stand — deshalb standen im Races-Screen noch das alte 1:27-Ziel und der alte
+  Renntermin.
+- **Self-Healing statt Schreibschutz:** Das Demo-Profil wird auf seinen Ausgangsstand zurückgesetzt, statt Eingaben
+  zu sperren (ein Schreibschutz hätte die Tutorial-Aufgaben blockiert, die bewusst in Isabels Profil schreiben).
+
+### Geändert (Coach — der Wizard ist die EINE Einrichtungs-Stelle)
+- **Einrichten passiert nur noch im Block-Wizard.** Die Karte „Trainings-Verfügbarkeit" und die Karte „Optimale
+  Zonen" sind aus dem Coach verschwunden — es gab dieselbe Einstellung an zwei Orten. Im Coach steht jetzt eine
+  **Setup-Zeile** („5 Trainingstage · 480 min · Longrun So · hart Di/Do · Schwerpunkt Schwelle") mit **„✎ Ändern"**,
+  die den Wizard **direkt im Zeit-Schritt** öffnet. Die Fortschritts-Punkte oben im Wizard sind anklickbar, und in
+  **jedem** Schritt gibt es **„Speichern & schließen"** (schreibt nur die Einstellungen — keine Ziel-km, keine
+  Phasen). Schließen mit ungespeicherten Änderungen fragt nach. Damit ändert man Donnerstag von 100 auf 60 min in
+  zwei Klicks, statt sechs Schritte durchzuklicken.
+  (`client/src/pages/Coach.tsx`, `components/coach/BlockWizard.tsx`, `components/coach/BlockSetupSummary.tsx`)
+- **Feinheiten im Zeit-Schritt** (eingeklappt): Berglauf-Tag, Stabi/Core pro Woche + bevorzugte Tage,
+  Doppeleinheiten + bevorzugte Tage — 1:1 aus der alten Verfügbarkeits-Karte, damit nichts verloren geht.
+- **Die Zonen-Tabelle lebt weiter**, jetzt in Wizard-Schritt 5: Pace/Herzfrequenz/Watt je Zone **mit Quelle je
+  Achse** (VDOT/CS · Laktat/LTHR · CP) — vorher die „Optimale Zonen"-Karte.
+- **Lieblings-/Vermeiden-Einheiten** sind eine eigene, eingeklappte Karte im Coach (`FavoriteWorkoutsCard`) —
+  Bibliotheks-Pflege, keine Block-Einrichtung.
+
+### Hinzugefügt (Coach — Wettkampf-Rollen)
+- **Wizard-Schritt 2 heißt jetzt „Deine Wettkämpfe"** und listet alle kommenden Rennen mit einer Rollen-Auswahl:
+  **Hauptrennen** (voller Taper, der Block plant rückwärts von hier) · **Test-Wettkampf** (Mini-Taper, füttert den
+  Fortschritts-Check) · **ignorieren**. Genau ein Hauptrennen (Radio-Semantik); geschrieben werden nur die Rollen,
+  die du wirklich geändert hast. **Warum das zählt:** Bisher wurde still das *erste kommende Nicht-Test-Rennen* zum
+  Ziel — ein Volkslauf im Kalender konnte den ganzen Block kapern und einen vollen Taper auslösen.
+- **Neue DB-Spalte `races.excluded_from_plan`** (additiv, Default 0 = bisheriges Verhalten): trägt die Rolle
+  „ignorieren". Alle Renn-Auswahl-Abfragen (Zielrennen, Test-Wettkämpfe, Prognose, Fortschritts-Check) filtern
+  sie heraus.
+- **Test-Wettkämpfe sind in der Timeline sichtbar** — dezent gestrichelte 🚩-Linien neben dem 🏁-Hauptrennen,
+  in der Wizard-Vorschau **und** im fertigen Blockplan (`tuneupDates` im BlockPlan).
+
+### Geändert (Daten-Kino)
+- **Forest-Plot-Szene („Reizkanäle") ist jetzt EIN Balkensatz mit Umschalter** statt zweier nebeneinander
+  liegender Ebenen — die waren unübersichtlich: Man sah zwei Bilder, statt den Unterschied zu verstehen. Neu:
+  „Absolut ↔ Volumen-bereinigt" in der Kino-Leiste; die Balken **morphen** animiert (0,8 s), die Zahlen zählen
+  mit, und Isabels Beat erklärt genau in dem Moment, welcher Kanal springt (LT1/Marathon +0,25 → +0,75). Bei
+  `prefers-reduced-motion` springt die Ansicht ohne Animation. Dafür hat das Kino eine neue Szenen-API
+  (`toggle` + `applyToggle`, host-animiert — analog zum vorhandenen Sandbox-Slider).
+  (`cinema/scenes/dose.ts`, `cinema/sceneKit.ts`, `cinema/ChartCinema.tsx`)
+
+### Hinzugefügt (Daten-Kino — 10. Szene)
+- **Neue 3D-Szene „N-of-1: der Beweis"** (🎲) — das randomisierte Experiment in drei Akten: (1) der Zufall
+  verteilt Isabels 12 Blöcke (6 Paare, Washout dazwischen), (2) die latente Fitness antwortet und alle sechs
+  Paar-Differenzen zeigen nach oben (θ = 0,51 gegen die vorab festgelegte Praxisschwelle MCID 0,32), (3) die
+  Nullverteilung aus allen 64 Vorzeichen-Anordnungen — Isabels Ergebnis liegt ganz außen, nur 2 von 64 sind so
+  extrem: p = 0,031. Ehrlich benannt: Bei sechs Paaren ist das der kleinstmögliche p-Wert.
+  **Alle Zahlen stammen aus Isabels echt ausgewertetem Trial**, und die Nullverteilung wird in der Szene aus
+  denselben sechs Paar-Differenzen *gerechnet* — sie kann gar nichts anderes zeigen als die Engine.
+  Einstiege: Kino-Hub auf der Lernen-Seite + neuer Tutorial-Schritt in Abschnitt 3.
+  (`cinema/scenes/nof1.ts`)
+
+### Behoben
+- **Coach-übernommene Einheiten fehlten in allen km-Auswertungen**, bis man sie einmal von Hand öffnete und
+  speicherte. Ursache: Der Coach schickt die Zonen-km (`zone_alloc.byKm`), aber kein Gesamt-`planned_km` — und
+  `enrichZoneAllocKm()` stieg genau dann früh aus, wenn `byKm` schon vorhanden war, ohne `planned_km` zu setzen.
+  Jetzt leitet die Funktion `planned_km` aus der Summe der Zonen-km ab; das greift für **jeden** Schreibweg
+  (Anlegen, Ändern, Anpassung übernehmen). Ein einmaliger, additiver Backfill hat **62 bestehende Einheiten**
+  nachgetragen (nur dort, wo km fehlten und Zonen-km vorlagen — vorhandene km bleiben unangetastet).
+  (`server/analysis.ts`, `server/db.ts`)
+- **Wochen-Wechsel-Pfeile im Coach verrutscht:** Der Zeilen-Container brach um (`flex-wrap`), dadurch rutschte
+  „→" unter die Wochen-Auswahl. Fix lokal am Wrapper (`WeekSelector.tsx`), nicht global an `.row`.
+
 ## [3.1.0] Coach Wizard Window, Tutorial für Coach Einrichtung, Trainingsblocksteuerung verbessert
 
 ### Hinzugefügt (Coach — Wizard, Teil 2)

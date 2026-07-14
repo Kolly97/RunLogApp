@@ -111,7 +111,7 @@
           <tr><td><a href="#bestleistungen">Bestleistungen</a></td><td>PBs, Critical Speed / Critical Power, Renn-Prognosen.</td></tr>
           <tr><td><a href="#methodik">Methodik</a></td><td>Die Werkbank: latente Fitness, Dosis-Wirkung, Experimente, Zyklus.</td></tr>
           <tr><td><a href="#races">Races</a></td><td>Wettkämpfe mit Splits, Zeiten, Platzierungen.</td></tr>
-          <tr><td>Lernen</td><td><a href="#lernen">Lernen</a></td><td>Isabel-Tutorial, Daten-Kino (9 3D-Szenen), Nerd-Add-on, Glossar.</td></tr>
+          <tr><td>Lernen</td><td><a href="#lernen">Lernen</a></td><td>Isabel-Tutorial, Daten-Kino (10 3D-Szenen), Nerd-Add-on, Glossar.</td></tr>
           <tr><td rowspan="3">Einstellungen</td><td><a href="#profil">Profil</a></td><td>Athletendaten, Zonen &amp; Schwellen, Laktattests, Verfügbarkeit, eigene Einheiten.</td></tr>
           <tr><td><a href="#einstellungen">Einstellungen</a></td><td>Darstellung, Analyse-Schwellen, Strava, TSS-Neuberechnung.</td></tr>
           <tr><td><a href="#auswahllisten">Auswahllisten</a></td><td>Eigene Listen: Einheitstypen, Phasen, Tagesfaktoren, Wochen-Checks.</td></tr>
@@ -196,7 +196,7 @@
       <p>Neu in v3.0: Neun Diagramme der App gibt es als <strong>begehbare 3D-Szenen</strong> — Isabel erklärt
         Formkurve, Forest-Plot, latente Fitness &amp; Co. Beat für Beat auf einer Holodeck-Bühne (frei drehbar,
         klickbare Leuchtpunkte, teils mit Was-wäre-wenn-Regler). In der App startest du die Szenen über die
-        „Daten-Kino"-Karte auf der Lernen-Seite; <strong>in dieser Anleitung sind alle neun Szenen direkt
+        „Daten-Kino"-Karte auf der Lernen-Seite; <strong>in dieser Anleitung sind alle zehn Szenen direkt
         eingebettet</strong> — die erste findest du im <a href="#dashboard">Dashboard-Kapitel</a>.</p>
       <div class="note">Im Kino oben rechts sitzt ein <strong>⚙ Qualitäts-Schalter</strong> (Auto/Hoch/Niedrig).
         „Auto" erkennt schwache Grafikchips selbst und reduziert die Auflösung — auf Laptops bleibt der Lüfter ruhig.</div>
@@ -295,7 +295,7 @@
             <line x1="120" y1="0" x2="120" y2="300"/><line x1="270" y1="0" x2="270" y2="300"/><line x1="420" y1="0" x2="420" y2="300"/><line x1="570" y1="0" x2="570" y2="300"/></g>
             <path d="M0 210 C 160 195, 320 150, 480 130 C 560 122, 640 118, 720 120" fill="none" stroke="#3987e5" stroke-width="3" opacity="0.8"/>
             <path d="M0 230 C 140 245, 300 195, 460 235 C 560 258, 640 210, 720 170" fill="none" stroke="#f0b429" stroke-width="3" opacity="0.8"/></svg></div>
-          <span class="k-tag">Daten-Kino · Szene 1 von 9</span>
+          <span class="k-tag">Daten-Kino · Szene 1 von 10</span>
           <div class="k-title">Deine Formkurve — als begehbare 3D-Szene</div>
           <p class="k-sub">Isabel erklärt CTL, ATL und TSB an ihrer eigenen 16-Wochen-Story: 3:1-Rhythmus,
             eine Krankheitswoche, Taper, Renntag. Mit Was-wäre-wenn-Regler.</p>
@@ -481,24 +481,41 @@ Tageswert  = round( lo + Position · (hi − lo) ),  |Δ zur Vorwoche| ≤ 0.15 
         Zahl arbeitet überall: Sie treibt die Pace-Progression der Einheiten, den Soll/Ist-Abgleich der
         Test-Wettkämpfe und die Prognose bis zum Renntag.</p>
 
-      <h3>🧭 Block einrichten — der geführte Weg</h3>
-      <p>Statt „der Plan erscheint einfach" führt dich der Wizard in sechs Schritten durch alle Stellschrauben —
-        jeweils mit einem Engine-Vorschlag <em>und der Begründung dahinter</em>, den du übernehmen oder
-        überschreiben kannst:</p>
+      <h3>🧭 Block einrichten — die eine Einrichtungs-Stelle</h3>
+      <p>Der Wizard ist <strong>der</strong> Ort, an dem du deinen Block einstellst — es gibt keinen zweiten mehr.
+        Sechs Schritte, jeder mit einem Engine-Vorschlag <em>und der Begründung dahinter</em>, den du übernehmen
+        oder überschreiben kannst:</p>
       <ol>
         <li><strong>Ziel</strong> — Rennen, Distanz, Wunschzeit; sofort mit ehrlichem Prognose-Abgleich
           („heute bereit für ~1:19 · am Renntag realistisch 1:18 · dein Ziel ist sehr ambitioniert").</li>
-        <li><strong>Zwischenziele</strong> — Test-Wettkämpfe: die ehrlichste Standortbestimmung; sie füttern
-          VDOT und Critical Speed und bekommen automatisch einen Mini-Taper.</li>
+        <li><strong>Wettkämpfe</strong> — alle kommenden Rennen mit ihrer <em>Rolle</em>: <b>Hauptrennen</b>
+          (voller Taper, der Block plant rückwärts von seinem Datum), <b>Test-Wettkampf</b> (Mini-Taper, das
+          Ergebnis füttert VDOT und den Fortschritts-Check) oder <b>ignorieren</b> (steht im Kalender, steuert
+          aber nichts — der Volkslauf, der dir egal ist). Genau ein Hauptrennen. <b>Warum das zählt:</b> Ohne
+          Rollen nimmt der Coach still das nächste Rennen im Kalender als Ziel — ein Spaßlauf könnte deinen
+          ganzen Block kapern und einen vollen Taper auslösen.</li>
         <li><strong>Umfang</strong> — Start-km (Ø deiner letzten 4 Wochen) und das Block-Maximum (was in N
           Wochen <em>sicher</em> aufzubauen ist: ≈ +6 % je Aufbauwoche im 3:1-Rhythmus, gedeckelt durch dein
           Zeitbudget). Die Engine rampt dazwischen und schreibt die Ziel-km in den Saisonplan.</li>
-        <li><strong>Zeit</strong> — Minuten je Wochentag, Longrun-Tag, harte Tage.</li>
-        <li><strong>Zonen</strong> — die berechneten optimalen Zonen für den Block übernehmen (oder deine
-          behalten). Veraltete Zonen heißen: Der Plan rechnet sauber, aber am falschen Anker.</li>
+        <li><strong>Zeit</strong> — Minuten je Wochentag, Longrun-Tag, harte Tage. Darunter aufklappbar die
+          <b>Feinheiten</b>: Berglauf-Tag, Stabi/Core pro Woche (+ bevorzugte Tage) und Doppeleinheiten
+          (+ bevorzugte Tage).</li>
+        <li><strong>Zonen</strong> — die berechneten optimalen Zonen für den Block: Pace, Herzfrequenz und Watt
+          je Zone, mit <em>Quelle je Achse</em> (VDOT/Critical Speed · Laktat/LTHR · Critical Power). Übernehmen
+          oder deine behalten. Veraltete Zonen heißen: Der Plan rechnet sauber, aber am falschen Anker.</li>
         <li><strong>Schwerpunkt</strong> — der Vorschlag aus deiner Evidenz (mit Etikett beobachtet/geprüft)
           oder deine manuelle Wahl.</li>
       </ol>
+      <div class="deuten">
+        <span class="tag">Schnell etwas ändern · ohne sechs Schritte</span>
+        <p>Im Coach steht unter dem Block eine <strong>Setup-Zeile</strong> („5 Trainingstage · 480 min ·
+          Longrun So · hart Di/Do · Schwerpunkt Schwelle"). Ein Klick auf <b>✎ Ändern</b> öffnet den Wizard
+          direkt im Zeit-Schritt — Donnerstag von 100 auf 60 min, <b>Speichern &amp; schließen</b>, fertig. Diesen
+          Knopf gibt es in <em>jedem</em> Schritt: Er sichert nur die Einstellungen (Verfügbarkeit,
+          Schwerpunkt-Modus, Renn-Rollen) und rührt Ziel-km und Phasen nicht an — die entstehen ausschließlich
+          über „Block erstellen". Auch die Fortschritts-Punkte oben sind anklickbar. Schließt du mit
+          ungespeicherten Änderungen, fragt die App nach.</p>
+      </div>
       <div class="deuten">
         <span class="tag">So liest du das · die Live-Vorschau</span>
         <p>Rechts im Wizard rechnet die App bei jeder Eingabe den <strong>echten Blockplan</strong> mit — nicht
@@ -507,10 +524,13 @@ Tageswert  = round( lo + Position · (hi − lo) ),  |Δ zur Vorwoche| ≤ 0.15 
           („km-Ceiling", „Gesundheits-Cap", „Zeit-Reserve"). So siehst du sofort, ob deine Zahl den Plan
           besser macht — statt es hinterher zu merken.</p>
       </div>
-      <div class="note">Der Wizard schreibt <b>nur, was du bestätigt hast</b>: Verfügbarkeit, Ziel-km je Woche,
-        Schwerpunkt, optional ein Zonen-Set — und die <b>Phasen</b> (Aufbau, Entlastungswochen im 3:1-Rhythmus,
-        distanzgerechter Taper), wenn der Haken gesetzt ist. Manuell gepinnte Phasen bleiben erhalten; einzelne
-        Einheiten werden nie überschrieben. Der Direktpfad „▶ Block-Vorschlag laden" (ohne Wizard) bleibt.</div>
+      <div class="note">Der Wizard schreibt <b>nur, was du bestätigt hast</b>: Verfügbarkeit, Renn-Rollen (nur die,
+        die du wirklich umgestellt hast), Schwerpunkt-Modus, Ziel-km je Woche, optional ein Zonen-Set — und die
+        <b>Phasen</b> (Aufbau, Entlastungswochen im 3:1-Rhythmus, distanzgerechter Taper), wenn der Haken gesetzt
+        ist. Nichts wird still gespeichert. Manuell gepinnte Phasen bleiben erhalten; einzelne Einheiten werden nie
+        überschrieben. Der Direktpfad „▶ Block-Vorschlag laden" (ohne Wizard) bleibt.
+        <br><b>In der Timeline</b> siehst du dein Hauptrennen als 🏁-Linie und jeden Test-Wettkampf als
+        gestrichelte 🚩-Linie — in der Wizard-Vorschau wie im fertigen Blockplan.</div>
 
       <h3>Wie der Coach den Umfang bemisst</h3>
       <div class="deuten">
@@ -1301,7 +1321,7 @@ Sicherungen: MCID · BH-FDR · E-Value · Moving-Block-Bootstrap</div>
       <header class="chapter-head">
         <span class="no">Kapitel 13</span>
         <h2>Lernen &amp; Daten-Kino</h2>
-        <p class="sub">Der Tutorial-Hub: geführte Abschnitte, neun 3D-Szenen, das Nerd-Add-on — und zwei
+        <p class="sub">Der Tutorial-Hub: geführte Abschnitte, zehn 3D-Szenen, das Nerd-Add-on — und zwei
           versteckte Seiten für Entdecker.</p>
         <p class="where">In der App: <b>Sidebar → Lernen</b></p>
       </header>
@@ -1325,10 +1345,25 @@ Sicherungen: MCID · BH-FDR · E-Value · Moving-Block-Bootstrap</div>
         Schritt fort.</p>
 
       <h3>Die „🎬 Daten-Kino"-Karte</h3>
-      <p>Alle neun 3D-Szenen einzeln startbar: Formkurve (PMC) · Latente Fitness · Reizkanäle ·
-        Wellness-Signale · Readiness &amp; Gesundheit · Schwellen-Trend · Lauf-Power · eff. VO2max · Zyklus.
+      <p>Alle zehn 3D-Szenen einzeln startbar: Formkurve (PMC) · Latente Fitness · Reizkanäle ·
+        Wellness-Signale · Readiness &amp; Gesundheit · Schwellen-Trend · Lauf-Power · eff. VO2max · Zyklus ·
+        <strong>N-of-1: der Beweis</strong> (neu).
         Bedienung: ziehen = drehen, scrollen = zoomen, Leuchtpunkte sind klickbar; ⚙ regelt die Qualität.
         In dieser Anleitung sind dieselben Szenen in den passenden Kapiteln eingebettet.</p>
+      <div class="deuten">
+        <span class="tag">Neu · zwei Szenen, die dich mitdenken lassen</span>
+        <p><strong>Reizkanäle (Forest-Plot):</strong> Statt zwei Balken-Ebenen nebeneinander gibt es jetzt
+          <em>einen</em> Balkensatz mit einem Umschalter <b>„Absolut ↔ Volumen-bereinigt"</b>. Drückst du ihn,
+          <em>wandern</em> die Balken und die Zahlen zählen mit — und du siehst mit eigenen Augen, welcher Kanal
+          springt: LT1/Marathon von +0,25 auf +0,75. Genau darin steckt die Lehre: Nicht die Kilometer wirken,
+          sondern <em>diese</em> Kilometer.</p>
+        <p><strong>N-of-1: der Beweis</strong> — die Szene zum einzigen kausalen Pfad der App, in drei Akten:
+          Der Zufall verteilt Isabels 12 Blöcke (6 Paare, dazwischen Washout) · die latente Fitness antwortet,
+          und alle sechs Paar-Differenzen zeigen nach oben (θ = 0,51, über ihrer Praxisschwelle MCID 0,32) ·
+          zum Schluss die Nullverteilung: alle 64 möglichen Zufalls-Anordnungen als Säulenwald, Isabels Ergebnis
+          liegt ganz außen — nur 2 von 64 sind so extrem, das ist <b>p = 0,031</b>. Ehrlich dazugesagt: Bei sechs
+          Paaren ist das der <em>kleinstmögliche</em> p-Wert.</p>
+      </div>
 
       <h3>Für Entdecker: zwei versteckte Seiten</h3>
       <ul>

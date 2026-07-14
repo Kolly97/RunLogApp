@@ -5,7 +5,7 @@
 export type SectionId = "start" | "plan" | "analyse" | "coach" | "nerd";
 
 /** Chart-Kino (v2.11.0): die Diagramme, die Isabel als 3D-Szene erklärt. */
-export type CinemaChartId = "pmc" | "latent" | "dose" | "wellness" | "readiness" | "threshold" | "power" | "vo2" | "cycle";
+export type CinemaChartId = "pmc" | "latent" | "dose" | "wellness" | "readiness" | "threshold" | "power" | "vo2" | "cycle" | "nof1";
 
 /** Aufgaben-Detektion: entweder absoluter Zustand (test) oder „Zahl steigt gegenüber Step-Start" (count). */
 export type TaskCheck =

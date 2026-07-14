@@ -1,19 +1,20 @@
 // Coach-Modus (v1.10.0): die trainingsgestalterischen Werkzeuge an einem Ort — Wettkampf-Block bis Renntag,
-// optimale Zonen, Verfügbarkeit & Einheiten-Vorlieben, eigene Einheiten. Der Wochen-Vorschlag bleibt in der
-// Wochenplanung. Übernehmen schreibt additiv in die Wochenplanung/den Saisonplan.
+// Taper, Einheiten-Vorlieben, eigene Einheiten. Der Wochen-Vorschlag bleibt in der Wochenplanung.
+// v3.1.0: EINRICHTUNG lebt komplett im Block-Wizard (Ziel · Wettkämpfe · Umfang · Zeit · Zonen · Schwerpunkt);
+// hier steht nur die Setup-Zeile mit „✎ Ändern" — kein zweiter Ort für dieselbe Einstellung.
+// Übernehmen schreibt additiv in die Wochenplanung/den Saisonplan.
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type BlockPlan, type BlockDay, type TuneupProgress, type DistanceConcept } from "../lib/api.ts";
 import { useSeason } from "../lib/hooks.ts";
 import { DAY_NAMES, typeColor, typeLabel } from "../lib/util.ts";
 import WeekSelector from "../components/WeekSelector.tsx";
-import AvailabilityCard from "../components/AvailabilityCard.tsx";
 import CustomWorkoutsCard from "../components/CustomWorkoutsCard.tsx";
-import OptimalZonesCard from "../charts/OptimalZonesCard.tsx";
 import BlockTimeline, { phaseColor } from "../charts/BlockTimeline.tsx";
 import BanisterTaperCard from "../components/BanisterTaperCard.tsx";
-import EmphasisSelector from "../components/EmphasisSelector.tsx";
-import BlockWizard from "../components/coach/BlockWizard.tsx";
+import BlockWizard, { STEP_TIME } from "../components/coach/BlockWizard.tsx";
+import BlockSetupSummary from "../components/coach/BlockSetupSummary.tsx";
+import FavoriteWorkoutsCard from "../components/coach/FavoriteWorkoutsCard.tsx";
 import { blockReadiness } from "../lib/blockReadiness.ts";
 import T from "../components/T.tsx";
 
@@ -138,7 +139,10 @@ export default function Coach() {
   const [blockPlan, setBlockPlan] = useState<BlockPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [wizard, setWizard] = useState(false); // v3.1.0: geführte Block-Einrichtung
+  // v3.1.0: Der Wizard ist die eine Einrichtungs-Stelle — `wizardStep` steuert den Direkteinstieg
+  // (Setup-Zeile „✎ Ändern" springt in den Zeit-Schritt statt 6 Schritte durchzuklicken).
+  const [wizard, setWizard] = useState<number | null>(null);
+  const [setupKey, setSetupKey] = useState(0);   // nach „Speichern & schließen" die Setup-Zeile neu laden
   const [emphasisMode, setEmphasisMode] = useState<"auto" | "manual">("auto");
   useEffect(() => { api.settings().then((s) => setEmphasisMode(s?.coach_emphasis_mode === "manual" ? "manual" : "auto")).catch(() => {}); }, []);
   const [tp, setTp] = useState<TuneupProgress | null>(null); // Ziel-Prognose für die Readiness-Kopplung (Baustein 2.2)
@@ -247,18 +251,20 @@ export default function Coach() {
       <div className="spread no-print">
         <div>
           <h1>Coach</h1>
-          <span className="tiny muted" style={{ display: "block", marginTop: -2 }}>Cockpit — was jetzt zu tun ist: Wettkampf-Block, optimale Zonen, Verfügbarkeit & Vorlieben. Der Wochen-Vorschlag bleibt in der Wochenplanung.</span>
+          <span className="tiny muted" style={{ display: "block", marginTop: -2 }}>Cockpit — was jetzt zu tun ist: Wettkampf-Block bis Renntag, Taper, Vorlieben. Eingerichtet wird im Wizard; der Wochen-Vorschlag bleibt in der Wochenplanung.</span>
         </div>
         <WeekSelector season={season} weekNo={weekNo} setWeekNo={setWeekNo} />
       </div>
 
       {/* v3.1.0: geführte Block-Einrichtung — schreibt Verfügbarkeit/Ziel-km/Schwerpunkt (+ optional Zonen)
           und lädt danach den Blockplan. */}
-      {wizard && (
+      {wizard != null && (
         <BlockWizard
           weekNo={weekNo}
-          onClose={() => setWizard(false)}
-          onDone={async () => { setWizard(false); await reloadSeason(); await loadBlock(); }}
+          startStep={wizard}
+          onClose={() => setWizard(null)}
+          onSaved={() => { setWizard(null); setSetupKey((k) => k + 1); }}
+          onDone={async () => { setWizard(null); setSetupKey((k) => k + 1); await reloadSeason(); await loadBlock(); }}
         />
       )}
 
@@ -266,9 +272,6 @@ export default function Coach() {
 
       {/* Coach ToDo 35: adaptives, faktenbasiertes Verdikt (steuert den Block-Plan, ehrlich geschichtet). */}
       {blockPlan?.coaching && <CoachingBanner c={blockPlan.coaching} freshness={blockPlan.freshness} mode={emphasisMode} onMode={changeEmphasisMode} busy={busy} />}
-      {blockPlan?.coaching && emphasisMode === "manual" && (
-        <div className="card tight" style={{ marginBottom: 12, marginTop: -6 }}><EmphasisSelector /></div>
-      )}
 
       {/* Item 3 (#7): distanzspezifisches Konzept — Sportwissenschaft sichtbar (Stoffwechsel + Schlüssel-Einheiten). */}
       {blockPlan?.distanceConcept && <DistanceConceptBox c={blockPlan.distanceConcept} />}
@@ -279,7 +282,7 @@ export default function Coach() {
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>Wettkampf-Block</h2>
             {/* v3.1.0: geführte Einrichtung (Ziel → Umfang → Zeit → Zonen → Schwerpunkt) statt „Plan erscheint einfach". */}
-            <button className="sm" onClick={() => setWizard(true)} disabled={busy} title="Geführt alle Parameter einstellen: Ziel & Zwischenziele, Wochenumfang (Start/Maximum), Zeitbudget, Zonen und Schwerpunkt — mit Vorschlag und Begründung je Schritt.">
+            <button className="sm" onClick={() => setWizard(0)} disabled={busy} title="Geführt alle Parameter einstellen: Ziel & Zwischenziele, Wochenumfang (Start/Maximum), Zeitbudget, Zonen und Schwerpunkt — mit Vorschlag und Begründung je Schritt.">
               🧭 Block einrichten
             </button>
             <button className="sm ghost" onClick={loadBlock} disabled={busy} title="Mesozyklus-Vorschau ab der gewählten Woche bis zum Renntag — ohne Wizard, mit den aktuellen Einstellungen">
@@ -298,7 +301,7 @@ export default function Coach() {
         {blockPlan && blockPlan.weeks.length > 0 ? (
           <div data-tour="block-timeline" style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             <div className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}</div>
-            <BlockTimeline weeks={blockPlan.weeks} raceDate={blockPlan.raceDate} goalNote={goalNote} onSelectWeek={selectWeek} selectedWeek={selWeek} />
+            <BlockTimeline weeks={blockPlan.weeks} raceDate={blockPlan.raceDate} tuneupDates={blockPlan.tuneupDates} goalNote={goalNote} onSelectWeek={selectWeek} selectedWeek={selWeek} />
             {blockPlan.reasons?.some((r) => r.code === "rpe_loop") && (
               <div className="tiny muted" style={{ marginTop: 2, lineHeight: 1.45 }}>⚙ Adaptiv (RPE-Loop): {blockPlan.reasons.filter((r) => r.code === "rpe_loop").map((r) => r.text).join(" · ")}</div>
             )}
@@ -329,14 +332,14 @@ export default function Coach() {
         )}
       </div>
 
+      {/* v3.1.0: Einrichtung lebt im Wizard — im Coach steht nur, was gilt, plus der Weg dorthin. */}
+      <BlockSetupSummary reloadKey={setupKey} onEdit={() => setWizard(STEP_TIME)} />
+
       {/* Datengetriebenes Taper (Banister Fitness−Fatigue) — persönliche Ergänzung zu „Peak ausrichten" */}
       <BanisterTaperCard />
 
-      {/* Optimale Zonen */}
-      <div style={{ marginBottom: 12 }}><OptimalZonesCard /></div>
-
-      {/* Verfügbarkeit & Einheiten-Vorlieben */}
-      <div style={{ marginBottom: 12 }}><AvailabilityCard /></div>
+      {/* Einheiten-Vorlieben (Bibliotheks-Pflege, keine Block-Einrichtung) */}
+      <FavoriteWorkoutsCard />
 
       {/* Eigene Einheiten */}
       <CustomWorkoutsCard />

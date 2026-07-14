@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, type Profile } from "./lib/api.ts";
 import { useLang } from "./lib/i18n.tsx";
 import T from "./components/T.tsx";
@@ -232,18 +232,19 @@ function LangSwitcher() {
 function ProfileSwitcher() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [active, setActive] = useState<number>(1);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
+    const load = () => api.profiles().then((r) => { setProfiles(r.profiles); setActive(r.active); }).catch(() => {});
+    load();
+    window.addEventListener("runlog:profiles-updated", load);
+    return () => window.removeEventListener("runlog:profiles-updated", load);
   }, []);
 
   async function switchTo(v: string) {
     if (v === "__new__") {
-      const name = window.prompt("Name des neuen Profils (z.B. Isabel):")?.trim();
-      if (!name) return;
-      const r = await api.addProfile(name);
-      await api.setActiveProfile(r.id);
-      location.reload();
+      navigate("/profile?section=accounts&new=1");
+      window.dispatchEvent(new Event("runlog:profile-add-requested"));
       return;
     }
     const id = Number(v);

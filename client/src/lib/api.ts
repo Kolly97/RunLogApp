@@ -210,6 +210,11 @@ export interface BlockDefaults {
   zones: { optimal: OptimalZones | null; current: { pace_zones: Record<number, number> | null; hr_zones: unknown; threshold_pace: number | null; lt1_pace: number | null }; vdot: number | null };
   emphasis: { suggested: string | null; label: string | null; tier: "beobachtet" | "geprüft" | null; confidence: string | null; rationale: string; current: string | null };
   healthCap: { loadFactor: number; dropTopIntensity: boolean; reason?: string | null } | null;
+  upcomingRaces: UpcomingRace[];   // v3.1.0: Rollenvergabe im Wizard-Schritt „Wettkämpfe"
+}
+export type RaceRole = "main" | "tuneup" | "ignore";
+export interface UpcomingRace {
+  id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null; role: RaceRole;
 }
 export interface BlockSetupBody {
   availability?: Availability | null;
@@ -217,6 +222,8 @@ export interface BlockSetupBody {
   emphasis?: string | null; emphasisMode?: "auto" | "manual";
   fromWeek?: number | null;
   applyPhases?: boolean;   // abgeleitete Phasen (3:1 + Taper) in den Saisonplan schreiben
+  raceRoles?: { id: number; role: RaceRole }[];   // nur explizit geänderte Rollen
+  settingsOnly?: boolean;  // „Speichern & schließen": nur Einstellungen, keine Ziel-km/Phasen
 }
 /** Vorschau: dieselben Felder wie das Setup — nur wird nichts gespeichert. */
 export interface BlockPreviewBody {
@@ -225,7 +232,10 @@ export interface BlockPreviewBody {
   startKm?: number | null; maxKm?: number | null;
   emphasis?: string | null; emphasisMode?: "auto" | "manual";
   derivePhases?: boolean;
+  raceRoles?: { id: number; role: RaceRole }[]; // v3.2.0: Rollenwechsel wirkt sofort in der Vorschau (schreibt nichts)
 }
+/** v3.2.0: Was das Zeitbudget hergibt — Obergrenze für km und TSS der Woche (Anzeige = Planung, eine Quelle). */
+export interface WeeklyCapacity { budgetMin: number; kmCap: number | null; tssCap: number | null }
 export interface ThresholdTrend { points: { date: string; thrPace: number | null; cp: number | null }[] }
 export interface RunEffectiveness { window: number; mass: number; n: number; points: { date: string; re: number }[]; early: number | null; late: number | null; deltaPct: number | null }
 export interface WPrimeLatest {
@@ -501,6 +511,7 @@ export interface BlockWeek {
   week_no: number; start_date: string; phase: string | null;
   headline: string; periodizationModel: "block" | "traditional";
   tssTarget: number; tssActual: number; ctlStart: number; tsbStart: number | null;
+  tsbAvg?: number | null;   // v3.2.0: Ø-Form über die WOCHE (tsbStart ist nur der Montags-Stichtag nach dem Ruhetag)
   isDeload: boolean; days: BlockDay[];
   irFitness?: number | null; // Baustein 2.3: individuelle IR-Fitness-Prognose je Woche (falls Dose-Run vorliegt)
   projVdot?: number | null;  // T10: prognostiziertes VDOT/VO2max-Äquivalent je Woche (nur Anzeige, „prognostiziert")
@@ -519,10 +530,12 @@ export interface CoachingPrefs {
 }
 export interface BlockPlan {
   weeks: BlockWeek[]; raceDate: string | null;
+  tuneupDates?: string[];            // v3.1.0: Test-Wettkämpfe im Block → eigene Timeline-Marker
   reasons: { code: string; text: string }[]; confidence: "hoch" | "mittel" | "niedrig";
   goalDistanceM?: number | null;
   distanceConcept?: DistanceConcept | null;
   coaching?: CoachingPrefs;          // Coach ToDo 35: adaptives, faktenbasiertes Verdikt, das den Plan steuert
+  capacity?: WeeklyCapacity;         // v3.2.0: Zeitbudget-Obergrenze (km/TSS) — dieselbe Zahl, mit der geplant wurde
   freshness?: string;                // Frische des dose_response-Laufs (fresh|stale|none|running)
 }
 

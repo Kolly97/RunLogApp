@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Bar, ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
 import { TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { BlockWeek } from "../lib/api.ts";
+import { addDays } from "../lib/util.ts";
 import { blockReadiness } from "../lib/blockReadiness.ts";
 
 // Zonen-Palette Z1..Z6 (klinischer Verlauf ruhig→hart). zone_alloc nutzt Zonennummern als Keys.
@@ -56,7 +57,7 @@ function shortPhase(phase: string | null | undefined, isDeload: boolean): string
   return "Base";
 }
 
-export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek, selectedWeek }: { weeks: BlockWeek[]; raceDate: string | null; goalNote?: string | null; onSelectWeek?: (wk: number) => void; selectedWeek?: number | null }) {
+export default function BlockTimeline({ weeks, raceDate, tuneupDates, goalNote, onSelectWeek, selectedWeek }: { weeks: BlockWeek[]; raceDate: string | null; tuneupDates?: string[]; goalNote?: string | null; onSelectWeek?: (wk: number) => void; selectedWeek?: number | null }) {
   const [mode, setMode] = useState<"zonen" | "typ">("zonen");
 
   // byMin bevorzugen; die Block-Render füllt aber meist nur byKm → sauberer Fallback (Distribution bleibt korrekt).
@@ -111,6 +112,11 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
   // --- Form-Readiness (2.2/2.3) via geteilten Helper (auch vom Coach-Peak-Optimierer 2.4 genutzt). ---
   const { readiness, peakIdx, raceIdx, hasIr } = blockReadiness(weeks, raceDate);
   const raceWk = raceIdx >= 0 ? `${weeks[raceIdx].week_no}` : null;
+  // Test-Wettkämpfe auf ihre Blockwoche mappen (Wochen sind Mo–So; das Rennen liegt in genau einer davon).
+  const tuneupWks = Array.from(new Set((tuneupDates ?? [])
+    .map((d) => weeks.find((w) => w.start_date <= d && d <= addDays(w.start_date, 6))?.week_no)
+    .filter((w): w is number => w != null && `${w}` !== raceWk)
+    .map((w) => `${w}`)));
   rows.forEach((r, i) => { r.readiness = readiness[i]; if (weeks[i].projVdot != null) r.projVdot = weeks[i].projVdot as number; });
   // T10: prognostizierte VO2max/VDOT-Kurve je Woche (nur wenn eine Fitness-Projektion vorliegt). Eigene rechte
   // Achse mit engem Wertebereich, damit der Anstieg sichtbar wird; gestrichelt = „prognostiziert", kein Messwert.
@@ -215,9 +221,17 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
             <Bar yAxisId="load" key={s.dk} dataKey={s.dk} stackId="a" name={s.label} fill={s.color} isAnimationActive={false} radius={s.dk === stackKeys[stackKeys.length - 1]?.dk ? [2, 2, 0, 0] : undefined} />
           ))}
           <Line yAxisId="ready" type="monotone" dataKey="readiness" name="Form-Readiness" stroke="var(--accent, #0ea5e9)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
-          {hasVdot && <Line yAxisId="vdot" type="monotone" dataKey="projVdot" name="VO₂max (prognostiziert)" stroke="#a855f7" strokeWidth={2} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />}
+          {/* v3.2.0: Die Linie folgt jetzt der GEPLANTEN Last (Aufbau · Erhalt im Taper · Rückgang unter der
+              Erhaltungsdosis) — der Name sagt das, statt „prognostiziert" zu behaupten, was vorher nur eine
+              Interpolation auf die Wunschzeit war. */}
+          {hasVdot && <Line yAxisId="vdot" type="monotone" dataKey="projVdot" name="VO₂max (aus deiner Plan-Last)" stroke="#a855f7" strokeWidth={2} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />}
           {raceIdx >= 0 && <ReferenceDot yAxisId="ready" x={`${weeks[peakIdx].week_no}`} y={readiness[peakIdx]} r={4} fill="var(--accent, #0ea5e9)" stroke="var(--card)" strokeWidth={1.5} ifOverflow="visible" />}
           {raceWk && <ReferenceLine yAxisId="load" x={raceWk} stroke="#ef4444" strokeWidth={2} label={{ value: "🏁", position: "top", fontSize: 15 }} ifOverflow="visible" />}
+          {/* v3.1.0: Test-Wettkämpfe — dezent gestrichelt, damit das Hauptrennen die einzige harte Linie bleibt. */}
+          {tuneupWks.map((wk) => (
+            <ReferenceLine key={`tu-${wk}`} yAxisId="load" x={wk} stroke="#ef4444" strokeOpacity={0.55} strokeWidth={1.4} strokeDasharray="4 3"
+              label={{ value: "🚩", position: "top", fontSize: 11 }} ifOverflow="visible" />
+          ))}
         </ComposedChart>
       </ResponsiveContainer>
 
@@ -231,9 +245,12 @@ export default function BlockTimeline({ weeks, raceDate, goalNote, onSelectWeek,
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
           <span style={{ width: 12, height: 2.5, background: "var(--accent, #0ea5e9)", display: "inline-block" }} />Form-Readiness
         </span>
+        {tuneupWks.length > 0 && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>🚩 Test-Wettkampf (Mini-Taper)</span>
+        )}
         {hasVdot && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }} title="Prognostiziertes VO₂max/VDOT-Äquivalent je Woche (Richtung Ziel, gedeckelt) — Prognose, kein Messwert.">
-            <span style={{ width: 12, height: 0, borderTop: "2px dashed #a855f7", display: "inline-block" }} />VO₂max (prognostiziert)
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }} title="VO₂max/VDOT-Äquivalent je Woche, gerechnet aus der GEPLANTEN Wochenlast: über der Erhaltungsdosis baust du auf, im Taper hältst du, darunter baust du ab. Gedeckelt auf den in der Zeit realistisch erreichbaren Zuwachs. Prognose, kein Messwert.">
+            <span style={{ width: 12, height: 0, borderTop: "2px dashed #a855f7", display: "inline-block" }} />VO₂max (aus deiner Plan-Last)
           </span>
         )}
       </div>

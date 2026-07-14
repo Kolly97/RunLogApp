@@ -12,8 +12,9 @@ import BlockTimeline from "../../charts/BlockTimeline.tsx";
 
 const DEBOUNCE_MS = 600;
 
-/** Warnungen, die der Nutzer im Wizard sehen MUSS — hier deckelt die Sicherheitslogik seine Wunschzahlen. */
-const WARN_CODES = new Set(["km_ceiling", "km_target_missed", "health_cap", "time_reserve", "taper_guard", "rpe_loop", "cycle"]);
+/** Warnungen, die der Nutzer im Wizard sehen MUSS — hier deckelt die Sicherheitslogik seine Wunschzahlen.
+ *  v3.2.0: `time_cap` ist die wichtigste davon — sie sagt, was das Zeitbudget hergibt und was zum Ziel fehlt. */
+const WARN_CODES = new Set(["time_cap", "km_ceiling", "km_target_missed", "health_cap", "time_reserve", "taper_guard", "rpe_loop", "cycle"]);
 
 // km je Tag stecken in der Zonen-Verteilung (byKm) — dieselbe Quelle, aus der auch die Wochenplanung rechnet.
 const kmOfDay = (d: BlockPlan["weeks"][number]["days"][number]) =>
@@ -26,11 +27,17 @@ const longOfWeek = (w: BlockPlan["weeks"][number]) => {
   return l?.planned_min ?? null;
 };
 
-export default function BlockPreview({ body, goalTimeS }: { body: BlockPreviewBody; goalTimeS?: number | null }) {
+export default function BlockPreview({ body, goalTimeS, onPlan }: {
+  body: BlockPreviewBody;
+  goalTimeS?: number | null;
+  onPlan?: (p: BlockPlan) => void;   // v3.2.0: der Wizard zeigt die Kapazität aus DIESEM Plan (eine Quelle)
+}) {
   const [plan, setPlan] = useState<BlockPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const abort = useRef<AbortController | null>(null);
+  const onPlanRef = useRef(onPlan);          // Callback per Ref → er gehört nicht in die Debounce-Abhängigkeiten
+  onPlanRef.current = onPlan;
   const key = JSON.stringify(body);
 
   useEffect(() => {
@@ -40,7 +47,7 @@ export default function BlockPreview({ body, goalTimeS }: { body: BlockPreviewBo
       abort.current = ac;
       setBusy(true); setErr("");
       api.blockPreview(body, ac.signal)
-        .then((p) => { if (!ac.signal.aborted) { setPlan(p); setBusy(false); } })
+        .then((p) => { if (!ac.signal.aborted) { setPlan(p); setBusy(false); onPlanRef.current?.(p); } })
         .catch((e) => {
           if (ac.signal.aborted || (e as Error).name === "AbortError") return;
           setBusy(false);
@@ -93,9 +100,11 @@ export default function BlockPreview({ body, goalTimeS }: { body: BlockPreviewBo
         <Kpi label="Form am Renntag" value={raceWeek?.tsbStart != null ? `TSB ${raceWeek.tsbStart > 0 ? "+" : ""}${Math.round(raceWeek.tsbStart)}` : "—"} />
         <Kpi label="Peak" value={peakTxt} tone={peakOff === 0 ? "ok" : peakOff != null ? "warn" : undefined} />
         {goalTimeS ? <Kpi label="Wunschzeit" value={fmtDur(goalTimeS)} /> : null}
+        {/* v3.1.0: Renn-Rollen sichtbar machen — was der Wettkampf-Schritt eingestellt hat, wirkt hier. */}
+        <Kpi label="Wettkämpfe" value={plan.raceDate ? `🏁 ${plan.raceDate}${(plan.tuneupDates?.length ?? 0) > 0 ? ` · ${plan.tuneupDates!.length}× 🚩 Test` : ""}` : "kein Hauptrennen"} />
       </div>
 
-      <BlockTimeline weeks={plan.weeks} raceDate={plan.raceDate} />
+      <BlockTimeline weeks={plan.weeks} raceDate={plan.raceDate} tuneupDates={plan.tuneupDates} />
 
       {/* Die ersten Wochen konkret — hier wird die Wirkung von Umfang/Zeit unmittelbar sichtbar. */}
       <table style={{ width: "100%", fontSize: 12, marginTop: 10 }}>

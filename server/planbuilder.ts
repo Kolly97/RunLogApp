@@ -58,6 +58,156 @@ export function tssPerMin(z: number, zones: ZonesInput): number {
 const r0 = (n: number) => Math.round(n);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// ---- v3.2.0: Zeitbudget als ECHTE Restriktion ----------------------------------------------------------------
+// Bisher deckelte die Verfügbarkeit nur die Dauer der EINZELNEN Einheit (maxMin) — Wochen-km und Wochen-TSS liefen
+// weiter am CTL-Band bzw. am Saisonplan-Ziel. Ergebnis: 70 min/Woche „ergaben" 36 km. Kapazität ist aber Physik:
+// mehr km als Zeit×Tempo gibt es nicht. Diese Funktion ist die eine Quelle dafür (Wizard-Anzeige UND Planung).
+//
+// - kmCap  = Wochenminuten ÷ Easy-Pace (Z2) — exakt die Pace, mit der der Renderer Easy/Long in km umrechnet.
+// - tssCap = Wochenminuten × TSS/min eines maximal plausiblen Wochen-Mix (80 % Z2 / 20 % Z4, polarisiert/pyramidal).
+//   Kein Magic-Faktor: dieselbe tssPerMin-Mathematik wie überall. Ein Deckel, kein Ziel.
+const CAP_EASY_SHARE = 0.8, CAP_QUALITY_SHARE = 0.2;
+
+export interface WeeklyCapacity { budgetMin: number; kmCap: number | null; tssCap: number | null }
+
+/** TSS pro KILOMETER eines typischen Wochen-Mix (80 % Easy / 20 % Qualität) — die Brücke zwischen der Steuergröße
+ *  des Nutzers (km) und der Steuergröße der Periodisierung (TSS). Dieselbe tssPerMin-Mathematik wie überall. */
+export function tssPerKmMix(zones: ZonesInput): number {
+  const perKm = (z: number) => tssPerMin(z, zones) * (paceOf(z, zones) / 60);
+  return CAP_EASY_SHARE * perKm(2) + CAP_QUALITY_SHARE * perKm(4);
+}
+
+export function weeklyCapacity(availability: Availability | null | undefined, zones: ZonesInput): WeeklyCapacity {
+  const budgetMin = (availability?.minutesByWeekday ?? []).reduce((a, b) => a + (b || 0), 0);
+  if (!(budgetMin > 0)) return { budgetMin: 0, kmCap: null, tssCap: null };   // keine Angabe = kein Deckel
+  const easyPace = paceOf(2, zones);
+  const kmCap = easyPace > 0 ? Math.floor((budgetMin * 60) / easyPace) : null;
+  const tssPerMinMix = CAP_EASY_SHARE * tssPerMin(2, zones) + CAP_QUALITY_SHARE * tssPerMin(4, zones);
+  return { budgetMin, kmCap, tssCap: Math.round(budgetMin * tssPerMinMix) };
+}
+
+/** Unter dieser Tagesdauer gibt es keine echte Qualitätseinheit (Ein-/Auslaufen + Kern-Reps brauchen Zeit).
+ *  Darüber wird nur das VOLUMEN gekürzt (Reps runter, Pace bleibt) — das ist die bisherige, gewollte Logik. */
+export const QUALITY_HARD_MIN = 30;
+
+// ---- v3.2.0: Die Woche folgt dem UMFANG ----------------------------------------------------------------------
+// Vorher stand die Einheiten-Liste fest (Phase → 6–7 Picks), und das Wochen-km-Ziel durfte nur die Dauern um ±45 %
+// dehnen. Folge: Eine Woche konnte 45 km nicht unterschreiten (6 Läufe × Template-Mindestdauer) und ~70 km nicht
+// überschreiten — Start-/Max-km des Wizards waren damit weitgehend wirkungslos, und die Aufbauwochen erreichten nie
+// die Last, die die Periodisierung vorgab (ACWR ~1.05 statt 1.3 ⇒ TSB blieb positiv ⇒ kein Reiz).
+// Jetzt: Top-down wie in der Trainingslehre (Daniels/Seiler) — erst der Wochenumfang, dann seine Verteilung.
+
+/** Unter ~20 min ist ein Lauf kein Trainingsreiz mehr. Lieber WENIGER Läufe als Mini-Läufe. */
+export const MIN_RUN_MIN = 20;
+/** Bevorzugte Länge eines Easy-Laufs (min) — daraus folgt, auf wie viele Läufe der Easy-Umfang verteilt wird. */
+const EASY_PREF_MIN = 60;
+/** Ein Easy-Lauf über ~100 min ist kein „lockerer Lauf" mehr, sondern ein zweiter Longrun (Verletzungsrisiko,
+ *  Glykogen). Braucht die Woche mehr Easy-Volumen, kommt ein zusätzlicher LAUF dazu — nicht ein längerer. */
+const EASY_MAX_MIN = 100;
+// Qualitäts-Anteil am Wochenumfang (Daniels' klassische Obergrenzen: T ≤ 10 %, I ≤ 8 %, R ≤ 5 % der Wochen-km).
+// Zwei Qualitäten zusammen also ~15–20 % — mehr ist bei gegebenem Umfang kein Training, sondern Wettkampf.
+const QUALITY_KM_SHARE_MAX = 0.20;
+
+export interface WeekComposition {
+  /** km-Auftrag je geplanter Einheit (Index = Reihenfolge der Picks). null = die Einheit trägt keine km (Core). */
+  kmByPick: (number | null)[];
+  /** Picks, die bei diesem Umfang gestrichen wurden (zu wenig km für so viele Einheiten). */
+  dropped: number[];
+  qualityKm: number;
+  longKm: number;
+  easyKm: number;
+  easyRuns: number;
+  /** So viele ZUSÄTZLICHE Easy-Läufe braucht die Woche, um ihren Umfang zu tragen (die Phasen-Auswahl liefert nur
+   *  2–3 Easy-Slots; bei hohem Umfang reicht das nicht, und ein 3-Stunden-„Easy-Lauf" ist keine Lösung). */
+  extraEasy: number;
+  note: string | null;      // Begründung, wenn der Umfang die Struktur verändert hat
+}
+
+/**
+ * Verteilt einen Wochen-UMFANG (km) auf die von `pickWeekWorkouts` gewählten Einheiten.
+ * Reihenfolge der Physiologie: Qualität (Pflichtreiz der Phase) → Longrun (Anteil) → Easy (der Rest).
+ *
+ * - `qualityShare` deckelt die Qualität auf ~20 % der Wochen-km (Daniels).
+ * - Der Longrun bekommt `longShare` × Umfang; der Renderer deckelt zusätzlich (Distanz, Tagesbudget, 30 %-Regel).
+ * - Der Rest ist Easy und wird auf so viele Läufe verteilt, dass jeder ≥ MIN_RUN_MIN läuft — notfalls auf WENIGER
+ *   Läufe als Picks vorhanden sind (dann werden Picks gestrichen: 15 km/Woche sind 3 Läufe, keine 7 Mini-Läufe).
+ */
+export function composeWeek(o: {
+  picks: { role: "quality" | "long" | "easy" | "core" }[];
+  targetKm: number;
+  longShare: number;          // Anteil des Longruns am Wochenumfang (phasenabhängig, s. longRunShare)
+  easyPaceSec: number;        // s/km der Easy-Zone — übersetzt km ↔ min
+  trainingDays?: number;      // verfügbare Trainingstage — begrenzt, wie viele Läufe die Woche tragen kann
+}): WeekComposition {
+  const km = Math.max(0, o.targetKm);
+  const kmByPick: (number | null)[] = o.picks.map(() => null);
+  const dropped: number[] = [];
+  if (km <= 0) return { kmByPick, dropped, qualityKm: 0, longKm: 0, easyKm: 0, easyRuns: 0, extraEasy: 0, note: null };
+
+  const qIdx = o.picks.map((p, i) => ({ p, i })).filter((x) => x.p.role === "quality").map((x) => x.i);
+  const lIdx = o.picks.map((p, i) => ({ p, i })).filter((x) => x.p.role === "long").map((x) => x.i);
+  const eIdx = o.picks.map((p, i) => ({ p, i })).filter((x) => x.p.role === "easy").map((x) => x.i);
+
+  // 1) Qualität: fester Anteil, gleichmäßig auf die Qualitäts-Slots. Bei kleinem Umfang schrumpft sie mit —
+  //    aber nie unter das, was eine Einheit überhaupt sinnvoll macht; sonst fällt sie weg (weniger ist ehrlicher).
+  const qualityKmTotal = km * QUALITY_KM_SHARE_MAX;
+  // Eine Qualitätseinheit braucht Ein-/Auslaufen + Kern-Reps — unter QUALITY_HARD_MIN (30 min) bleibt kein Reiz übrig.
+  const qMinKm = (QUALITY_HARD_MIN * 60) / o.easyPaceSec;
+  const qEachKm = qIdx.length ? qualityKmTotal / qIdx.length : 0;
+  let qualityKm = 0;
+  const keptQ: number[] = [];
+  for (const i of qIdx) {
+    if (qEachKm >= qMinKm) { kmByPick[i] = qEachKm; qualityKm += qEachKm; keptQ.push(i); }
+    else dropped.push(i);                       // zu wenig Umfang für diese Qualität
+  }
+  // Bleibt gar keine Qualität übrig, aber es gibt Slots → EINE behalten (der Reiz der Phase geht sonst verloren).
+  if (!keptQ.length && qIdx.length && qualityKmTotal > 0) {
+    const i = qIdx[0];
+    kmByPick[i] = qualityKmTotal;
+    qualityKm = qualityKmTotal;
+    dropped.splice(dropped.indexOf(i), 1);
+  }
+
+  // 2) Longrun: Anteil des Wochenumfangs (der Renderer deckelt zusätzlich über longRunLimit).
+  let longKm = 0;
+  if (lIdx.length) {
+    const each = (km * o.longShare) / lIdx.length;
+    for (const i of lIdx) { kmByPick[i] = each; longKm += each; }
+  }
+
+  // 3) Easy = Rest, verteilt auf so viele Läufe, wie sinnvoll sind: jeder ≥ MIN_RUN_MIN und ≤ EASY_MAX_MIN.
+  //    Zu WENIG Umfang ⇒ weniger Läufe (statt Mini-Läufe). Zu VIEL Umfang für die vorhandenen Easy-Slots ⇒
+  //    zusätzliche Läufe (statt eines 3-Stunden-„Easy-Laufs"), soweit Trainingstage frei sind.
+  const minEasyKm = (MIN_RUN_MIN * 60) / o.easyPaceSec;
+  const prefEasyKm = (EASY_PREF_MIN * 60) / o.easyPaceSec;
+  const maxEasyKm = (EASY_MAX_MIN * 60) / o.easyPaceSec;
+  const easyKm = Math.max(0, km - qualityKm - longKm);
+  const usedDays = keptQ.length + lIdx.length;
+  const freeDays = Math.max(0, (o.trainingDays ?? o.picks.filter((p) => p.role !== "core").length) - usedDays);
+
+  let easyRuns = easyKm > 0 ? Math.max(1, Math.round(easyKm / prefEasyKm)) : 0;
+  // Untergrenze: kein Lauf unter MIN_RUN_MIN → notfalls weniger Läufe.
+  if (easyRuns > 0 && easyKm / easyRuns < minEasyKm) easyRuns = Math.max(1, Math.floor(easyKm / minEasyKm));
+  // Obergrenze: kein Easy-Lauf über EASY_MAX_MIN → notfalls mehr Läufe.
+  if (easyRuns > 0 && easyKm / easyRuns > maxEasyKm) easyRuns = Math.ceil(easyKm / maxEasyKm);
+  easyRuns = Math.min(easyRuns, freeDays);
+
+  for (let k = 0; k < eIdx.length; k++) {
+    if (k < easyRuns) kmByPick[eIdx[k]] = easyKm / easyRuns;
+    else dropped.push(eIdx[k]);                                            // dieser Lauf entfällt (zu wenig Umfang)
+  }
+  const extraEasy = Math.max(0, easyRuns - eIdx.length);                   // so viele Easy-Läufe fehlen der Woche
+
+  const kept = o.picks.filter((p, i) => p.role !== "core" && !dropped.includes(i)).length + extraEasy;
+  const before = o.picks.filter((p) => p.role !== "core").length;
+  const note = kept !== before
+    ? (kept < before
+      ? `Wochenumfang ${Math.round(km)} km → ${kept} Läufe (statt ${before}): Ein Lauf unter ${MIN_RUN_MIN} min ist kein Reiz — lieber weniger, dafür richtige Einheiten.`
+      : `Wochenumfang ${Math.round(km)} km → ${kept} Läufe (statt ${before}): So viel Volumen trägt kein einzelner „lockerer Lauf" mehr — es kommt ein zusätzlicher Lauf dazu statt eines überlangen.`)
+    : null;
+  return { kmByPick, dropped, qualityKm, longKm, easyKm, easyRuns, extraEasy, note };
+}
 function byMinToByKm(byMin: Record<number, number>, zones: ZonesInput): Record<number, number> {
   const out: Record<number, number> = {};
   for (const [k, min] of Object.entries(byMin)) {
@@ -181,6 +331,7 @@ export interface ScheduledUnit {
   isSecond: boolean;  // zweite Einheit des Tages (Double)
   ref?: unknown;      // v1.6.1: opaque Referenz (Workout-Template + Progression) für den Renderer
   downgrade?: boolean; // v1.7.0: keine spacing-konforme Platzierung → als Easy rendern (Erholung schützen)
+  downgradeReason?: "spacing" | "time"; // v3.2.0: WARUM locker — Erholungsschutz oder Zeitmangel (Begründung im Plan)
   pair?: string;       // v1.7.0: Doppel-Schwellen-Tag (AM+PM teilen denselben Tag)
 }
 
@@ -198,8 +349,8 @@ const isHillUnit = (t: string) => (t || "").toLowerCase() === "hill";
  */
 export function scheduleWeek(units: PlannedUnit[], availability: Availability | null | undefined, weekDates: string[]): ScheduledUnit[] {
   const n = weekDates.length || 7;
-  const mk = (idx: number, u: PlannedUnit, isSecond = false, downgrade = false): ScheduledUnit =>
-    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond, ref: u.ref, downgrade, pair: u.pair });
+  const mk = (idx: number, u: PlannedUnit, isSecond = false, downgrade = false, downgradeReason?: "spacing" | "time"): ScheduledUnit =>
+    ({ date: weekDates[idx], weekdayIdx: idx, type: u.type, targetTss: u.targetTss, budgetMin: 0, isSecond, ref: u.ref, downgrade, downgradeReason: downgrade ? (downgradeReason ?? "spacing") : undefined, pair: u.pair });
 
   // Fallback ohne (verwertbares) Profil: Round-Robin über alle Tage = heutiges Verhalten (keine Regression).
   if (!availability || !availability.minutesByWeekday?.some((m) => (m || 0) > 0)) {
@@ -262,7 +413,13 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   for (const group of pairGroups.values()) {
     const idx = pickHardDay(null);
     if (idx != null) {
-      used.add(idx); placedHard.add(idx);
+      used.add(idx);
+      // Doppel-Schwelle teilt das Tagesbudget auf zwei Einheiten — beide brauchen ihr Minimum.
+      if ((budget[idx] || 0) < QUALITY_HARD_MIN * group.length) {
+        group.forEach((u, i) => out.push(mk(idx, u, i > 0, true, "time")));
+        continue;
+      }
+      placedHard.add(idx);
       group.forEach((u, i) => out.push(mk(idx, u, i > 0)));        // 2. Hälfte = isSecond (PM)
     } else {
       const d = pickFree() ?? trainingDays.find((x) => !used.has(x)) ?? trainingDays[0];
@@ -276,7 +433,13 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
   for (const u of soloHards) {
     const wish = isHillUnit(u.type) && availability.hillDay != null ? availability.hillDay : null;
     const idx = pickHardDay(wish);
-    if (idx != null) { used.add(idx); placedHard.add(idx); out.push(mk(idx, u)); }
+    if (idx != null) {
+      used.add(idx);
+      // v3.2.0: Unter QUALITY_HARD_MIN gibt es keine echte Qualität mehr (10 min „Schwellenlauf" ist keine
+      // Schwelleneinheit). Statt die Reps bis zur Karikatur zu kürzen: ehrlich als lockeren Lauf planen.
+      if ((budget[idx] || 0) < QUALITY_HARD_MIN) { out.push(mk(idx, u, false, true, "time")); continue; }
+      placedHard.add(idx); out.push(mk(idx, u));
+    }
     else {
       // Kein Tag ohne harten Nachbarn frei → Erholung schützen: als Easy abstufen.
       const d = pickFree() ?? trainingDays.find((x) => !used.has(x)) ?? trainingDays[0];
@@ -317,10 +480,22 @@ export function scheduleWeek(units: PlannedUnit[], availability: Availability | 
     out.push(mk(d, u, true)); // isSecond = leichte Zusatz-Einheit
   }
 
-  // Budget je Einheit: Tagesbudget durch Anzahl Einheiten des Tages teilen (Doubles/Core).
-  for (const o of out) {
-    const k = out.filter((x) => x.weekdayIdx === o.weekdayIdx).length;
-    o.budgetMin = k > 0 ? Math.round((budget[o.weekdayIdx] || 0) / k) : (budget[o.weekdayIdx] || 0);
+  // Budget je Einheit (v3.2.0 korrigiert): Stabi/Core ist eine kurze ZUSATZ-Einheit (15–30 min) — vorher wurde das
+  // Tagesbudget stumpf durch die Zahl der Einheiten geteilt, sodass ein 20-Minuten-Core-Programm den LAUF auf die
+  // Hälfte kürzte (70-min-Tag → 35-min-Easy). Damit verfehlte die Woche ihr km-/TSS-Ziel, obwohl Zeit da war.
+  // Jetzt: Core bekommt seine kurze Scheibe, der Rest gehört dem Laufen (bei Doppeleinheiten hälftig geteilt).
+  const CORE_BUDGET_MIN = 25;
+  for (let d = 0; d < n; d++) {
+    const dayUnits = out.filter((o) => o.weekdayIdx === d);
+    if (!dayUnits.length) continue;
+    const total = budget[d] || 0;
+    const coreUnits = dayUnits.filter((o) => isCoreType(o.type));
+    const runUnits = dayUnits.filter((o) => !isCoreType(o.type));
+    // Core nie mehr als ein Drittel des Tages (und nie mehr als seine eigene Dauer) — Laufen hat Vorrang.
+    const coreShare = coreUnits.length ? Math.min(CORE_BUDGET_MIN * coreUnits.length, Math.floor(total / 3)) : 0;
+    const runShare = Math.max(0, total - coreShare);
+    for (const o of coreUnits) o.budgetMin = Math.round(coreShare / coreUnits.length);
+    for (const o of runUnits) o.budgetMin = runUnits.length ? Math.round(runShare / runUnits.length) : 0;
   }
   return out.sort((a, b) => a.weekdayIdx - b.weekdayIdx);
 }

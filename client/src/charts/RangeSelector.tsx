@@ -24,7 +24,7 @@ function mondayOf(iso: string): string {
 
 /** 1. Januar des aktuellen Jahres als ISO-Date-String. */
 function startOfCurrentYear(): string {
-  const year = new Date().getFullYear();
+  const year = Number(todayIso().slice(0, 4)); // v3.2.0: App-„heute" (Demo-Profil: eingefroren)
   return `${year}-01-01`;
 }
 

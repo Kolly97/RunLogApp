@@ -12,6 +12,7 @@ export const CINEMA_META: Partial<Record<CinemaChartId, { icon: string; label: s
   power: { icon: "🔋", label: "Lauf-Power (CP · W′)" },
   vo2: { icon: "🫁", label: "Eff. VO2max je Lauf" },
   cycle: { icon: "🌗", label: "Zyklus: Phase × Reiz" },
+  nof1: { icon: "🎲", label: "N-of-1: der Beweis" },
 };
 
 /** Reihenfolge der verfügbaren Szenen im Hub. */

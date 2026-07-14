@@ -17,8 +17,11 @@ export function blockReadiness(weeks: BlockWeek[], raceDate: string | null): Blo
   const hasIr = weeks.some((w) => w.irFitness != null && w.irFitness !== 0);
   const fitness = weeks.map((w) => (hasIr ? Math.max(0, w.irFitness ?? 0) : (w.ctlStart ?? 0)));
   const maxFit = Math.max(1, ...fitness);
+  // v3.2.0: Ø-Form ÜBER die Woche statt des Montags-Stichtags. `tsbStart` fällt auf einen Tag nach dem Ruhetag,
+  // an dem die Ermüdung kurz abgeflossen ist — die Readiness-Kurve zeigte damit den frischesten Moment der Woche
+  // und blieb im Aufbau flach, obwohl der Athlet die ganze Woche bei TSB ~−12 unterwegs ist.
   const readiness = weeks.map((w, i) =>
-    Math.round(Math.max(0, Math.min(1, (fitness[i] / maxFit) * freshness(w.tsbStart ?? 0))) * 100));
+    Math.round(Math.max(0, Math.min(1, (fitness[i] / maxFit) * freshness(w.tsbAvg ?? w.tsbStart ?? 0))) * 100));
 
   let raceIdx = -1;
   if (raceDate) {

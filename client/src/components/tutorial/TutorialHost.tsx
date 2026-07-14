@@ -2,7 +2,7 @@
 // Step-Arten: say (Spotlight/zentriert) · task (angedockte Karte, App bleibt bedienbar, Check pollt) ·
 // quiz (Verständnisfrage mit Feedback) · scene (Isabel-3D-Abschluss). Auto-Start beim ersten App-Start
 // (mit Skip); Fortschritt je Abschnitt via /api/tutorial/progress. Ersetzt die alte Coachmark-Tour.
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.ts";
 import { SECTIONS, sectionById } from "./sections.ts";
@@ -20,6 +20,17 @@ export function startTutorial(section: SectionId) {
 // Abschnitt 3/4 lassen den Nutzer aufs Isabel-Profil wechseln — der ProfileSwitcher lädt die App dabei komplett neu
 // (location.reload). sessionStorage trägt den laufenden Schritt über diesen Reload; es stirbt mit dem Fenster,
 // darum bleibt die Regel „innerhalb eines Abschnitts startet man vorn" für neue Sitzungen erhalten.
+/** Antworten mischen (Fisher-Yates). In `sections.ts` steht die richtige Antwort immer an erster Stelle — ungemischt
+ *  beantwortet man das Quiz durch Klicken statt durch Verstehen, und der Lerneffekt ist weg. */
+function shuffled<T>(list: T[]): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const RESUME_KEY = "runlog-tutorial-resume";
 function readResume(): { s: SectionId; i: number } | null {
   try {
@@ -47,6 +58,13 @@ export default function TutorialHost() {
 
   const section = sectionId ? sectionById(sectionId) : undefined;
   const step: TutStep | undefined = section?.steps[idx];
+  // Reihenfolge der Antworten: einmal je Frage gewürfelt (stabil, solange die Frage steht — ein Umsortieren nach
+  // einem Fehlversuch wäre nur verwirrend), aber bei jedem neuen Anlauf anders.
+  const quizOptions = useMemo(
+    () => (step?.kind === "quiz" ? shuffled(step.options) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sectionId, idx],
+  );
 
   // Start-Event (Lernen-Hub / Welcome) + Fortschritt laden; Auto-Start nur beim allerersten App-Start.
   useEffect(() => {
@@ -192,14 +210,14 @@ export default function TutorialHost() {
 
   // ---- quiz: zentrierte Karte mit Feedback (falsch → freundlich erklären, nochmal versuchen) ----
   if (step.kind === "quiz") {
-    const picked = quizPick != null ? step.options[quizPick] : null;
+    const picked = quizPick != null ? quizOptions[quizPick] : null;
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ ...CARD, width: 470, maxWidth: "92vw" }}>
           <IsabelHead sub={stepInfo} />
           <strong style={{ fontSize: 14 }}>{step.question}</strong>
           <div style={{ display: "grid", gap: 7, margin: "10px 0" }}>
-            {step.options.map((o, i) => (
+            {quizOptions.map((o, i) => (
               <button key={i} className="sm ghost" onClick={() => setQuizPick(i)}
                 style={{ textAlign: "left", lineHeight: 1.4, whiteSpace: "normal",
                   border: quizPick === i ? `2px solid ${o.correct ? "#16a34a" : "#dc2626"}` : "1px solid var(--border, #e3e8ef)" }}>
@@ -228,8 +246,12 @@ export default function TutorialHost() {
   if (step.kind === "chart3d") {
     return (
       <OverlayPortal>
+        {/* `key` = die Szene: Folgen im Tutorial zwei Kino-Schritte aufeinander (Analyse: latent → vo2 → …), wird
+            das Kino SAUBER neu gemountet. Ohne den Key blieb der alte Beat-Index stehen — die nächste Szene startete
+            mitten drin (deshalb fehlten Schieberegler/Schalter, die auf frühen Beats sitzen), und war sie kürzer,
+            zeigte `beats[idx]` auf undefined → React-Crash → schwarzer Bildschirm beim „Szene abschließen". */}
         <Suspense fallback={<div className="tiny muted" style={{ position: "fixed", inset: 0, zIndex: 1100, background: "#0d1526", color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>Das Daten-Kino öffnet…</div>}>
-          <ChartCinema chart={step.chart} stepInfo={stepInfo} onDone={next} onClose={close} />
+          <ChartCinema key={step.chart} chart={step.chart} stepInfo={stepInfo} onDone={next} onClose={close} />
         </Suspense>
       </OverlayPortal>
     );

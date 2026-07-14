@@ -1,7 +1,13 @@
 // Tutorial-Profil (v2.10.0): erzeugt ein vollständiges, realistisches Demo-Profil für Isabel,
-// die fiktive Halbmarathonläuferin, die zugleich als Guide durch das interaktive Tutorial führt
+// die fiktive Langstreckenläuferin, die zugleich als Guide durch das interaktive Tutorial führt
 // (ihre Daten SIND die Tutorial-Story). Strikt auf eigenem profile_id: echte Profile bleiben unberührt.
-// Deterministisch (seeded RNG), idempotent, löschbar, mit 78 Wochen Historie + 6 Wochen Ziel-HM-Plan.
+// Deterministisch (seeded RNG), idempotent, löschbar, mit 78 Wochen Historie (18 Monate) + 18-Wochen-HM-Block.
+//
+// v3.2.0 — EINGEFRORENE ZEIT: Isabels „heute" ist ein FIXES Datum (`TUTORIAL_TODAY`), kein `new Date()`. Sonst
+// altert die Demo: Ein Tutorial, das „noch 6 Wochen bis zum Renntag" sagt, ist ein Jahr später sinnlos, und die
+// sorgfältig gesetzten Lehrbeispiele (Krankheitswoche, Trial, Taper) wandern relativ zum echten Kalender.
+// Der Server liefert für dieses Profil überall dieses Datum als „heute" (siehe `todayIso()` in index.ts), damit
+// PMC, Readiness, Coach und Prognose in Isabels Zeit rechnen — konsistent, für immer.
 import { db, setSetting, getSetting, setProfileSetting, DEFAULT_HR_ZONES } from "./db.ts";
 import {
   buildFeedbackContext,
@@ -20,6 +26,20 @@ const TUTORIAL_NAMES = [TUT, ...LEGACY_TUTS];
 const MASS = 61; // kg
 const HEIGHT_CM = 168;
 const DAY_MS = 86_400_000;
+
+// ---- Isabels eingefrorene Zeit (v3.2.0) ----------------------------------------------------------------------
+/** Isabels „heute" — ein Montag, exakt 18 Wochen vor ihrem Zielrennen. Fix, damit die Demo nie veraltet. */
+export const TUTORIAL_TODAY = "2027-05-24";
+/** Inhalts-Version der Demo. Erhöhen, wenn sich Isabels Daten ändern — sonst behält ein bereits erzeugtes Profil
+ *  für immer seinen alten Stand (Kolja-Befund: Races zeigten noch das alte 1:27-Ziel). */
+export const TUTORIAL_SEED_VERSION = 4;
+const SEED_VERSION_KEY = "tutorial_seed_version";
+/** Zielrennen: Halbmarathon (Sonntag), 18 Wochen voraus. Bewusst der HM und nicht der Marathon — er ist die in
+ *  der Breite meistgelaufene Zieldistanz, das Tutorial trifft damit die Realität der meisten Nutzer. */
+export const TUTORIAL_RACE_DATE = "2027-09-26";
+/** Test-Wettkampf: 10 km, 5 Wochen vor dem Ziel-HM — die klassische Schärfung und die ehrlichste
+ *  Standortbestimmung im Block (im Tutorial zugleich das Beispiel für die Renn-Rolle „Test-Wettkampf"). */
+export const TUTORIAL_TUNEUP_DATE = "2027-08-22";
 
 type ProfileRow = { id: number; name: string };
 
@@ -119,17 +139,27 @@ function hasLegacyDemoLabel(profileId: number): boolean {
   return !!row;
 }
 
-export function ensureTutorialProfile(today: string): void {
+// v3.2.0: Kein `today`-Parameter mehr — Isabel lebt in eingefrorener Zeit (TUTORIAL_TODAY). Ein Aufrufer, der
+// das echte Datum hereinreicht, würde die Demo wieder altern lassen; deshalb gibt es diesen Weg gar nicht erst.
+export function ensureTutorialProfile(): void {
   const rows = tutorialProfiles();
   const primary = rows.find((r) => r.name === TUT);
-  if (!rows.length) generateTutorial(today);
-  else if (!primary) regenerateTutorial(today); // alte "Tutorial"/Alex/Mara-Installationen durch Isabel ersetzen
-  else if (hasLegacyDemoLabel(primary.id)) regenerateTutorial(today); // Alt-Aktivitäten mit "(Mara Demo)"-Label
+  if (!rows.length) generateTutorial(TUTORIAL_TODAY);
+  else if (!primary) regenerateTutorial(); // alte "Tutorial"/Alex/Mara-Installationen durch Isabel ersetzen
+  else if (hasLegacyDemoLabel(primary.id)) regenerateTutorial(); // Alt-Aktivitäten mit "(Mara Demo)"-Label
+  else if (!hasFrozenTime(primary.id)) regenerateTutorial();     // v3.2.0: Altstand aus der „mitlaufenden" Zeit
+  else if (getSetting<number>(SEED_VERSION_KEY, 0) !== TUTORIAL_SEED_VERSION) regenerateTutorial(); // Demo-Inhalt hat sich geändert
 }
 
-export function regenerateTutorial(today: string): number {
+/** Erkennt einen Demo-Stand aus der Zeit VOR dem Freeze: Isabels Aktivitäten enden dann nicht an TUTORIAL_TODAY. */
+function hasFrozenTime(profileId: number): boolean {
+  const row = db.prepare("SELECT MAX(date) AS last FROM activities WHERE profile_id=?").get(profileId) as { last: string | null } | undefined;
+  return !!row?.last && row.last > addDays(TUTORIAL_TODAY, -14) && row.last <= TUTORIAL_TODAY;
+}
+
+export function regenerateTutorial(): number {
   deleteTutorial();
-  return generateTutorial(today);
+  return generateTutorial(TUTORIAL_TODAY);
 }
 
 const getActive = () => (db.prepare("SELECT value FROM settings WHERE key='active_profile'").get() as { value: string } | undefined)?.value ?? "1";
@@ -176,7 +206,17 @@ const SESS: Record<Key, {
 };
 
 function phaseForWeek(w: number, todayWeekIndex: number): Phase {
-  if (w >= todayWeekIndex + 4) return "Taper";
+  // v3.2.0 — ZUKUNFT: der 18-Wochen-HM-Block, rückwärts vom Renntag gedacht (Renntag = Woche +18):
+  // Aufbau (Schwelle/HM-Pace) → spezifisch (Renntempo, lange Longruns) → Taper. Danach: ruhige Wochen.
+  // Vorher war JEDE Zukunftswoche „Taper" — bei 6 Planwochen unauffällig, bei 18 Wochen offensichtlich falsch.
+  const ahead = w - todayWeekIndex;
+  if (ahead > 0) {
+    if (ahead > 18) return "Base";                 // nach dem Rennen: Erholung/Wiedereinstieg
+    if (ahead >= 16) return "Taper";               // die letzten 3 Wochen
+    if (ahead >= 9) return "Specific";             // renn-spezifisch (HM-Pace)
+    return "Threshold/HM-Pace";                    // Aufbau
+  }
+  // VERGANGENHEIT: unverändert (Isabels bisherige Saison — die Historie soll sich nicht verschieben).
   if (w >= todayWeekIndex - 10) return "Specific";
   if (w >= todayWeekIndex - 30) return "Threshold/HM-Pace";
   if (w >= todayWeekIndex - 54) return "HM-Build";
@@ -194,11 +234,34 @@ function weekKeys(phase: Phase, w: number, deload: boolean): Record<number, Key>
     : { 0: "easy", 1: "marathon", 2: "easy", 4: "recovery", 6: "long" };
 }
 
+// v3.2.0 — Isabels Historie ist bewusst ~15 % leichter als früher. Grund (Kolja-Entscheid): Vorher lief sie mit
+// ~63 km/Woche exakt an ihrem Zeitbudget-Limit — ihre CTL (47) verlangte dann 450 TSS je Aufbauwoche, was in
+// 590 min schlicht nicht hineinpasst. Ihr eigener Block hätte ihre Form also nur GEHALTEN, nie aufgebaut, und die
+// (jetzt ehrliche) VO2max-Prognose wäre zu Recht flach geblieben. Mit ~54 km/Woche (CTL ~40) ist der 18-Wochen-Block
+// ein echter Reiz: Die Prognose steigt, das Ziel 1:24 wird erreichbar — und alles bleibt in sich schlüssig.
+// Pace/Intensität sind unberührt (ihr VDOT ~53,7 kommt aus Rennen und Bestleistungen, nicht aus dem Umfang).
+const HISTORY_VOLUME = 0.85;
+
 function targetKmFor(phase: Phase, progress: number, deload: boolean): number {
-  const base = 45 + 33 * progress;
+  const base = (45 + 33 * progress) * HISTORY_VOLUME;
   const phaseBump = phase === "Base" ? -2 : phase === "HM-Build" ? 0 : phase === "Threshold/HM-Pace" ? 3 : phase === "Specific" ? 4 : -20;
   const km = base + phaseBump;
   return Math.round(clamp(deload ? km * 0.76 : km, 32, 80));
+}
+
+// v3.2.0 — km-Rampe des 18-Wochen-Blocks (Zukunft). Isabels Vergangenheit lief auf ~63 km/Woche; das HÄLT ihre
+// Form (CTL 47 ⇒ Erhaltungsdosis ≈ 330 TSS), baut aber nichts auf. Damit die Aufbauwochen ihr Phasenziel
+// (~430–450 TSS, acute:chronic ≈ 1.3) überhaupt TRAGEN können, braucht der Block ~95 km in der Spitze — bei
+// ~4,7 TSS/km ist das schlicht Arithmetik, kein Geschmack. Die Rampe (70 → 92 km, Entlastung −15 %) bleibt dabei
+// im verletzungssicheren Bereich (Start ~+15 % über ihrem chronischen Niveau, danach ~+2 %/Woche) und passt in ihr
+// Zeitbudget (590 min ⇒ bis 107 km). Genau das leitet der Block-Wizard einem echten Nutzer aus Start-/Max-km ab.
+// Die Rampe (75 → 95 km) ist damit kein Wunschwert, sondern die Bedingung dafür, dass der Aufbau überhaupt aufbaut.
+function blockTargetKm(ahead: number, deload: boolean): number {
+  if (ahead >= 18) return 30;                       // Renn-Woche: der Wettkampf trägt die Last
+  if (ahead >= 16) return ahead === 17 ? 48 : 64;   // Taper: Volumen runter, Schärfe bleibt
+  const build = Math.min(1, (ahead - 1) / 12);      // 0 … 1 über die Aufbau-/Specific-Wochen
+  const km = 75 + 20 * build;
+  return Math.round(deload ? km * 0.85 : km);
 }
 
 function zoneKmFromMinutes(zMin: Record<number, number>, repPace: number[]): Record<number, number> {
@@ -367,7 +430,20 @@ function generateRaceAndLabData(profileId: number, today: string, raceDay: strin
   insRace.run(profileId, addDays(today, -430), "10-km-Testlauf Frühform", 10000, 43 * 60 + 34, "Trainingsrennen", "Ausgangsniveau: kontrolliert, noch wenig spezifische Schwelle.", addRaceSplits(43 * 60 + 34, 10, 165), 169, 183, 44, "manual", null, 1);
   insRace.run(profileId, addDays(today, -278), "15-km-Test im HM-Build", 15000, 64 * 60 + 22, "5. AK", "Aerobe Kontinuität zeigt Wirkung; guter Longrun-Transfer.", addRaceSplits(64 * 60 + 22, 15, 164), 170, 184, 72, "manual", null, 1);
   insRace.run(profileId, addDays(today, -132), "Halbmarathon-Test", 21097.5, 91 * 60 + 18, "PB", "Solider HM-Test vor dem spezifischen Block, Potenzial klar unter 1:30 sichtbar.", addRaceSplits(91 * 60 + 18, 21, 162), 168, 184, 96, "manual", null, 1);
-  insRace.run(profileId, raceDay, "Ziel-Halbmarathon", 21097.5, null, "", "Zielrennen in 6 Wochen. Wunschzeit: 1:27:00.", "[]", null, null, 68, "manual", 87 * 60, 0);
+  // v3.2.0 — Isabels Saison: HAUPTRENNEN Marathon (18 Wochen voraus, klassischer Marathon-Block) und davor ein
+  // TEST-Wettkampf über den Halbmarathon (12 Wochen vor dem Ziel). Das ist die lehrreichste Konstellation:
+  // Der Block plant rückwärts vom Marathon, der HM-Test füttert VDOT/Prognose mit echten Daten statt Schätzungen —
+  // und im Tutorial ist er zugleich das Beispiel für die Renn-Rollen (Haupt · Test · ignorieren).
+  // Isabels Saison (v3.2.0): HAUPTRENNEN Halbmarathon in 18 Wochen, davor ein 10-km-TEST-Wettkampf (5 Wochen vor
+  // dem Ziel). Der HM ist die in der Breite meistgelaufene Zieldistanz — das Tutorial trifft damit die Realität
+  // der meisten Nutzer, und der 18-Wochen-Block zeigt den vollen Bogen: Aufbau → spezifisch → Taper.
+  //
+  // Wunschzeit 1:23:00 (Kolja-Entscheid) — bewusst SEHR ambitioniert: Isabels Form heute (VDOT 53,7) trägt 1:26:02,
+  // die dosis-abhängige Prognose ihres 18-Wochen-Blocks landet bei ~1:25. Das Ziel liegt also ÜBER dem, was dieser
+  // Plan hergibt — und genau das ist die Lehre: Die App sagt es ihr, statt die Zahl schönzurechnen, und plant
+  // trotzdem so nah wie möglich heran. Ein Ziel ist nur so gut wie die Dosis, die der Plan wirklich fährt.
+  insRace.run(profileId, TUTORIAL_TUNEUP_DATE, "10-km-Test (Schärfung)", 10000, null, "", "Test-Wettkampf 5 Wochen vor dem Ziel-HM — ehrliche Standortbestimmung, nur Mini-Taper.", "[]", null, null, 22, "manual", 38 * 60, 1);
+  insRace.run(profileId, raceDay, "Herbst-Halbmarathon", 21097.5, null, "", "Zielrennen in 18 Wochen. Wunschzeit: 1:23:00 — sehr ambitioniert; die Prognose zeigt ehrlich, wie weit der Block trägt.", "[]", null, null, 78, "manual", 83 * 60, 0);
 
   const insLac = db.prepare("INSERT INTO lactate_tests(profile_id, date, sport, kind, notes, lt1_hr, lt1_pace, lt2_hr, lt2_pace, confidence, warnings, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
   insLac.run(profileId, addDays(today, -365), "Run", "Labortest", "Basisdiagnostik: gute Grundlage, Schwelle noch ausbaufähig.", 146, 306, 166, 257, "mittel", "[]", nowIso);
@@ -435,12 +511,13 @@ function seedCompletedTrial(profileId: number, week0: string, todayWeekIndex: nu
 function generateTutorial(today: string): number {
   _seed = 22446688;
   const nowIso = new Date().toISOString();
-  const pastWeeks = 78;
-  const futureWeeks = 6;
+  const pastWeeks = 78;                  // 18 Monate lückenlose Historie
+  // v3.2.0: Der Saisonplan reicht bis zum Renntag (18 Wochen) + Erholung — vorher endete er 6 Wochen nach heute.
+  const futureWeeks = 20;
   const totalWeeks = pastWeeks + futureWeeks;
   const todayWeekIndex = pastWeeks - 1;
   const week0 = addDays(mondayOf(today), -7 * (pastWeeks - 1));
-  const raceDay = addDays(today, 42);
+  const raceDay = TUTORIAL_RACE_DATE;    // fix (eingefrorene Zeit), nicht mehr „heute + 42 Tage"
   const anchors = {
     illnessStart: addDays(today, -252),
     travelStart: addDays(today, -166),
@@ -470,8 +547,13 @@ function generateTutorial(today: string): number {
       lt1_hr: 151,
       lt1_pace: 292,
     }, pid);
+    // v3.2.0: Zeitbudget passend zu ihrem ZIEL, nicht nur zu ihrer Vergangenheit. Isabel trainiert real ~63 km /
+    // ~335 TSS je Woche — das hält ihre Fitness (CTL 47 ⇒ Erhaltungsdosis ≈ 330 TSS), baut aber nichts auf.
+    // Für den 1:24-HM-Block braucht sie ~420–450 TSS (~75–80 km): mit dem alten Budget (460 min) rechnerisch
+    // unmöglich, die Prognose wäre zu Recht flach geblieben. 545 min (~9 h, Samstag bleibt Ruhetag) sind für eine
+    // Läuferin auf diesem Niveau realistisch — und lassen dem Coach Luft, den Aufbau überhaupt zu planen.
     setSetting(`availability_${pid}`, {
-      minutesByWeekday: [60, 75, 55, 80, 45, 0, 145],
+      minutesByWeekday: [70, 90, 70, 95, 60, 45, 160],
       longRunDay: 6,
       hardDays: [1, 3],
       hillDay: 4,
@@ -545,14 +627,24 @@ function generateTutorial(today: string): number {
       // schneller, in VO2-Blöcken langsamer — kumulativ, mit Nachwirkung über den Washout.
       const arm = armForWeek(w);
       const effBase = 48.4 + 4.7 * progress + Math.sin(w / 9) * 0.35 + trialDev(w);
-      const targetKm = targetKmFor(phase, progress, deload);
+      // Vergangenheit: Isabels gelaufene Saison. Zukunft: die km-Rampe ihres 18-Wochen-Blocks (s. blockTargetKm).
+      const ahead = w - todayWeekIndex;
+      const targetKm = ahead > 0 ? blockTargetKm(ahead, deload) : targetKmFor(phase, progress, deload);
       const phaseNote = phase === "Base" ? "Aerobe Kontinuitaet und ruhige Longruns."
         : phase === "HM-Build" ? "Longruns wachsen, erste stabile Schwellenarbeit."
           : phase === "Threshold/HM-Pace" ? "Haupttreiber: Schwelle und HM-Pace, VO2 dosiert."
-            : phase === "Specific" ? "Spezifischer HM-Block mit Race-Pace-Anteilen."
+            : phase === "Specific" ? "Spezifischer Block mit Race-Pace-Anteilen."
               : "Taper: Last runter, Schaerfe erhalten.";
       const trialNote = arm ? ` N-of-1-Block: ${arm === "threshold" ? "Schwellen-Arm" : "VO2max-Arm"}.` : "";
-      insWeek.run(pid, w + 1, `Isabel W${w + 1}`, phase, start, end, targetKm, w === totalWeeks - 1 ? "Ziel-Halbmarathon 1:27:00" : "", phaseNote + trialNote);
+      // v3.2.0 — ZUKUNFTSWOCHEN OHNE PHASE: Genau der Zustand, in dem ein echter Nutzer startet. Die Phasen
+      // (Belastung · Entlastung · Race Specific · Race Week) schreibt der COACH, wenn man den Block einrichtet —
+      // und nur die von ihm abgeleiteten Namen versteht die Engine als produktive Aufbauwochen. Isabels eigene
+      // Etiketten („Threshold/HM-Pace") tat sie das nicht: Der Block plante bloße Erhaltungslast, und die
+      // (neu dosis-abhängige) VO2max-Prognose blieb zu Recht flach. Die Vergangenheit behält ihre Etiketten.
+      const isFuture = w > todayWeekIndex;
+      // `goal_race` bleibt LEER: Der Saisonplan-Sync (index.ts) legt aus diesem String sonst ein zweites,
+      // distanzloses Rennen an — Isabels echtes Zielrennen steht bereits in der races-Tabelle.
+      insWeek.run(pid, w + 1, `Isabel W${w + 1}`, isFuture ? null : phase, start, end, targetKm, "", phaseNote + trialNote);
 
       // Im Trial-Block bestimmt der zugeloste ARM die Qualitätseinheiten — sonst passten Etikett und Training
       // nicht zusammen (und die Auswertung wäre eine Farce). Washout-Wochen laufen im normalen Phasen-Muster.
@@ -594,7 +686,7 @@ function generateTutorial(today: string): number {
         const isPast = date < today;
         const isRecentPlan = date >= addDays(today, -56);
         const durationScale = deload ? 0.82 : phase === "Taper" ? 0.70 : 1;
-        const matureVolumeTrim = 1 - 0.09 * progress;
+        const matureVolumeTrim = (1 - 0.09 * progress) * HISTORY_VOLUME;
         const baseIntroTrim = phase === "Base" ? 0.78 + 0.18 * progress : 1;
         const dur = Math.round(jit((s.durMin + s.durMax) / 2, (s.durMax - s.durMin) / 2) * durationScale * matureVolumeTrim * baseIntroTrim * (disturb === "travel" ? 0.78 : disturb === "niggle" && k !== "easy" ? 0.70 : 1));
         const ifv = clamp(jit(s.if, 0.02) * (disturb === "niggle" && ["threshold", "vo2", "reps"].includes(k) ? 0.88 : 1), 0.58, 1.02);
@@ -667,6 +759,7 @@ function generateTutorial(today: string): number {
     generateRaceAndLabData(pid, today, raceDay, nowIso);
     generateFeedbackData(pid, activities, periods, { method: "copper_iud" }, nowIso);
     seedActiveTrial(pid, today, nowIso);
+    setSetting(SEED_VERSION_KEY, TUTORIAL_SEED_VERSION); // Inhalts-Version festhalten (s. ensureTutorialProfile)
 
     db.exec("COMMIT");
 

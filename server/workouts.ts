@@ -5,7 +5,7 @@
 //  - fitnessLevel(): CTL/CS → low|mid|high (skaliert Wiederholungszahlen; 20×400 nur bei hoher Fitness).
 //  - pickWeekWorkouts(): Wochen-Komposition je Phase + Rotation (weekInPhase) + Progression + Doubles.
 //  - renderWorkout(): Vorlage → konkrete Einheit mit Pace-BEREICH (Anker LT1/LT2/CS) + HF-Spanne + Pausen.
-import { paceOf, thrOf, tssPerMin, paceStr, type ZonesInput, type Effort, type ConcreteSession } from "./planbuilder.ts";
+import { MIN_RUN_MIN, paceOf, thrOf, tssPerMin, paceStr, type ZonesInput, type Effort, type ConcreteSession } from "./planbuilder.ts";
 
 export type Family = "Easy" | "Long" | "LT1" | "LT2" | "VO2" | "Hill" | "Speed" | "Race" | "Core";
 export type FitnessLevel = "low" | "mid" | "high";
@@ -155,7 +155,10 @@ export function fitnessLevel(ctl: number, csPace?: number | null, vdot?: number 
 }
 
 // ---------------- Wochen-Komposition (Phase + Rotation + Doubles) ----------------
-export interface WorkoutPick { tpl: WorkoutTemplate; role: "quality" | "long" | "easy" | "core"; pair?: string; emph?: boolean } // v1.7: pair = Doppel-Tag (AM+PM) · emph = durch Schwerpunkt gedreht
+// v1.7: pair = Doppel-Tag (AM+PM) · emph = durch Schwerpunkt gedreht
+// v3.2.0: fav = wegen deiner Vorliebe (♥) gewählt · avoided = ⊘, aber ohne gleichwertige Alternative — beides wird
+// im Plan begründet, sonst wirken die Bewertungen wie Deko.
+export interface WorkoutPick { tpl: WorkoutTemplate; role: "quality" | "long" | "easy" | "core"; pair?: string; emph?: boolean; fav?: boolean; avoided?: boolean }
 const rot = <T,>(arr: T[], i: number): T => arr[((i % arr.length) + arr.length) % arr.length];
 
 /**
@@ -208,9 +211,15 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   };
   const emphMatch = prefs?.emphasis && prefs.emphasis !== "ausgewogen" ? EMPH[prefs.emphasis] : null;
   const av = (list: string[]): string[] => { const f = list.filter((id) => !avoid.has(id)); return f.length ? f : list; };
+  // v3.2.0: Vorlieben sind ein TIE-BREAK unter physiologisch GLEICHWERTIGEN Einheiten — nie ein Familien-Wechsel.
+  // Vorher wurden Favoriten an JEDEN Pool angehängt: ein ♥-VO2-Intervall konnte im Schwellen-Slot landen (falscher
+  // Reiz), während es sich in der Rotation gleichzeitig verlor. Jetzt: ⊘ raus (solange es Alternativen gibt),
+  // ♥ doppelt gewichtet INNERHALB desselben Pools → die Einheit kommt spürbar häufiger, die Physiologie bleibt.
   const pref = (list: string[]): string[] => {
-    const out = av(list);
-    for (const f of favs) if (!out.includes(f)) out.push(f); // Favoriten in den rotierten Pool aufnehmen
+    const base = av(list);
+    if (!favs.length) return base;
+    const out: string[] = [];
+    for (const id of base) { out.push(id); if (favs.includes(id)) out.push(id); }
     return out;
   };
   const EMPH_POOL: Record<string, string[]> = {
@@ -275,10 +284,12 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   // Reihenfolge (v3.1.0): erst die Dichte (wie viele harte Einheiten verträgt die Woche?), dann die Evidenz
   // (welcher der überlebenden Slots wird gedreht?) — sonst könnte der Dichte-Trim den Pflichtreiz entfernen
   // und die beobachtete Evidenz als einzige harte Einheit stehen lassen.
+  // v3.2.0: Am Ende markieren, welche Einheit wegen einer Vorliebe (♥) steht und welche trotz ⊘ stehen MUSS
+  // (kein gleichwertiger Ersatz für den Pflichtreiz) — der Plan begründet das später Tag für Tag.
   return applyLt1Progression(
     [...emphasize(applyQualityDensity(pickPhase(), { phase, fitness, ctlProgress: prefs?.ctlProgress ?? 0, allowDoubles })), ...core],
     prefs?.ctlProgress ?? 0,
-  );
+  ).map((p) => (favs.includes(p.tpl.id) ? { ...p, fav: true } : avoid.has(p.tpl.id) ? { ...p, avoided: true } : p));
 
   function pickPhase(): WorkoutPick[] {
   const p = (phase || "").toLowerCase();
@@ -307,25 +318,25 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   if (p.includes("recovery") || p.includes("erholung")) return [E("easy_recovery"), E("easy_ga1"), E("easy_recovery"), Q("strides")];
 
   if (p.includes("race week") || p.includes("raceweek") || p.includes("race-week")) {
-    return [Q("strides"), Q(rot(av(["race_pace", "vo2_400s"]), weekInPhase)), E("easy_ga1"), E("easy_recovery"), E("easy_recovery")];
+    return [Q("strides"), Q(rot(pref(["race_pace", "vo2_400s"]), weekInPhase)), E("easy_ga1"), E("easy_recovery"), E("easy_recovery")];
   }
   if (p.includes("entlast") || p.includes("deload")) {
-    return [L("long_aerobic"), Q(rot(av(["lt2_cruise", "strides"]), weekInPhase)), E("easy_ga1"), E("easy_recovery"), E("easy_recovery")];
+    return [L("long_aerobic"), Q(rot(pref(["lt2_cruise", "strides"]), weekInPhase)), E("easy_ga1"), E("easy_recovery"), E("easy_recovery")];
   }
   if (p.includes("specific") || p.includes("spec")) {
     if (isLong) { // Marathon: Schwelle/MP-lastig, Renntempo-Blöcke + Float, MP-Longrun, VO2 reduziert
       return [
         L("long_mp_segments"),
-        Q(rot(av(["race_pace_long", "race_mix", "lt2_broken_tempo", "race_pace_long"]), weekInPhase)),
-        Q(rot(av([lt2Pool[0], "race_pace_long", lt2Pool[1] ?? "lt2_cruise", "lt2_broken_tempo"]), weekInPhase)),
+        Q(rot(pref(["race_pace_long", "race_mix", "lt2_broken_tempo", "race_pace_long"]), weekInPhase)),
+        Q(rot(pref([lt2Pool[0], "race_pace_long", lt2Pool[1] ?? "lt2_cruise", "lt2_broken_tempo"]), weekInPhase)),
         Q("strides"), E("easy_ga1"), E("easy_recovery"),
       ];
     }
     if (isMid) { // HM: Schwelle + Renntempo-Blöcke + Float + 1 VO2
       return [
         L(weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic"),
-        Q(rot(av(["race_pace_long", "race_mix", "vo2_1000s", "race_pace_long"]), weekInPhase)),
-        Q(rot(av([lt2Pool[0], "vo2_45", "race_mix", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase)),
+        Q(rot(pref(["race_pace_long", "race_mix", "vo2_1000s", "race_pace_long"]), weekInPhase)),
+        Q(rot(pref([lt2Pool[0], "vo2_45", "race_mix", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase)),
         Q("strides"), E("easy_ga1"), E("easy_recovery"),
       ];
     }
@@ -333,7 +344,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
       return [
         L(weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic"),
         Q(rot(vo2Pool, weekInPhase)),
-        Q(rot(av([lt2Pool[0], "race_pace", lt2Pool[1] ?? "lt2_cruise", "vo2_1000s"]), weekInPhase)),
+        Q(rot(pref([lt2Pool[0], "race_pace", lt2Pool[1] ?? "lt2_cruise", "vo2_1000s"]), weekInPhase)),
         Q("strides"), E("easy_ga1"), E("easy_recovery"),
       ];
     }
@@ -341,7 +352,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     return [
       L(weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic"),
       Q(rot(vo2Pool, weekInPhase)),
-      Q(rot(av(["race_pace", fitness === "low" ? "lt2_cruise" : "lt2_cutdown", "race_pace", "vo2_400s"]), weekInPhase)),
+      Q(rot(pref(["race_pace", fitness === "low" ? "lt2_cruise" : "lt2_cutdown", "race_pace", "vo2_400s"]), weekInPhase)),
       Q("strides"), E("easy_ga1"), E("easy_recovery"),
     ];
   }
@@ -354,14 +365,14 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     if (isLong) {
       // Marathon-Build: Schwellen-/Kraftausdauer-VOLUMEN — KEIN VO2/Speed (der Marathon lebt von aerober Schwelle +
       // MP-Ausdauer, nicht von Top-End-VO2). Unterscheidet den Marathon-Aufbau bewusst vom HM-Aufbau (T9b).
-      const pool = av(["lt2_broken_tempo", "lt2_1000s", "hill_reps_long", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
+      const pool = pref(["lt2_broken_tempo", "lt2_1000s", "hill_reps_long", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
       thr2 = rot(pool.length ? pool : ["lt2_broken_tempo"], weekInPhase);
     } else if (isMid) {
       // HM-Build: Schwelle + gelegentliche VO2/Renntempo-Schärfe (schnelleres Renntempo als Marathon → etwas Top-End).
-      const pool = av(["lt2_broken_tempo", "vo2_45", "hill_reps_long", "race_mix", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
+      const pool = pref(["lt2_broken_tempo", "vo2_45", "hill_reps_long", "race_mix", lt2Pool[1] ?? "lt2_cruise"].filter((id) => id !== thr1));
       thr2 = rot(pool.length ? pool : ["lt2_broken_tempo"], weekInPhase);
     } else {
-      thr2 = rot(av([hillPool[0], "fartlek_structured", "vo2_400s", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase);
+      thr2 = rot(pref([hillPool[0], "fartlek_structured", "vo2_400s", lt2Pool[1] ?? "lt2_cruise"]), weekInPhase);
     }
     // Long-Slot distanzgerecht: Marathon spät → MP-Blöcke, HM spät → schnelles Ende, sonst Dauerlauf.
     const longTpl = isLong && weekInPhase >= 1 ? "long_mp_segments" : isMid && weekInPhase >= 1 ? "long_fastfinish" : "long_aerobic";
@@ -370,7 +381,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
       // Doppel-Schwellen-Tag als ZWEI Einheiten (AM 6'-Reps + PM 400er) am selben Tag (v1.7).
       picks.push(QP("norw_short_reps", "double_thr"));
       picks.push(QP("norw_pm_400s", "double_thr"));
-      picks.push(Q(rot(av([hillPool[0], "vo2_400s", "fartlek_structured"]), weekInPhase)));
+      picks.push(Q(rot(pref([hillPool[0], "vo2_400s", "fartlek_structured"]), weekInPhase)));
     } else {
       picks.push(Q(thr1), Q(thr2));
     }
@@ -383,7 +394,7 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
     : ["hill_sprints", "strides", "reps_R", "fartlek_structured"];
   return [
     L("long_aerobic"),
-    Q(rot(av(["lt1_continuous", "lt1_long_reps", "fartlek_free", "hill_reps_short"]), weekInPhase)),
+    Q(rot(pref(["lt1_continuous", "lt1_long_reps", "fartlek_free", "hill_reps_short"]), weekInPhase)),
     Q(rot(av(baseEcon), weekInPhase)),
     E("easy_ga1"), E("easy_ga1"), E("easy_recovery"),
   ];
@@ -487,6 +498,12 @@ function repsBand(tpl: WorkoutTemplate, fitness: FitnessLevel, progress: number,
 
 export interface RenderCtx {
   zones: ZonesInput; fitness: FitnessLevel; progress: number; targetTss?: number; maxMin?: number;
+  // v3.2.0 — EXPLIZITER KM-AUFTRAG (die Woche wird aus dem Umfang komponiert, s. composeWeek in planbuilder.ts).
+  // Liegt er vor, folgt die Dauer aus km × Pace und wird NUR von [MIN_RUN_MIN, Tagesbudget] geklammert — nicht mehr
+  // von der Template-Dauerklammer (minMin/maxMin). Genau die verhinderte bisher kurze Läufe (easy_ga1 minMin 45 min
+  // ⇒ eine Woche konnte 45 km nicht unterschreiten) UND lange (maxMin 80 min ⇒ das km-Ziel war nach oben gedeckelt).
+  // Ohne km-Auftrag bleibt die Template-Klammer der Default — Alt-Pfade (Wochenplanung, Live-Resolution) unverändert.
+  targetKm?: number | null;
   // T7: Tagesform + Fitness-Proxys + Phasen-Label für dynamische Reps + „angepasst"-Notiz.
   tsb?: number | null; vdot?: number | null; phaseLabel?: string | null;
   taperFactor?: number;  // Baustein 2.4: <1 reduziert das Qualitäts-VOLUMEN (Reps) im Taper/Deload — Pace/Intensität bleibt
@@ -766,11 +783,20 @@ function renderWorkoutCore(tpl: WorkoutTemplate, ctx: RenderCtx): ConcreteSessio
     const z = tpl.workZone;
     const tpm = tssPerMin(z, zones);
     const lo = tpl.minMin ?? 30, hi = tpl.maxMin ?? 60;
-    // targetTss (Easy/Long-Ausgleich) → Dauer; sonst progressive Default-Dauer (für steady-Qualität wie LT1/Tempo).
-    // v2.8.0: nutzt ctlProgress (kontinuierlich) statt des phasen-lokalen, sägezahnenden `progress`, wenn vorhanden.
-    let min = ctx.targetTss && tpm > 0 ? ctx.targetTss / tpm : lo + (hi - lo) * (0.4 + 0.4 * clamp01(ctx.ctlProgress ?? progress));
-    min = Math.max(lo, Math.min(hi, min));
-    min = Math.min(min, maxMin);
+    let min: number;
+    if (ctx.targetKm && ctx.targetKm > 0) {
+      // v3.2.0: km-Auftrag gewinnt — Dauer = km × Pace der Arbeitszone. Nur MIN_RUN_MIN (ein Lauf unter ~20 min ist
+      // kein Trainingsreiz mehr, sondern ein Spaziergang) und das Tagesbudget klammern. Die Template-Dauerklammer
+      // beschreibt den TYPISCHEN Umfang der Einheit — sie darf die Wochenplanung nicht überstimmen.
+      min = (ctx.targetKm * paceOf(z, zones)) / 60;
+      min = Math.max(MIN_RUN_MIN, Math.min(min, maxMin));
+    } else {
+      // targetTss (Easy/Long-Ausgleich) → Dauer; sonst progressive Default-Dauer (für steady-Qualität wie LT1/Tempo).
+      // v2.8.0: nutzt ctlProgress (kontinuierlich) statt des phasen-lokalen, sägezahnenden `progress`, wenn vorhanden.
+      min = ctx.targetTss && tpm > 0 ? ctx.targetTss / tpm : lo + (hi - lo) * (0.4 + 0.4 * clamp01(ctx.ctlProgress ?? progress));
+      min = Math.max(lo, Math.min(hi, min));
+      min = Math.min(min, maxMin);
+    }
     min = Math.max(10, r0(min));
     const center = anchorCenter(tpl.anchor, zones);
     // Easy/Long-Dauerläufe immer im Zonen-Band anzeigen (Anker „race" nur für die Schluss-/MP-Block-Notiz).

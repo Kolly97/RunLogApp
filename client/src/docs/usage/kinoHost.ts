@@ -52,6 +52,8 @@ class KinoInstance {
   private highlightObj: THREE.Object3D | null = null;
   private tween: Tween | null = null;
   private reveal: { plane: THREE.Plane; sprites: THREE.SpriteMaterial[]; t: number } | null = null;
+  private morph: { from: number; to: number; t: number; dur: number } | null = null; // Sicht-Umschalter (dose)
+  private toggleOn = false;
   private clock = new THREE.Clock();
   private raf = 0;
   private frame = 0;
@@ -65,7 +67,13 @@ class KinoInstance {
     private scene: CinemaScene,
     private stage: HTMLElement,
     private canvasWrap: HTMLElement,
-    private hud: { no: HTMLElement; title: HTMLElement; text: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement },
+    private hud: {
+      no: HTMLElement; title: HTMLElement; text: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement;
+      // v3.2.0: Die interaktiven Bedienelemente fehlten in der ANLEITUNG komplett — dieser Host ist ein eigener
+      // Destillat-Player und hatte nie eine HUD dafür. Im Tutorial-Kino gab es sie, hier nicht (Kolja-Befund).
+      sandbox: HTMLElement; slider: HTMLInputElement; sandboxVal: HTMLElement; sandboxNote: HTMLElement;
+      toggle: HTMLElement; toggleLabel: HTMLElement; toggleOff: HTMLButtonElement; toggleOn: HTMLButtonElement; toggleNote: HTMLElement;
+    },
   ) {}
 
   start(): void {
@@ -196,6 +204,29 @@ class KinoInstance {
     this.hud.prev.addEventListener("click", () => this.applyBeat(this.beatIdx - 1));
     this.hud.next.addEventListener("click", () => this.applyBeat(this.beatIdx + 1));
 
+    // Was-wäre-wenn-Regler (PMC: „sabotiere meinen Taper") — die Szene baut ihre Plan-Wochen live um.
+    this.hud.slider.addEventListener("input", () => {
+      const v = Number(this.hud.slider.value);
+      this.hud.sandboxVal.textContent = `+${Math.round(v * 2.6)} TSS/Wo`;
+      if (this.scene.applySandbox) {
+        this.hud.sandboxNote.textContent = this.scene.applySandbox(this.group, v / 100);
+        this.bump(2.5);
+      }
+    });
+
+    // Sicht-Umschalter (Forest-Plot: absolut ↔ volumen-bereinigt) — EIN Balkensatz, der morpht.
+    const setToggle = (on: boolean) => {
+      if (!this.scene.toggle || !this.scene.applyToggle || this.toggleOn === on) return;
+      this.morph = { from: this.toggleOn ? 1 : 0, to: on ? 1 : 0, t: 0, dur: motionOk() ? 0.8 : 0 };
+      this.toggleOn = on;
+      this.hud.toggleOff.classList.toggle("on", !on);
+      this.hud.toggleOn.classList.toggle("on", on);
+      this.hud.toggleNote.textContent = this.scene.toggleNote?.(on) ?? "";
+      this.bump(1.4);
+    };
+    this.hud.toggleOff.addEventListener("click", () => setToggle(false));
+    this.hud.toggleOn.addEventListener("click", () => setToggle(true));
+
     this.activeUntil = performance.now() / 1000 + 3;
     this.loop();
   }
@@ -241,13 +272,27 @@ class KinoInstance {
     this.hud.text.textContent = beat.text;
     this.hud.prev.disabled = this.beatIdx === 0;
     this.hud.next.disabled = this.beatIdx === beats.length - 1;
+
+    // v3.2.0: Die Bedienelemente hängen am Beat — genau dort, wo der Text zum Ausprobieren auffordert
+    // („Spiel damit: sabotiere meinen Taper" / „Drück den Schalter"). Vorher gab es sie in der Anleitung nicht.
+    const showSandbox = !!beat.sandbox && !!this.scene.applySandbox;
+    this.hud.sandbox.hidden = !showSandbox;
+    const showToggle = !!beat.toggle && !!this.scene.toggle && !!this.scene.applyToggle;
+    this.hud.toggle.hidden = !showToggle;
+    if (showToggle && this.scene.toggle) {
+      this.hud.toggleLabel.textContent = this.scene.toggle.label;
+      this.hud.toggleOff.textContent = this.scene.toggle.off;
+      this.hud.toggleOn.textContent = this.scene.toggle.on;
+      this.hud.toggleOff.classList.toggle("on", !this.toggleOn);
+      this.hud.toggleOn.classList.toggle("on", this.toggleOn);
+    }
   }
 
   private loop = (): void => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
     this.frame++;
-    const busy = !!this.tween || !!this.reveal || !!this.actor?.busy;
+    const busy = !!this.tween || !!this.reveal || !!this.morph || !!this.actor?.busy;
     const active = busy || performance.now() / 1000 < this.activeUntil;
     if (!active && this.frame % 2 === 1) return;
     const dt = Math.min(this.clock.getDelta(), 0.12);
@@ -266,6 +311,13 @@ class KinoInstance {
         this.renderer.localClippingEnabled = false;
         this.reveal = null;
       }
+    }
+    // Sicht-Umschalter: die Szene baut ihre Balken je Frame auf den interpolierten Wert um (der Morph IST die Lehre).
+    if (this.morph) {
+      this.morph.t = Math.min(1, this.morph.t + (this.morph.dur > 0 ? dt / this.morph.dur : 1));
+      const u = this.morph.from + (this.morph.to - this.morph.from) * ease(this.morph.t);
+      this.scene.applyToggle?.(this.group, u);
+      if (this.morph.t >= 1) this.morph = null;
     }
     if (this.tween) {
       this.tween.t = Math.min(1, this.tween.t + (this.tween.dur > 0 ? dt / this.tween.dur : 1));
@@ -326,6 +378,20 @@ function openKino(box: HTMLElement, chartId: CinemaChartId): void {
         <span class="b-no"></span>
         <div class="b-title"></div>
         <p class="b-text"></p>
+        <div class="k-sandbox" hidden>
+          <label>
+            <span class="s-label">Extra-Last je Woche bis zum Rennen</span>
+            <input class="s-range" type="range" min="0" max="100" value="0" />
+            <span class="s-val">+0 TSS/Wo</span>
+          </label>
+          <p class="s-note"></p>
+        </div>
+        <div class="k-toggle" hidden>
+          <span class="t-label"></span>
+          <button class="t-off on"></button>
+          <button class="t-on"></button>
+          <p class="t-note"></p>
+        </div>
       </div>
       <div class="k-nav">
         <button class="k-prev" title="Voriger Beat" aria-label="Voriger Beat">←</button>
@@ -343,6 +409,15 @@ function openKino(box: HTMLElement, chartId: CinemaChartId): void {
     text: stage.querySelector(".b-text")!,
     prev: stage.querySelector<HTMLButtonElement>(".k-prev")!,
     next: stage.querySelector<HTMLButtonElement>(".k-next")!,
+    sandbox: stage.querySelector(".k-sandbox")!,
+    slider: stage.querySelector<HTMLInputElement>(".s-range")!,
+    sandboxVal: stage.querySelector(".s-val")!,
+    sandboxNote: stage.querySelector(".s-note")!,
+    toggle: stage.querySelector(".k-toggle")!,
+    toggleLabel: stage.querySelector(".t-label")!,
+    toggleOff: stage.querySelector<HTMLButtonElement>(".t-off")!,
+    toggleOn: stage.querySelector<HTMLButtonElement>(".t-on")!,
+    toggleNote: stage.querySelector(".t-note")!,
   });
   stage.querySelector<HTMLButtonElement>(".kino-close")!.addEventListener("click", closeActive);
   activeKino = { el: box, inst };
