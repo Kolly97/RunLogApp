@@ -6,6 +6,12 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+### Behoben (Strava)
+- **Strava-Sync nach Datum fordert jetzt explizit `activity:read` plus `activity:read_all` an.** Strava verlangt
+  für `/athlete/activities` `activity:read`; vorher konnte der OAuth-Dialog zwar private Aktivitäten zeigen, der
+  Sync-Endpunkt aber trotzdem mit 403 abbrechen. Der akzeptierte Scope wird nun gespeichert, damit der Status später
+  prüfbar ist. (`server/strava.ts`)
+
 ## [3.2.1] – 2026-07-14 — Account-Reset-Fix
 
 ### Behoben (Profile / Accounts)

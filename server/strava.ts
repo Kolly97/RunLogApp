@@ -14,7 +14,7 @@ import { effectiveZoneSet } from "./zones.ts";
 const API = "https://www.strava.com/api/v3";
 const DETAIL_BUDGET_PER_SYNC = 50; // Detail-Abrufe (description/kcal) pro Sync-Lauf
 
-interface Tokens { access: string; refresh: string; expires_at: number; athlete?: string }
+interface Tokens { access: string; refresh: string; expires_at: number; athlete?: string; scope?: string }
 interface BackfillState {
   active: boolean;
   after: string;
@@ -51,7 +51,7 @@ async function accessToken(): Promise<string> {
   });
   if (!r.ok) throw new Error(`Token-Refresh fehlgeschlagen (${r.status})`);
   const j = (await r.json()) as any;
-  const next: Tokens = { access: j.access_token, refresh: j.refresh_token, expires_at: j.expires_at, athlete: t.athlete };
+  const next: Tokens = { access: j.access_token, refresh: j.refresh_token, expires_at: j.expires_at, athlete: t.athlete, scope: t.scope };
   setSetting("strava_tokens", next);
   return next.access;
 }
@@ -271,7 +271,7 @@ export async function fetchAthleteZonesAndFtp(): Promise<{ hr: { min: number; ma
 
 export function stravaStatus(_req: Request, res: Response): void {
   const t = tokens();
-  res.json({ configured: !!creds(), connected: !!t, athlete: t?.athlete ?? null });
+  res.json({ configured: !!creds(), connected: !!t, athlete: t?.athlete ?? null, scope: t?.scope ?? null });
 }
 
 export function stravaLogin(req: Request, res: Response): void {
@@ -281,7 +281,7 @@ export function stravaLogin(req: Request, res: Response): void {
   const redirect = `${req.protocol}://${req.get("host")}/api/strava/callback`;
   const url =
     `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(c.id)}` +
-    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=activity:read_all,profile:read_all&approval_prompt=auto`;
+    `&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=activity:read,activity:read_all,profile:read_all&approval_prompt=auto`;
   res.redirect(url);
 }
 
@@ -300,6 +300,7 @@ export async function stravaCallback(req: Request, res: Response): Promise<void>
     const t: Tokens = {
       access: j.access_token, refresh: j.refresh_token, expires_at: j.expires_at,
       athlete: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(" ") || undefined,
+      scope: String(j.scope || req.query.scope || ""),
     };
     setSetting("strava_tokens", t);
     res.redirect("/settings");
