@@ -1,7 +1,7 @@
 {
   "name": "runlog",
-  "version": "3.2.1",
-  "buildDate": "14.07.2026",
+  "version": "3.2.2",
+  "buildDate": "15.07.2026",
   "private": true,
   "type": "module",
   "description": "Lokale Trainings-App: Wochenplanung, Tracking & TrainingPeaks-Auswertung",

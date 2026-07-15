@@ -6,6 +6,8 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 
 ## [Unreleased]
 
+## [3.2.2] – 2026-07-15 — Strava-Scope-Fix
+
 ### Behoben (Strava)
 - **Strava-Sync nach Datum fordert jetzt explizit `activity:read` plus `activity:read_all` an.** Strava verlangt
   für `/athlete/activities` `activity:read`; vorher konnte der OAuth-Dialog zwar private Aktivitäten zeigen, der
