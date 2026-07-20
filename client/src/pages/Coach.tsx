@@ -147,6 +147,9 @@ export default function Coach() {
   useEffect(() => { api.settings().then((s) => setEmphasisMode(s?.coach_emphasis_mode === "manual" ? "manual" : "auto")).catch(() => {}); }, []);
   const [tp, setTp] = useState<TuneupProgress | null>(null); // Ziel-Prognose für die Readiness-Kopplung (Baustein 2.2)
   useEffect(() => { api.tuneupProgress().then(setTp).catch(() => setTp(null)); }, []);
+  // V16: beim Öffnen den gespeicherten Block-Snapshot laden (überlebt Seitenwechsel) statt neu zu rechnen.
+  // „↻ neu rechnen" ist die explizite Aktualisierung; nichts wird still im Hintergrund neu berechnet.
+  useEffect(() => { api.coachBlock().then((b) => { if (b) setBlockPlan(b); }).catch(() => {}); }, []);
   const [selWeek, setSelWeek] = useState<number | null>(null); // vom Balkendiagramm gesteuertes Wochen-Akkordeon
   const selectWeek = (w: number) => {
     setSelWeek((cur) => (cur === w ? null : w));
@@ -285,8 +288,8 @@ export default function Coach() {
             <button className="sm" onClick={() => setWizard(0)} disabled={busy} title="Geführt alle Parameter einstellen: Ziel & Zwischenziele, Wochenumfang (Start/Maximum), Zeitbudget, Zonen und Schwerpunkt — mit Vorschlag und Begründung je Schritt.">
               🧭 Block einrichten
             </button>
-            <button className="sm ghost" onClick={loadBlock} disabled={busy} title="Mesozyklus-Vorschau ab der gewählten Woche bis zum Renntag — ohne Wizard, mit den aktuellen Einstellungen">
-              {busy ? "…" : blockPlan ? "↻ neu laden" : "▶ Block-Vorschlag laden"}
+            <button className="sm ghost" onClick={loadBlock} disabled={busy} title="Rechnet den Mesozyklus ab der gewählten Woche bis zum Renntag mit den aktuellen Einstellungen NEU und speichert ihn — der gespeicherte Block bleibt sonst beim Seitenwechsel erhalten.">
+              {busy ? "…" : blockPlan ? "↻ neu rechnen" : "▶ Block-Vorschlag laden"}
             </button>
             {blockPlan && blockPlan.weeks.length > 0 && blockPlan.raceDate && (
               <button className="sm ghost" onClick={alignPeak} disabled={aligning || busy} title="Nutzt — wenn belastbar — die Banister-Taperzeit aus deinen Markern und fährt die Last renntag-genau herunter (tages-präzise ab dem Taper-Start, nicht auf ganze Wochen gerundet); sonst eine sportwiss. Heuristik (1–3 Wochen). Legt den Form-Peak auf den Renntag. Nur Vorschau; „Phasen übernehmen“ schreibt es fest.">{aligning ? "…" : "🎯 Peak ausrichten"}</button>
@@ -300,7 +303,7 @@ export default function Coach() {
 
         {blockPlan && blockPlan.weeks.length > 0 ? (
           <div data-tour="block-timeline" style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            <div className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}</div>
+            <div className="tiny muted">{blockPlan.weeks.length} Wochen{blockPlan.raceDate ? ` → Renntag ${blockPlan.raceDate}` : ""}{blockPlan.savedAt ? ` · gespeichert ${blockPlan.savedAt} — „↻ neu rechnen" aktualisiert` : ""}</div>
             <BlockTimeline weeks={blockPlan.weeks} raceDate={blockPlan.raceDate} tuneupDates={blockPlan.tuneupDates} goalNote={goalNote} onSelectWeek={selectWeek} selectedWeek={selWeek} />
             {blockPlan.reasons?.some((r) => r.code === "rpe_loop") && (
               <div className="tiny muted" style={{ marginTop: 2, lineHeight: 1.45 }}>⚙ Adaptiv (RPE-Loop): {blockPlan.reasons.filter((r) => r.code === "rpe_loop").map((r) => r.text).join(" · ")}</div>

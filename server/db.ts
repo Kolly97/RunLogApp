@@ -544,6 +544,18 @@ function migrate(): void {
       PRIMARY KEY (profile_id, key)
     );
   `);
+  // ===== Coach-Block-Snapshot (V16, Coach v4 Inc 0) — additiv, profil-scoped, ein Snapshot je Profil =====
+  // Der zuletzt gerechnete Wettkampf-Block bleibt beim Seitenwechsel erhalten (regenerate-on-load war der Bug);
+  // „↻ neu rechnen" überschreibt ihn explizit. Verlauf/Soll-Referenz (V10) kann später auf diese Tabelle aufbauen.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coach_blocks (
+      profile_id INTEGER PRIMARY KEY,
+      snapshot   TEXT NOT NULL,
+      week_no    INTEGER,
+      race_date  TEXT,
+      saved_at   TEXT NOT NULL
+    );
+  `);
   // Kanal-Effekte je Lauf (Forest-Plot-Daten): Reiz-Kanal × Zielgröße mit CI + Konfidenz.
   db.exec(`
     CREATE TABLE IF NOT EXISTS ml_channel_effects (
@@ -940,6 +952,18 @@ export function getProfileSetting<T = unknown>(key: string, fallback: T, profile
 }
 export function setProfileSetting(key: string, value: unknown, profileId: number = activeProfile()): void {
   setSetting(`${key}:${profileId}`, value);
+}
+
+// ---- Coach-Block-Snapshot (V16) ----------------------------------------
+// Ein Snapshot je Profil (upsert). `snapshot` = der komplette BlockPlan als JSON-String (opak für db.ts).
+export function saveCoachBlock(profileId: number, snapshot: string, weekNo: number | null, raceDate: string | null, savedAt: string): void {
+  db.prepare(
+    `INSERT INTO coach_blocks(profile_id, snapshot, week_no, race_date, saved_at) VALUES(?,?,?,?,?)
+     ON CONFLICT(profile_id) DO UPDATE SET snapshot=excluded.snapshot, week_no=excluded.week_no, race_date=excluded.race_date, saved_at=excluded.saved_at`,
+  ).run(profileId, snapshot, weekNo, raceDate, savedAt);
+}
+export function getCoachBlock(profileId: number): { snapshot: string; week_no: number | null; race_date: string | null; saved_at: string } | null {
+  return (db.prepare("SELECT snapshot, week_no, race_date, saved_at FROM coach_blocks WHERE profile_id=?").get(profileId) as { snapshot: string; week_no: number | null; race_date: string | null; saved_at: string } | undefined) ?? null;
 }
 
 // ---- defaults ----------------------------------------------------------

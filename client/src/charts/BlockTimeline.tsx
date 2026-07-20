@@ -255,6 +255,13 @@ export default function BlockTimeline({ weeks, raceDate, tuneupDates, goalNote, 
         )}
       </div>
 
+      {/* V17: ehrlicher Hinweis statt stiller leerer Achse — die VO₂max-Prognose braucht einen VDOT (Bestzeit/Rennen). */}
+      {vdots.length === 0 && (
+        <div className="tiny muted" style={{ marginTop: 4, fontStyle: "italic" }}>
+          VO₂max-Prognose erscheint, sobald eine Bestzeit oder ein Rennen deinen VDOT setzt (die Form-Readiness-Linie oben läuft schon aus deiner PMC-Form).
+        </div>
+      )}
+
       {/* Zyklus-Phasen-Aggregat: Ø km / TSS je Phase (macht km & TSS pro Zyklusphase sichtbar). */}
       {cycleAgg.length > 0 && (
         <div style={{ marginTop: 5, fontSize: 11, color: "var(--muted)", display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "center" }}>

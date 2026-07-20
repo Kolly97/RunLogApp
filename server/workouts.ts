@@ -9,6 +9,25 @@ import { MIN_RUN_MIN, paceOf, thrOf, tssPerMin, paceStr, type ZonesInput, type E
 
 export type Family = "Easy" | "Long" | "LT1" | "LT2" | "VO2" | "Hill" | "Speed" | "Race" | "Core";
 export type FitnessLevel = "low" | "mid" | "high";
+// v3.3.0 (Coach v4, V1): Athleten-Typ = STRUKTUR-Wahl (Q-Anzahl/Woche, Doubles-Politik). Die DOSIS (Reps/Pace/km)
+// bleibt datenbasiert (`fitnessLevel`). Selbstwahl gilt; ein CTL-Deckel greift als Sicherung (s. qualityBudget).
+export type AthleteType = "hobby" | "ambitious" | "semipro";
+// v3.3.0 (Coach v4, V2): Verletzungshistorie der letzten 24 Monate (einfache Checkliste). Frühere Verletzung ist der
+// stärkste bekannte Risikofaktor für Laufverletzungen → sie senkt die km-Rampe (s. rampGrowthFactor).
+export interface InjuryHistory { bone?: boolean; tendon?: boolean; muscle?: boolean }
+
+/** v3.3.0 (V2): Verletzungshistorie senkt die km-Steigerungsrate (bounded, mit reason). Ehrlich gelabelt: die
+ *  10-%-Regel ist Konvention [Buist 2008 fand keinen Schutzeffekt] — das ist pragmatische Vorsicht, keine bewiesene
+ *  Prävention. `base` = Standard-Wachstum je Woche (z. B. 1.07); Verletzung → −2 Punkte (7 % → 5 %), Floor 1.0. */
+export function rampGrowthFactor(base: number, injuryHistory?: InjuryHistory | null): { factor: number; reasons: string[] } {
+  const inj = injuryHistory;
+  const hasInjury = !!inj && (!!inj.bone || !!inj.tendon || !!inj.muscle);
+  if (!hasInjury) return { factor: base, reasons: [] };
+  return {
+    factor: Math.max(1.0, base - 0.02),
+    reasons: [`Verletzung in den letzten 24 Monaten → km-Steigerung konservativer (${Math.round((base - 1) * 100)} % → ${Math.round((Math.max(1.0, base - 0.02) - 1) * 100)} %/Woche; frühere Verletzung ist der stärkste bekannte Risikofaktor, van der Worp 2015)`],
+  };
+}
 type Anchor = "easy" | "lt1" | "lt2" | "cs" | "rep" | "mp" | "race" | null;
 
 /**
@@ -139,6 +158,69 @@ const getWk = (id: string): WorkoutTemplate | undefined => byId.get(id) ?? custo
 const wk = (id: string): WorkoutTemplate => (byId.get(id) ?? customById.get(id))!;
 
 // ---------------- Fitness-Stufe ----------------
+// ============================ Coach v4 — Methodik-Schulen (V4, Inc 2) ============================
+// Eine Schule = ein VOLLSTÄNDIGES Wochen-Rezept (Verteilungs-Ziele je Phase · bevorzugte Q-Familien · Doubles-
+// Politik · Longrun-Charakter · Evidenz-Etikett). SCHOOL_RECIPES ist die EINZIGE Wahrheitsquelle — kein verstecktes
+// Einheits-Rezept mehr (Workplan V4). „standard" = der bewährte RunLog-Aufbau (heutiges Verhalten, Default; die
+// Engine behandelt ihn als Sentinel und lässt die bestehende Komposition unverändert). Die 4 benannten Schulen sind
+// Opt-in und produzieren messbar verschiedene Wochen (das treibt die Engine in Inc 2 Step 2).
+// Wissenschaftlich ehrlich: zwischen den Schulen gibt es KEINE gesicherte Überlegenheit für jeden Athleten
+// [Review: Stöggl/Sperlich 2015; Casado 2022] — deshalb Wahl + individuelle Evidenz statt verstecktem Default.
+export type CoachMethod = "standard" | "daniels" | "norwegian" | "polarized" | "canova";
+
+/** Richtwert-Verteilung der Wochen-km im Build (%). Treibt in Step 2 die composeWeek-Allokation; hier Daten. */
+export interface MethodDist { easy: number; threshold: number; vo2: number }
+export interface SchoolRecipe {
+  key: CoachMethod;
+  label: string;
+  blurb: string;                     // Ein-Satz-Erklärung (Wizard/usage)
+  evidence: "standard" | "lehrbuch" | "beobachtung" | "rct" | "praxis";
+  distBuild: MethodDist;             // Verteilungs-Ziel Build (Richtwert)
+  qFamilies: string[];              // bevorzugte Q-Familien in Reihenfolge (Step 2: pickPhase)
+  baselineEmphasis: string | null;   // Brücke zum bestehenden emphasize (Step 2/V5); standard = null
+  doubles: "no" | "optional" | "active";
+  longChar: "aerobic" | "fastfinish" | "mp_segments";
+}
+
+export const SCHOOL_RECIPES: Record<CoachMethod, SchoolRecipe> = {
+  standard: { key: "standard", label: "Standard (ausgewogen)",
+    blurb: "Der bewährte RunLog-Aufbau: pyramidal in Base/Belastung, polarisiert im Renn-Anlauf — die solide Mischung.",
+    evidence: "standard", distBuild: { easy: 80, threshold: 12, vo2: 8 }, qFamilies: [], baselineEmphasis: null,
+    doubles: "optional", longChar: "aerobic" },
+  daniels: { key: "daniels", label: "Daniels (klassisch)",
+    blurb: "Zonen-Präzision nach Daniels: Tempo/Cruise-Schwelle plus eine VO2-Einheit, Dosis nach T/I/R-Mengenregeln.",
+    evidence: "lehrbuch", distBuild: { easy: 80, threshold: 10, vo2: 8 }, qFamilies: ["LT2", "VO2"], baselineEmphasis: "schwelle",
+    doubles: "optional", longChar: "fastfinish" },
+  norwegian: { key: "norwegian", label: "Norwegian Sub-Threshold",
+    blurb: "Hohes, laktatkontrolliertes Schwellen-Volumen (2,5–3,5 mmol) — oft als Doppel-Schwelle, wenig VO2.",
+    evidence: "beobachtung", distBuild: { easy: 78, threshold: 17, vo2: 5 }, qFamilies: ["LT2", "LT1"], baselineEmphasis: "norwegian",
+    doubles: "active", longChar: "aerobic" },
+  polarized: { key: "polarized", label: "Polarized (Seiler)",
+    blurb: "Hart hart, locker locker: viel lockeres Z1 plus harte VO2-Reize, kaum Tempo-Mitte.",
+    evidence: "rct", distBuild: { easy: 80, threshold: 4, vo2: 16 }, qFamilies: ["VO2"], baselineEmphasis: "vo2",
+    doubles: "no", longChar: "aerobic" },
+  canova: { key: "canova", label: "Canova (renntempo-spezifisch)",
+    blurb: "Renntempo als Organisationsprinzip: MP/HMP-Blöcke, Specials und Fast-Finish-Longs, spät viel Race-Pace.",
+    evidence: "praxis", distBuild: { easy: 78, threshold: 14, vo2: 8 }, qFamilies: ["race", "LT2"], baselineEmphasis: "schwelle",
+    doubles: "optional", longChar: "mp_segments" },
+};
+
+/** Rezept einer Schule (Fallback Standard). */
+export function schoolRecipe(m: CoachMethod | null | undefined): SchoolRecipe {
+  return (m && SCHOOL_RECIPES[m]) || SCHOOL_RECIPES.standard;
+}
+
+/** Distanz-Standard-EMPFEHLUNG (E2/E3): der sportwissenschaftliche Ausgangspunkt je Zieldistanz. Nur ein Vorschlag —
+ *  der Default-Plan bleibt „standard", bis der Nutzer bewusst wählt; beobachtete Evidenz wählt später zwischen
+ *  gleichwertigen Schulen, nur ein „geprüfter" N-of-1-Trial sticht den Distanz-Standard. */
+export function recommendMethod(goalDistanceM: number | null | undefined): CoachMethod {
+  const d = goalDistanceM ?? 0;
+  if (d <= 0) return "standard";
+  if (d <= 12000) return "polarized"; // 5k/10k: VO2 ist der Limiter → polarisiert
+  if (d < 30000) return "daniels";    // HM: Schwelle im Zentrum → Daniels
+  return "canova";                    // Marathon: Renntempo-Organisation → Canova
+}
+
 export function fitnessLevel(ctl: number, csPace?: number | null, vdot?: number | null): FitnessLevel {
   let lvl: FitnessLevel = ctl >= 65 ? "high" : ctl >= 40 ? "mid" : "low";
   if (csPace && csPace > 0) {
@@ -172,6 +254,32 @@ export interface BlockPrefs {
   // v3.1.0: Wie stark darf die Evidenz drehen? „beobachtet" = nur der freie Qualitäts-Slot;
   // „geprüft" (randomisierter N-of-1-Trial) darf zusätzlich EINEN Pflichtreiz der Zieldistanz verschieben.
   emphasisTier?: "beobachtet" | "geprüft" | null;
+  // v3.3.0 (V1): Athleten-Typ steuert die Q-ANZAHL/Woche (Struktur). Nicht gesetzt → „ambitious" (heutiges Verhalten).
+  athleteType?: AthleteType;
+  // v3.3.0 (V2): Trainingsalter (Jahre) → niedrig (< 2 J.) senkt die Intensitätsdichte (eine harte Einheit weniger).
+  trainingYears?: number | null;
+  // v3.3.0 (V4/Step 2b): Methodik-Schule → Longrun-Charakter (longChar). „standard"/undefined = heutiges Verhalten.
+  method?: CoachMethod;
+}
+
+// v3.3.0 (V4/Step 2b): Longrun-Charakter der Schule (Canova → MP-Blöcke · Daniels → schnelles Ende · Polarized/
+// Norwegian → rein aerob). Überschreibt den Long-Slot NUR bei benannter Schule, NUR in produktiven Phasen und NUR
+// wenn das Ziel-Template phasen-legal ist (sonst bleibt der ursprüngliche Long). „standard" = no-op (Golden identisch).
+function applySchoolLong(picks: WorkoutPick[], method: CoachMethod | undefined, phase: string | null | undefined): WorkoutPick[] {
+  if (!method || method === "standard") return picks;
+  const ph = (phase || "").toLowerCase();
+  const productive = /base|belast|build|aufbau|spec/.test(ph);
+  if (!productive) return picks;
+  const longChar = SCHOOL_RECIPES[method].longChar;
+  const targetId = longChar === "mp_segments" ? "long_mp_segments" : longChar === "fastfinish" ? "long_fastfinish" : "long_aerobic";
+  if (!hasWk(targetId)) return picks;
+  const tpl = getWk(targetId)!;
+  if (!tpl.phases.some((x) => ph.includes(x))) return picks;   // Ziel-Template in dieser Phase nicht legal → Original behalten
+  const idx = picks.findIndex((p) => p.role === "long");
+  if (idx < 0 || picks[idx].tpl.id === targetId) return picks;
+  const next = [...picks];
+  next[idx] = { ...next[idx], tpl };
+  return next;
 }
 
 // v2.8.0 (Item 1b): LT1-Struktur-Progression (Daniels „Cruise Intervals" / Pfitzinger „medium-long run" / Canova).
@@ -286,9 +394,12 @@ export function pickWeekWorkouts(phase: string | null | undefined, weekInPhase: 
   // und die beobachtete Evidenz als einzige harte Einheit stehen lassen.
   // v3.2.0: Am Ende markieren, welche Einheit wegen einer Vorliebe (♥) steht und welche trotz ⊘ stehen MUSS
   // (kein gleichwertiger Ersatz für den Pflichtreiz) — der Plan begründet das später Tag für Tag.
-  return applyLt1Progression(
-    [...emphasize(applyQualityDensity(pickPhase(), { phase, fitness, ctlProgress: prefs?.ctlProgress ?? 0, allowDoubles })), ...core],
-    prefs?.ctlProgress ?? 0,
+  return applySchoolLong(
+    applyLt1Progression(
+      [...emphasize(applyQualityDensity(pickPhase(), { phase, fitness, ctlProgress: prefs?.ctlProgress ?? 0, allowDoubles, type: prefs?.athleteType, trainingYears: prefs?.trainingYears })), ...core],
+      prefs?.ctlProgress ?? 0,
+    ),
+    prefs?.method, phase,
   ).map((p) => (favs.includes(p.tpl.id) ? { ...p, fav: true } : avoid.has(p.tpl.id) ? { ...p, avoided: true } : p));
 
   function pickPhase(): WorkoutPick[] {
@@ -557,21 +668,36 @@ const HARD_EFFORT = 4;
 const hardWeight = (p: WorkoutPick): number =>
   (p.tpl.effort ?? 0) < HARD_EFFORT ? 0 : p.role === "long" ? 0.5 : 1;
 
-/** Harte-Einheiten-Budget der Woche (Kolja-Entscheid: Phase × Distanz × Fitness/CTL). */
-export function qualityBudget(o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress?: number; allowDoubles?: boolean }): number {
+/** Harte-Einheiten-Budget der Woche (Phase × Distanz × Fitness/CTL × Athleten-Typ).
+ *  v3.3.0 (V1): Der Typ setzt die STRUKTUR (Q-Anzahl), die Daten die Dosis. Ein CTL-Deckel greift als Sicherung
+ *  (Kolja-Entscheid „Q-Deckel als Sicherung"): eine sehr kleine Basis trägt die Reiz-FREQUENZ nicht — nicht nur die
+ *  Dosis. Ohne gesetzten Typ = „ambitious"; Bestandsnutzer mit Doubles werden upstream auf „semipro" abgeleitet, damit
+ *  das Verhalten ≈ heute bleibt (kein Sprung). */
+export function qualityBudget(o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress?: number; allowDoubles?: boolean; type?: AthleteType; trainingYears?: number | null }): number {
   const k = phaseKind(o.phase);
   if (k === "sick" || k === "recovery") return 0;
   if (k === "raceweek" || k === "deload") return 1;
-  if (k === "base") return 1;                                   // Base: EIN Qualitätsreiz (Strides/Ökonomie zählen nicht)
-  if (o.fitness === "low") return 1;                            // niedrige CTL: auch im Build nur eine harte Einheit
-  if (k === "specific") return 2;                               // Specific: 2, davon 1 renn-spezifisch
-  const strong = o.fitness === "high" && (o.ctlProgress ?? 0) >= 0.5;
-  return o.allowDoubles && strong ? 3 : 2;                      // Build: 2 — erfahren + hohe CTL + Doubles → 3 (norwegisch)
+  const type = o.type ?? "ambitious";
+  // 1) Struktur-Ziel je Typ und Phase.
+  let q: number;
+  if (type === "hobby") q = 1;                                  // Hobby: 1 Q + Longrun in JEDER Aufbauphase (verletzungsärmster Standard [Konvention])
+  else if (k === "base") q = 1;                                 // Base: EIN Qualitätsreiz für alle Typen (Strides/Ökonomie zählen nicht)
+  else if (k === "specific") q = 2;                             // Specific: 2, davon 1 renn-spezifisch (pickPhase liefert keinen 3. harten Slot)
+  else {                                                        // Build/Belastung
+    const strong = o.fitness === "high" && (o.ctlProgress ?? 0) >= 0.5;
+    q = type === "semipro" && o.allowDoubles && strong ? 3 : 2; // Semi-Pro + Doubles + hohe CTL → 3 (norwegisch), sonst 2
+  }
+  // 2) Sicherung (Kolja): sehr kleine Basis (CTL < 40 → fitness „low") trägt die Reizfrequenz nicht → Q −1 (Floor 1).
+  if (o.fitness === "low") q = Math.max(1, q - 1);
+  // 3) V2: niedriges Trainingsalter (< 2 J.) senkt die Intensitätsdichte — eine harte Einheit weniger/Woche (mehr
+  //    Wochen zwischen VO2-Reizen), da die muskuloskelettale Adaptation dem aeroben System nachläuft. Bounded, Floor 1.
+  if (o.trainingYears != null && o.trainingYears < 2) q = Math.max(1, q - 1);
+  return q;
 }
 
 /** Überzählige harte Einheiten → lockerer Dauerlauf. Opfer-Reihenfolge: von hinten (Abwechslungs-Slots zuerst),
  *  der ERSTE harte Slot (= Pflichtreiz der Zieldistanz) fällt zuletzt. Doppel-Tage werden nie halbiert. */
-function applyQualityDensity(picks: WorkoutPick[], o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress: number; allowDoubles: boolean }): WorkoutPick[] {
+function applyQualityDensity(picks: WorkoutPick[], o: { phase: string | null | undefined; fitness: FitnessLevel; ctlProgress: number; allowDoubles: boolean; type?: AthleteType; trainingYears?: number | null }): WorkoutPick[] {
   const budget = qualityBudget(o);
   let weight = picks.reduce((a, p) => a + hardWeight(p), 0);
   if (weight <= budget) return picks;

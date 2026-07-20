@@ -5,6 +5,154 @@ Versionierung nach [SemVer](https://semver.org/lang/de/). Datenbank-Migrationen 
 (keine Bestandsdaten gehen verloren).
 
 ## [Unreleased]
+## [3.3.0] Coach v4, Athleten Modell, Pipeline refractor, Methodik Schule 
+### Hinzugefügt (Coach v4 — Increment 1: Athleten-Modell)
+- **Athleten-Typ als Trainingsprofil** (V1). Neues Profil-Feld (Profil → Athlet → „Trainingsprofil"): **Hoaucbby**
+  (1 harte Einheit + langer Lauf), **Ambitioniert** (2) oder **Semi-Pro** (2–3 mit Doppeleinheiten). Der Typ
+  bestimmt die **Struktur** der Coach-Woche (Anzahl harter Einheiten je Phase); die **Dosis** (Tempo, Umfänge)
+  bleibt weiterhin datenbasiert. Bestandsnutzer ohne gesetzten Typ laufen ohne Verhaltenssprung weiter (Default aus
+  der Historie: wer Doppeleinheiten fährt → Semi-Pro, sonst Ambitioniert = heutige Q-Struktur). *Warum:* Struktur
+  ist eine Lebensentscheidung, Dosis eine physiologische — bisher vermischte `fitnessLevel` beides.
+  (`server/workouts.ts` `qualityBudget`, `server/analysis.ts`, `server/index.ts`, `client/…/AthleteCard.tsx`)
+- **Sicherung „Q-Deckel"**: Trägt die aktuelle Basis (CTL) die gewählte Struktur noch nicht, senkt der Coach die
+  Anzahl harter Einheiten um eine (Floor 1) und macht das im Wizard sichtbar — die Reiz-*Frequenz*, nicht nur die
+  Dosis, ist auf kleiner Basis der Verletzungstreiber. Die Struktur folgt der Wahl, sobald die Form sie hergibt.
+- **Trainingsalter + Verletzungshistorie als Erst-Inputs** (V2). Zwei neue, additive Profil-Felder. Eine
+  **Verletzung in den letzten 24 Monaten** senkt die km-Steigerung konservativer (≈7 % → 5 %/Woche) — frühere
+  Verletzung ist der stärkste bekannte Risikofaktor [van der Worp 2015]; ehrlich gelabelt als Vorsicht, nicht als
+  bewiesene Prävention. **Trainingsalter unter 2 Jahren** senkt die Intensitätsdichte (eine harte Einheit weniger/
+  Woche). Beide wirken nur, wenn gesetzt, sind bounded und je mit `reasons[]` begründet. (`server/workouts.ts`
+  `rampGrowthFactor`, `server/analysis.ts`, `server/index.ts` `block-defaults`)
+- **Masters-Erholungsprofil** (V3, entkoppelt). Ab **45 Jahren** (aus dem vorhandenen Geburtsjahr) plant der Coach
+  automatisch **≥72 h Abstand** zwischen harten Tagen (statt ≥48 h) und einen **etwas längeren Taper**. Alles
+  Default, alles überschreibbar. Der 2:1-Mesozyklus folgt bewusst später mit V9 (Inc 3). (`server/planbuilder.ts`
+  `scheduleWeek`, `server/analysis.ts` Taper-Floors)
+
+### Geändert (Coach v4 — Increment 1b: Pipeline-Refactor + Golden-Netz · intern, verhaltensneutral)
+- **Der Block-Planer (`blockPlan`) ist als benannte Pipeline lesbar gemacht.** Die Wochen-Erzeugung läuft jetzt
+  durch eine `planWeek`-Stufe (Ziele → komponieren → verteilen → rendern → verifizieren); der Cross-Wochen-Zustand
+  ist als sichtbarer Kontext geführt. **Kein Verhaltensänderung** — der erzeugte Plan ist byte-identisch (durch das
+  Golden-Netz abgesichert). (`server/analysis.ts`)
+- **Golden-File-Regressionsnetz** (neu): `server/coachGolden.ts` erzeugt für drei Referenz-Athleten (Hanna/Ben/Mara)
+  DB-frei je einen Block und schreibt seine Strukturmerkmale als Golden-JSON fest. `npm run golden:coach` meldet
+  jede Abweichung (Exit 1), `:update` schreibt bewusst neu. Damit sind künftige Coach-Änderungen abgesichert.
+  (`server/coachGolden.ts`, `server/golden/*.json`, `package.json`)
+- **Verify-Stufe** (neu, pure): `server/coachVerify.ts` prüft einen Block gegen den Invarianten-Katalog (Q-Anzahl je
+  Typ · TSB-Boden · Lauf-Längen · Deload-Kadenz) und wird im Golden-Report gedruckt. Noch **kein** Produktions-Gate
+  — das verdrahtet der Audit-Harness (Inc 4). (`server/coachVerify.ts`)
+
+### Hinzugefügt (Coach v4 — Increment 2 Step 1: Methodik-Schulen · Fundament)
+- **Methodik-Schulen als benannte Rezepte** (V4, Fundament): eine zentrale Datenstruktur `SCHOOL_RECIPES` mit fünf
+  Schulen — **Standard (ausgewogen)** = das heutige Verhalten (Default) plus **Daniels · Norwegian Sub-Threshold ·
+  Polarized (Seiler) · Canova**, je mit Verteilungs-Zielen, bevorzugten Qualitäts-Familien, Doubles-Politik,
+  Longrun-Charakter und Evidenz-Etikett. Eine Wahrheitsquelle statt versteckter Misch-Logik. (`server/workouts.ts`)
+- **Schul-Setting + Distanz-Empfehlung**: neues Profil-Setting `coach_method` (Default „standard"); der Block-Wizard
+  bekommt über `block-defaults` die aktuelle Wahl, eine **Distanz-Empfehlung** (10 km → Polarized · HM → Daniels ·
+  Marathon → Canova) und alle Rezepte zum Anzeigen. **Noch keine Plan-Änderung** — der erzeugte Block ist
+  byte-identisch (Golden-Default unverändert); die Schulen treiben die Komposition erst in Step 2. (`server/index.ts`)
+
+### Geändert (Coach v4 — Increment 2 Step 2: gewählte Schule prägt den Plan)
+- **Die gewählte Methodik-Schule bestimmt den Baseline-Schwerpunkt des Plans** (E2/E3): ohne eigene belastbare
+  Evidenz folgt der Block der Charakteristik der Schule (Distanz-Standard) — z. B. Polarized → VO2-/Ökonomie-Reize,
+  Norwegian → Schwellen-Fokus. Eigene Evidenz (beobachtet/„geprüft") und ein manueller Schwerpunkt stechen die Schule;
+  „standard" bleibt neutral (= heutiges Verhalten). Wiederverwendet den bestehenden, getesteten Schwerpunkt-Pfad —
+  kein Parallelsystem. (`server/coachSynthesis.ts` `deriveCoachingPrefs`, `server/index.ts`)
+- **Die Schule prägt den Longrun-Charakter**: Canova → Longruns mit MP-Blöcken · Daniels → Longruns mit schnellem Ende ·
+  Polarized/Norwegian → rein aerobe Longruns. Wirkt nur in produktiven Phasen und nur, wenn das Ziel-Template
+  phasen-legal ist; „standard" bleibt unberührt. Damit differenzieren sich jetzt **alle** Schulen messbar (auch
+  Daniels/Canova, die zuvor den schwellen-lastigen Standard überlappten). (`server/workouts.ts` `applySchoolLong`)
+- **Golden-Netz um per-Schule-Referenzen erweitert**: `coachGolden.ts` erzeugt je Referenz-Athlet zusätzlich den Block
+  unter seiner empfohlenen Schule und belegt, dass die Woche sich messbar unterscheidet („Schweigen nicht"): Polarized
+  verändert Hanna (VO2-Ökonomie + aerobe Longs), Daniels Ben (Fast-Finish-Longs), Canova Mara (MP-Block-Longs) —
+  Standard-Blöcke bleiben byte-identisch. Die quantitative Verteilungs-%-Steuerung (composeWeek) folgt mit V7. (`server/golden/*`)
+
+### Hinzugefügt (Coach v4 — Increment 2 Step 3: Wizard-Methodik-Schritt V20)
+- **Der Block-Wizard hat einen Methodik-Schritt** (aus dem bisherigen „Schwerpunkt"-Schritt): oben die **Schulwahl**
+  (Standard + Daniels/Norwegian/Polarized/Canova) mit **Auto-Empfehlung** aus der Zieldistanz (★-Markierung),
+  Ein-Satz-Erklärung und **Evidenz-Etikett** (Lehrbuch/Beobachtung/RCT/Praxis) je Schule; darunter der Schwerpunkt als
+  Feinregler INNERHALB der Schule. Die Wahl wirkt **sofort in der Live-Vorschau** (z. B. Polarized → reine aerobe
+  Longruns) und wird beim Abschluss gespeichert. „Standard" bleibt Default. (`client/…/BlockWizard.tsx`,
+  `client/…/api.ts`, `server/index.ts` `block-preview`/`block-setup`/`block-defaults`)
+- **Korrektur (E2): Eine explizit gewählte Schule schlägt jetzt BEOBACHTETE Evidenz** — nur ein kausal *geprüfter*
+  N-of-1-Trial sticht die gewählte Schule (bzw. den Distanz-Standard). Vorher überstimmte jede beobachtete Evidenz die
+  Schule, weshalb ein Schulwechsel bei Läufern mit Historie fast nichts in der Vorschau bewegte. Jetzt wirkt die Wahl
+  sichtbar: Polarized dreht den freien Qualitäts-Slot auf VO2, Norwegian auf Sub-Schwelle (der Pflicht-Reiz bleibt).
+  (`server/coachSynthesis.ts` `deriveCoachingPrefs`)
+- **Ruhigeres Wizard-Layout**: die Schul- und Schwerpunkt-Erklärungen **sowie die „Wozu dieser Schritt?"-Beschreibung
+  jedes Wizard-Schritts** sind jetzt einklappbar (`<details>`, standardmäßig zu) — sichtbar bleiben Titel, kompakte
+  Empfehlung, Auswahl-Buttons und Gesundheits-Hinweise. (`client/…/BlockWizard.tsx`)
+
+### Geändert (Lernen-Seite — neues Fachlexikon „Handbuch")
+- **Die Lernen-Seite ist ein vollständiges, klinisches Fachlexikon geworden.** Statt Tutorial-Hub + kurzer
+  Glossar-Liste jetzt: ein durchsuchbares Nachschlagewerk zu **jeder** sportwissenschaftlichen Analyse, Einheit und
+  Abkürzung, die RunLog nutzt — **8 Kapitel, 52 Einträge** (Trainingslast & Form · Zonen & Schwellen · Fähigkeit ·
+  Readiness · **Zyklus-Steuerung** · Plan & Periodisierung · **Methodik-Schulen (Grundgerüst)** · **Modelle &
+  Diagnostik**). Jeder Eintrag mit Definition, Richtwert/Referenz-Skala, „In RunLog"-Nutzung und einem
+  **„→ ansehen"-Deeplink** zu der Stelle, wo der eigene Wert live steht (TSB→Dashboard, EF→Wochenbericht,
+  VDOT→Bestzeiten, Zonen→Einstellungen …). (`client/src/pages/Lernen.tsx`, `client/src/styles.css`)
+- **Wissenschaftliche Haltung sichtbar gemacht:** ein Evidenz-Etiketten-System (RCT/Meta · Beobachtung · Konvention ·
+  Modell) mit Literatur-Ankern an den Schlüssel-Einträgen (Seiler, Stöggl & Sperlich, Skiba, Mujika, Impellizzeri,
+  McNulty …) — beobachtet ≠ kausal ≠ prognostiziert, überall gleich.
+- **Geführter Einstieg als echte Übersicht:** alle 5 Tutorial-Abschnitte (mit Fortschritt/Status) und alle 10
+  Daten-Kino-Szenen auf einen Blick, aus den echten App-Quellen (`SECTIONS`, `CINEMA_READY`).
+- **Design:** eigene, nicht-generische Identität (Index-Navigation, Monospace für Werte/Einheiten, Referenz-Skalen
+  wie ein Laborbefund) und **minimalistische Linien-Piktogramme statt Emoji** (Inline-SVG-Sprite, theme-fähig).
+  Alle Stile additiv `lx-`-prefixed; Koljas Bestands-Styles unberührt.
+
+### Hinzugefügt (Coach v4 — Increment 0: Fundament)
+- **Der Wettkampf-Block bleibt jetzt erhalten** (V16). Bisher war er nach jedem Seitenwechsel weg und musste neu
+  geladen werden. Neu: Der zuletzt gerechnete Block wird als Snapshot gespeichert (additive Tabelle `coach_blocks`,
+  ein Snapshot je Profil) und beim Öffnen des Coaches automatisch wieder angezeigt. **„↻ neu rechnen"** ist die
+  explizite Aktualisierung — es wird nichts mehr still im Hintergrund neu berechnet; die Timeline nennt das
+  Speicherdatum. Isabel (Tutorial) rechnet wegen des Zeit-Freezes weiterhin frisch. (`server/db.ts`,
+  `server/index.ts`, `client/src/lib/api.ts`, `client/src/pages/Coach.tsx`)
+
+### Behoben (Coach v4 — Increment 0: Lesbarkeit)
+- **Efficiency-Faktor im Dark Mode lesbar** (Wochenbericht). Die Tageskacheln mit „⚡ hart davor" (harte Einheit/
+  Wettkampf am Vortag) hatten einen fest hellen Warn-Hintergrund (`#fdf6ec`) — im Dark Mode stand die helle Zahl
+  darauf fast unsichtbar. Neu: theme-fähiger Warn-Tint (dieselbe Konvention wie `.flag.warn`). (`client/src/styles.css`)
+
+### Geändert (Coach v4 — Increment 0: Prognose-Linien überall)
+- **Die VO₂max-Prognose-Linie erscheint jetzt bei jedem vorhandenen VDOT — auch ohne Wunschzeit** (V17). Sie war
+  bisher an eine eingetragene Zielzeit gekoppelt und blieb z. B. bei Profilen ohne Ziel leer. Neu: Sie läuft als
+  **Halten-/Dosis-Projektion vom Ist-VDOT** (der Zuwachs folgt der geplanten Wochenlast, nicht dem Wunsch). Die
+  geplanten **Trainings-Paces ziel-loser Blöcke bleiben unverändert** — es ändert sich nur die Anzeige, nicht der
+  Plan. Fehlt ein VDOT ganz (keine Bestzeit/kein Rennen), steht statt einer stillen leeren Achse ein ehrlicher
+  Hinweis; die Form-Readiness-Linie lief ohnehin schon aus der PMC-Form. (`server/analysis.ts`,
+  `client/src/charts/BlockTimeline.tsx`)
+
+### Geändert (Coach — die Woche folgt dem Umfang, nicht umgekehrt)
+- **Der Wochenplan wird jetzt AUS dem km-Umfang gebaut** (Top-down wie in der Trainingslehre: erst Umfang, dann
+  Verteilung), statt aus einem TSS-Ziel, an das die km hinterher nur ±45 % angeglichen werden durften. Folgen des
+  alten Wegs: Start-/Max-km im Wizard blieben fast wirkungslos (eine Woche konnte 45 km kaum unterschreiten und
+  ~70 km kaum überschreiten), und die Aufbauwochen erreichten nie die Last, die die Periodisierung vorgab. Neu:
+  Anzahl **und** Länge der Läufe folgen dem Umfang — 15 km/Woche ergeben 3 richtige Läufe (statt 7 Mini-Läufen à
+  10 min), 95 km ergeben 6–7 Läufe (statt eines 3-Stunden-„Easy-Laufs"). (`server/planbuilder.ts` neu `composeWeek`,
+  `server/workouts.ts` km-Auftrag, `server/analysis.ts` km-first, `server/index.ts`)
+- **Start-/Max-km im Wizard werden jetzt eingehalten.** Vorher plante die Vorschau bei „Max 15 km" rund 45 km; jetzt
+  ~15 km. Der Wizard schlägt als Maximum das kleinste aus **sicherem Aufbau · Zeitbudget · Last-der-Aufbauphase**
+  vor und nennt, welche Grenze bindet.
+- **Die Aufbauwochen fordern wieder.** Produktive Wochen zielen auf eine Wochenlast, die die Form messbar ins
+  Minus zieht (ACWR ~1,25–1,35 ⇒ TSB ~−10…−20 — die klassische „produktive Ermüdung"). Vorher blieb die Form im
+  „Aufbau" positiv (TSB ~0), also war es in Wahrheit ein Erhaltungsblock, und die Readiness-Kurve konnte gar nicht
+  einbrechen. Jede zusätzliche Härte ist doppelt gesichert: CTL-Rampe ≤ +5/Woche, **Form-Boden TSB −30** (Grund
+  `tsb_floor`), km-Ceiling (ACWR ≤ 1,45) — und ein zu hoch gestecktes km-Ziel kann diese Sicherungen nicht umgehen
+  (Grund `load_cap`).
+
+### Behoben (Coach — Readiness & Struktur)
+- **Die Readiness-Kurve zeigt jetzt die Form der ganzen WOCHE, nicht den Montags-Stichtag.** `tsbStart` fiel oft auf
+  einen Tag nach dem Ruhetag, an dem die Ermüdung kurz abgeflossen ist — die Kurve zeigte damit den frischesten
+  Moment der Woche und blieb im Aufbau flach, obwohl der Athlet die Woche über bei TSB ~−12 unterwegs ist. Neu:
+  Wochen-Durchschnitt (`tsbAvg`). (`server/analysis.ts`, `client/src/lib/blockReadiness.ts`)
+- **Strides verdrängen keine echte Qualität mehr.** Die kurzen neuromuskulären Steigerungen (≈ 0 km) teilten sich
+  fälschlich das Schwellen-/VO2-km-Budget einer Woche — bei fitten Läufern fiel dadurch eine echte Schwelleneinheit
+  weg. Leichte Reize (effort ≤ 2) bekommen jetzt eine kleine feste Portion außerhalb des Qualitäts-Topfs.
+- **Jede harte Qualität bekommt ihre natürliche Größe.** Statt eines starr geteilten 20-%-Topfs (der bei fitten
+  Läufern mit schnellen Paces nicht für zwei Sessions reichte) bekommt jede Session ihre ~35-min-Größe, gedeckelt
+  nur dadurch, dass Longrun + mindestens ein Easy-Lauf noch in die Woche passen.
+- **Über das ganze Fitness-Spektrum geprüft** (Beta-Profile Anfänger → Elite → Ultra + Isabel): Die Struktur
+  adaptiert (Tom 20 km/4 Läufe · Noah-Elite 97 km/7 Läufe), kein Mini-Lauf, kein überlanger Easy-Lauf, keine
+  Trainingswoche unter TSB −30, CTL-Rampe je Woche sicher.
 
 ## [3.2.2] – 2026-07-15 — Strava-Scope-Fix
 

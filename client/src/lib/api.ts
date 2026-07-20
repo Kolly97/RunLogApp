@@ -198,6 +198,9 @@ export interface OptimalZones {
 }
 export interface OptimalZonesResult { zones: OptimalZones | null; vdot: number | null; today: string }
 // v3.1.0 — Block-Wizard: gebündelte Engine-Vorschläge (Ziel · Zwischenziele · Umfang · Zeit · Zonen · Schwerpunkt).
+// v3.3.0 (Coach v4, V4): Methodik-Schule — „standard" = heutiges Verhalten, 4 benannte Schulen Opt-in.
+export type CoachMethod = "standard" | "daniels" | "norwegian" | "polarized" | "canova";
+export interface SchoolOption { key: CoachMethod; label: string; blurb: string; evidence: string; distBuild: { easy: number; threshold: number; vo2: number }; doubles: string }
 export interface BlockDefaults {
   today: string;
   race: { id: number; name: string; date: string; distance_m: number | null; goal_time_s: number | null } | null;
@@ -209,6 +212,7 @@ export interface BlockDefaults {
   availability: Availability | null;
   zones: { optimal: OptimalZones | null; current: { pace_zones: Record<number, number> | null; hr_zones: unknown; threshold_pace: number | null; lt1_pace: number | null }; vdot: number | null };
   emphasis: { suggested: string | null; label: string | null; tier: "beobachtet" | "geprüft" | null; confidence: string | null; rationale: string; current: string | null };
+  method: { current: CoachMethod; explicit: boolean; recommended: CoachMethod; recommendedLabel: string; recommendedBlurb: string; recommendedEvidence: string; options: SchoolOption[] };
   healthCap: { loadFactor: number; dropTopIntensity: boolean; reason?: string | null } | null;
   upcomingRaces: UpcomingRace[];   // v3.1.0: Rollenvergabe im Wizard-Schritt „Wettkämpfe"
 }
@@ -223,6 +227,7 @@ export interface BlockSetupBody {
   fromWeek?: number | null;
   applyPhases?: boolean;   // abgeleitete Phasen (3:1 + Taper) in den Saisonplan schreiben
   raceRoles?: { id: number; role: RaceRole }[];   // nur explizit geänderte Rollen
+  method?: CoachMethod;    // v3.3.0 (V4): gewählte Methodik-Schule
   settingsOnly?: boolean;  // „Speichern & schließen": nur Einstellungen, keine Ziel-km/Phasen
 }
 /** Vorschau: dieselben Felder wie das Setup — nur wird nichts gespeichert. */
@@ -231,6 +236,7 @@ export interface BlockPreviewBody {
   availability?: Availability | null;
   startKm?: number | null; maxKm?: number | null;
   emphasis?: string | null; emphasisMode?: "auto" | "manual";
+  method?: CoachMethod;      // v3.3.0 (V20): Schulwahl wirkt sofort in der Vorschau
   derivePhases?: boolean;
   raceRoles?: { id: number; role: RaceRole }[]; // v3.2.0: Rollenwechsel wirkt sofort in der Vorschau (schreibt nichts)
 }
@@ -537,6 +543,7 @@ export interface BlockPlan {
   coaching?: CoachingPrefs;          // Coach ToDo 35: adaptives, faktenbasiertes Verdikt, das den Plan steuert
   capacity?: WeeklyCapacity;         // v3.2.0: Zeitbudget-Obergrenze (km/TSS) — dieselbe Zahl, mit der geplant wurde
   freshness?: string;                // Frische des dose_response-Laufs (fresh|stale|none|running)
+  savedAt?: string;                  // V16: Datum des gespeicherten Snapshots (nur beim Laden aus coach_blocks gesetzt)
 }
 
 // ToDo 2/13/20 — Intervall-/Effort-Trend (Agent A liefert via /api/intervals/trend, Agent C visualisiert).
@@ -805,6 +812,8 @@ export const api = {
   // Vorschau: derselbe echte Blockplan, aber mit den noch NICHT gespeicherten Wizard-Eingaben. Schreibt nichts.
   blockPreview: (b: BlockPreviewBody, signal?: AbortSignal) =>
     j<BlockPlan>("/api/coach/block-preview", { method: "POST", body: JSON.stringify(b), signal }),
+  // V16: den gespeicherten Block-Snapshot laden (überlebt Seitenwechsel); `null` = noch keiner gerechnet.
+  coachBlock: () => j<BlockPlan | null>("/api/coach/block"),
   workouts: () => j<WorkoutInfo[]>("/api/workouts"), // v1.8.0 Bibliothek für Block-Präferenzen
   customWorkouts: () => j<CustomWorkout[]>("/api/custom-workouts"), // v1.9.0 Z14
   estimateCustomWorkout: (b: CustomInput) => j<CustomEstimate>("/api/custom-workouts/estimate", { method: "POST", body: JSON.stringify(b) }),

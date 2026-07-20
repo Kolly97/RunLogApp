@@ -4,7 +4,7 @@
 // nicht nur bekommen). Geschrieben wird nur auf Klick — „Speichern & schließen" (nur Einstellungen) oder
 // „Block erstellen" (Einstellungen + Ziel-km + Phasen).
 import { useEffect, useMemo, useState } from "react";
-import { api, type Availability, type BlockDefaults, type BlockPreviewBody, type OptimalZones, type RaceRole, type WeeklyCapacity } from "../../lib/api.ts";
+import { api, type Availability, type BlockDefaults, type BlockPreviewBody, type CoachMethod, type OptimalZones, type RaceRole, type WeeklyCapacity } from "../../lib/api.ts";
 import { fmtDur, paceStr } from "../../lib/util.ts";
 import { OverlayPortal } from "../OverlayPortal.tsx";
 import BlockPreview from "./BlockPreview.tsx";
@@ -14,7 +14,13 @@ const EMPHASIS = [
   { v: "ausgewogen", l: "Ausgewogen" }, { v: "lt1", l: "LT1 (aerobe Schwelle)" }, { v: "schwelle", l: "Schwelle (LT2)" },
   { v: "vo2", l: "VO2max" }, { v: "berg", l: "Berg" }, { v: "norwegian", l: "Norwegian (sub-T)" }, { v: "fartlek", l: "Fartlek" },
 ];
-const STEPS = ["Ziel", "Wettkämpfe", "Umfang", "Zeit", "Zonen", "Schwerpunkt", "Fertig"] as const;
+const STEPS = ["Ziel", "Wettkämpfe", "Umfang", "Zeit", "Zonen", "Methodik", "Fertig"] as const;
+// v3.3.0 (V20): Evidenz-Etikett je Schule (kleine Chip-Darstellung; das volle Token-Set kommt mit V12/Inc 6).
+const EV_LABEL: Record<string, string> = { standard: "Standard", lehrbuch: "Lehrbuch", beobachtung: "Beobachtung", rct: "RCT/Meta", praxis: "Trainer-Praxis" };
+const EV_COLOR: Record<string, string> = { standard: "var(--muted)", lehrbuch: "#3b82f6", beobachtung: "#d97706", rct: "#16a34a", praxis: "#8b5cf6" };
+function EvChip({ e }: { e: string }) {
+  return <span className="tiny" style={{ display: "inline-block", padding: "1px 7px", borderRadius: 999, border: `1px solid ${EV_COLOR[e] ?? "var(--line)"}`, color: EV_COLOR[e] ?? "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{EV_LABEL[e] ?? e}</span>;
+}
 export const STEP_TIME = 3;         // Direkteinstieg aus der Coach-Setup-Zeile („✎ Ändern")
 const ROLES: { v: RaceRole; l: string; hint: string }[] = [
   { v: "main", l: "Hauptrennen", hint: "Voller Taper, der Block plant rückwärts von hier." },
@@ -31,7 +37,10 @@ function Step({ n, title, why, children }: { n: number; title: string; why: stri
     <div>
       <div className="tiny muted" style={{ letterSpacing: ".08em", textTransform: "uppercase" }}>Schritt {n} von {STEPS.length - 1}</div>
       <h2 style={{ margin: "4px 0 6px" }}>{title}</h2>
-      <p className="tiny muted" style={{ margin: "0 0 14px", lineHeight: 1.55, maxWidth: "62ch" }}>{why}</p>
+      <details style={{ margin: "0 0 14px" }}>
+        <summary className="tiny muted" style={{ cursor: "pointer", userSelect: "none", letterSpacing: ".04em" }}>Wozu dieser Schritt?</summary>
+        <p className="tiny muted" style={{ margin: "6px 0 0", lineHeight: 1.55, maxWidth: "62ch" }}>{why}</p>
+      </details>
       {children}
     </div>
   );
@@ -104,6 +113,7 @@ export default function BlockWizard({ weekNo, startStep = 0, onClose, onDone, on
   const [av, setAv] = useState<Availability>({ minutesByWeekday: [0, 0, 0, 0, 0, 0, 0] });
   const [emphasis, setEmphasis] = useState<string>("ausgewogen");
   const [emphasisMode, setEmphasisMode] = useState<"auto" | "manual">("auto");
+  const [method, setMethod] = useState<CoachMethod>("standard");   // v3.3.0 (V20): Methodik-Schule
   const [takeZones, setTakeZones] = useState(false);
   const [applyPhases, setApplyPhases] = useState(true);   // Phasen (3:1 + Taper) in den Saisonplan schreiben
   const [roles, setRoles] = useState<Record<number, RaceRole>>({});       // aktuelle Rollen-Auswahl
@@ -123,6 +133,7 @@ export default function BlockWizard({ weekNo, startStep = 0, onClose, onDone, on
       setAv(r.availability ?? { minutesByWeekday: [0, 60, 0, 60, 0, 0, 90], longRunDay: 6, hardDays: [1, 3] });
       setEmphasis(r.emphasis.suggested ?? r.emphasis.current ?? "ausgewogen");
       setEmphasisMode(r.emphasis.suggested ? "auto" : "manual");
+      setMethod(r.method?.current ?? "standard");
       const rr = Object.fromEntries((r.upcomingRaces ?? []).map((x) => [x.id, x.role])) as Record<number, RaceRole>;
       setRoles(rr); setRoles0(rr);
     }).catch(() => setErr("Konnte die Vorschläge nicht laden."));
@@ -163,6 +174,7 @@ export default function BlockWizard({ weekNo, startStep = 0, onClose, onDone, on
         emphasis: emphasisMode === "manual" ? emphasis : (d.emphasis.suggested ?? emphasis),
         emphasisMode, fromWeek: weekNo, applyPhases,
         raceRoles: changedRoles(),
+        method,
         settingsOnly,
       });
       setDirty(false);
@@ -196,10 +208,11 @@ export default function BlockWizard({ weekNo, startStep = 0, onClose, onDone, on
     maxKm: maxKm || null,
     emphasis: emphasisMode === "manual" ? emphasis : (d?.emphasis.suggested ?? null),
     emphasisMode,
+    method,
     derivePhases: applyPhases,
     raceRoles: Object.entries(roles).map(([id, role]) => ({ id: Number(id), role })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [weekNo, av, startKm, maxKm, emphasis, emphasisMode, applyPhases, d?.emphasis.suggested, rolesKey]);
+  }), [weekNo, av, startKm, maxKm, emphasis, emphasisMode, method, applyPhases, d?.emphasis.suggested, rolesKey]);
 
   const body = () => {
     if (err && !d) return <p className="flag danger"><span className="dot" />{err}</p>;
@@ -409,26 +422,52 @@ export default function BlockWizard({ weekNo, startStep = 0, onClose, onDone, on
       );
 
       case 5: return (
-        <Step n={6} title="Schwerpunkt" why="Letzte Frage: Welcher Reiz bekommt den freien Qualitäts-Slot? Die Pflicht-Einheiten deiner Distanz stehen ohnehin — beim Marathon der lange Lauf und die Schwelle, beim 10er VO2max. Was deine Daten sagen, darf den REST drehen: ein beobachtetes Muster sanft, ein kausal geprüftes Experiment stark. Nichts davon kippt die Pflicht — und Gesundheits-Signale kippen alles.">
-          <Suggestion>
-            {d.emphasis.suggested
-              ? <>Vorschlag aus deinen Daten: <strong>{d.emphasis.label}</strong> ({d.emphasis.tier}{d.emphasis.confidence ? `, Konfidenz ${d.emphasis.confidence}` : ""}). {d.emphasis.rationale}</>
-              : <>{d.emphasis.rationale}</>}
-          </Suggestion>
-          <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        <Step n={6} title="Methodik & Schwerpunkt" why="Zwei Ebenen: Erst die SCHULE — die Denkweise, nach der deine Woche gebaut wird (Daniels-Präzision, Norwegian-Schwellenvolumen, Polarized hart/locker, Canova-Renntempo). Keine ist für jeden überlegen; darum empfiehlt der Coach eine aus deiner Distanz, du entscheidest — „Standard“ bleibt die bewährte Mischung. Dann der SCHWERPUNKT — der Feinregler INNERHALB der Schule für den freien Qualitäts-Slot; deine Daten drehen ihn sanft (beobachtet) oder stark (kausal geprüft), Pflicht-Einheiten und Gesundheits-Signale übersteuern alles.">
+          {/* v3.3.0 (V20): Methodik-Schule — kompakt; Erklärungen einklappbar (ruhiger). */}
+          <div className="tiny" style={{ marginBottom: 6 }}>
+            Empfohlen für <strong>deine Distanz</strong>: <strong>{d.method.recommendedLabel}</strong> <EvChip e={d.method.recommendedEvidence} />
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            {d.method.options.map((o) => (
+              <button key={o.key} className={`sm ${method === o.key ? "" : "ghost"}`} style={{ padding: "6px 12px", fontWeight: 600 }}
+                onClick={() => { setMethod(o.key); setDirty(true); }} title={o.blurb}>
+                {o.label}{o.key === d.method.recommended ? " ★" : ""}
+              </button>
+            ))}
+          </div>
+          {(() => { const sel = d.method.options.find((o) => o.key === method); return sel ? (
+            <details style={{ marginBottom: 12 }}>
+              <summary className="tiny muted" style={{ cursor: "pointer", userSelect: "none" }}>Was bedeutet „{sel.label}“?</summary>
+              <p className="tiny muted" style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+                <EvChip e={sel.evidence} /> {sel.blurb}
+                <br /><span style={{ opacity: .75 }}>Aufbau-Verteilung ~{sel.distBuild.easy}/{sel.distBuild.threshold}/{sel.distBuild.vo2} (easy/Schwelle/VO2){sel.doubles === "active" ? " · Doppeleinheiten aktiv" : ""}.</span>{" "}
+                Keine Schule ist für jeden überlegen — die Wahl und deine eigene Evidenz entscheiden. „Standard“ = die bewährte Mischung.
+              </p>
+            </details>
+          ) : null; })()}
+          <div className="tiny muted" style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginBottom: 6, fontWeight: 600 }}>Schwerpunkt — Feinregler innerhalb der Schule</div>
+          <div className="row" style={{ gap: 6, marginBottom: 8 }}>
             <button className={`sm ${emphasisMode === "auto" ? "" : "ghost"}`} onClick={() => { setEmphasisMode("auto"); if (d.emphasis.suggested) setEmphasis(d.emphasis.suggested); setDirty(true); }}>Auto (Evidenz)</button>
             <button className={`sm ${emphasisMode === "manual" ? "" : "ghost"}`} onClick={() => { setEmphasisMode("manual"); setDirty(true); }}>Selbst wählen</button>
           </div>
           {emphasisMode === "manual" && (
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {EMPHASIS.map((o) => (
                 <button key={o.v} className={`sm ${emphasis === o.v ? "" : "ghost"}`} style={{ padding: "6px 13px", fontWeight: 600 }}
                   onClick={() => { setEmphasis(o.v); setDirty(true); }}>{o.l}</button>
               ))}
             </div>
           )}
+          <details style={{ marginBottom: 4 }}>
+            <summary className="tiny muted" style={{ cursor: "pointer", userSelect: "none" }}>Warum dieser Schwerpunkt?</summary>
+            <p className="tiny muted" style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+              {d.emphasis.suggested
+                ? <>Vorschlag aus deinen Daten: <strong>{d.emphasis.label}</strong> ({d.emphasis.tier}{d.emphasis.confidence ? `, Konfidenz ${d.emphasis.confidence}` : ""}). {d.emphasis.rationale}</>
+                : <>{d.emphasis.rationale}</>}
+            </p>
+          </details>
           {d.healthCap?.reason && (
-            <p className="tiny" style={{ color: "var(--warn)", marginTop: 10 }}>{d.healthCap.reason} — Gesundheit übersteuert jeden Schwerpunkt.</p>
+            <p className="tiny" style={{ color: "var(--warn)", marginTop: 8 }}>{d.healthCap.reason} — Gesundheit übersteuert jeden Schwerpunkt.</p>
           )}
         </Step>
       );

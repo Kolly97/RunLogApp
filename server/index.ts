@@ -2,7 +2,7 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { db, initSchema, getSetting, setSetting, getProfileSetting, setProfileSetting, renumberWeeks, activeProfile, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
+import { db, initSchema, getSetting, setSetting, getProfileSetting, setProfileSetting, renumberWeeks, activeProfile, saveCoachBlock, getCoachBlock, DEFAULT_HR_ZONES, DB_PATH } from "./db.ts";
 import {
   plannedTss,
   computePmc,
@@ -95,7 +95,7 @@ const PRODUCTIVE_BLOCK_ACWR = 1.08;
 // Ziel-acute:chronic einer Belastungswoche (Spiegel von PRODUCTIVE_ACWR_BUILD in analysis.ts) — daraus leitet der
 // Wizard ab, wie viele km die Aufbauphase überhaupt TRÄGT.
 const PRODUCTIVE_ACWR_BUILD_TARGET = 1.30;
-import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, type CustomInput, type WorkoutTemplate } from "./workouts.ts";
+import { WORKOUT_LIBRARY, setCustomWorkouts, customWorkoutList, estimateCustom, renderWorkout, fitnessLevel, distanceConcept, rampGrowthFactor, schoolRecipe, recommendMethod, SCHOOL_RECIPES, type CustomInput, type WorkoutTemplate, type AthleteType, type InjuryHistory, type CoachMethod } from "./workouts.ts";
 import { ensureTutorialProfile, regenerateTutorial, deleteTutorial, tutorialProfileId, TUTORIAL_TODAY } from "./tutorial.ts";
 import {
   stravaStatus, stravaLogin, stravaCallback, stravaSync, stravaEnrich, stravaRelinkEfforts, fetchAthleteZonesAndFtp,
@@ -120,7 +120,10 @@ app.use((req, _res, next) => { if (req.method !== "GET" && req.method !== "HEAD"
 initSchema();
 
 /** Das ECHTE Datum. Nur dort verwenden, wo die Wanduhr gemeint ist (Strava-Limits, Zeitstempel, Backups). */
-const realToday = () => new Date().toISOString().slice(0, 10);
+const realToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 // Aktives Profil (leichter Account-Wechsel, ToDo #9): alle Daten-Queries filtern darauf.
 const pid = () => activeProfile();
@@ -327,6 +330,31 @@ app.post("/api/strava/import-zones", async (req, res) => {
     res.status(/\b40[13]\b/.test(String(e)) ? 403 : 500).json({ error: msg });
   }
 });
+
+// v3.3.0 (Coach v4, V1): Athleten-Typ = Struktur-Wahl. Nicht gesetzt → aus der Historie abgeleitet (wer Doubles fährt,
+// trainiert semi-pro-artig; sonst „ambitious"), damit Bestandsnutzer OHNE Verhaltenssprung weiterlaufen (heutige Q-Struktur
+// bleibt exakt erhalten). „Hobby" ist immer eine explizite Wahl, kein abgeleiteter Default. Eine Wahrheitsquelle für beide Caller.
+function resolveAthleteType(availability: Availability | null): AthleteType {
+  const at = (getProfileSetting("athlete", {}) as { athlete_type?: AthleteType }).athlete_type;
+  return at ?? (availability?.allowDoubles ? "semipro" : "ambitious");
+}
+// v3.3.0 (V2): Anamnese des aktiven Profils — Verletzungshistorie (senkt die km-Rampe) + Trainingsalter (senkt die
+// Intensitätsdichte). Beide additive `athlete`-Felder; nicht gesetzt ⇒ null ⇒ keine Wirkung.
+function resolveAnamnesis(): { injuryHistory: InjuryHistory | null; trainingYears: number | null } {
+  const a = getProfileSetting("athlete", {}) as { injury_history?: InjuryHistory; training_years?: number | null };
+  return { injuryHistory: a.injury_history ?? null, trainingYears: a.training_years != null ? Number(a.training_years) : null };
+}
+// v3.3.0 (V3): Masters ab 45 (aus vorhandenem `birth_year`). Steuert ≥72 h Spacing + längeren Taper — Default, überschreibbar.
+function resolveMasters(today: string): boolean {
+  const by = (getProfileSetting("athlete", {}) as { birth_year?: number | null }).birth_year;
+  return by != null && Number(by) > 0 && Number(today.slice(0, 4)) - Number(by) >= 45;
+}
+// v3.3.0 (Coach v4, V4): gewählte Methodik-Schule des aktiven Profils. Default „standard" = heutiges Verhalten
+// (Kolja-Entscheid) — die 4 benannten Schulen sind Opt-in. In Inc 2 Step 1 nur Setting + Empfehlung (kein Plan-Eingriff).
+function resolveCoachMethod(): CoachMethod {
+  const m = getSetting<string>(`coach_method_${pid()}`, "standard");
+  return (m in SCHOOL_RECIPES ? m : "standard") as CoachMethod;
+}
 
 // Personen-gebundene Settings landen profil-scoped (`key:<pid>`), Rest global.
 const PERSON_SETTING_KEYS = new Set(["athlete", "thresholds", "phase_dist_overrides"]);
@@ -811,6 +839,7 @@ interface BlockPlanOverrides {
   maxKm?: number | null;
   emphasis?: string | null;                    // Schwerpunkt-Override (nur dieser Aufruf)
   emphasisMode?: "auto" | "manual" | null;
+  method?: CoachMethod | null;                 // v3.3.0 (V4/V20): Methodik-Schule-Override (Wizard-Live-Vorschau)
   derivePhases?: boolean;                      // Phasen aus derivePhaseSequence statt roher Saisonplan-Phasen
   raceRoles?: { id: number; role: "main" | "tuneup" | "ignore" }[]; // v3.2.0: Rollen VIRTUELL (Vorschau schreibt nichts)
 }
@@ -914,11 +943,14 @@ async function buildBlockPlanFor(o: BlockPlanOverrides = {}): Promise<Record<str
   // belastbar (gestuft), sonst Default; manueller Schwerpunkt bleibt Override; Health-Flags kappen hart.
   const verdict = await buildTrainingVerdict(pid());
   const emphasisMode = (o.emphasisMode ?? (getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto")) === "manual" ? "manual" : "auto";
+  const methodEff = o.method ?? resolveCoachMethod(); // v3.3.0 (V4/V20): Override der Wizard-Live-Vorschau, sonst das gespeicherte Setting
   const coaching: CoachingPrefs = deriveCoachingPrefs(verdict, {
     healthFlags: mlGetReadiness(pid()).flags,
     readinessLevel: readiness?.level ?? null,
     availabilityEmphasis: availability?.emphasis ?? null,
     emphasisMode,
+    schoolBaseline: schoolRecipe(methodEff).baselineEmphasis, // v3.3.0 (V4): Distanz-Standard-Schule als Baseline
+    schoolLabel: schoolRecipe(methodEff).label,
   });
   // Regime: Verdikt-Achse bevorzugt (konsistent mit den Karten), sonst Marker-Block-Inferenz als Fallback.
   const methodPreference = coaching.regime
@@ -953,7 +985,7 @@ async function buildBlockPlanFor(o: BlockPlanOverrides = {}): Promise<Record<str
       cycleByWeek!.set(w.week_no, { phase: ph, emphasis: bias.emphasis, loadFactor: bias.loadFactor, qualityVolFactor: bias.qualityVolFactor, tier: bias.tier, soften: bias.soften, reason: bias.reason });
     });
   }
-  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, emphasisTier: coaching.emphasisSource === "evidence" ? coaching.emphasis?.tier ?? null : null, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, taperDays, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek });
+  const plan = blockPlan({ weeks, historicalDailyTss, from, today, raceDate, zones, availability, readinessLevel: readiness?.level ?? null, methodPreference, emphasisPreference: coaching.emphasisEffective, emphasisTier: coaching.emphasisSource === "evidence" ? coaching.emphasis?.tier ?? null : null, healthCap: coaching.healthCap, goalDistanceM, curVdot: cur.vdot, goalTimeS, tuneups: tuneupArgs, taperWeeks, taperDays, kmCeilingBase: kmCeil.ceilingKm, volumeByFamily: vol.factors, cycleByWeek, athleteType: resolveAthleteType(availability), ...resolveAnamnesis(), masters: resolveMasters(today), method: methodEff });
   for (const n of vol.notes) plan.reasons.push({ code: "rpe_loop", text: n });
   // Baustein 2.3: individuelle Fitness-Prognose (IR-Faltung) additiv je Woche, wenn ein Dose-Response-Run vorliegt.
   const doseEff = mlGetEffects(pid());
@@ -967,11 +999,27 @@ async function buildBlockPlanFor(o: BlockPlanOverrides = {}): Promise<Record<str
 }
 
 app.get("/api/plan/block-suggestion", async (req, res) => {
-  res.json(await buildBlockPlanFor({
+  const plan = await buildBlockPlanFor({
     week: req.query.week != null ? Number(req.query.week) : null,
     taper: req.query.taper != null ? Number(req.query.taper) : null,
     taperDays: req.query.taperDays != null ? Number(req.query.taperDays) : null,
-  }));
+  });
+  // V16: den kanonischen Block persistieren, damit er beim Seitenwechsel erhalten bleibt. NUR den „echten" Block
+  // (ohne Taper-Parameter = nicht die „Peak ausrichten"-Vorschau) und NICHT für Isabel (Seed-Version-Staleness).
+  const isPreview = req.query.taper != null || req.query.taperDays != null;
+  if (!isPreview && pid() !== tutorialPidCached()) {
+    try { saveCoachBlock(pid(), JSON.stringify(plan), req.query.week != null ? Number(req.query.week) : null, typeof plan.raceDate === "string" ? plan.raceDate : null, todayIso()); } catch { /* Persistenz ist best-effort, nie den Plan blockieren */ }
+  }
+  res.json(plan);
+});
+
+// V16: den gespeicherten Block laden (Coach-Mount), statt bei jedem Seitenwechsel neu zu rechnen. `null` = noch keiner.
+app.get("/api/coach/block", (_req, res) => {
+  if (pid() === tutorialPidCached()) return res.json(null); // Isabel rechnet immer frisch (Zeitfreeze/Seed)
+  const row = getCoachBlock(pid());
+  if (!row) return res.json(null);
+  try { res.json({ ...JSON.parse(row.snapshot), savedAt: row.saved_at }); }
+  catch { res.json(null); }
 });
 
 // v3.1.0 — Live-Vorschau des Block-Wizards: derselbe echte Blockplan, aber mit den noch NICHT gespeicherten
@@ -985,6 +1033,7 @@ app.post("/api/coach/block-preview", async (req, res) => {
     maxKm: b.maxKm ?? null,
     emphasis: b.emphasis ?? null,
     emphasisMode: b.emphasisMode ?? null,
+    method: b.method ?? null,               // v3.3.0 (V20): Schulwahl wirkt sofort in der Vorschau
     derivePhases: b.derivePhases !== false, // Default: an (der Wizard plant den Block, nicht die Alt-Phasen)
     raceRoles: b.raceRoles ?? undefined,    // v3.2.0: Rollenwechsel wirkt sofort in der Vorschau
   }));
@@ -1027,6 +1076,15 @@ app.get("/api/coach/block-defaults", async (_req, res) => {
   const pmcFrom = minIso(earliestDataDate() ?? today, today);
   const pmcNow = computePmc(dailyTssMap(pmcFrom, today), pmcFrom, today, today);
   const chronicTss = (pmcNow.length ? pmcNow[pmcNow.length - 1].ctl : 0) * 7;
+  // v3.3.0 (V1): Athleten-Typ + Widerspruchs-Warnung. Selbstwahl gilt; die Warnung macht sichtbar, wenn die aktuelle
+  // Basis die gewählte Q-Struktur noch nicht trägt (der CTL-Deckel senkt die Q-Anzahl als Sicherung). Kein Alarm — die
+  // Struktur folgt der Wahl, sobald die CTL sie hergibt. Nur bei EXPLIZIT gesetztem Typ (abgeleitete Defaults passen ohnehin).
+  const setType = (getProfileSetting("athlete", {}) as { athlete_type?: AthleteType }).athlete_type ?? null;
+  const curCtlNow = pmcNow.length ? pmcNow[pmcNow.length - 1].ctl : 0;
+  const typeFitness = fitnessLevel(curCtlNow, cur.csPace ?? null, cur.vdot);
+  const typeWarning = setType && setType !== "hobby" && typeFitness === "low"
+    ? `Deine Historie trägt aktuell noch keine ${setType === "semipro" ? "2–3" : "2"} harten Einheiten/Woche — der Plan startet mit einer harten Qualität und baut die Dosis datenbasiert auf. Die Struktur folgt deiner Wahl, sobald die Basis sie trägt.`
+    : null;
   const planLoadRatio = chronicTss > 0
     ? Math.min(cap.tssCap ?? Infinity, PRODUCTIVE_BLOCK_ACWR * chronicTss) / chronicTss
     : null; // ohne CTL-Basis (Wiedereinstieg): jede Last ist ein voller Reiz
@@ -1069,7 +1127,10 @@ app.get("/api/coach/block-defaults", async (_req, res) => {
   // ~75 % der Wochen), zusätzlich hart auf das Doppelte des Starts und das Zeitbudget gedeckelt.
   const blockWeeks = Math.max(0, Math.min(20, weeksToRace ?? 8));
   const growthWeeks = blockWeeks * 0.75;
-  const maxBySafety = startKm > 0 ? Math.round(Math.min(startKm * Math.pow(1.06, growthWeeks), startKm * 2)) : null;
+  // v3.3.0 (V2): Verletzungshistorie senkt die Wachstumsrate der Wizard-Empfehlung genauso wie die reale Block-Rampe
+  // (dieselbe rampGrowthFactor-Quelle wie in blockPlan) — sonst schlüge der Wizard ein Maximum vor, das der Plan gar nicht fährt.
+  const safeGrowth = rampGrowthFactor(1.06, resolveAnamnesis().injuryHistory).factor;
+  const maxBySafety = startKm > 0 ? Math.round(Math.min(startKm * Math.pow(safeGrowth, growthWeeks), startKm * 2)) : null;
   // v3.2.0: Wie viele km TRÄGT die Aufbau-Last, die die Periodisierung will? Der Wizard soll ein Maximum
   // vorschlagen, das den Reiz der Phase auch hergibt — sonst stellt der Nutzer brav 62 km ein und wundert sich,
   // warum seine Form im „Aufbau" nicht steigt (genau der `km_target_low`-Fall).
@@ -1082,7 +1143,7 @@ app.get("/api/coach/block-defaults", async (_req, res) => {
   // Welche Grenze bindet? Das gehört in die Begründung — der Nutzer soll den Hebel sehen, nicht raten.
   const bindingLimit = maxKm == null ? null
     : maxKm === kmByTime ? "dein Zeitbudget"
-      : maxKm === maxBySafety ? "der sichere Aufbau (~6 %/Woche)"
+      : maxKm === maxBySafety ? `der sichere Aufbau (~${Math.round((safeGrowth - 1) * 100)} %/Woche)`
         : "die Last, die deine Aufbauphase trägt";
 
   // --- Schwerpunkt aus der Evidenz (dieselbe Synthese wie der Coach-Block) ---
@@ -1091,6 +1152,8 @@ app.get("/api/coach/block-defaults", async (_req, res) => {
     healthFlags: mlGetReadiness(p).flags,
     availabilityEmphasis: availability?.emphasis ?? null,
     emphasisMode: getSetting<string>("coach_emphasis_mode", "auto") === "manual" ? "manual" : "auto",
+    schoolBaseline: schoolRecipe(resolveCoachMethod()).baselineEmphasis, // v3.3.0 (V4): Distanz-Standard-Schule als Baseline
+    schoolLabel: schoolRecipe(resolveCoachMethod()).label,
   });
 
   // --- Zonen-Vorschlag (optimale Zonen, wie in der Coach-Karte) ---
@@ -1130,6 +1193,18 @@ app.get("/api/coach/block-defaults", async (_req, res) => {
       current: availability?.emphasis ?? null,
     },
     healthCap: coaching.healthCap,
+    athleteType: { type: setType ?? resolveAthleteType(availability), explicit: !!setType, warning: typeWarning },
+    // v3.3.0 (V4): Methodik-Schule — aktuelle Wahl + Distanz-Empfehlung (E2/E3) + alle Rezepte (Label/Blurb/Evidenz)
+    // für den Wizard. Die Empfehlung ist ein sichtbarer Vorschlag; der Default-Plan bleibt „standard" (heutiges Verhalten).
+    method: (() => {
+      const current = resolveCoachMethod();
+      const rec = recommendMethod(goalDistanceM);
+      return {
+        current, explicit: current !== "standard",
+        recommended: rec, recommendedLabel: schoolRecipe(rec).label, recommendedBlurb: schoolRecipe(rec).blurb, recommendedEvidence: schoolRecipe(rec).evidence,
+        options: Object.values(SCHOOL_RECIPES).map((r) => ({ key: r.key, label: r.label, blurb: r.blurb, evidence: r.evidence, distBuild: r.distBuild, doubles: r.doubles })),
+      };
+    })(),
     upcomingRaces,
   });
 });
@@ -1148,6 +1223,7 @@ app.post("/api/coach/block-setup", (req, res) => {
     // v3.1.0: Renn-Rollen aus dem Wizard-Schritt „Wettkämpfe". Nur EXPLIZIT geänderte Rollen kommen an —
     // Rennen, die der Nutzer nicht angefasst hat, bleiben unberührt.
     raceRoles?: { id: number; role: "main" | "tuneup" | "ignore" }[];
+    method?: CoachMethod;   // v3.3.0 (V4): gewählte Methodik-Schule (Opt-in; „standard" = heutiges Verhalten)
     // v3.1.0: „Speichern & schließen" aus einem beliebigen Schritt — nur Einstellungen (Verfügbarkeit,
     // Schwerpunkt-Modus, Renn-Rollen), KEINE Ziel-km und keine Phasen. Der Block entsteht nur über
     // „Block erstellen".
@@ -1162,6 +1238,7 @@ app.post("/api/coach/block-setup", (req, res) => {
     written.push("Verfügbarkeit");
   }
   if (b.emphasisMode) { setSetting("coach_emphasis_mode", b.emphasisMode); written.push(`Schwerpunkt-Modus (${b.emphasisMode})`); }
+  if (b.method && b.method in SCHOOL_RECIPES) { setSetting(`coach_method_${p}`, b.method); written.push(`Methodik-Schule (${schoolRecipe(b.method).label})`); }
 
   // Renn-Rollen: „main" = normales Zielrennen (der Planer nimmt das früheste), „tuneup" = Mini-Taper +
   // Fortschritts-Check, „ignore" = steht im Kalender, steuert aber nichts.
@@ -3618,6 +3695,7 @@ function buildTrialBlockGen(trialId: number): TrialBlockGen | null {
     weeks, historicalDailyTss, from, today, raceDate: raceRow?.date ?? null, zones, availability,
     readinessLevel: readiness?.level ?? null, methodPreference: { regime: stim.regime, confidence: "hoch" },
     goalDistanceM, curVdot: cur.vdot, goalTimeS: raceRow?.goal_time_s && raceRow.goal_time_s > 0 ? Number(raceRow.goal_time_s) : null,
+    athleteType: resolveAthleteType(availability), ...resolveAnamnesis(), masters: resolveMasters(today), method: resolveCoachMethod(),
   });
   const days = plan.weeks.flatMap((w) => w.days.filter((d) => d.date >= block.startDate && d.date <= block.endDate).map((d) => ({ ...d, week_no: w.week_no })));
   return { block, armLabel: stim.label, emphasis: stim.emphasis, regime: stim.regime, days, note: `Reiz-Schwerpunkt „${stim.label}" — gleiches Wochen-TSS wie regulär, nur der Reiz-Mix ist auf diesen Arm gedreht. Periodisierung/Readiness/Race übersteuern.` };

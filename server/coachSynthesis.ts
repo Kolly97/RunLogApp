@@ -20,7 +20,7 @@ export interface CoachHealthCap { loadFactor: number; dropTopIntensity: boolean;
 export interface CoachingPrefs {
   emphasis: CoachEmphasisPref | null;          // belastbare Evidenz (oder null → Default)
   emphasisEffective: string | null;            // der tatsächlich an den Planer gereichte Schwerpunkt (nach Auflösung)
-  emphasisSource: "evidence" | "manual" | "default";
+  emphasisSource: "evidence" | "manual" | "school" | "default";
   regime: CoachRegimePref | null;
   healthCap: CoachHealthCap;
   headline: string;
@@ -36,6 +36,11 @@ export interface DeriveOpts {
   availabilityEmphasis?: string | null;         // manueller Schwerpunkt aus den Availability-Settings
   emphasisMode?: "auto" | "manual";             // Default "auto": Evidenz gewinnt bei Belastbarkeit
   cycleNote?: string | null;                    // beratende Zyklus-Empfehlung (nur Anzeige)
+  // v3.3.0 (V4/E2/E3): Baseline-Schwerpunkt der gewählten Methodik-Schule (Distanz-Standard). Greift NUR, wenn keine
+  // belastbare Evidenz und kein manueller Schwerpunkt vorliegt — dann folgt der Plan der Schul-Charakteristik. „standard"
+  // liefert null → kein Effekt (heutiges Verhalten). Evidenz/„geprüft" stechen die Schule (E2), manuell überschreibt.
+  schoolBaseline?: string | null;
+  schoolLabel?: string | null;                  // Anzeige-Label der Schule (für die Begründung)
 }
 
 const REGIME_CONF = (c: Conf): "hoch" | "mittel" | "niedrig" => (c === "hoch" ? "hoch" : c === "mittel" ? "mittel" : "niedrig");
@@ -122,24 +127,32 @@ export function deriveCoachingPrefs(verdict: TrainingVerdict, opts: DeriveOpts =
 
   // --- Auflösung Evidenz vs. manuell (Q3) ---
   const manual = opts.availabilityEmphasis && opts.availabilityEmphasis !== "ausgewogen" ? opts.availabilityEmphasis : null;
+  // v3.3.0 (V4): Schul-Baseline (Distanz-Standard) — nur ein echter Schwerpunkt, „standard" liefert null.
+  const school = opts.schoolBaseline && opts.schoolBaseline !== "ausgewogen" ? opts.schoolBaseline : null;
   const mode = opts.emphasisMode ?? "auto";
   let emphasisEffective: string | null;
   let emphasisSource: CoachingPrefs["emphasisSource"];
   if (mode === "manual") {
-    // Bewusster Override: die manuelle Wahl gewinnt; Evidenz nur, wenn nichts gesetzt.
+    // Bewusster Override: die manuelle Wahl gewinnt; sonst Evidenz, sonst die Schul-Baseline.
     if (manual) { emphasisEffective = manual; emphasisSource = "manual"; }
     else if (emphasis) { emphasisEffective = emphasis.emphasis; emphasisSource = "evidence"; }
+    else if (school) { emphasisEffective = school; emphasisSource = "school"; }
     else { emphasisEffective = null; emphasisSource = "default"; }
   } else {
-    // Auto (Default): Evidenz gewinnt bei Belastbarkeit, sonst manuell, sonst Default.
-    if (emphasis) { emphasisEffective = emphasis.emphasis; emphasisSource = "evidence"; }
+    // Auto — E2-Ordnung: nur GEPRÜFTE (kausale) Evidenz stimmt gegen die gewählte Schule / den Distanz-Standard um.
+    // Eine explizit gewählte Schule schlägt BEOBACHTETE Muster (der Nutzer hat eine Methodik entschieden — Beobachtung
+    // nudged, stürzt sie nicht). Ohne gewählte Schule füllt beobachtete Evidenz den Standard, sonst manuell/Default.
+    if (emphasis?.tier === "geprüft") { emphasisEffective = emphasis.emphasis; emphasisSource = "evidence"; }
+    else if (school) { emphasisEffective = school; emphasisSource = "school"; }
+    else if (emphasis) { emphasisEffective = emphasis.emphasis; emphasisSource = "evidence"; }
     else if (manual) { emphasisEffective = manual; emphasisSource = "manual"; }
     else { emphasisEffective = null; emphasisSource = "default"; }
   }
 
   if (opts.readinessLevel) notes.push(`Readiness heute (${opts.readinessLevel}) moduliert die Tages-/Wochenlast.`);
   if (opts.cycleNote) notes.push(`Zyklus (beratend): ${opts.cycleNote}`);
-  if (!emphasis && !regime) notes.push("Noch keine belastbare individuelle Evidenz — der Plan folgt dem sportwissenschaftlichen Standard (Periodisierung + Zieldistanz).");
+  if (emphasisSource === "school" && opts.schoolLabel) notes.push(`Methodik-Schule „${opts.schoolLabel}": der Plan folgt ihrer Charakteristik (Distanz-Standard) — bis eigene Evidenz sie verfeinert.`);
+  else if (!emphasis && !regime) notes.push("Noch keine belastbare individuelle Evidenz — der Plan folgt dem sportwissenschaftlichen Standard (Periodisierung + Zieldistanz).");
 
   return {
     emphasis, emphasisEffective, emphasisSource, regime, healthCap,

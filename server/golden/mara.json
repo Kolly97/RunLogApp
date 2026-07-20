@@ -1,0 +1,1573 @@
+{
+  "athlete": "mara",
+  "confidence": "mittel",
+  "raceDate": "2026-05-10",
+  "weeks": [
+    {
+      "week_no": 1,
+      "phase": "Base",
+      "isDeload": false,
+      "tssTarget": 698,
+      "tssActual": 566,
+      "ctlStart": 83,
+      "tsbAvg": 1.4,
+      "q": 1,
+      "longMin": 149,
+      "reasons": [
+        "build_quality",
+        "injury_ramp",
+        "km_target_low",
+        "load_target",
+        "time_reserve",
+        "week_structure"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 62,
+          "tss": 71,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Hill",
+          "min": 39,
+          "tss": 47,
+          "tpl": "hill_reps_short",
+          "pace": null,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 62,
+          "tss": 71,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Steady",
+          "min": 44,
+          "tss": 64,
+          "tpl": "lt1_continuous",
+          "pace": 217,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 62,
+          "tss": 71,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 149,
+          "tss": 171,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 62,
+          "tss": 71,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 2,
+      "phase": "Base",
+      "isDeload": false,
+      "tssTarget": 696,
+      "tssActual": 593,
+      "ctlStart": 83,
+      "tsbAvg": 0.4,
+      "q": 1,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "load_target",
+        "progressive_overload",
+        "time_reserve",
+        "week_structure"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Hill",
+          "min": 29,
+          "tss": 30,
+          "tpl": "hill_sprints",
+          "pace": null,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Steady",
+          "min": 73,
+          "tss": 92,
+          "tpl": "lt1_long_reps",
+          "pace": 217,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 172,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 3,
+      "phase": "Base",
+      "isDeload": false,
+      "tssTarget": 700,
+      "tssActual": 613,
+      "ctlStart": 83,
+      "tsbAvg": -2.3,
+      "q": 1,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "load_target",
+        "progressive_overload",
+        "time_reserve",
+        "week_structure"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "VO2",
+          "min": 48,
+          "tss": 54,
+          "tpl": "fartlek_free",
+          "pace": 209,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 68,
+          "tss": 78,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 68,
+          "tss": 78,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 68,
+          "tss": 78,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 172,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 68,
+          "tss": 78,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 4,
+      "phase": "Entlastung",
+      "isDeload": true,
+      "tssTarget": 398,
+      "tssActual": 386,
+      "ctlStart": 84,
+      "tsbAvg": 0,
+      "q": 1,
+      "longMin": 83,
+      "reasons": [
+        "deload",
+        "load_target",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 63,
+          "tss": 72,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 55,
+          "tss": 74,
+          "tpl": "lt2_cruise",
+          "pace": 209,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 63,
+          "tss": 72,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 63,
+          "tss": 72,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 83,
+          "tss": 95,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 5,
+      "phase": "Base",
+      "isDeload": false,
+      "tssTarget": 668,
+      "tssActual": 643,
+      "ctlStart": 80,
+      "tsbAvg": 10.3,
+      "q": 1,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "load_target",
+        "progressive_overload",
+        "time_reserve",
+        "week_structure"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Hill",
+          "min": 39,
+          "tss": 47,
+          "tpl": "hill_reps_short",
+          "pace": null,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 83,
+          "tss": 95,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Steady",
+          "min": 50,
+          "tss": 73,
+          "tpl": "lt1_continuous",
+          "pace": 217,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 86,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 172,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 83,
+          "tss": 95,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 6,
+      "phase": "Base",
+      "isDeload": false,
+      "tssTarget": 685,
+      "tssActual": 662,
+      "ctlStart": 82,
+      "tsbAvg": -2.8,
+      "q": 1,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "load_target",
+        "progressive_overload",
+        "week_structure"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Hill",
+          "min": 29,
+          "tss": 30,
+          "tpl": "hill_sprints",
+          "pace": null,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Steady",
+          "min": 73,
+          "tss": 92,
+          "tpl": "lt1_long_reps",
+          "pace": 216,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 96,
+          "tss": 109,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 7,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 795,
+      "tssActual": 585,
+      "ctlStart": 84,
+      "tsbAvg": -10.7,
+      "q": 2,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 8,
+      "phase": "Entlastung",
+      "isDeload": true,
+      "tssTarget": 395,
+      "tssActual": 391,
+      "ctlStart": 84,
+      "tsbAvg": 3.3,
+      "q": 1,
+      "longMin": 85,
+      "reasons": [
+        "deload",
+        "load_target",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 55,
+          "tss": 74,
+          "tpl": "lt2_cruise",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 85,
+          "tss": 97,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 9,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 753,
+      "tssActual": 585,
+      "ctlStart": 79,
+      "tsbAvg": 8,
+      "q": 2,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 10,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 758,
+      "tssActual": 585,
+      "ctlStart": 80,
+      "tsbAvg": 0.9,
+      "q": 3,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 11,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 763,
+      "tssActual": 585,
+      "ctlStart": 80,
+      "tsbAvg": -1.2,
+      "q": 3,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 12,
+      "phase": "Entlastung",
+      "isDeload": true,
+      "tssTarget": 383,
+      "tssActual": 376,
+      "ctlStart": 81,
+      "tsbAvg": 5.6,
+      "q": 1,
+      "longMin": 83,
+      "reasons": [
+        "deload",
+        "load_target",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 61,
+          "tss": 69,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 55,
+          "tss": 74,
+          "tpl": "lt2_cruise",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 61,
+          "tss": 69,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 61,
+          "tss": 69,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 83,
+          "tss": 94,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 13,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 725,
+      "tssActual": 585,
+      "ctlStart": 76,
+      "tsbAvg": 7.7,
+      "q": 2,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_aerobic",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 14,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 735,
+      "tssActual": 585,
+      "ctlStart": 77,
+      "tsbAvg": -0.5,
+      "q": 3,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 15,
+      "phase": "Belastung",
+      "isDeload": false,
+      "tssTarget": 745,
+      "tssActual": 585,
+      "ctlStart": 78,
+      "tsbAvg": -2.8,
+      "q": 3,
+      "longMin": 150,
+      "reasons": [
+        "build_quality",
+        "km_target_missed",
+        "load_target",
+        "progressive_overload",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Threshold",
+          "min": 56,
+          "tss": 75,
+          "tpl": "norw_short_reps",
+          "pace": 208,
+          "second": false
+        },
+        {
+          "type": "Threshold",
+          "min": 42,
+          "tss": 50,
+          "tpl": "norw_pm_400s",
+          "pace": 208,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 90,
+          "tss": 102,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 75,
+          "tss": 85,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 150,
+          "tss": 170,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 16,
+      "phase": "Race Specific",
+      "isDeload": false,
+      "tssTarget": 431,
+      "tssActual": 422,
+      "ctlStart": 79,
+      "tsbAvg": 3.4,
+      "q": 2,
+      "longMin": 94,
+      "reasons": [
+        "load_target",
+        "specific_block",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Renntempo",
+          "min": 50,
+          "tss": 63,
+          "tpl": "race_pace_long",
+          "pace": 219,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 66,
+          "tss": 75,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 66,
+          "tss": 75,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 94,
+          "tss": 107,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 17,
+      "phase": "Race Specific",
+      "isDeload": false,
+      "tssTarget": 340,
+      "tssActual": 295,
+      "ctlStart": 76,
+      "tsbAvg": 14.9,
+      "q": 2,
+      "longMin": 56,
+      "reasons": [
+        "banister_taper",
+        "load_target",
+        "specific_block",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 56,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 22,
+          "tss": 10,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Renntempo",
+          "min": 37,
+          "tss": 45,
+          "tpl": "race_mix",
+          "pace": 219,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 45,
+          "tss": 51,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 22,
+          "tss": 24,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 41,
+          "tss": 46,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Long",
+          "min": 56,
+          "tss": 63,
+          "tpl": "long_mp_segments",
+          "pace": 219,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 18,
+      "phase": "Race Week",
+      "isDeload": true,
+      "tssTarget": 247,
+      "tssActual": 466,
+      "ctlStart": 71,
+      "tsbAvg": 20.8,
+      "q": 0,
+      "longMin": null,
+      "reasons": [
+        "load_target",
+        "race_week",
+        "taper_volume",
+        "time_reserve"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 65,
+          "tss": 74,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Strength",
+          "min": 23,
+          "tss": 0,
+          "tpl": "core_strength",
+          "pace": null,
+          "second": true
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 66,
+          "tss": 75,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 66,
+          "tss": 75,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Race",
+          "min": 152,
+          "tss": 214,
+          "tpl": null,
+          "pace": 216,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 19,
+      "phase": "Recovery",
+      "isDeload": true,
+      "tssTarget": 172,
+      "tssActual": 201,
+      "ctlStart": 70,
+      "tsbAvg": null,
+      "q": 0,
+      "longMin": null,
+      "reasons": [
+        "post_race_recovery"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 20,
+      "phase": "Recovery",
+      "isDeload": true,
+      "tssTarget": 209,
+      "tssActual": 213,
+      "ctlStart": 64,
+      "tsbAvg": null,
+      "q": 0,
+      "longMin": null,
+      "reasons": [
+        "post_race_recovery"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 61,
+          "tss": 70,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    },
+    {
+      "week_no": 21,
+      "phase": "Recovery",
+      "isDeload": true,
+      "tssTarget": 241,
+      "tssActual": 224,
+      "ctlStart": 58,
+      "tsbAvg": null,
+      "q": 0,
+      "longMin": null,
+      "reasons": [
+        "post_race_recovery"
+      ],
+      "days": [
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 27,
+          "tss": 29,
+          "tpl": "strides",
+          "pace": 178,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 70,
+          "tss": 80,
+          "tpl": "easy_ga1",
+          "pace": 252,
+          "second": false
+        },
+        {
+          "type": "Easy",
+          "min": 50,
+          "tss": 57,
+          "tpl": "easy_recovery",
+          "pace": 252,
+          "second": false
+        }
+      ]
+    }
+  ]
+}

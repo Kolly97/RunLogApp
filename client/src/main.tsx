@@ -5,7 +5,7 @@ import { LangProvider } from "./lib/i18n.tsx";
 import { loadOptions } from "./lib/options.ts";
 import { applyTheme } from "./lib/theme.ts";
 import { motionEnabled } from "./lib/motion.ts";
-import { setAppToday } from "./lib/util.ts";
+import { setAppToday, todayIso } from "./lib/util.ts";
 import "./styles.css";
 
 // M1/M2: Theme + Animations-Status vor dem ersten Paint setzen (kein Flash).
@@ -25,6 +25,19 @@ async function bootAppTime(): Promise<void> {
   } catch { /* offline/Startrennen → Systemuhr */ }
 }
 
+async function refreshAppTime(): Promise<void> {
+  try {
+    const before = todayIso();
+    const r = await fetch("/api/app-time");
+    if (!r.ok) return;
+    const next = ((await r.json()) as { today?: string }).today ?? null;
+    if (next && next !== before) {
+      setAppToday(next);
+      window.location.reload();
+    }
+  } catch { /* App bleibt auf dem zuletzt bekannten Tag */ }
+}
+
 // Kein React.StrictMode: react-grid-layout (T8 Edit-Modus) bricht im StrictMode-Doppelmount die
 // Drag-/Resize-Verdrahtung (findDOMNode in react-draggable). StrictMode ist in Production ohnehin
 // ein No-op; das Dev-Doppelrendering machte den Edit-Modus unbedienbar.
@@ -36,4 +49,7 @@ void bootAppTime().then(() => {
       </BrowserRouter>
     </LangProvider>,
   );
+  window.addEventListener("focus", () => { void refreshAppTime(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void refreshAppTime(); });
+  window.setInterval(() => { void refreshAppTime(); }, 15 * 60 * 1000);
 });
